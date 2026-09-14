@@ -8,7 +8,8 @@
 import React, { useMemo, useState } from "react";
 import {
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword
+  createUserWithEmailAndPassword,
+  signOut
 } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "./firebase";
@@ -256,6 +257,16 @@ export function resolveRole(email, portal) {
   return match ? match[1] : ROLES.ORGANISER;
 }
 
+// Firebase's minimum is lower, so enforce ConnectSphere's stronger rule in the
+// client before an account is ever sent to Firebase Authentication.
+export function isStrongPassword(password) {
+  return String(password).length >= 12 && /\d/.test(password) && /[^A-Za-z0-9]/.test(password);
+}
+
+export function isValidMobileNumber(number) {
+  return /^\d{8,}$/.test(String(number));
+}
+
 // ==========================================
 // LANDING PAGE
 // ==========================================
@@ -330,8 +341,18 @@ function LandingPage() {
   const [mode, setMode] = useState("login"); // "login" | "register"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [name, setName] = useState("");
+  const [organisationName, setOrganisationName] = useState("");
+  const [mobileNumber, setMobileNumber] = useState("");
+  const [preferredContactMethod, setPreferredContactMethod] = useState("EMAIL");
+  const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(() => {
+    const message = sessionStorage.getItem("cs-login-error") || "";
+    sessionStorage.removeItem("cs-login-error");
+    return message;
+  });
 
   const activePortal = PORTALS[portal];
   const isCorporate = portal === PORTALS.corporate.id;
@@ -348,57 +369,100 @@ function LandingPage() {
   const switchPortal = (nextPortal) => {
     setPortal(nextPortal);
     setError("");
+    setSuccess("");
   };
 
-  const handleSubmit = async (event) => {
+  const handleRegister = async (event) => {
     event.preventDefault();
     setError("");
 
-    if (mode === "register" && isCorporate && !isStaffEmail(email)) {
-      setError(
-        `Corporate accounts are limited to: ${STAFF_DOMAINS.join(", ")}. Use the Individuals portal to register as an attendee.`
-      );
+    if (!name.trim()) {
+      setError("Enter your full name to create an account.");
+      return;
+    }
+
+    if (isCorporate && !organisationName.trim()) {
+      setError("Enter your organisation name to create an organiser account.");
+      return;
+    }
+
+    if (!mobileNumber.trim() || !preferredContactMethod) {
+      setError("Enter your mobile number and preferred contact method to create an account.");
+      return;
+    }
+
+    if (!isValidMobileNumber(mobileNumber)) {
+      setError("Enter a mobile number containing at least 8 digits.");
+      return;
+    }
+
+    if (!isStrongPassword(password)) {
+      setError("Choose a password with at least 12 characters, including a number and special character.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError("Your passwords do not match.");
       return;
     }
 
     setBusy(true);
 
     try {
-      if (mode === "register") {
-        const credential = await createUserWithEmailAndPassword(
+      const credential = await createUserWithEmailAndPassword(
           auth,
           email,
           password
-        );
+      );
 
         await setDoc(doc(db, "users", credential.user.uid), {
-          uid: credential.user.uid,
+          user_id: credential.user.uid,
+          name: name.trim(),
           email: credential.user.email,
-          role: resolveRole(email, portal),
-          portal,
-          createdAt: serverTimestamp()
+          // Public registration deliberately grants no staff capability. Other
+          // staff roles are provisioned by an administrator.
+          role: isCorporate ? ROLES.ORGANISER : ROLES.ATTENDEE,
+          organisation_name: isCorporate ? organisationName.trim() : null,
+          mobile_number: mobileNumber.trim(),
+          preferred_contact_method: preferredContactMethod,
+          is_active: true,
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp()
         });
-      } else {
-        const credential = await signInWithEmailAndPassword(
-          auth,
-          email,
-          password
-        );
+        sessionStorage.setItem("cs-account-created", "Your account has been created successfully.");
+        setSuccess("Your account has been created. You are now signed in.");
+    } catch (authError) {
+      // Authentication errors must not disclose whether a particular mailbox is
+      // registered, nor the role attached to it.
+      setError(
+        authError.code === "auth/email-already-in-use"
+          ? "We could not create an account with those details. Please check them and try again."
+          : "We could not sign you in or create your account with those details. Please check them and try again."
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
 
-        // The stored role is authoritative, so an attendee cannot reach staff
-        // screens simply by signing in through the corporate portal.
-        const profile = await getDoc(doc(db, "users", credential.user.uid));
-        const storedRole = profile.exists() ? profile.data().role : null;
-        const storedPortal = storedRole && ROLE_META[storedRole]?.portal;
-
-        if (storedPortal && storedPortal !== portal) {
-          setError(
-            `This is a ${ROLE_META[storedRole].label} account. Please sign in through the ${PORTALS[storedPortal].tab} portal.`
-          );
-        }
+  const handleLogin = async (event) => {
+    event.preventDefault();
+    setError("");
+    setBusy(true);
+    try {
+      const credential = await signInWithEmailAndPassword(auth, email, password);
+      const profile = await getDoc(doc(db, "users", credential.user.uid));
+      const storedRole = profile.exists() ? profile.data().role : null;
+      const storedPortal = ROLE_META[storedRole]?.portal;
+      // A correct password used on the wrong portal is deliberately presented as
+      // a generic sign-in failure, and its just-created Firebase session is ended.
+      if (!storedPortal || storedPortal !== portal) {
+        const loginError = "This account cannot be used in this portal. Please use the correct sign-in area.";
+        sessionStorage.setItem("cs-login-error", loginError);
+        await signOut(auth);
+        setError(loginError);
       }
     } catch (authError) {
-      setError(authError.message);
+      setError("We could not sign you in with those details. Please check them and try again.");
     } finally {
       setBusy(false);
     }
@@ -474,13 +538,41 @@ function LandingPage() {
 
             <p className="cs-login-blurb">{activePortal.blurb}</p>
 
-            <form className="cs-form" onSubmit={handleSubmit}>
+            <form
+              className="cs-form"
+              onSubmit={mode === "login" ? handleLogin : handleRegister}
+              aria-label={mode === "login" ? `${activePortal.title} sign-in` : `${activePortal.title} registration`}
+            >
+              {mode === "register" && (
+                <>
+                  <label className="cs-field" htmlFor="cs-name">
+                    <span>Full name</span>
+                    <input id="cs-name" autoComplete="name" required value={name} onChange={(e) => setName(e.target.value)} />
+                  </label>
+                  {isCorporate && (
+                    <label className="cs-field" htmlFor="cs-organisation">
+                      <span>Organisation name</span>
+                      <input id="cs-organisation" required value={organisationName} onChange={(e) => setOrganisationName(e.target.value)} />
+                    </label>
+                  )}
+                  <label className="cs-field" htmlFor="cs-mobile">
+                    <span>Mobile number</span>
+                    <input id="cs-mobile" type="tel" autoComplete="tel" required inputMode="numeric" pattern="[0-9]{8,}" minLength="8" placeholder="At least 8 digits" value={mobileNumber} onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, ""))} />
+                  </label>
+                  <label className="cs-field" htmlFor="cs-contact-method">
+                    <span>Preferred contact method</span>
+                    <select id="cs-contact-method" value={preferredContactMethod} onChange={(e) => setPreferredContactMethod(e.target.value)}>
+                      <option value="EMAIL">Email</option><option value="MOBILE">Mobile</option>
+                    </select>
+                  </label>
+                </>
+              )}
               <label className="cs-field" htmlFor="cs-email">
-                <span>Email or username</span>
+                <span>Email</span>
                 <input
                   id="cs-email"
                   type="email"
-                  autoComplete="username"
+                  autoComplete={mode === "login" ? "username" : "email"}
                   required
                   placeholder={activePortal.example}
                   value={email}
@@ -493,16 +585,35 @@ function LandingPage() {
                 <input
                   id="cs-password"
                   type="password"
-                  autoComplete="current-password"
+                  autoComplete={mode === "login" ? "current-password" : "new-password"}
                   required
-                  minLength={6}
-                  placeholder="At least 6 characters"
+                  minLength={mode === "register" ? 12 : 6}
+                  placeholder={mode === "register" ? "12+ characters, number and special character" : "Your password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </label>
 
-              {isCorporate && previewRole && (
+              {mode === "register" && (
+                <>
+                  <p className="cs-login-hint cs-password-hint">
+                    Use at least 12 characters, including one number and one special character.
+                  </p>
+                  <label className="cs-field" htmlFor="cs-confirm-password">
+                    <span>Confirm password</span>
+                    <input
+                      id="cs-confirm-password"
+                      type="password"
+                      autoComplete="new-password"
+                      required
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                    />
+                  </label>
+                </>
+              )}
+
+              {isCorporate && previewRole && mode === "login" && (
                 <p className="cs-role-preview">
                   Detected role: <strong>{ROLE_META[previewRole].label}</strong>
                 </p>
@@ -514,12 +625,14 @@ function LandingPage() {
                 </p>
               )}
 
+              {success && <p className="cs-success" role="status">{success}</p>}
+
               <button className="cs-btn cs-btn-primary cs-btn-block" disabled={busy}>
                 {busy
                   ? "Working…"
                   : mode === "login"
                   ? `Log in to ${activePortal.title.toLowerCase()}`
-                  : `Create ${activePortal.title.toLowerCase()}`}
+                  : isCorporate ? "Create event organiser account" : "Create attendee account"}
               </button>
             </form>
 
@@ -531,13 +644,20 @@ function LandingPage() {
                 onClick={() => {
                   setMode(mode === "login" ? "register" : "login");
                   setError("");
+                  setSuccess("");
+                  setPassword("");
+                  setConfirmPassword("");
                 }}
               >
                 {mode === "login" ? "Create an account" : "Log in instead"}
               </button>
             </p>
 
-            <p className="cs-login-hint">{activePortal.hint}</p>
+            <p className="cs-login-hint">
+              {mode === "register" && isCorporate
+                ? "Self-registration creates an Event Organiser account. Coordinator, venue and technical roles are provisioned separately."
+                : activePortal.hint}
+            </p>
           </section>
         </section>
 

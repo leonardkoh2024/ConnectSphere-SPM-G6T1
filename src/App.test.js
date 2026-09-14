@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
-import { ROLES, isStaffEmail, resolveRole } from './LandingPage';
+import { ROLES, isStaffEmail, isStrongPassword, isValidMobileNumber, resolveRole } from './LandingPage';
 
 // Firebase is stubbed so the tests exercise our own routing and role logic
 // without touching a real project. onAuthStateChanged reports a signed-out user.
@@ -49,7 +49,7 @@ describe('landing page', () => {
 
     await userEvent.click(screen.getByRole('tab', { name: /corporate/i }));
     await userEvent.type(
-      screen.getByLabelText(/email or username/i),
+      screen.getByLabelText(/^email$/i),
       'amir.coordinator@connectsphere.com'
     );
 
@@ -93,5 +93,21 @@ describe('isStaffEmail', () => {
   test('only approved domains may hold a corporate account', () => {
     expect(isStaffEmail('venue.team@connectsphere.com')).toBe(true);
     expect(isStaffEmail('venue.team@gmail.com')).toBe(false);
+  });
+});
+
+describe('isStrongPassword', () => {
+  test('requires 12 characters, a number and a special character', () => {
+    expect(isStrongPassword('TwelveChars!')).toBe(false);
+    expect(isStrongPassword('TwelveChars12')).toBe(false);
+    expect(isStrongPassword('SecurePassword1!')).toBe(true);
+  });
+});
+
+describe('isValidMobileNumber', () => {
+  test('requires at least eight digits and does not allow separators', () => {
+    expect(isValidMobileNumber('1234567')).toBe(false);
+    expect(isValidMobileNumber('+65 9123 4567')).toBe(false);
+    expect(isValidMobileNumber('91234567')).toBe(true);
   });
 });

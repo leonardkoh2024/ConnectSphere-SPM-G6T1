@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function hasRole(role) { return signedIn() && profile().role == role; }
+    function ownsEvent(eventId) { return signedIn() && get(/databases/$(database)/documents/events/$(eventId)).data.organiser_id == request.auth.uid; }
+
+    match /users/{userId} {
+      allow create: if signedIn() && userId == request.auth.uid
+        && request.resource.data.user_id == request.auth.uid
+        && request.resource.data.role in ['EVENT_ORGANISER', 'ATTENDEE'];
+      allow get: if signedIn() && userId == request.auth.uid;
+      allow update: if signedIn() && userId == request.auth.uid
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.user_id == resource.data.user_id;
+    }
+
+    match /events/{eventId} {
+      allow create: if hasRole('EVENT_ORGANISER') && request.resource.data.organiser_id == request.auth.uid && request.resource.data.created_by == request.auth.uid;
+      allow get, list: if hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid;
+      allow update: if hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid;
+    }
+
+    match /event_venue_requirements/{requirementId} {
+      allow create: if ownsEvent(request.resource.data.event_id);
+      allow get, list, update, delete: if ownsEvent(resource.data.event_id);
+    }
+    match /event_facilities/{facilityId} {
+      allow create: if ownsEvent(request.resource.data.event_id);
+      allow get, list, update, delete: if ownsEvent(resource.data.event_id);
+    }
+    match /event_accessibility/{accessibilityId} {
+      allow create: if ownsEvent(request.resource.data.event_id);
+      allow get, list, update, delete: if ownsEvent(resource.data.event_id);
+    }
+    match /event_history/{historyId} { allow create: if hasRole('EVENT_ORGANISER') && request.resource.data.actor_id == request.auth.uid && ownsEvent(request.resource.data.event_id); allow get, list: if ownsEvent(resource.data.event_id); }
+  }
+}
