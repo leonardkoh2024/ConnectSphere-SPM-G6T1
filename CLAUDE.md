@@ -135,6 +135,10 @@ on real problems.
   into `backend/` unchanged when the service layer is built, and it is why those rules are cheap to unit test.
 - Shared UI used by more than one feature goes in `frontend/src/components/`; until a second feature needs it,
   a component stays inside the feature that owns it.
+- **The visual language is fixed by [`docs/design-system.md`](docs/design-system.md)** — palette, type scale,
+  radii, elevation and density, modelled on Fresha and implemented as `--cs-*` tokens in `App.css`. Read it
+  before writing CSS. Use a token; never put a hex value in a rule. If the scale lacks what you need, add it
+  to `:root` and to that doc in the same commit.
 - **`backend/` is the service layer and is deliberately empty.** Services get added as the stories needing
   them are picked up — one folder per service, each owning its own Firestore collections, no two services
   writing the same collection. See `backend/README.md`. Whether they end up as build-time modules or separate
