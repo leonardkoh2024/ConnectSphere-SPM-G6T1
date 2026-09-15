@@ -6,7 +6,7 @@ import {
   onAuthStateChanged 
 } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { auth, db} from './firebase'; // Import your configured auth instance
+import { auth, db} from '../lib/firebase'; // Import your configured auth instance
 
 function AuthTest() {
   const [email, setEmail] = useState('');

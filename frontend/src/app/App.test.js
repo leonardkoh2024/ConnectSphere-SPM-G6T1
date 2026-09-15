@@ -1,11 +1,12 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
-import { ROLES, isStaffEmail, isStrongPassword, isValidMobileNumber, resolveRole } from './LandingPage';
+import { ROLES } from '../domain/roles';
+import { isStaffEmail, isStrongPassword, isValidMobileNumber, resolveRole } from '../domain/accounts';
 
 // Firebase is stubbed so the tests exercise our own routing and role logic
 // without touching a real project. onAuthStateChanged reports a signed-out user.
-jest.mock('./firebase', () => ({ auth: {}, db: {} }));
+jest.mock('../lib/firebase', () => ({ auth: {}, db: {} }));
 
 jest.mock('firebase/auth', () => ({
   onAuthStateChanged: (_auth, callback) => {

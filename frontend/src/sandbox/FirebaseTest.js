@@ -14,7 +14,7 @@ import {
   getDownloadURL
 } from "firebase/storage";
 
-import { db, storage } from "./firebase";
+import { db, storage } from "../lib/firebase";
 
 function FirebaseTest() {
   const [data, setData] = useState([]);

@@ -1,13 +1,15 @@
+// Event request creation and drafts (epic B). One form serves both: "Save draft"
+// writes status DRAFT, "Submit" writes status SUBMITTED and stamps submitted_at.
+//
+// A request spans four collections — events, event_venue_requirements,
+// event_facilities and event_accessibility — so every write here must keep them
+// consistent with each other.
+
 import React, { useEffect, useState } from "react";
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
-import { db } from "./firebase";
-
-// These IDs are the shared catalogue values used by events and venues.  They can
-// later be replaced with values loaded from the facilities/layouts catalogues
-// without changing the event document shape.
-export const LAYOUTS = ["THEATRE", "CLASSROOM", "BOARDROOM", "U_SHAPE", "CABARET"];
-export const FACILITIES = ["PROJECTOR", "MICROPHONE", "VIDEO_CONFERENCING", "WHITEBOARD", "CATERING"];
-export const ACCESSIBILITY_OPTIONS = ["WHEELCHAIR_ACCESS", "HEARING_LOOP", "STEP_FREE_ACCESS", "ACCESSIBLE_TOILET", "QUIET_SPACE"];
+import { db } from "../../lib/firebase";
+import { LAYOUTS, FACILITIES, ACCESSIBILITY_OPTIONS } from "../../domain/events";
+import ToggleList from "./components/ToggleList";
 
 const initialForm = {
   name: "",
@@ -23,32 +25,6 @@ const initialForm = {
   accessibility: [],
   accessibilityNotes: ""
 };
-
-function ToggleList({ label, options, values, onChange }) {
-  return (
-    <fieldset className="cs-choice-group">
-      <legend>{label}</legend>
-      <div className="cs-choice-list">
-        {options.map((option) => (
-          <label key={option} className="cs-check">
-            <input
-              type="checkbox"
-              checked={values.includes(option)}
-              onChange={(event) =>
-                onChange(
-                  event.target.checked
-                    ? [...values, option]
-                    : values.filter((value) => value !== option)
-                )
-              }
-            />
-            {option.replaceAll("_", " ")}
-          </label>
-        ))}
-      </div>
-    </fieldset>
-  );
-}
 
 export default function EventRequestForm({ user, draft, onSaved }) {
   const [form, setForm] = useState(initialForm);
@@ -197,3 +173,4 @@ export default function EventRequestForm({ user, draft, onSaved }) {
     </form>
   );
 }
+
