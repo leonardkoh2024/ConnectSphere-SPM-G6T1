@@ -1,0 +1,162 @@
+# ConnectSphere — IS212 G6 T1
+
+Event Planning and Venue Booking System built for a mock customer, "ConnectSphere Event Services",
+as the IS212 (AY2026/27 T1) team project. Release 1 is due Week 12. The module grades **scrum process,
+requirements traceability, software quality and documentation** at least as heavily as the running product —
+so traceability to a story ID matters more here than it would on a normal project.
+
+## Source of truth, and what wins
+
+Requirements artefacts are in [`docs/`](docs/) — the Week 4 instructions (the 20 core features), the final
+backlog, and both customer Q&A sessions. `docs/README.md` indexes them. These are copies of originals that
+live outside the repo in `Project G6 T1/`; if you change one there, copy it across in the same PR. The Week 1
+briefing, the backlog working files (including the open-items table) and the ERDs stay in that folder only.
+
+Precedence when two artefacts disagree:
+
+1. **Later customer Q&A** beats earlier customer Q&A.
+2. **Week 4 Project Instructions** (the 20 core features) beat any Week 1/Week 2 artefact.
+3. **The backlog** (`docs/final-product-backlog.csv`) is an interpretation, not an authority — it was written
+   9 Sep 2026, *before* Q&A Session 2 that evening, so it is not yet reconciled with Session 2. Where it
+   conflicts with the rules below, the rules win.
+
+Only our own section's customer answers count. Other sections were given different answers.
+
+## Domain rules that constrain code
+
+**Roles** — exactly five, no admin role exists: Event Organiser (external), Event Coordinator (internal),
+Venue Staff (internal), Technical Support Staff (internal), Attendee (external).
+In code the canonical list is `ROLES` / `ROLE_META` in `frontend/src/domain/roles.js`. Do not introduce a sixth role
+or a parallel string literal.
+
+**Event status — exactly these nine**, from core feature F6:
+
+```
+Draft · Submitted · Under Review · Approved · Planning · Confirmed · Completed · Cancelled · Rejected
+```
+
+There is no `Returned`. A request waiting on its organiser stays **Under Review** with an open clarification
+request against it.
+
+**Workflow invariants**
+
+- Coordinator assignment is automatic, exactly one coordinator per event; no limit on how many events a
+  coordinator holds. An event may later be reassigned (core feature 5 requires this).
+- A coordinator may only Confirm when **both** venue and technical arrangements are in place.
+- A *significant change* is a change to number of pax, venue, or duration — no numeric threshold.
+  It notifies, then re-requests the affected arrangement. The system never auto-revokes an arrangement.
+- Venue contention is first-come-first-served. A Venue Staff rejection **cannot** be overridden.
+- Cancellation is automatically approved — no coordinator decision step.
+- Waiting list is FCFS and members are *invited to apply* for a freed place, not auto-promoted.
+
+## Release 1 boundaries — do not build these
+
+- **No account creation, for any role.** All users — organisers, internal staff, attendees — are assumed to
+  already have accounts. Seed them. (Session 2 reversed this; the repo's existing registration screens and
+  backlog stories A1/A2 predate that answer — see Open questions.)
+- No multi-session or multi-day events. One event = one time window at one venue.
+- No deployment. Running locally plus an architecture diagram is what gets submitted.
+- No pricing, invoicing or payment.
+- No file attachments or document storage. (Firebase Storage is initialised in `frontend/src/lib/firebase.js` but is
+  unusable on the free tier — do not build on it.)
+- No equipment transfer between venues, no spare-equipment inventory, no tentative-hold expiry.
+- No Google Calendar / M365 integration, no change deadlines or penalties.
+
+**Equipment counts are in scope.** Session 1 said to assume equipment is always available; Session 2 reversed
+that. Availability must be checked against real counts.
+
+Venues, equipment and room layouts are **our own mock data** — the customer supplies no list.
+
+## Repo conventions
+
+Create React App (`react-scripts` 5) + React 19, Firebase Auth + Firestore, plain CSS, React Testing Library.
+
+The repo is an **npm workspace**. Install and run from the repo root, never from inside a workspace —
+dependencies hoist to the root `node_modules` and there is a single root `package-lock.json`.
+
+```
+npm install          # installs both workspaces
+npm start            # backend on :4000 AND frontend on :3000, via concurrently
+npm run start:backend / start:frontend    # one at a time
+npm test             # RTL, delegates to the frontend workspace
+npm run build        # production build into frontend/build/
+```
+
+- **`frontend/` (:3000)** — the Create React App client. In development it proxies `/api/*` to the backend
+  (`proxy` in `frontend/package.json`), so frontend code calls relative paths and needs no base URL.
+- **`backend/` (:4000)** — the Express service layer. Each service mounts itself into the app through
+  `backend/src/services/index.js`; add a row there and nothing else needs to change. A service owns its own
+  path prefix and its own Firestore collections, and never reads or writes another service's collections.
+- `firebase.json`, `firestore.rules` and `docs/` stay at the root.
+
+**Do not add `react-app/jest` back to `frontend`'s `eslintConfig`.** The `jest/globals` env it pulls in comes
+from `eslint-plugin-jest`, which ESLint cannot resolve once dependencies hoist to the workspace root — it
+fails the production build with `Environment key "jest/globals" is unknown`. The config uses ESLint's
+built-in `jest` env instead, which needs no plugin. Linting is otherwise unchanged and still fails the build
+on real problems.
+
+- Firebase config comes from `REACT_APP_FIREBASE_*` env vars via `frontend/src/lib/firebase.js`. `frontend/.env` is gitignored —
+  never commit credentials, never paste them into a chat or an issue.
+- Navigation is hash-based (`#/{role}/{screen}`) handled in `frontend/src/app/routes.js`. There is no router library;
+  do not add one without the team agreeing.
+- Firestore field names are `snake_case` (`organiser_id`, `event_date`, `reference_no`); React code is
+  `camelCase`. Keep that split.
+- **Never touch the shared Firebase project on your own initiative.** One Firebase project backs the whole
+  team, so a stray write is everyone's bug. Do not seed, edit, delete or migrate Firestore documents, and do
+  not change `firestore.rules`, indexes or project settings, as a side-effect of some other task — only when
+  that is the task you were asked to do. Say what will be written, and to which collection, before doing it.
+  Prefer test/emulator data or a throwaway document over editing live records.
+- **`firestore.rules` is part of the feature.** Any new collection, or any change to who may read or write an
+  existing one, must land in the same commit as the code that uses it. Authorisation is enforced there, not
+  only in the UI — story A4 ("see only what my role permits") is graded on the server-side rule, and a screen
+  that merely hides a button does not satisfy it.
+- **`frontend/src/` is organised by feature, not by file type.** One folder per epic under `features/`,
+  each holding its own page components plus a `components/` subfolder for its pieces. Add `features/venues/`,
+  `features/equipment/` and so on as those epics are picked up — do not let `Workspace.js` accumulate screens
+  inline, and do not create a global `pages/` bucket.
+
+  ```
+  frontend/src/
+    app/        App.js (auth gate) · Workspace.js (role shell) · routes.js (hash format) · App.css
+    domain/     roles · portals · accounts · events — no React, no Firebase
+    features/   auth/ · events/ — one folder per epic, each with its own components/
+    lib/        firebase.js — the only module that imports firebase/*
+    sandbox/    unimported spike screens, safe to delete
+  ```
+
+- **`domain/` holds the rules, not the UI.** Roles, portals, account rules and catalogue values live there as
+  plain functions and constants. Nothing in `domain/` may import React or Firebase — that is what lets it move
+  into `backend/` unchanged when the service layer is built, and it is why those rules are cheap to unit test.
+- Shared UI used by more than one feature goes in `frontend/src/components/`; until a second feature needs it,
+  a component stays inside the feature that owns it.
+- **`backend/` is the service layer and is deliberately empty.** Services get added as the stories needing
+  them are picked up — one folder per service, each owning its own Firestore collections, no two services
+  writing the same collection. See `backend/README.md`. Whether they end up as build-time modules or separate
+  HTTP processes is not yet decided, so keep each service's public surface free of React imports.
+
+## Working agreement
+
+- **Commit straight to `main`.** No feature branches, no PRs. Pull before starting and before pushing.
+  The per-person branches on the remote are from the earlier convention and are not used any more.
+- Keep commits small and self-contained — direct-to-main means someone else pulls your work immediately,
+  so a half-finished change on `main` blocks the whole team rather than sitting in a branch.
+- **Start every commit message with the story ID** — `B6: save an incomplete request as a draft`.
+  The backlog IDs are `A1`–`J7`. With no PRs, the commit message is the only record of story-to-code
+  traceability, and that traceability is marked.
+- Acceptance criteria in `docs/final-product-backlog.csv` are the definition of done. Read the story's criteria
+  before starting, and cover them in tests where the criterion is testable.
+- If the customer has not answered something, do not invent an answer in code — add it to the Session 3
+  question list instead.
+
+## Open questions (do not silently resolve)
+
+- Registration screens are already built and merged, but Session 2 says release 1 needs no account creation.
+  Decide: keep them as a convenience, or replace with seeded accounts. Backlog A1/A2 need rewording either way.
+- Setup/turnaround time between consecutive bookings at the same venue — blocks the availability calendar
+  and conflict detection.
+- Equipment data model: pooled quantity vs individually tracked units.
+- Who may edit an event after submission (Q9 and the Week 1 briefing disagree).
+- The Session 2 security question was left blank. Current assumption: role-correct access plus password
+  hashing is the whole requirement.
+- Product name is ours to choose and has not been chosen. "ConnectSphere" is the *company*.
+- Backlog stories J3, J4 and J5 all share the summary "Be told when work arrives for me".

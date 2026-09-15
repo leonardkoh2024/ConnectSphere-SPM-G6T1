@@ -1,0 +1,510 @@
+Worktype,ID,Epic,Summary,Description,Final Estimate
+Story,A1,"A — Access, Identity and Authorisation",Self-register as an Event Organiser,"As a Event Organiser, I want to create my own account so that I can submit an event request to ConnectSphere.
+
+Acceptance Criteria:
+1. Registration captures name, organisation name (free text), email and password; email must be unique.
+2. An account created this way holds the Event Organiser role only.
+3. Registering with an email already in use is rejected with a message that does not reveal whether that account exists, or in what role.
+4. The new organiser can sign in immediately; no approval step exists.",5
+Story,A2,"A — Access, Identity and Authorisation",Register an Attendee account,"As an Attendee, I want to create an account so that I can register for events.
+
+Acceptance Criteria:
+Ensure that the attendee can:
+1. Enter all required registration information such as their full name, email address, mobile number and preferred method of contact
+2. Use an email address that is not already linked to an existing account
+3. Set a password for future access to the system
+4. Submit the registration when all required information is valid
+5. See confirmation message when the account is successfully created
+6. Be prevented from submitting and see an appropriate validation message if required information is missing or invalid
+7. Be prevented from submitting and see a validation message if the email address provided is already linked to an existing account
+8. Be prevented from submitting and see a validation message if the chosen password does not meet the system rules",5
+Story,A3,"A — Access, Identity and Authorisation",Sign in and sign out,"As a ConnectSphere user, I want to securely sign in and sign out so that I can access my role-specific features and protect my account data.
+
+Acceptance Criteria:
+Ensure that the attendee can:
+1. Successfully start an authenticated session by entering a valid email and password pair.
+2. See a generic, non-specific error message if an invalid email or password is provided, ensuring the system does not disclose whether the email exists.
+3. Fully terminate their session upon signing out, ensuring that using the browser's back button afterward does not display any protected pages.
+4. Be automatically redirected to the sign-in page if they attempt to request a protected page without an active session.
+5. Automatically land on their originally requested protected page immediately after completing a successful sign-in.",3
+Story,A4,"A — Access, Identity and Authorisation",See only what my role permits,"As a ConnectSphere user, I want the system to offer me only the functions my role allows so that I cannot perform actions that are not mine to perform.
+
+Acceptance Criteria:
+1. Each of the five roles (Event Organiser, Event Coordinator, Venue Staff, Technical Support Staff, Attendee) sees a navigation set defined for that role only.
+2. Requesting the URL of a function belonging to another role returns an authorisation error; enforcement is server-side, so hiding the link is not sufficient to pass.
+3. A test exists for every role × restricted-function pair that must be refused.",5
+Story,A5,"A — Access, Identity and Authorisation",See only events I am related to,"As an Event Organiser, I want to see only the events I created so that other clients' events are never visible to me.
+
+Acceptance Criteria:
+1. An Organiser's event list contains only events they created; opening another organiser's event by ID is refused with a not-authorised message and shows no event detail.",3
+Story,B1,B — Event Request Creation and Drafts,Create an event request with the core details,"As an Event Organiser, I want to enter the essential details of my event so that ConnectSphere knows what I am asking for.
+
+Acceptance Criteria:
+1. The form captures event name, purpose, description, proposed date, start time, end time and expected attendance.
+2. End time must be later than start time; a proposed date in the past is refused.
+3. Expected attendance must be a whole number greater than zero.
+4. Each request records its creator and creation timestamp.",5
+Story,B2,B — Event Request Creation and Drafts,State the venue requirements for my event,"As an Event Organiser, I want to state what the venue must provide so that the coordinator knows exactly what I need for my event.
+
+Acceptance Criteria:
+1. The request captures preferred location/area, required room layout, and required facilities chosen from the catalogue's facility list.
+2. The facility and layout options offered are the same values used in the venue catalogue, so venue search can match on them without translation.
+3. Venue requirements may be left empty on a draft and are carried to submission exactly as entered.",3
+Story,B3,B — Event Request Creation and Drafts,State the accessibility needs of my event,"As an Event Organiser, I want to record accessibility requirements so that the venue chosen can be used by all of my attendees.
+
+Acceptance Criteria:
+1. The request captures accessibility requirements from a defined list, plus a free-text note.
+2. Event Organisers can select one or more requirements.",2
+Story,B4,B — Event Request Creation and Drafts,State the equipment my event needs,"As an Event Organiser, I want to record the equipment my event needs so that the Event Coordinator can prepare the equipment for the event.
+
+Acceptance Criteria:
+1. The request captures one or more equipment lines, each with equipment type, quantity and an optional technical note.
+2. Quantity must be a whole number greater than zero.",3
+Story,B5,B — Event Request Creation and Drafts,Indicate whether my event needs attendee registration,"As an Event Organiser, I want to indicate whether attendees must register so that registration is only set up for events that need it.
+
+Acceptance Criteria:
+1. The request carries a registration-required flag, defaulting to off.
+2. When on, the request captures a registration capacity and a registration open and close date/time.
+3. Registration capacity may not exceed expected attendance; the close date/time must be at or before the event start.",2
+Story,B6,B — Event Request Creation and Drafts,Save an incomplete event request as a draft,"As an Event Organiser, I want to save an unfinished request so that I can chase missing details and finish it later without losing what I have entered.
+
+Acceptance Criteria:
+1. A request can be saved at any point with any subset of fields filled; no mandatory-field validation runs on save.
+2. A saved draft has status Draft and is not visible to any Event Coordinator or any other Organiser.
+3. Drafts appear in the Organiser's own list, labelled Draft, with the last-saved date and time.
+4. Saving is an explicit action; background autosave is out of scope for this story.",5
+Story,B7,B — Event Request Creation and Drafts,Return to and continue editing a draft,"As an Event Organiser, I want to reopen a draft and keep working on it so that I can complete it across several sittings.
+
+Acceptance Criteria:
+1. Reopening a draft restores every previously saved value exactly as saved, including fields left empty.
+2. A draft can be edited and re-saved any number of times; each save updates the last-saved timestamp.
+3. Drafts remain distinguishable from submitted requests by status in the Organiser's list.",3
+Story,B8,B — Event Request Creation and Drafts,Delete a draft I no longer need,"As an Event Organiser, I want to delete a draft so that abandoned requests do not clutter my list.
+
+Acceptance Criteria:
+1. Delete is offered only on requests with status Draft.
+2. Deletion requires an explicit confirmation.
+3. A deleted draft disappears from the list and can no longer be retrieved by ID.",2
+Story,B9,B — Event Request Creation and Drafts,Submit an event request,"As an Event Organiser, I want to submit my completed event request so that a coordinator can start planning my event.
+
+Acceptance Criteria:
+1. A request can be submitted only when the information F2 requires is present: event name, purpose, description, proposed date, start time, end time, expected attendance, and venue requirements.
+2. Accessibility needs, equipment requirements and registration needs must each be answered before submission.
+3. A field is invalid when its value breaks its own rule — a proposed date in the past, an end time earlier than its start time, or an expected attendance that is not a whole number greater than zero.
+4. If any required field is empty or invalid, submission is blocked and the system lists exactly which fields are missing or invalid. Nothing is submitted and the values already entered are retained on screen so the organiser can correct them.
+5. On successful submission the request is recorded with status Submitted, given a unique reference number, and the submission date and time are stored.
+6. The organiser sees an on-screen confirmation showing the request's reference number.
+7. The Submit action is no longer available once the request is submitted, so the same request cannot be submitted twice.",13
+Story,B10,B — Event Request Creation and Drafts,See the current status of my event request,"As an Event Organiser, I want to see the current status of my event request so that I know whether it is still being worked on without having to email the coordinator.
+
+Acceptance Criteria:
+1. The statuses used are: Draft, Submitted, Under Review, Approved, Planning, Confirmed, Completed, Cancelled and Rejected.
+2. Every request the organiser has saved appears in their request list with its current status. A request that has never been saved has no status and does not appear.
+3. Saved but unsubmitted requests appear in the same list, marked Draft, alongside submitted ones.
+4. Opening a request shows its status and the date and time it entered that status.
+5. An organiser can see the status only of requests they own. A request belonging to another organiser is not listed, and any attempt to open it directly is refused with a not-authorised message and shows no request detail.
+6. The organiser cannot change a request status. Statuses are set by actions elsewhere in the system.",13
+Story,C1,"C — Review, Approval and Coordinator Assignment",Have submitted events assigned to a coordinator automatically,"As an Event Organiser, I want my submitted event picked up by a named coordinator without anyone having to notice it so that my request does not sit unclaimed.
+
+Acceptance Criteria:
+1. On submission, exactly one Event Coordinator is assigned; an event is never assigned to two coordinators at once.
+2. The coordinator identity and the assignment timestamp are recorded on the event.
+3. Assignment uses round-robin across active coordinators.
+4. If no active coordinator exists, the event stays in the unassigned queue and is visible there rather than being lost.
+5. A coordinator can have more than one event assigned to them.",20
+Story,C2,"C — Review, Approval and Coordinator Assignment",See the events I am responsible for,"As an Event Coordinator, I want a list of the event requests assigned to me so that I know what I am accountable for.
+
+Acceptance Criteria:
+1. The list contains only events assigned to the signed-in coordinator.
+2. Each row shows event name, organiser, proposed date, current status and time since last activity.
+3. The list can be filtered by status and sorted by proposed date.",5
+Story,C3,"C — Review, Approval and Coordinator Assignment",Review a submitted request in full,"As an Event Coordinator, I want to see everything the Organiser submitted in one place so that I can able to have a full understanding of their requirements.
+
+Acceptance Criteria:
+1. The review view shows all submitted fields including venue requirements, accessibility needs, equipment requirements and registration needs.
+2. The view shows the reference number, submission timestamp and the organiser's contact details.
+3. Opening an event for review moves it from Submitted to Under Review and records who opened it.",3
+Story,C4,"C — Review, Approval and Coordinator Assignment",Request clarification or amendments from the organiser,"As an Event Coordinator, I want to ask the Organiser for missing or unclear information so that I do not plan against a request I have misread.
+
+Acceptance Criteria:
+1. The coordinator can raise a clarification request against an event with a free-text message; the message may not be empty.
+2. The event remains Under Review and is marked as awaiting the organiser; approve and reject are unavailable while a clarification request is open.
+3. The message and its timestamp are recorded on the event and remain visible after it is answered.
+4. Only one clarification request may be open on an event at a time.",8
+Story,C5,"C — Review, Approval and Coordinator Assignment",Respond to a request for clarification,"As an Event Organiser, I want to answer the coordinator's questions and amend my request so that review can continue.
+
+Acceptance Criteria:
+1. While a clarification request is open, the Organiser can edit their request's fields and add a response message.
+2. Submitting the response closes the clarification request, clears the awaiting-organiser marker, and records the response and its timestamp.
+3. The full exchange is visible to both parties in chronological order.",8
+Story,C6,"C — Review, Approval and Coordinator Assignment",Approve a submitted request,"As an Event Coordinator, I want to confirm the details of an event once its venue and technical arrangements are in place, so that the Event Organiser and the technical team work from one agreed set of arrangements.
+
+Acceptance Criteria:
+1. Approve is offered only from Under Review.
+2. On approval the status becomes Approved and the decision, deciding coordinator and timestamp are recorded.
+3. Cannot confirm an event unless its venue booking has been approved. (defines a mandatory arrangement)
+4. Cannot confirm an event unless the requested technical arrangements have been reserved. (the second mandatory arrangement)
+5. Where no technical support was requested for the event, has the technical condition treated as satisfied.
+6. On confirming, sees the event's status change to """"Confirmed"""".
+7. Has the Event Organiser and the technical team informed once the event is confirmed.
+8. Receives an error identifying what is still outstanding if they attempt to confirm while a mandatory arrangement is missing.""",13
+Story,C7,"C — Review, Approval and Coordinator Assignment",Reject a request with a reason,"As an Event Coordinator, I want to reject a request and state why so that the organiser understands the outcome instead of waiting indefinitely.
+
+Acceptance Criteria:
+1. Rejection requires a non-empty reason.
+2. On rejection the status becomes Rejected and the reason, deciding coordinator and timestamp are recorded.
+3. A rejected event cannot be edited or resubmitted; the organiser may create a new request.
+4. An event that cannot be fulfilled — for example no venue can be secured — is rejected rather than left pending.",3
+Story,C8,"C — Review, Approval and Coordinator Assignment",Understand the decision on my request,"As an Event Organiser, I want to see the reason why my event request was rejected so that I understand why the event coordinator rejected it.
+
+Acceptance Criteria:
+1. The request view shows the decision, the reason where one was given, and the decision timestamp.
+2. The assigned coordinator's name are shown to the Organiser once assigned.",2
+Story,C9,"C — Review, Approval and Coordinator Assignment",Reassign an event to a different coordinator,"As an Event Organiser, I want my event moved to another coordinator when mine becomes unavailable so that planning can continue.
+
+Acceptance Criteria:
+1. An event can be reassigned to a different active coordinator at any status before Completed.
+2. After re-assignment, exactly one coordinator remains assigned; the previous assignment is kept in the event history with its timestamp.
+3. After re-assignment, the outgoing coordinator can still see the assignment but cannot edit.
+4. Both coordinators and the organiser are notified.
+5. Only the event coordinator in charge of that event can assign it to another event coordinator.",8
+Story,D1,D — Event Status and Information Management,Update ordinary event information during planning,"As an Event Coordinator, I want to correct details that disturb no existing arrangement so that the record stays accurate as planning proceeds.
+
+Acceptance Criteria:
+1. Ordinary fields — event name, purpose, description, contact details, internal notes — can be edited with no effect on any booking or reservation.
+2. Every edit records field, old value, new value, actor and timestamp.
+3. Ordinary edits are permitted in Approved, Planning and Confirmed, and refused in terminal statuses.
+4. There is no limit on the number of edits.",3
+Story,D2,D — Event Status and Information Management,Be warned before making a significant change,"As an Event Coordinator, I want to be told what a change will disturb before I save it so that I do not invalidate arrangements without realising.
+
+Acceptance Criteria:
+1. The significant set is: expected attendance (pax), venue requirements, duration, and by extension date and start/end time.
+2. Editing any field in that set surfaces a warning naming every existing arrangement affected — venue booking, equipment reservation, and the count of attendee registrations.
+3. Saving requires an explicit acknowledgement of that warning; cancelling leaves the event untouched.
+4. The change is recorded with old and new values, actor and timestamp.
+5. No booking or reservation is altered by this story",5
+Story,D3,D — Event Status and Information Management,Confirm an event once arrangements are in place,"As an Event Organiser, I want my event confirmed only when its arrangements are actually secured so that I am never told it is confirmed when it is not.
+
+Acceptance Criteria:
+1. Confirm is offered only when the event has an approved venue booking AND an equipment request marked arranged by Technical Support.
+2. If either is missing, Confirm is unavailable and the view names which arrangement is outstanding.
+3. On confirmation the status becomes Confirmed and the confirmation timestamp is recorded.",5
+Story,D4,D — Event Status and Information Management,Cancel an event,"As an Event Coordinator, I want to cancel an event so that venue, equipment and attendees are released when it will not go ahead.
+
+Acceptance Criteria:
+1. Cancellation requires a reason and an explicit confirmation.
+2. On cancellation the status becomes Cancelled, approved bookings are released, pending booking requests are withdrawn, and equipment reservations are released.
+3. Released venue windows and equipment quantities become available to other events immediately.
+4. Registered attendees are notified.
+5. A cancelled event is retained and remains viewable; it is never deleted.",5
+Story,D5,D — Event Status and Information Management,Close out an event after it has taken place,"As an Event Coordinator, I want to mark an event completed so that finished events leave my active workload without losing their record.
+
+Acceptance Criteria:
+1. Completion is permitted only after the event end date and time have passed.
+2. On completion the status becomes Completed and the event leaves the coordinator's active list.
+3. All event data — request, bookings, reservations, registrations, decisions and change history — remains viewable and queryable after completion.",3
+Story,D6,D — Event Status and Information Management,See everything that happened to an event,"As an Event Coordinator, I want one chronological history of an event request so that I can keep track of the changes and decisions made.
+
+Acceptance Criteria:
+1. The history lists status changes, field edits, clarification exchanges, decisions, booking and reservation outcomes, and change requests with their decisions — each with actor and timestamp, newest first.
+2. Both accepted and declined change requests are retained.
+3. No role can edit or delete a history entry.
+4. History remains available for Completed, Cancelled and Rejected events.",3
+Story,E1,"E — Venue Catalogue, Availability, Search and Suitability",Maintain the venue catalogue,"As a member of Venue Staff, I want to keep my venue's record accurate so that coordinators plan against real information instead of asking Venue Staff directly.
+
+Acceptance Criteria:
+1. A venue record holds name, location/building, maximum capacity, supported room layouts, facilities, accessibility features and operating hours.
+2. Capacity must be a whole number greater than zero; a venue must have at least one supported layout.
+3. Venue Staff can edit venues they are responsible for; other internal roles have read-only access.
+4. Changing a venue's capacity or facilities does not alter bookings already approved.
+5. Venue can specify some space availability for special requirements.",5
+Story,E2,"E — Venue Catalogue, Availability, Search and Suitability",Browse the venue catalogue,"As an Event Coordinator, I want to browse all ConnectSphere venues so that I know what the organisation has before searching against a specific event.
+
+Acceptance Criteria:
+1. The catalogue lists every venue with name, location, capacity and headline facilities.
+2. Selecting a venue shows its full record including layouts, accessibility features and operating hours.
+3. The catalogue is visible to Coordinators and Venue Staff only.",3
+Story,E3,"E — Venue Catalogue, Availability, Search and Suitability",Record when a venue cannot be used,"As a member of Venue Staff, I want to block out periods when a venue is unusable so that coordinators do not request it then.
+
+Acceptance Criteria:
+1. An unavailability period holds venue, start date/time, end date/time and a reason.
+2. The period appears on the availability calendar and makes the venue unavailable for its whole duration.
+3. A period overlapping an already-approved booking is refused, naming the clashing booking.",5
+Story,E4,"E — Venue Catalogue, Availability, Search and Suitability",See when a venue is free,"As an Event Coordinator, I want to see when a venue is free, booked or blocked, so that I can propose a date that is actually available.
+
+Acceptance Criteria:
+1. For a chosen venue and date range, the calendar shows every approved booking and every unavailability period as occupied and free slots as unoccupied.
+2. Pending booking requests are shown, distinctly from approved bookings.
+3. Time outside the venue's operating hours is shown as unavailable.
+4. Occupied blocks show the event name to internal users only.
+5. Sees booked periods corresponding to existing confirmed events on that venue, where each booked period spans the event plus its setup and teardown time and makes the venue unavailable for any overlapping proposal.
+6. Sees blocked periods where the venue is unavailable for maintenance, renovation, or internal use.
+7. Can visually distinguish between the three states — free, booked, and blocked.
+8. Sees a clear indication when a venue has no availability data or the venue cannot be found.
+
+
+
+
+",13
+Story,E5,"E — Venue Catalogue, Availability, Search and Suitability",Find venues that fit my event,"As an Event Coordinator, I want a shortlist of venues that could host this event so that I am not scanning the whole catalogue by hand.
+
+Acceptance Criteria:
+1. Search runs from an event and pre-fills date, start time, end time and expected attendance from it.
+2. Results exclude venues occupied for the requested window.
+3. Results exclude venues whose capacity is below the expected attendance.
+4. Where no venue matches, the system reports zero results and lists the criteria applied with the number of venues each one excluded.",8
+Story,E6,"E — Venue Catalogue, Availability, Search and Suitability",Narrow the shortlist,"As an Event Coordinator, I want to filter candidate venues so that I can match the organiser's specific requirements.
+
+Acceptance Criteria:
+1. Results can be filtered by location, capacity range, required facilities, accessibility features and supported layout.
+2. Filters combine: applying several returns only venues satisfying all of them.
+3. The active filter set is visible and can be cleared in one action.
+4. The result count updates with each filter change.",5
+Story,E7,"E — Venue Catalogue, Availability, Search and Suitability",Know whether a venue actually suits the event,"As an Event Coordinator, I want the system to assess a venue against the event so that I do not book a room that cannot host it.
+
+Acceptance Criteria:
+1. For a given event and venue, the system returns a suitability outcome naming every failing criterion.
+2. Expected attendance exceeding venue capacity is a failure.
+3. A required facility, accessibility feature or room layout the venue lacks is a failure.
+4. A requested time outside the venue's operating hours is a failure.
+5. A venue with no failures is reported suitable; the criteria evaluated are shown either way.",8
+Story,E8,"E — Venue Catalogue, Availability, Search and Suitability",Be stopped before booking an unsuitable venue,"As an Event Coordinator, I want obviously unsuitable requests filtered out before they reach me so that I am not assessing rooms that cannot hold the event.
+
+Acceptance Criteria:
+1. Submitting a booking request for a venue failing on capacity is blocked outright.
+2. Failures on facility, accessibility or layout produce a warning the coordinator must explicitly acknowledge before the request is submitted.
+3. An acknowledged warning is recorded on the booking request and shown to Venue Staff.",8
+Story,F1,F — Venue Booking and Conflict Detection,Request a venue for an event,"As an Event Coordinator, I want to request a venue booking so that Venue Staff can assess it and secure a space for the event.
+
+Acceptance Criteria:
+1. Submit a venue booking request that successfully captures the event, venue, date, start and end time, expected attendance, required layout, and required facilities.
+2. Raise a booking request only for events that are currently in the ""Approved"" or ""Planning"" statuses.
+3. Have their submitted request automatically set to a ""Pending"" status and routed directly into that specific venue's review queue.
+4. Be prevented by the system from submitting multiple pending requests for the exact same event and venue at the same time.",8
+Story,F2,F — Venue Booking and Conflict Detection,Have submitted event bookings assigned to a venue staff automatically,"As an Event Coordinator, I want my submitted booking picked up by a named venue staff so that my booking does not sit unclaimed.
+
+Acceptance Criteria:
+1. On submission, exactly one Venue Staff is assigned; a booking is never assigned to two coordinators at once.
+2. The venue staff identity and the assignment timestamp are recorded on the booking.
+3. Assignment uses round-robin across active venue.
+4. A venue staff can hold more than one booking.
+5. If no active venue exists, the event stays in the unassigned queue and is visible there rather than being lost.",5
+Story,F3,F — Venue Booking and Conflict Detection,See booking requests waiting on me,"As a member of Venue Staff, I want to see booking pending requests assigned to me so that I can review them.
+
+Acceptance Criteria:
+1. The queue shows only requests for venues the signed-in staff member is responsible for.
+2. Each entry shows event name, requested date and window, expected attendance and time since submission.
+3. The queue can be sorted by requested date and by submission time.",3
+Story,F4,F — Venue Booking and Conflict Detection,Approve a venue booking request,"As a member of Venue Staff, I want to approve a booking so that the venue is committed to that event.
+
+Acceptance Criteria:
+1. Approve is offered only on Pending requests.
+2. Approval is refused where an approved booking already overlaps the same venue and window; the clashing booking is named.
+3. On approval the status becomes Approved and the venue is occupied for that window.
+4. Where two pending requests compete for the same slot, only the earlier-submitted one can be approved.",3
+Story,F5,F — Venue Booking and Conflict Detection,Reject a venue booking request with a reason,"As an Event Coordinator, I want to be told why a venue was refused so that I can keep planning instead of guessing.
+
+Acceptance Criteria:
+1. Rejection requires a non-empty reason.
+2. On rejection the status becomes Rejected and the reason and timestamp are recorded and shown in full to the coordinator.
+3. The venue remains available for the requested window.
+4. No role can override a rejection; the route forward is a new request for another venue or window.",2
+Story,F6,F — Venue Booking and Conflict Detection,Never double-book a venue,"As a member of Venue Staff, I want overlapping bookings caught by the system so that my venue is never committed to two events at once.
+
+Acceptance Criteria:
+1. Rely on the system to accurately detect and flag a conflict when two bookings for the same venue overlap by any amount on the exact same date.
+2. Safely approve consecutive bookings whose time windows merely touch (where one ends exactly when the next begins) without the system falsely flagging a conflict.
+3. Have an approved booking automatically make the venue unavailable for that specific time window in future venue searches and on the availability calendar.
+4. Have any manually recorded venue unavailability periods (such as maintenance blocks) automatically conflict with and block overlapping booking requests.
+5. Be assured that conflict detection is strictly enforced server-side at the exact moment of approval, preventing UI bypasses or simultaneous submission errors.",5
+Story,F7,F — Venue Booking and Conflict Detection,Track the status of my booking requests,"As an Event Coordinator, I want to see where each booking request stands so that I know whether the venue is secured.
+
+Acceptance Criteria:
+1. View a comprehensive list within the event view of every booking request raised for that event, displaying the venue, time window, current status, decision reason, and decision timestamp.
+2. Read the rejection reason in full when a Venue Staff member declines a booking request, so they understand why it was rejected.
+3. Be prevented by the system from changing the event's status to ""Confirmed"" if it does not currently have an approved venue booking.",3
+Story,F8,F — Venue Booking and Conflict Detection,Release a venue when it is no longer needed,"As a member of Venue Staff, I want a venue freed the moment an event drops it so that the slot can be used by someone else.
+
+Acceptance Criteria:
+1. Rely on the system to automatically release an event's approved venue bookings and instantly withdraw its pending requests the moment an event is cancelled.
+2. See the newly released time window become available immediately in future venue searches and on the availability calendar.
+3. View the released booking retained in the event history, capturing its release reason and exact timestamp for audit purposes.",3
+Story,G1,"G — Equipment Request, Availability and Reservation",Record the equipment an event needs,"As an Event Coordinator, I want to record the equipment required so that Technical Support knows what to arrange.
+
+Acceptance Criteria:
+1. The equipment request holds one or more lines, each with equipment type, quantity and technical requirements.
+2. The Organiser's original request can pre-fill the request and it still can be amended by the Events Coordinator.
+3. Quantity must be a whole number greater than zero; a request needs at least one line to be submitted.
+4. On submission the request status is Pending and it appears in the Technical Support queue.",3
+Story,G2,"G — Equipment Request, Availability and Reservation",Know whether enough equipment is free,"As a member of Technical Support Staff, I want to check availability for the event's window so that I do not commit the same equipment twice.
+
+Acceptance Criteria:
+1. For an equipment type and window, the system returns the free quantity: total held, minus quantity reserved for overlapping events, minus quantity recorded unavailable.
+2. Where the free quantity is below the requested quantity, the shortfall is stated as a number.
+3. Equipment recorded unavailable for a period is excluded for that period.
+4. Equipment can be modelled either a pooled quantity per type or individually tracked units. ",5
+Story,G3,"G — Equipment Request, Availability and Reservation",Reserve equipment for an event,"As a Technical Support Staff member, I want to reserve equipment against a specific event, so that the same item is not promised to two events at once.
+
+Acceptance Criteria:
+1. Can enter the quantity of equipment required for the event.
+2. Can reserve equipment for the full duration of the event, inclusive of setup and teardown time.
+3. Cannot reserve a quantity below one.
+4. Has the reservation confirmed only when the requested quantity is available for the entire required period, which includes the event plus setup and teardown
+5. Can reserve equipment for a future event even when that equipment is in use for another event that ends before the required period begins.
+6. Is informed when the reservation succeeds.
+7. Is informed when the reservation fails, with the reason shown — that the requested quantity or the required time period is unavailable.
+8. A reservation records equipment type, quantity, event and reserved window.
+9.The reservation stays associated with its event until released.",5
+Story,G4,"G — Equipment Request, Availability and Reservation",Amend or refuse an equipment request,"As an Event Coordinator, I want to know what Technical Support can actually provide so that I am not planning around equipment that will not arrive.
+
+Acceptance Criteria:
+1. Technical Support Staff can change a line's quantity or substitute an equipment type, recording a note explaining the change.
+2. Technical Support Staff can mark a request unable to be fulfilled, with a mandatory reason.
+3. Every amendment and decision records actor and timestamp and is visible to the coordinator.
+4. A request can be marked arranged only when every line is either reserved or explicitly resolved.",5
+Story,G5,"G — Equipment Request, Availability and Reservation",Release equipment when it is no longer needed,"As a member of Technical Support Staff, I want reservations released when an event is cancelled so that the equipment returns to the pool.
+
+Acceptance Criteria:
+1. Cancelling an event releases all its equipment reservations.
+2. Released quantity is immediately reflected in the free quantity for other events.
+3. The released reservation is retained in the event history with reason and timestamp.",5
+Story,G6,"G — Equipment Request, Availability and Reservation",Reassess equipment after a significant change,"As a member of Technical Support Staff, I want to be told when an event's date, window or attendance changed so that I reassess the reservation instead of discovering it on the day.
+
+Acceptance Criteria:
+1. A significant change marks the event's equipment request as requiring reassessment and notifies Technical Support.
+2. The existing reservation is not automatically released.
+3. Staff can re-check availability against the new window and keep, amend or release the reservation.",5
+Story,H1,H — Attendee Registration,Open registration for my event,"As an Event Organiser, I want to set the registration capacity and time window for my event so that attendees can sign up.
+
+Acceptance Criteria:
+Ensure that Event Organiser can:
+1. Open registration only for events that have the registration flag on and are in the ""Approved"" status or later.
+2. Set the capacity and the open/close date and time, and edit them as long as the registration window has not yet closed.
+3. Be prevented from setting a capacity that exceeds the venue capacity of the approved booking.
+4. Rely on the system to automatically reject any registrations attempted outside the defined open window.",3
+Story,H2,H — Attendee Registration,Find events I can register for,"As an Attendee, I want to browse events open for registration so that I can find ones to attend.
+
+Acceptance Criteria:
+Ensure that the attendee can:
+1. View a list displaying only events where registration is open at the current date and time.
+2. View the event name, description, date, window, venue, and remaining places for each entry on the list.
+3. Be strictly prevented from seeing events that are not open for registration, including any in Draft, Cancelled, or Rejected statuses.",5
+Story,H3,H — Attendee Registration,Register for an event,"As an Attendee, I want to register for a confirmed event during its open registration period so that I can secure a place and receive the event details.
+
+Acceptance Criteria:
+Ensure that the attendee can:
+1. View a list of confirmed events that are currently open for registration
+2. Register for a confirmed event when a place is available
+3. See confirmation that the registration was successful
+4. View the event details after registering
+5. See a message indicating the event is full when there are no available places
+6. Be prevented from registering if the event's registration period has closed
+7. Have their successful registration automatically reduce the available capacity of the event
+8. Be prevented from submitting a duplicate registration for an event they are already registered for",3
+Story,H4,H — Attendee Registration,See the status of my registrations,"As an Attendee, I want to see the events I signed up for and my status so that I know where I stand.
+
+Acceptance Criteria:
+Ensure that the attendee can:
+1. View a list showing the event name, date, window, venue, and their current status (Registered, Waitlisted, Withdrawn, or Cancelled).
+2. Select an entry to view the event information appropriate to their attendee role.
+3. Continue to see Cancelled events in their list, clearly marked with a ""Cancelled"" status.",3
+Story,H5,H — Attendee Registration,Withdraw from an event,"As an Attendee, I want to withdraw from an event I can no longer attend so that my place can be made available to another attendee.
+
+Acceptance Criteria:
+Ensure that the attendee can:
+1. View their confirmed upcoming event registrations
+2. Withdraw from an event they are currently registered for
+3. See confirmation that the withdrawal was successful
+4. Have their place removed from the event’s occupied capacity when withdrawal succeeds, so it can be offered to another attendee
+5. No longer view withdrawn events in their active event registrations
+6. Be prevented from withdrawing from an event for which they are not currently registered",3
+Story,H6,H — Attendee Registration,Join the waiting list when an event is full,"As an Attendee, I want to join a waiting list for a full event so that I have a chance if a place opens.
+
+Acceptance Criteria:
+Ensure that the attendee can:
+1. Opt to join the waiting list when an event's remaining places reach zero, immediately receiving a ""Waitlisted"" status.
+2. View their exact position on the waiting list based on the time they joined (first come, first served).
+3. Be prevented from holding both a ""Registered"" and a ""Waitlisted"" status for the exact same event.",3
+Story,H7,H — Attendee Registration,Be invited to take a freed place,"As a waitlisted Attendee, I want to be invited when a place opens so that I can take it if I still want to go.
+
+Acceptance Criteria:
+Ensure that the attendee can:
+1. Receive a notification and an invitation to apply when a place frees up and they are first on the list.
+2. Manually accept the invitation to officially register, rather than being automatically registered by the system.
+3. Successfully claim the spot only within 48 hours of issue (or before the event starts), after which the system expires the invitation.
+4. Remain on the waiting list even if their invitation expires, being removed only if they explicitly decline the invitation.",3
+Story,H8,H — Attendee Registration,See who has registered for my event,"As an Event Organiser, I want the registration list for my event so that I can plan for the people actually coming.
+
+Acceptance Criteria:
+Ensure that the Event Organiser can:
+1. View registered attendee names, contact details, and registration timestamps exclusively for the events they own.
+2. View the aggregate counts of registered, waitlisted, and withdrawn attendees.
+3. Be assured that no other role and no unrelated organiser can access this specific registration list.",3
+Story,I1,I — Event Change Requests,Request a change after submitting my event,"As an Event Organiser, I want to request a change after submission so that I am not stuck with details that have moved on.
+
+Acceptance Criteria:
+Ensure that the Event Organiser can:
+1. Raise a change request on any event currently in a ""Submitted"" status up to and including a ""Confirmed"" status.
+2. Specify the field(s) to change, provide the proposed new values, and include a mandatory reason for the change.
+3. Submit multiple change requests with no limit on the quantity and no cut-off time before the event date.
+4. Have their submitted change request automatically placed in a ""Pending"" status and trigger a notification to their assigned Event Coordinator.",5
+Story,I2,I — Event Change Requests,Decide on a requested change,"As an Event Coordinator, I want to weigh a requested change against arrangements already made so that I do not accept something the event cannot absorb.
+
+Acceptance Criteria:
+1. View the current and proposed values side-by-side during the review, including a clear list of every arrangement affected (e.g., venue booking, equipment reservation, registration count).
+2. Accept or decline the change request, being forced by the system to provide a reason if declining.
+3. Have the system automatically apply the new values and record the actor, timestamp, and old values when a change is accepted.
+4. Trigger an automatic status update that allows the Event Organiser to see the final decision and the provided reason.",8
+Story,I3,I — Event Change Requests,Have arrangements re-requested after a significant change,"As an Event Coordinator, I want a significant change to force affected arrangements back into re-request so that nobody assumes a booking still holds.
+
+Acceptance Criteria:
+1. Rely on the system to automatically mark affected venue bookings and equipment requests as requiring a re-request, moving the event from ""Confirmed"" back to ""Planning"", if an applied change alters the date, time, duration, expected attendance, venue requirements, or equipment requirements.
+2. Trigger automated notifications to the Venue Staff and Technical Support Staff who hold the affected arrangements.
+3. Retain the existing bookings and reservations as reference points without them being automatically cancelled by the system.
+4. Be forced to provide an explicit acknowledgement to apply a change if that change reduces the event's registration capacity below the number of attendees already registered.
+",8
+Story,J1,J — Notifications,Have one place where things needing my attention appear,"As a ConnectSphere user, I want the things that concern me collected in one inbox so that I do not have to keep checking every event.
+
+Acceptance Criteria:
+1. Notifications are delivered to a per-user in-system inbox showing message, related event and timestamp.
+2. A user receives only notifications for events they are related to by role.
+3. Unread notifications carry an unread indicator and are counted in a badge on the inbox; opening one marks it read and decrements the count.
+4. Read notifications remain listed and viewable.",5
+Story,J2,J — Notifications,Be told how my request is progressing,"As an Event Organiser, I want to be told when my request moves so that I do not have to chase the coordinator.
+
+Acceptance Criteria:
+1. Notifications fire on: submission received, coordinator assigned, request returned for clarification, approved, rejected, confirmed, cancelled.
+2. Each names the event and the change and links to the event.
+3. Approval and rejection notifications carry the decision reason.",3
+Story,J3,J — Notifications,Be told when work arrives for me,"As an Events Organiser, I want to be told when something needs my attention so that requests do not sit unnoticed.
+
+Acceptance Criteria:
+1. A Coordinator is notified on assignment of a new event
+2. A Coordinator is notified when an event that has been assigned to him has a change request.",3
+Story,J4,J — Notifications,Be told when work arrives for me,"As an Venue Support Staff, I want to be told when something needs my attention so that requests do not sit unnoticed.
+
+Acceptance Criteria:
+1. Venue Staff are notified when a booking request is raised for the event that they are responsible for.
+2. Venue Staff are notified when there changes with regards to the venue for the event that they are responsible for ",3
+Story,J5,J — Notifications,Be told when work arrives for me,"As an Technical Support Staff, I want to be told when something needs my attention so that requests do not sit unnoticed.
+
+Acceptance Criteria:
+1. Technical Support Staff are notified when an equipment request is raised for the event that they are responsible for.
+2. Technical Support Staff are notified when there is a need for on-site support for the event that they are responsible for. 
+2. Technical Support Staff are notified when amendments to the equipment request for the event that they are responsible for has changes.
+2. Technical Support Staff are notified when there is a need for on-site support for the event that they are responsible for has changes.",3
+Story,J6,J — Notifications,Be told the outcome of my booking and equipment requests,"As an Event Coordinator, I want the outcomes pushed to me so that I know whether the event can be confirmed without polling two queues.
+
+Acceptance Criteria:
+1. The coordinator is notified when a booking request is approved or rejected, with the reason on rejection.
+2. The coordinator is able to directly access that particular venue booking through the notification to verify that it is reflected in the system that it has been booked with the correct corresponding event details such as date and time. 
+3. The coordinator is notified when an equipment request is marked arranged or unable to be fulfilled.
+4. The coordinator is able to directly access that particular equipment booking through the notification to verify that it is reflected in the system that it has been booked with the correct corresponding event details such as date, time, quantity.
+",5
+Story,J7,J — Notifications,Be told about changes to events I registered for,"As an Attendee, I want to be told when an event I registered for changes so that I am not turning up to a cancelled event.
+
+Acceptance Criteria:
+1. Registered attendees are notified on registration confirmation, event cancellation, and any change to event date, time or venue.
+2. Waitlisted attendees are notified when a place opens and they are invited to apply.
+3. Each notification names the event and states what changed.
+4. After they have viewed the notification, it gets marked as read and decrements the count.",3
