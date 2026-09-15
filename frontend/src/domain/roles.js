@@ -30,16 +30,10 @@ export const ROLE_META = {
           "Capture the event name, purpose, proposed date and time, expected attendance, venue and equipment requirements, accessibility needs and registration needs."
       },
       {
-        name: "My drafts",
-        icon: "draft",
-        blurb:
-          "Save an incomplete request, come back later and keep editing. Drafts stay clearly separate from requests already sent for review."
-      },
-      {
         name: "My events",
         icon: "calendar",
         blurb:
-          "Follow each event through submitted, under review, approved, planning, confirmed, completed, cancelled or rejected."
+          "Every request you have created, drafts included. Follow each one through submitted, under review, approved, planning, confirmed, completed, cancelled or rejected."
       },
       {
         name: "Change requests",

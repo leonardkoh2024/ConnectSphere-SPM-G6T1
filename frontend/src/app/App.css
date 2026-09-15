@@ -864,7 +864,22 @@
 .cs-record h2 { margin: 8px 0 4px; font-size: 19px; }
 .cs-record p, .cs-record-ref { margin: 0; color: var(--cs-muted); font-size: 14px; }
 .cs-record-ref { white-space: nowrap; }
-.cs-record-actions { display: grid; justify-items: end; align-content: start; gap: 8px; }
+.cs-record-saved { margin-top: 4px; font-size: 13px; }
+
+.cs-record-actions {
+  display: grid;
+  justify-items: end;
+  align-content: start;
+  gap: 12px;
+}
+
+/* A row action is a real button, so it needs a smaller footprint than the
+   40px page-level default or it dominates the record it belongs to. */
+.cs-record-btn {
+  min-height: 32px;
+  padding: 0 14px;
+  font-size: 13px;
+}
 
 /* ---------- responsive ---------- */
 
