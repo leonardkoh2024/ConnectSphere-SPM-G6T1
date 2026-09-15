@@ -9,13 +9,14 @@
   ],
   "scripts": {
     "start": "concurrently --names \"backend,frontend\" --prefix-colors \"cyan,magenta\" --kill-others-on-fail \"npm:start:backend\" \"npm:start:frontend\"",
-    "start:frontend": "npm start --workspace frontend",
-    "start:backend": "npm start --workspace backend",
-    "build": "npm run build --workspace frontend",
-    "test": "npm test --workspace frontend"
+    "start:frontend": "dotenv -e .env -- npm start --workspace frontend",
+    "start:backend": "dotenv -e .env -- npm start --workspace backend",
+    "build": "dotenv -e .env -- npm run build --workspace frontend",
+    "test": "dotenv -e .env -- npm test --workspace frontend"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "dotenv-cli": "^11.0.0"
   },
   "engines": {
     "node": ">=18"

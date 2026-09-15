@@ -97,8 +97,12 @@ fails the production build with `Environment key "jest/globals" is unknown`. The
 built-in `jest` env instead, which needs no plugin. Linting is otherwise unchanged and still fails the build
 on real problems.
 
-- Firebase config comes from `REACT_APP_FIREBASE_*` env vars via `frontend/src/lib/firebase.js`. `frontend/.env` is gitignored —
-  never commit credentials, never paste them into a chat or an issue.
+- Firebase config comes from `REACT_APP_FIREBASE_*` env vars via `frontend/src/lib/firebase.js`. There is **one
+  `.env`, at the repo root**, serving both workspaces; the root scripts load it with `dotenv-cli` before
+  handing off, so a workspace started directly gets no config at all. `.env` is gitignored and `.env.example`
+  is the committed template — add every new key there, with no value. Never commit credentials, never paste
+  them into a chat or an issue. The backend reads `BACKEND_PORT`, not `PORT`: CRA reads `PORT` for its dev
+  server, so a shared `PORT` would put both on the same one.
 - Navigation is hash-based (`#/{role}/{screen}`) handled in `frontend/src/app/routes.js`. There is no router library;
   do not add one without the team agreeing.
 - Firestore field names are `snake_case` (`organiser_id`, `event_date`, `reference_no`); React code is

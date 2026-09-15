@@ -26,20 +26,19 @@ on its own use `npm run start:frontend` or `npm run start:backend`.
 During development the frontend proxies `/api/*` to the backend (`proxy` in `frontend/package.json`), so
 frontend code calls relative paths like `/api/events` and needs no base URL.
 
-The app needs a Firebase project. Create a `.env` in `frontend/` — it is gitignored, and the values must
-never be committed or pasted into an issue or chat:
+The app needs a Firebase project. There is **one `.env`, at the repo root**, shared by both workspaces:
 
-```
-REACT_APP_FIREBASE_API_KEY=
-REACT_APP_FIREBASE_AUTH_DOMAIN=
-REACT_APP_FIREBASE_PROJECT_ID=
-REACT_APP_FIREBASE_STORAGE_BUCKET=
-REACT_APP_FIREBASE_MESSAGING_SENDER_ID=
-REACT_APP_FIREBASE_APP_ID=
+```bash
+cp .env.example .env     # then fill in the values
 ```
 
-Ask the team for the current project's values rather than creating your own, or your data will not line up
-with everyone else's.
+`.env.example` lists every key with a comment on where to find it. The file is gitignored — never commit the
+values or paste them into an issue or chat. Ask the team for the current project's values rather than creating
+your own, or your data will not line up with everyone else's.
+
+The root npm scripts load that file with `dotenv-cli` before handing off to a workspace, which is why
+**everything must be run from the repo root**. `npm start` from inside `frontend/` skips the loader, and
+Firebase then fails to initialise with every config value `undefined`.
 
 ```bash
 npm test           # React Testing Library, watch mode
@@ -66,10 +65,11 @@ frontend/                the React app (:3000)
     lib/firebase.js      the only module that imports firebase/*
     sandbox/             unimported spike screens from the Firebase setup — safe to delete
   public/
-  .env                   gitignored — ask the team for the values
 backend/                 the service layer (:4000)
   src/index.js           Express app, /api/health
   src/services/index.js  service registry — add each service here
+.env                     gitignored — one file for both workspaces, ask the team for the values
+.env.example             committed template, no values in it
 firestore.rules          server-side authorisation — part of every feature, not an afterthought
 firebase.json
 docs/                    requirements: Week 4 instructions, backlog, customer Q&A

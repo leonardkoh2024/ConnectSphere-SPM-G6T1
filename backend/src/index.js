@@ -11,7 +11,9 @@ import express from "express";
 
 import { listServices, registerServices } from "./services/index.js";
 
-const PORT = Number(process.env.PORT) || 4000;
+// BACKEND_PORT, not PORT: the repo shares one root .env and CRA reads PORT to
+// pick the dev server port, so a shared PORT would move both onto the same one.
+const PORT = Number(process.env.BACKEND_PORT) || 4000;
 const ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000";
 
 const app = express();
