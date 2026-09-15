@@ -57,7 +57,7 @@ architecture diagram is what gets submitted.
 package.json             npm workspace root — install and run from here
 frontend/                the React app (:3000)
   src/
-    app/                 App.js auth gate · Workspace.js role shell · routes.js hash format
+    app/                 App.js auth gate · Workspace.js role shell · routes.js hash format · Icon.js
     domain/              roles · portals · accounts · events — plain rules, no React or Firebase
     features/            one folder per epic, each owning its pages and components
       auth/              LandingPage and the portal/registration form

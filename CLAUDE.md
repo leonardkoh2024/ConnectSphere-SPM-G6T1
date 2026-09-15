@@ -70,6 +70,8 @@ Venues, equipment and room layouts are **our own mock data** — the customer su
 ## Repo conventions
 
 Create React App (`react-scripts` 5) + React 19, Firebase Auth + Firestore, plain CSS, React Testing Library.
+Icons come from `react-icons` (Lucide set, `react-icons/lu`) and are mapped to a name in `frontend/src/app/Icon.js` —
+import the glyph there rather than `react-icons/*` in a screen, so the imports stay tree-shakeable and the set stays consistent.
 
 The repo is an **npm workspace**. Install and run from the repo root, never from inside a workspace —
 dependencies hoist to the root `node_modules` and there is a single root `package-lock.json`.
@@ -117,7 +119,7 @@ on real problems.
 
   ```
   frontend/src/
-    app/        App.js (auth gate) · Workspace.js (role shell) · routes.js (hash format) · App.css
+    app/        App.js (auth gate) · Workspace.js (role shell) · routes.js (hash format) · Icon.js · App.css
     domain/     roles · portals · accounts · events — no React, no Firebase
     features/   auth/ · events/ — one folder per epic, each with its own components/
     lib/        firebase.js — the only module that imports firebase/*

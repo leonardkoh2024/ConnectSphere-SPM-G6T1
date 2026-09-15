@@ -14,7 +14,9 @@ export const ROLES = {
 };
 
 // Everything the rest of the app needs to know about a role: how to label it,
-// which portal it belongs to, and which screens it may open.
+// which portal it belongs to, and which screens it may open. A screen's `icon`
+// is the name of a glyph drawn by `app/Icon.js` — a plain string, so this file
+// still holds no React.
 export const ROLE_META = {
   [ROLES.ORGANISER]: {
     label: "Event Organiser",
@@ -23,31 +25,37 @@ export const ROLE_META = {
     screens: [
       {
         name: "New event request",
+        icon: "calendar-add",
         blurb:
           "Capture the event name, purpose, proposed date and time, expected attendance, venue and equipment requirements, accessibility needs and registration needs."
       },
       {
         name: "My drafts",
+        icon: "draft",
         blurb:
           "Save an incomplete request, come back later and keep editing. Drafts stay clearly separate from requests already sent for review."
       },
       {
         name: "My events",
+        icon: "calendar",
         blurb:
           "Follow each event through submitted, under review, approved, planning, confirmed, completed, cancelled or rejected."
       },
       {
         name: "Change requests",
+        icon: "change",
         blurb:
           "Ask for permitted changes after submission and see how the Event Coordinator processed them."
       },
       {
         name: "Registrations",
+        icon: "people",
         blurb:
           "Review who has registered for the events you own, where registration is enabled."
       },
       {
         name: "Notifications",
+        icon: "bell",
         blurb:
           "Clarification requests, approval and rejection decisions, coordinator assignment and booking outcomes."
       }
@@ -60,35 +68,42 @@ export const ROLE_META = {
     screens: [
       {
         name: "Review queue",
+        icon: "inbox",
         blurb:
           "Work through submitted requests: ask the organiser for clarification or amendments, then approve or reject."
       },
       {
         name: "Assigned events",
+        icon: "clipboard",
         blurb:
           "The events where you are the main internal point of contact, including any reassigned to you."
       },
       {
         name: "Venue search",
+        icon: "search",
         blurb:
           "Filter the venue catalogue by date, time, expected attendance, location, capacity, accessibility, layout and required facilities, with suitability flagged for you."
       },
       {
         name: "Venue bookings",
+        icon: "building",
         blurb:
           "Send booking requests to Venue Staff and track approvals, rejections and the reasons behind them."
       },
       {
         name: "Equipment requests",
+        icon: "equipment",
         blurb:
           "Record equipment types, quantities and technical requirements for Technical Support Staff to action."
       },
       {
         name: "Registrations",
+        icon: "people",
         blurb: "Registration information for the events you coordinate."
       },
       {
         name: "Notifications",
+        icon: "bell",
         blurb:
           "New submissions, important event changes and venue or equipment decisions."
       }
@@ -101,21 +116,25 @@ export const ROLE_META = {
     screens: [
       {
         name: "Booking requests",
+        icon: "inbox",
         blurb:
           "Assess pending requests against the event timing and requirements, then approve or reject with a reason."
       },
       {
         name: "Venue catalogue",
+        icon: "building",
         blurb:
           "Maintain location, capacity, facilities, accessibility, supported room layouts and operating information."
       },
       {
         name: "Availability calendar",
+        icon: "calendar",
         blurb:
           "See confirmed bookings and recorded unavailability so overlapping bookings are caught before they are accepted."
       },
       {
         name: "Notifications",
+        icon: "bell",
         blurb: "Incoming requests and changes that affect a confirmed booking."
       }
     ]
@@ -127,21 +146,25 @@ export const ROLE_META = {
     screens: [
       {
         name: "Equipment queue",
+        icon: "equipment",
         blurb:
           "Review requested equipment and update the request as arrangements are made."
       },
       {
         name: "Availability check",
+        icon: "check",
         blurb:
           "Confirm whether enough suitable equipment is free for the event date and time, excluding items already committed elsewhere."
       },
       {
         name: "Reservations",
+        icon: "bookmark",
         blurb:
           "Reserve equipment against an event so the reserved quantity is no longer available to overlapping events."
       },
       {
         name: "Notifications",
+        icon: "bell",
         blurb: "New equipment requests and event changes that affect a reservation."
       }
     ]
@@ -153,15 +176,18 @@ export const ROLE_META = {
     screens: [
       {
         name: "Browse events",
+        icon: "search",
         blurb:
           "Event information published for attendees, for events where registration is enabled."
       },
       {
         name: "My registrations",
+        icon: "ticket",
         blurb: "Check your registration status or withdraw a registration."
       },
       {
         name: "Notifications",
+        icon: "bell",
         blurb:
           "Registration updates, confirmation, important changes and cancellations."
       }
