@@ -15,7 +15,7 @@
     "test": "dotenv -e .env -- npm test --workspace frontend"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2",
+    "concurrently": "^9.2.4",
     "dotenv-cli": "^11.0.0"
   },
   "engines": {

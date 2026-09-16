@@ -29,7 +29,7 @@ const whenText = (event) => {
 
 const sortKey = (event) => event.updated_at?.toMillis?.() ?? event.created_at?.toMillis?.() ?? 0;
 
-export default function EventList({ user, onEdit }) {
+export default function EventList({ user, onEdit, onView }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -56,7 +56,9 @@ export default function EventList({ user, onEdit }) {
   if (!events.length) return <p className="cs-panel-note">You have not created any events yet. Start one from New event request.</p>;
 
   return <div className="cs-record-list">{events.map((event) => {
-    const isDraft = event.status === "DRAFT";
+    const status = String(event.status || "").toUpperCase();
+    const isDraft = status === "DRAFT";
+    const canViewDetails = ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "PLANNING", "CONFIRMED", "COMPLETED", "REJECTED"].includes(status);
     const saved = savedAt(event.updated_at);
     return <article className="cs-record" key={event.id}>
       <div>
@@ -68,6 +70,7 @@ export default function EventList({ user, onEdit }) {
       <div className="cs-record-actions">
         <span className="cs-record-ref">{event.reference_no}</span>
         {isDraft && onEdit && <button type="button" className="cs-btn cs-btn-ghost cs-record-btn" onClick={() => onEdit(event)}>Continue editing</button>}
+        {!isDraft && canViewDetails && onView && <button type="button" className="cs-btn cs-btn-ghost cs-record-btn" onClick={() => onView(event)}>View details</button>}
       </div>
     </article>;
   })}</div>;

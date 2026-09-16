@@ -46,18 +46,19 @@ describe('the organiser event list', () => {
     expect(screen.getAllByText(/^Last saved /)).toHaveLength(1);
   });
 
-  test('only a draft can be continued, and the action is a button', async () => {
+  test('only a draft can be continued, and submitted or later statuses use view-only actions', async () => {
     givenEvents();
     const onEdit = jest.fn();
-    const { container } = render(<EventList user={USER} onEdit={onEdit} />);
+    const onView = jest.fn();
+    render(<EventList user={USER} onEdit={onEdit} onView={onView} />);
 
-    await screen.findByText('Volunteer Onboarding');
-    const buttons = screen.getAllByRole('button', { name: /continue editing/i });
-    expect(buttons).toHaveLength(1);
-    expect(container.querySelector('.cs-link-btn')).toBeNull();
+    await screen.findByText('Q4 Partner Summit');
+    const editButtons = screen.queryAllByRole('button', { name: /continue editing/i });
+    expect(editButtons).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /view details/i })).toBeInTheDocument();
 
-    await userEvent.click(buttons[0]);
-    expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ reference_no: 'EVT-100241' }));
+    await userEvent.click(screen.getByRole('button', { name: /view details/i }));
+    expect(onView).toHaveBeenCalledWith(expect.objectContaining({ reference_no: 'EVT-100234' }));
   });
 
   test('the most recently saved event comes first', async () => {

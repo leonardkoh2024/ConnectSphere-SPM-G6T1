@@ -30,6 +30,10 @@ service cloud.firestore {
       allow create: if ownsEvent(request.resource.data.event_id);
       allow get, list, update, delete: if ownsEvent(resource.data.event_id);
     }
+    match /event_equipment/{equipmentId} {
+      allow create: if ownsEvent(request.resource.data.event_id);
+      allow get, list, update, delete: if ownsEvent(resource.data.event_id);
+    }
     match /event_accessibility/{accessibilityId} {
       allow create: if ownsEvent(request.resource.data.event_id);
       allow get, list, update, delete: if ownsEvent(resource.data.event_id);
