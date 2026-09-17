@@ -31,6 +31,10 @@ service cloud.firestore {
         || (hasRole('VENUE_STAFF') && resource.data.get('venue_staff_id', '') == request.auth.uid)
         || (hasRole('TECHNICAL_SUPPORT_STAFF') && resource.data.get('tech_support_id', '') == request.auth.uid);
       allow update: if hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid;
+      // B8 — only the owning organiser, and only while it is still a draft. Once a
+      // request has been submitted it is part of a coordinator's queue, so it is
+      // no longer the organiser's alone to remove.
+      allow delete: if hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid && resource.data.status == 'DRAFT';
     }
 
     match /event_venue_requirements/{requirementId} {

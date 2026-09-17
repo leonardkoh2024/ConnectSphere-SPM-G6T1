@@ -27,7 +27,8 @@ import {
   LuRefreshCw,
   LuSearch,
   LuTicket,
-  LuUsers
+  LuUsers,
+  LuX
 } from "react-icons/lu";
 
 const GLYPHS = {
@@ -47,7 +48,8 @@ const GLYPHS = {
   ticket: LuTicket,
   "log-out": LuLogOut,
   "chevron-left": LuChevronLeft,
-  "chevron-right": LuChevronRight
+  "chevron-right": LuChevronRight,
+  close: LuX
 };
 
 export default function Icon({ name, className = "cs-icon" }) {

@@ -26,6 +26,7 @@ questions.
 | `customer-qa-session2-answers.md` | Q&A Session 2, 9 Sep 2026. |
 | `final-product-backlog.csv` | 70 stories across epics A–J with acceptance criteria and estimates. |
 | `design-system.md` | **Ours, not the customer's.** The visual language the UI is built to. Not a requirements artefact and not subject to the precedence rules above. |
+| `test-cases.md` | **Ours, not the customer's.** Every test case in the repo, with the story and Jira ticket it traces to, and the open defects the tests found. Not subject to the precedence rules above. |
 
 Deliberately not copied here, but available in `Project G6 T1/`: the Week 1 customer briefing (superseded on
 most specifics), the `week4-backlog-pool` working files including the open-items table, and `schema/` with the

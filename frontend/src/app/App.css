@@ -328,6 +328,8 @@
   color: var(--cs-ink);
 }
 
+.cs-field textarea { margin-bottom: 8px; }
+
 .cs-field select,
 .cs-field textarea {
   min-height: 44px;
@@ -368,6 +370,72 @@
   background: var(--cs-danger-faded);
   color: var(--cs-danger);
   font-size: 14px;
+}
+
+.cs-error-lead {
+  margin: 0;
+  font-weight: 600;
+}
+
+.cs-error-list {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 4px;
+}
+
+.cs-toasts {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 50;
+  display: grid;
+  gap: 12px;
+  width: min(380px, calc(100vw - 40px));
+  pointer-events: none;
+}
+
+.cs-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--cs-line);
+  border-left: 3px solid var(--cs-positive);
+  border-radius: var(--cs-radius-l);
+  background: var(--cs-surface);
+  box-shadow: var(--cs-elevation-raised);
+  color: var(--cs-ink);
+  font-size: 14px;
+  pointer-events: auto;
+  animation: cs-toast-in 0.18s ease-out;
+}
+
+.cs-toast-error { border-left-color: var(--cs-danger); }
+
+.cs-toast p { flex: 1; margin: 0; }
+
+.cs-toast-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--cs-radius-s);
+  background: transparent;
+  color: var(--cs-muted);
+  cursor: pointer;
+}
+
+.cs-toast-close:hover { color: var(--cs-ink); }
+
+@keyframes cs-toast-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-toast { animation: none; }
 }
 
 .cs-success {
@@ -738,7 +806,9 @@
   --cs-panel-pad-x: 40px;
   --cs-panel-pad-y: 40px;
   padding: var(--cs-panel-pad-y) var(--cs-panel-pad-x);
-  max-width: 760px;
+  /* The panel fills the space the sidebar leaves. A reading-width cap suited the
+     text screens, but it left a two-column form sitting in half the window. */
+  max-width: none;
 }
 
 /* Stays put while the screen's content scrolls under it, so you can always see
@@ -746,6 +816,21 @@
    Only the top padding is pulled back: every child of the panel sits inside the
    same content box, so the side gutters are empty and need no covering — and
    keeping the header at content width lines its rule up with the cards. */
+.cs-panel-head-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* Inside the sticky header and above the page title, so leaving is the first
+   thing on the screen and stays reachable however far the form is scrolled. */
+.cs-back {
+  margin-bottom: 12px;
+  padding-left: 12px;
+}
+
 .cs-panel-head {
   position: sticky;
   top: 0;
@@ -795,12 +880,43 @@
 }
 
 .cs-form-section h2 {
-  margin: 0 0 16px;
+  margin: 0 0 20px;
   font-size: 19px;
 }
 
 .cs-form-section h2 span {
   margin-left: 8px;
+  color: var(--cs-muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+/* Every block inside a section sits 20px below the one before it, so the gap
+   never changes with what happens to be above. */
+.cs-form-section > * + * { margin-top: 20px; }
+
+/* A question that opens a sub-section, and the list of choices that answering it
+   reveals, each get more air above them than two ordinary fields do — otherwise
+   they read as another row of the block before them. */
+.cs-form-section > * + .cs-yesno,
+.cs-form-section > * + .cs-choice-group { margin-top: 32px; }
+
+.cs-form-legend {
+  margin: 0;
+  color: var(--cs-muted);
+  font-size: 13px;
+}
+
+/* The red star. aria-hidden in the markup: the input carries `required`, so this
+   is the visible half of the same fact and screen readers do not read it twice. */
+.cs-required {
+  margin-left: 4px;
+  color: var(--cs-danger);
+  font-weight: 600;
+}
+
+.cs-optional {
+  margin-left: 4px;
   color: var(--cs-muted);
   font-size: 13px;
   font-weight: 400;
@@ -814,8 +930,44 @@
 
 .cs-field-wide { grid-column: 1 / -1; }
 
+.cs-form-stack { display: grid; gap: 20px; justify-items: start; }
+
+.cs-form-stack > * { width: 100%; }
+.cs-form-stack > .cs-btn { width: auto; }
+
+/* No card: an equipment line's fields sit on the same left edge as the question
+   above them. A rule separates one line from the next, and only from the next. */
+.cs-equipment-line {
+  display: grid;
+  gap: 20px;
+  justify-items: start;
+}
+
+.cs-equipment-line + .cs-equipment-line {
+  padding-top: 20px;
+  border-top: 1px solid var(--cs-line);
+}
+
+.cs-equipment-line .cs-form-grid { width: 100%; }
+
+/* The Yes/No question a section opens with. */
+.cs-yesno {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.cs-yesno legend {
+  margin-bottom: 8px;
+  color: var(--cs-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cs-yesno-options { display: flex; flex-wrap: wrap; gap: 8px; }
+
 .cs-choice-group {
-  margin: 20px 0 0;
+  margin: 0;
   padding: 0;
   border: 0;
 }
@@ -847,30 +999,81 @@
   accent-color: var(--cs-accent);
 }
 
-.cs-form-actions { display: flex; justify-content: flex-end; gap: 12px; }
+.cs-choice-group:disabled .cs-check,
+.cs-yesno:disabled .cs-check { color: var(--cs-disabled-ink); }
 
-.cs-record-list { display: grid; gap: 12px; margin-top: 24px; }
+.cs-btn-secondary {
+  border-color: var(--cs-line-strong);
+  background: var(--cs-surface);
+  color: var(--cs-ink);
+}
 
+.cs-btn-secondary:hover { background: var(--cs-surface-hover); }
+
+/* Same 20px the questions use, so the buttons are not a special case. The form
+   itself is a grid with that gap, so this only needs to not add to it. */
+.cs-form-actions { display: flex; justify-content: flex-end; gap: 12px; margin: 0; }
+
+.cs-list-actions { display: flex; justify-content: flex-end; margin-top: 24px; }
+
+.cs-record-list { display: grid; gap: 12px; margin-top: 20px; }
+
+/* Left to right: what it is, its reference, where it has got to, what you can do
+   with it. Each column keeps its own width so the four read as columns down the
+   list rather than as four differently-shaped cards. */
 .cs-record {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 190px) auto;
+  align-items: center;
   gap: 20px;
   padding: 20px;
   border: 1px solid var(--cs-line);
   border-radius: var(--cs-radius);
 }
 
-.cs-record h2 { margin: 8px 0 4px; font-size: 19px; }
+.cs-record h2 { margin: 0 0 4px; font-size: 19px; }
 .cs-record p, .cs-record-ref { margin: 0; color: var(--cs-muted); font-size: 14px; }
-.cs-record-ref { white-space: nowrap; }
-.cs-record-saved { margin-top: 4px; font-size: 13px; }
+.cs-record-ref { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cs-record-status { justify-self: start; }
+.cs-record-modified p { margin: 0; }
+.cs-record-saved { font-size: 13px; }
 
 .cs-record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cs-record-confirm { font-size: 13px; color: var(--cs-ink); }
+
+.cs-record-danger { color: var(--cs-danger); }
+.cs-record-danger:hover { border-color: var(--cs-danger); background: var(--cs-danger-faded); }
+
+/* Nothing to list yet is still a screen, not an error: it says so and offers the
+   one action that changes it. */
+.cs-empty {
   display: grid;
-  justify-items: end;
-  align-content: start;
-  gap: 12px;
+  justify-items: center;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 48px 24px;
+  border: 1px dashed var(--cs-line-strong);
+  border-radius: var(--cs-radius);
+  color: var(--cs-muted);
+  text-align: center;
+}
+
+.cs-empty p { margin: 0; }
+
+@media (max-width: 900px) {
+  .cs-record {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .cs-record-actions { justify-content: flex-start; }
 }
 
 /* A row action is a real button, so it needs a smaller footprint than the

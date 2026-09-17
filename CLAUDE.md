@@ -150,9 +150,14 @@ on real problems.
   The per-person branches on the remote are from the earlier convention and are not used any more.
 - Keep commits small and self-contained — direct-to-main means someone else pulls your work immediately,
   so a half-finished change on `main` blocks the whole team rather than sitting in a branch.
-- **Start every commit message with the story ID** — `B6: save an incomplete request as a draft`.
-  The backlog IDs are `A1`–`J7`. With no PRs, the commit message is the only record of story-to-code
-  traceability, and that traceability is marked.
+- **Start every commit message with the backlog ID and the Jira ticket ID** —
+  `B4; SCRUM-95; state the equipment my event needs`. The backlog IDs are `A1`–`J7` (from
+  `docs/final-product-backlog.csv`); the Jira IDs are `SCRUM-nn`. Both, separated by semicolons, then the
+  summary. With no PRs, the commit message is the only record of story-to-code traceability, and that
+  traceability is marked. People write these by hand, so small deviations in spacing or punctuation are fine —
+  what must not be missing is either ID.
+- One story per commit where you can. If a commit genuinely covers several, list each `backlog; jira; summary`
+  triple on its own line in the body rather than running them together in the subject.
 - Acceptance criteria in `docs/final-product-backlog.csv` are the definition of done. Read the story's criteria
   before starting, and cover them in tests where the criterion is testable.
 - If the customer has not answered something, do not invent an answer in code — add it to the Session 3
@@ -170,3 +175,7 @@ on real problems.
   hashing is the whole requirement.
 - Product name is ours to choose and has not been chosen. "ConnectSphere" is the *company*.
 - Backlog stories J3, J4 and J5 all share the summary "Be told when work arrives for me".
+- B9 AC2 requires accessibility needs to be *answered* before submission, but not what counts as answered for
+  a request that has none. Each of those sections now opens with a Yes/No question (`domain/eventRequest.js`,
+  `SECTION_QUESTIONS`): an explicit No is an answer, an untouched question is not. Confirm in Session 3; the
+  rule is one line to change.

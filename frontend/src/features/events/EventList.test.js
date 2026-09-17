@@ -3,15 +3,16 @@
 // submitted requests by status"), which is why there is no separate drafts
 // screen — one list, told apart by the status pill.
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { getDocs, where } from 'firebase/firestore';
+import { deleteDoc, getDocs, where } from 'firebase/firestore';
 import EventList from './EventList';
 import { ROLES } from '../../domain/roles';
 
 jest.mock('../../lib/firebase', () => ({ auth: {}, db: {} }));
 jest.mock('firebase/firestore', () => ({
-  collection: jest.fn(), query: jest.fn(), where: jest.fn(), getDocs: jest.fn()
+  collection: jest.fn(), query: jest.fn(), where: jest.fn(), getDocs: jest.fn(),
+  deleteDoc: jest.fn(), doc: jest.fn()
 }));
 
 const ts = (iso) => ({ toDate: () => new Date(iso), toMillis: () => Date.parse(iso) });
@@ -26,7 +27,15 @@ const docs = () => [
 
 // CRA sets resetMocks: true, so an implementation handed to jest.fn() in the
 // factory above is stripped before each test. It has to be set per test.
-const givenEvents = (list = docs()) => getDocs.mockResolvedValue({ docs: list });
+// The first read is the event list; the reads after it belong to deletion, which
+// sweeps the four collections keyed by event_id.
+const givenEvents = (list = docs()) => {
+  getDocs.mockResolvedValue({ docs: [] });
+  getDocs.mockResolvedValueOnce({ docs: list });
+  const { doc } = require('firebase/firestore');
+  doc.mockImplementation((_db, name, id) => `${name}/${id}`);
+  deleteDoc.mockResolvedValue();
+};
 
 describe('the organiser event list', () => {
   test('shows drafts and submitted requests together, told apart by status', async () => {
@@ -47,14 +56,14 @@ describe('the organiser event list', () => {
     expect(screen.getAllByText(/^Last saved /)).toHaveLength(1);
   });
 
-  test('only a draft can be continued, and submitted or later statuses use view-only actions', async () => {
+  test('only a draft can be edited, and submitted or later statuses use view-only actions', async () => {
     givenEvents();
     const onEdit = jest.fn();
     const onView = jest.fn();
     render(<EventList user={USER} role={ROLES.ORGANISER} onEdit={onEdit} onView={onView} />);
 
     await screen.findByText('Q4 Partner Summit');
-    const editButtons = screen.queryAllByRole('button', { name: /continue editing/i });
+    const editButtons = screen.queryAllByRole('button', { name: /^edit$/i });
     expect(editButtons).toHaveLength(1);
     expect(screen.getByRole('button', { name: /view details/i })).toBeInTheDocument();
 
@@ -79,11 +88,40 @@ describe('the organiser event list', () => {
     expect(screen.getByText(/Date not set · Time not set$/)).toBeInTheDocument();
   });
 
-  test('an empty list points the organiser at the request form', async () => {
+  test('TC-074 an empty list says so and offers the one action that changes it', async () => {
     givenEvents([]);
-    render(<EventList user={USER} role={ROLES.ORGANISER} />);
+    const onCreate = jest.fn();
+    render(<EventList user={USER} role={ROLES.ORGANISER} onCreate={onCreate} />);
 
-    await waitFor(() => expect(screen.getByText(/have not created any events/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/don’t have any events yet/i)).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: /create new event request/i }));
+    expect(onCreate).toHaveBeenCalled();
+  });
+
+  test('TC-074 a list that has events still offers Create', async () => {
+    givenEvents();
+    const onCreate = jest.fn();
+    render(<EventList user={USER} role={ROLES.ORGANISER} onCreate={onCreate} />);
+
+    await screen.findByText('Q4 Partner Summit');
+    await userEvent.click(screen.getByRole('button', { name: /create new event request/i }));
+    expect(onCreate).toHaveBeenCalled();
+  });
+
+  test('TC-075 a card reads left to right: what it is, its reference, where it has got to, what you can do', async () => {
+    givenEvents();
+    const { container } = render(<EventList user={USER} role={ROLES.ORGANISER} onEdit={jest.fn()} onView={jest.fn()} />);
+
+    await screen.findByText('Q4 Partner Summit');
+    const draft = [...container.querySelectorAll('.cs-record')].find((card) => card.textContent.includes('Volunteer Onboarding'));
+    const columns = [...draft.children].map((column) => column.className);
+
+    expect(columns).toEqual(['cs-record-title', 'cs-record-ref', 'cs-record-status', 'cs-record-modified', 'cs-record-actions']);
+    expect(draft.querySelector('.cs-record-title h2')).toHaveTextContent('Volunteer Onboarding');
+    expect(draft.querySelector('.cs-record-title p')).toHaveTextContent('Date not set');
+    expect(draft.querySelector('.cs-record-ref')).toHaveTextContent('EVT-100241');
+    expect(draft.querySelector('.cs-record-status .cs-pill')).toHaveTextContent('DRAFT');
+    expect(draft.querySelector('.cs-record-modified .cs-record-saved')).toHaveTextContent(/^Last saved /);
   });
 });
 
@@ -125,5 +163,53 @@ describe('TC-016 the list is scoped to the events the user is related to', () =>
 
     expect(getDocs).not.toHaveBeenCalled();
     expect(screen.getByText(/through your own registrations/i)).toBeInTheDocument();
+  });
+});
+
+// Story B8 / SCRUM-99 — "Delete a draft I no longer need" (TC-076 … TC-078).
+describe('B8 deleting a draft', () => {
+  test('TC-076 Delete is offered on a draft and on nothing else', async () => {
+    givenEvents();
+    render(<EventList user={USER} role={ROLES.ORGANISER} onEdit={jest.fn()} onView={jest.fn()} />);
+
+    await screen.findByText('Q4 Partner Summit');
+    expect(screen.getAllByRole('button', { name: /^delete$/i })).toHaveLength(1);
+
+    const submitted = [...document.querySelectorAll('.cs-record')].find((card) => card.textContent.includes('Q4 Partner Summit'));
+    expect(within(submitted).queryByRole('button', { name: /delete/i })).not.toBeInTheDocument();
+  });
+
+  test('TC-077 deletion takes an explicit confirmation, and Keep calls it off', async () => {
+    givenEvents();
+    render(<EventList user={USER} role={ROLES.ORGANISER} onEdit={jest.fn()} />);
+
+    await screen.findByText('Volunteer Onboarding');
+    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+
+    expect(screen.getByText(/delete this draft\?/i)).toBeInTheDocument();
+    expect(deleteDoc).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: /keep/i }));
+
+    expect(screen.queryByText(/delete this draft\?/i)).not.toBeInTheDocument();
+    expect(deleteDoc).not.toHaveBeenCalled();
+    expect(screen.getByText('Volunteer Onboarding')).toBeInTheDocument();
+  });
+
+  test('TC-078 a confirmed delete removes the draft from the list, and its other five documents with it', async () => {
+    givenEvents();
+    const onDeleted = jest.fn();
+    render(<EventList user={USER} role={ROLES.ORGANISER} onEdit={jest.fn()} onDeleted={onDeleted} />);
+
+    await screen.findByText('Volunteer Onboarding');
+    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+    await userEvent.click(screen.getByRole('button', { name: /yes, delete/i }));
+
+    await waitFor(() => expect(screen.queryByText('Volunteer Onboarding')).not.toBeInTheDocument());
+    expect(deleteDoc).toHaveBeenCalledWith('event_venue_requirements/b');
+    // The event goes last: the rules on the other five authorise by looking it up.
+    expect(deleteDoc).toHaveBeenLastCalledWith('events/b');
+    expect(onDeleted).toHaveBeenCalledWith(expect.stringMatching(/deleted/i));
+    expect(screen.getByText('Q4 Partner Summit')).toBeInTheDocument();
   });
 });

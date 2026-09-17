@@ -94,6 +94,22 @@ Control heights are fixed, not a by-product of padding: **40px** for a button or
 plus flex centring, so an `<a>` and a `<button>` come out the same height), **44px** for a text input or a
 full-width button. A label sits 8px above its input; two fields sit 20px apart.
 
+**20px is the form rhythm, everywhere.** Two fields, a heading and the field under it, one section and the
+next, and the last question and the buttons are all 20px apart — `.cs-form-section > * + *` sets it once so a
+new block cannot arrive with its own spacing. A section's own padding is 24px.
+
+## Forms
+
+A compulsory question carries a red `*` (`.cs-required`, `--cs-danger`) after its label, and the form opens
+with one line saying what the marker means. An optional field says so in words instead (`.cs-optional`), so
+nothing is left for the reader to infer from silence.
+
+A question that can be declined opens its section as a Yes/No pair of radios, not a checkbox: an untouched
+checkbox and a deliberate "no" look identical, and the detail fields only appear on Yes.
+
+Forms that show their own error list set `noValidate`, so the browser's validation bubble does not fire first
+and hide it. The `required` attributes stay on the inputs for assistive technology.
+
 ## Checklist before committing UI
 
 1. No hex or `rgba()` outside the `:root` block in `App.css`.

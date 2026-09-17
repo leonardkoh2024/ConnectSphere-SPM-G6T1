@@ -43,16 +43,21 @@ export const ROLE_META = {
     summary: "Creates, submits and manages event requests.",
     screens: [
       {
-        name: "New event request",
-        icon: "calendar-add",
-        blurb:
-          "Capture the event name, purpose, proposed date and time, expected attendance, venue and equipment requirements, accessibility needs and registration needs."
-      },
-      {
         name: "My events",
         icon: "calendar",
         blurb:
           "Every request you have created, drafts included. Follow each one through submitted, under review, approved, planning, confirmed, completed, cancelled or rejected."
+      },
+      {
+        // Reached from the button on My events, not from the sidebar: it is a task
+        // you start from your list, not a place you go. `hidden` keeps it out of
+        // the navigation while leaving it a screen this role may open — which is
+        // what A4 is about, so another role asking for it is still refused.
+        name: "New event request",
+        icon: "calendar-add",
+        hidden: true,
+        blurb:
+          "Capture the event name, purpose, proposed date and time, expected attendance, venue and equipment requirements, accessibility needs and registration needs."
       },
       {
         name: "Change requests",
