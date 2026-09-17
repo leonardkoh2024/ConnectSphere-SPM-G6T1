@@ -9,6 +9,7 @@ import React, { useEffect, useState } from "react";
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { LAYOUTS, FACILITIES, ACCESSIBILITY_OPTIONS } from "../../domain/events";
+import { equipmentLinesWithContent, todayIso, validateEventRequest } from "../../domain/eventRequest";
 import ToggleList from "./components/ToggleList";
 
 const createEquipmentLine = (line = {}) => ({
@@ -106,42 +107,12 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
     return () => { mounted = false; };
   }, [draft]);
 
-  const validate = () => {
-    const required = ["name", "purpose", "description", "eventDate", "startTime", "endTime", "expectedAttendance"];
-    if (required.some((field) => !String(form[field]).trim())) return "Complete all core event details before submitting.";
-    const today = new Date().toISOString().slice(0, 10);
-    if (form.eventDate < today) return "The proposed event date cannot be in the past.";
-    if (form.endTime <= form.startTime) return "End time must be later than start time.";
-    if (!/^\d+$/.test(form.expectedAttendance) || Number(form.expectedAttendance) < 1) return "Expected attendance must be a whole number greater than zero.";
-
-    const populatedEquipment = form.equipmentLines.filter((line) => line.equipmentType.trim() || line.quantity.trim() || line.technicalNote.trim());
-    if (populatedEquipment.length === 0) return "Add at least one equipment line before submitting.";
-
-    for (const line of populatedEquipment) {
-      if (!line.equipmentType.trim()) return "Each equipment line must include an equipment type.";
-      if (!/^\d+$/.test(String(line.quantity).trim()) || Number(line.quantity) < 1) return "Equipment quantity must be a whole number greater than zero.";
-    }
-
-    if (form.registrationRequired) {
-      if (!/^\d+$/.test(String(form.registrationCapacity).trim()) || Number(form.registrationCapacity) < 1) return "Registration capacity must be a whole number greater than zero.";
-      if (Number(form.registrationCapacity) > Number(form.expectedAttendance)) return "Registration capacity cannot exceed the expected attendance.";
-
-      const registrationOpen = `${form.registrationOpenDate}T${form.registrationOpenTime}`;
-      const registrationClose = `${form.registrationCloseDate}T${form.registrationCloseTime}`;
-      const eventStart = `${form.eventDate}T${form.startTime}`;
-
-      if (!form.registrationOpenDate || !form.registrationOpenTime || !form.registrationCloseDate || !form.registrationCloseTime) {
-        return "Registration open and close date/time are required when registration is enabled.";
-      }
-      if (new Date(registrationOpen) > new Date(registrationClose)) return "Registration close date/time must be after registration open date/time.";
-      if (new Date(registrationClose) > new Date(eventStart)) return "Registration close date/time must be at or before the event start.";
-    }
-    return "";
-  };
-
+  // The rules themselves live in domain/eventRequest.js. A draft is checked too,
+  // but only on what has been entered — B6 lets an organiser save an unfinished
+  // request, it does not let them save an impossible one.
   const save = async (submit) => {
     if (isReadOnly) return;
-    const validationError = submit ? validate() : "";
+    const validationError = validateEventRequest(form, { mode: submit ? "submit" : "draft" });
     if (validationError) {
       setError(validationError);
       return;
@@ -185,7 +156,7 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
         required_layout: form.requiredLayout || null,
         accessibility_notes: form.accessibilityNotes.trim()
       });
-      const equipmentLines = form.equipmentLines.filter((line) => line.equipmentType.trim() || line.quantity.trim() || line.technicalNote.trim());
+      const equipmentLines = equipmentLinesWithContent(form);
       const [existingFacilities, existingEquipment, existingAccessibility] = await Promise.all([
         getDocs(query(collection(db, "event_facilities"), where("event_id", "==", eventRef.id))),
         getDocs(query(collection(db, "event_equipment"), where("event_id", "==", eventRef.id))),
@@ -237,7 +208,7 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
           <label className="cs-field">Purpose<input required readOnly={isReadOnly} value={form.purpose} onChange={(e) => update("purpose", e.target.value)} /></label>
           <label className="cs-field">Expected attendance<input required readOnly={isReadOnly} type="number" min="1" step="1" value={form.expectedAttendance} onChange={(e) => update("expectedAttendance", e.target.value)} /></label>
           <label className="cs-field cs-field-wide">Description<textarea required readOnly={isReadOnly} rows="4" value={form.description} onChange={(e) => update("description", e.target.value)} /></label>
-          <label className="cs-field">Proposed date<input required readOnly={isReadOnly} type="date" min={new Date().toISOString().slice(0, 10)} value={form.eventDate} onChange={(e) => update("eventDate", e.target.value)} /></label>
+          <label className="cs-field">Proposed date<input required readOnly={isReadOnly} type="date" min={todayIso()} value={form.eventDate} onChange={(e) => update("eventDate", e.target.value)} /></label>
           <label className="cs-field">Start time<input required readOnly={isReadOnly} type="time" value={form.startTime} onChange={(e) => update("startTime", e.target.value)} /></label>
           <label className="cs-field">End time<input required readOnly={isReadOnly} type="time" value={form.endTime} onChange={(e) => update("endTime", e.target.value)} /></label>
         </div>
