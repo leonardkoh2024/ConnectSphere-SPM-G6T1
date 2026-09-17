@@ -5,8 +5,9 @@
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { getDocs } from 'firebase/firestore';
+import { getDocs, where } from 'firebase/firestore';
 import EventList from './EventList';
+import { ROLES } from '../../domain/roles';
 
 jest.mock('../../lib/firebase', () => ({ auth: {}, db: {} }));
 jest.mock('firebase/firestore', () => ({
@@ -30,7 +31,7 @@ const givenEvents = (list = docs()) => getDocs.mockResolvedValue({ docs: list })
 describe('the organiser event list', () => {
   test('shows drafts and submitted requests together, told apart by status', async () => {
     givenEvents();
-    render(<EventList user={USER} />);
+    render(<EventList user={USER} role={ROLES.ORGANISER} />);
 
     expect(await screen.findByText('Q4 Partner Summit')).toBeInTheDocument();
     expect(screen.getByText('Volunteer Onboarding')).toBeInTheDocument();
@@ -40,7 +41,7 @@ describe('the organiser event list', () => {
 
   test('a draft carries its last-saved time; a submitted request does not', async () => {
     givenEvents();
-    render(<EventList user={USER} />);
+    render(<EventList user={USER} role={ROLES.ORGANISER} />);
 
     await screen.findByText('Volunteer Onboarding');
     expect(screen.getAllByText(/^Last saved /)).toHaveLength(1);
@@ -50,7 +51,7 @@ describe('the organiser event list', () => {
     givenEvents();
     const onEdit = jest.fn();
     const onView = jest.fn();
-    render(<EventList user={USER} onEdit={onEdit} onView={onView} />);
+    render(<EventList user={USER} role={ROLES.ORGANISER} onEdit={onEdit} onView={onView} />);
 
     await screen.findByText('Q4 Partner Summit');
     const editButtons = screen.queryAllByRole('button', { name: /continue editing/i });
@@ -63,7 +64,7 @@ describe('the organiser event list', () => {
 
   test('the most recently saved event comes first', async () => {
     givenEvents();
-    const { container } = render(<EventList user={USER} />);
+    const { container } = render(<EventList user={USER} role={ROLES.ORGANISER} />);
 
     await screen.findByText('Q4 Partner Summit');
     const names = [...container.querySelectorAll('.cs-record h2')].map((h) => h.textContent);
@@ -72,7 +73,7 @@ describe('the organiser event list', () => {
 
   test('a draft with no times reads cleanly rather than leaving a dangling dash', async () => {
     givenEvents();
-    render(<EventList user={USER} />);
+    render(<EventList user={USER} role={ROLES.ORGANISER} />);
 
     await screen.findByText('Volunteer Onboarding');
     expect(screen.getByText(/Date not set · Time not set$/)).toBeInTheDocument();
@@ -80,8 +81,49 @@ describe('the organiser event list', () => {
 
   test('an empty list points the organiser at the request form', async () => {
     givenEvents([]);
-    render(<EventList user={USER} />);
+    render(<EventList user={USER} role={ROLES.ORGANISER} />);
 
     await waitFor(() => expect(screen.getByText(/have not created any events/i)).toBeInTheDocument());
+  });
+});
+
+// Story A5 — "see only events I am related to" (TC-016).
+//
+// Asserting that another organiser's event is absent from the rendered list would
+// prove nothing on its own, because the list only contains what this test handed
+// back. What matters is that the query asked Firestore to filter, and filtered on
+// the field that belongs to the signed-in user's role.
+describe('TC-016 the list is scoped to the events the user is related to', () => {
+  test('an organiser only ever asks for events carrying their own organiser_id', async () => {
+    givenEvents();
+    render(<EventList user={USER} role={ROLES.ORGANISER} />);
+
+    await screen.findByText('Q4 Partner Summit');
+    expect(where).toHaveBeenCalledWith('organiser_id', '==', 'u1');
+  });
+
+  test('a coordinator is scoped by coordinator_id rather than ownership', async () => {
+    givenEvents([]);
+    render(<EventList user={USER} role={ROLES.COORDINATOR} />);
+
+    await waitFor(() => expect(where).toHaveBeenCalledWith('coordinator_id', '==', 'u1'));
+    expect(where).not.toHaveBeenCalledWith('organiser_id', '==', 'u1');
+  });
+
+  test.each([
+    [ROLES.VENUE_STAFF, 'venue_staff_id'],
+    [ROLES.TECH_SUPPORT, 'tech_support_id']
+  ])('%s is scoped by %s', async (role, field) => {
+    givenEvents([]);
+    render(<EventList user={USER} role={role} />);
+
+    await waitFor(() => expect(where).toHaveBeenCalledWith(field, '==', 'u1'));
+  });
+
+  test('an attendee never queries the events collection at all', () => {
+    render(<EventList user={USER} role={ROLES.ATTENDEE} />);
+
+    expect(getDocs).not.toHaveBeenCalled();
+    expect(screen.getByText(/through your own registrations/i)).toBeInTheDocument();
   });
 });

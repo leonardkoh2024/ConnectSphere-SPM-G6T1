@@ -13,6 +13,25 @@ export const ROLES = {
   ATTENDEE: "ATTENDEE"
 };
 
+// Story A5 ("see only events I am related to"): the event field that relates each
+// role to an event. One field per role keeps both the client query and the
+// matching firestore.rules clause easy to read; the trade-off is that adding a
+// role means adding a branch in both places. `coordinator_id` is written by C1,
+// `venue_staff_id` by F2 and `tech_support_id` by G1, so an event created today
+// carries only `organiser_id`.
+//
+// Attendees are related to an event through their own `registrations` document
+// rather than a field on the event, so they have no scope field here.
+export const EVENT_SCOPE_FIELD = {
+  [ROLES.ORGANISER]: "organiser_id",
+  [ROLES.COORDINATOR]: "coordinator_id",
+  [ROLES.VENUE_STAFF]: "venue_staff_id",
+  [ROLES.TECH_SUPPORT]: "tech_support_id",
+  [ROLES.ATTENDEE]: null
+};
+
+export const eventScopeField = (role) => EVENT_SCOPE_FIELD[role] || null;
+
 // Everything the rest of the app needs to know about a role: how to label it,
 // which portal it belongs to, and which screens it may open. A screen's `icon`
 // is the name of a glyph drawn by `app/Icon.js` — a plain string, so this file

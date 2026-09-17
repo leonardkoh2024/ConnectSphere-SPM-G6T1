@@ -1,0 +1,96 @@
+// Stories A4 and A5 at the server boundary — TC-015 ("every restricted request is
+// refused server-side; hiding navigation alone is not relied upon") and the direct
+// -access half of TC-016 ("direct access to another organiser's event is refused").
+//
+// firestore.rules is the only thing that actually stops a crafted request, so it
+// needs a test. Proving the *behaviour* means running the Firestore emulator,
+// which needs packages and a Java runtime we have deliberately not added; what
+// this file does instead is assert the policy the rules state, so that loosening a
+// rule breaks the build. Behavioural evidence for these two cases comes from a
+// Rules Playground screenshot in the test evidence pack.
+//
+// It lives under src/ because Create React App only collects tests from there.
+
+import fs from 'fs';
+import path from 'path';
+import { EVENT_SCOPE_FIELD, ROLES } from '../domain/roles';
+
+const RULES = fs.readFileSync(path.resolve(__dirname, '../../../firestore.rules'), 'utf8');
+
+// The body of a `match /collection/{doc} { ... }` block, whitespace flattened so a
+// condition split over several lines can be matched in one piece.
+const matchBlock = (collection) => {
+  const start = RULES.indexOf(`match /${collection}/`);
+  if (start === -1) throw new Error(`No rules found for ${collection}`);
+  const body = RULES.slice(start, RULES.indexOf('\n    }', start));
+  return body.replace(/\s+/g, ' ');
+};
+
+const allowConditions = (text) => [...text.matchAll(/allow\s+[a-z,\s]+:\s*if([^;]*);/g)].map(([, condition]) => condition.trim());
+
+const eventsGetList = () => {
+  const conditions = allowConditions(matchBlock('events'));
+  const readRule = matchBlock('events').match(/allow\s+get,\s*list:\s*if([^;]*);/);
+  if (!readRule) throw new Error('events has no get/list rule');
+  expect(conditions.length).toBeGreaterThan(0);
+  return readRule[1];
+};
+
+describe('TC-015 no request is left unguarded', () => {
+  test('nothing is granted unconditionally', () => {
+    expect(RULES).not.toMatch(/if\s+true/);
+    expect(RULES).not.toMatch(/allow\s+[a-z,\s]+:\s*if\s+signedIn\(\)\s*;/);
+  });
+
+  test('every allow rule tests the caller identity or their role', () => {
+    const conditions = allowConditions(RULES.replace(/\s+/g, ' '));
+
+    expect(conditions.length).toBeGreaterThan(0);
+    conditions.forEach((condition) =>
+      expect(condition).toMatch(/request\.auth\.uid|hasRole\(|ownsEvent\(/)
+    );
+  });
+
+  test('a signed-in user cannot promote themselves to another role', () => {
+    const users = matchBlock('users');
+
+    expect(users).toContain("request.resource.data.role in ['EVENT_ORGANISER', 'ATTENDEE']");
+    expect(users).toContain('request.resource.data.role == resource.data.role');
+  });
+
+  test('a user profile is readable only by the user it belongs to', () => {
+    expect(matchBlock('users')).toMatch(/allow get:\s*if signedIn\(\) && userId == request\.auth\.uid/);
+  });
+});
+
+describe('TC-016 events are readable only by the roles related to them', () => {
+  const scoped = Object.values(ROLES).filter((role) => EVENT_SCOPE_FIELD[role]);
+
+  test.each(scoped)('%s may read an event only when its scope field matches their uid', (role) => {
+    const readRule = eventsGetList();
+
+    expect(readRule).toContain(`hasRole('${role}')`);
+    expect(readRule).toContain(EVENT_SCOPE_FIELD[role]);
+    expect(readRule).toContain('request.auth.uid');
+  });
+
+  test('the rule uses the same field per role as the client query', () => {
+    const readRule = eventsGetList();
+
+    scoped.forEach((role) => {
+      const clause = readRule.split('||').find((part) => part.includes(`hasRole('${role}')`));
+      expect(clause).toContain(EVENT_SCOPE_FIELD[role]);
+    });
+  });
+
+  test('attendees are given no route to the events collection', () => {
+    expect(matchBlock('events')).not.toContain(ROLES.ATTENDEE);
+  });
+
+  test('only the owning organiser may write an event', () => {
+    const events = matchBlock('events');
+
+    expect(events).toMatch(/allow create:\s*if hasRole\('EVENT_ORGANISER'\) && request\.resource\.data\.organiser_id == request\.auth\.uid/);
+    expect(events).toMatch(/allow update:\s*if hasRole\('EVENT_ORGANISER'\) && resource\.data\.organiser_id == request\.auth\.uid/);
+  });
+});

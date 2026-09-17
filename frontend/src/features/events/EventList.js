@@ -1,5 +1,5 @@
-// The organiser's single list of their own events, drafts included. Story A5
-// ("see only events I am related to") is enforced by the organiser_id filter
+// A list of the events the signed-in user is related to, drafts included. Story A5
+// ("see only events I am related to") is enforced by the per-role scope filter
 // here *and* by firestore.rules — the rule is the real boundary.
 //
 // There is deliberately no separate drafts screen. B6 puts drafts in "the
@@ -9,6 +9,7 @@
 import React, { useEffect, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../lib/firebase";
+import { ROLES, eventScopeField } from "../../domain/roles";
 
 // Firestore hands back a Timestamp; a document written moments ago can still
 // have null here while the server value is pending.
@@ -29,16 +30,24 @@ const whenText = (event) => {
 
 const sortKey = (event) => event.updated_at?.toMillis?.() ?? event.created_at?.toMillis?.() ?? 0;
 
-export default function EventList({ user, onEdit, onView }) {
+export default function EventList({ user, role, onEdit, onView }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const scopeField = eventScopeField(role);
 
   useEffect(() => {
     let mounted = true;
+    // No scope field means this role does not reach events through the event
+    // document at all, so there is no query to run.
+    if (!scopeField) {
+      setEvents([]);
+      setLoading(false);
+      return undefined;
+    }
     const load = async () => {
       try {
-        const snapshot = await getDocs(query(collection(db, "events"), where("organiser_id", "==", user.uid)));
+        const snapshot = await getDocs(query(collection(db, "events"), where(scopeField, "==", user.uid)));
         const records = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
         records.sort((a, b) => sortKey(b) - sortKey(a));
         if (mounted) setEvents(records);
@@ -49,11 +58,12 @@ export default function EventList({ user, onEdit, onView }) {
     };
     load();
     return () => { mounted = false; };
-  }, [user.uid]);
+  }, [user.uid, scopeField]);
 
+  if (!scopeField) return <p className="cs-panel-note">Your role reaches events through your own registrations rather than this list.</p>;
   if (loading) return <p className="cs-panel-note">Loading your events…</p>;
   if (error) return <p className="cs-error">{error}</p>;
-  if (!events.length) return <p className="cs-panel-note">You have not created any events yet. Start one from New event request.</p>;
+  if (!events.length) return <p className="cs-panel-note">{role === ROLES.ORGANISER ? "You have not created any events yet. Start one from New event request." : "No events are related to your account yet."}</p>;
 
   return <div className="cs-record-list">{events.map((event) => {
     const status = String(event.status || "").toUpperCase();

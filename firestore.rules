@@ -17,8 +17,19 @@ service cloud.firestore {
     }
 
     match /events/{eventId} {
+      // A5 is one clause per role, each naming the field on the event that
+      // relates that role to it — the same fields the client filters on in
+      // domain/roles.js (EVENT_SCOPE_FIELD). Chosen over a single
+      // related_user_ids array because no denormalised field has to be kept in
+      // step; the cost is a new clause whenever a role is added.
+      //
+      // get() with a default keeps a missing field from erroring the whole
+      // expression: an event created today has only organiser_id.
       allow create: if hasRole('EVENT_ORGANISER') && request.resource.data.organiser_id == request.auth.uid && request.resource.data.created_by == request.auth.uid;
-      allow get, list: if hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid;
+      allow get, list: if (hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid)
+        || (hasRole('EVENT_COORDINATOR') && resource.data.get('coordinator_id', '') == request.auth.uid)
+        || (hasRole('VENUE_STAFF') && resource.data.get('venue_staff_id', '') == request.auth.uid)
+        || (hasRole('TECHNICAL_SUPPORT_STAFF') && resource.data.get('tech_support_id', '') == request.auth.uid);
       allow update: if hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid;
     }
 
