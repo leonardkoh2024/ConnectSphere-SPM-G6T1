@@ -62,5 +62,5 @@ export function isStrongPassword(password) {
 }
 
 export function isValidMobileNumber(number) {
-  return /^\d{8,}$/.test(String(number));
+  return /^\d{7,15}$/.test(String(number));
 }

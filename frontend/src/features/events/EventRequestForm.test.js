@@ -57,7 +57,7 @@ const CORE = {
   date: EVENT_DAY,
   start: '09:00',
   end: '17:00',
-  location: 'Level 3 atrium, east wing',
+  location: 'CENTRAL',
   layout: 'THEATRE'
 };
 
@@ -515,6 +515,24 @@ describe('B9 the block names exactly the fields that are wrong (TC-043)', () => 
 });
 
 describe('B9 venue requirements and accessibility must be answered (TC-044 … TC-046)', () => {
+  test('preferred location is a Singapore area selector and saves its canonical value', async () => {
+    render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
+
+    const location = screen.getByLabelText(/preferred location or area/i);
+    expect(location.tagName).toBe('SELECT');
+    expect(within(location).getByRole('option', { name: /central.*city hall/i })).toHaveValue('CENTRAL');
+    expect(within(location).getByRole('option', { name: /near an mrt station/i })).toHaveValue('NEAR_MRT');
+
+    fillValidRequest();
+    await submit();
+
+    await expectAccepted();
+    expect(setDoc).toHaveBeenCalledWith(
+      'event_venue_requirements/event-123',
+      expect.objectContaining({ preferred_location: 'CENTRAL' })
+    );
+  });
+
   test('TC-044 a request with no venue requirements is refused, naming both of them', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
