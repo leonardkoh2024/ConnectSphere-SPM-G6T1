@@ -95,7 +95,7 @@ const fillVenueRequirements = (overrides = {}) => {
   setField(/required layout/i, values.layout);
 };
 
-const fillEquipmentLine = ({ type = 'Projector', quantity = '2' } = {}) => {
+const fillEquipmentLine = ({ type = 'AUDIO', quantity = '2' } = {}) => {
   setField('Equipment type 1', type);
   setField('Quantity 1', quantity);
 };
@@ -361,7 +361,7 @@ describe('B9 an incomplete request is not submitted (TC-032, TC-033)', () => {
     expect(screen.getByLabelText(/event name/i)).toHaveValue(CORE.name);
     expect(screen.getByLabelText(/purpose/i)).toHaveValue(CORE.purpose);
     expect(screen.getByLabelText(/proposed date/i)).toHaveValue(CORE.date);
-    expect(screen.getByLabelText('Equipment type 1')).toHaveValue('Projector');
+    expect(screen.getByLabelText('Equipment type 1')).toHaveValue('AUDIO');
   });
 });
 
@@ -675,22 +675,22 @@ describe('B4 equipment lines (TC-047)', () => {
     answer(QUESTIONS.accessibility, 'No');
     answer(QUESTIONS.equipment, 'Yes');
 
-    await userEvent.type(screen.getByLabelText('Equipment type 1'), 'Projector');
+    await userEvent.selectOptions(screen.getByLabelText('Equipment type 1'), 'AUDIO');
     await userEvent.type(screen.getByLabelText('Quantity 1'), '2');
     await userEvent.type(screen.getByLabelText('Technical note 1'), 'Need HDMI cable adapter.');
 
     await userEvent.click(screen.getByRole('button', { name: /add equipment line/i }));
-    await userEvent.type(screen.getByLabelText('Equipment type 2'), 'Microphone');
+    await userEvent.selectOptions(screen.getByLabelText('Equipment type 2'), 'VISUAL');
     await userEvent.type(screen.getByLabelText('Quantity 2'), '4');
 
     await submit();
 
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(setDoc).toHaveBeenCalledWith('event_equipment/event-123_0', expect.objectContaining({
-      equipment_type: 'Projector', quantity: 2, technical_note: 'Need HDMI cable adapter.'
+      equipment_type: 'AUDIO', quantity: 2, technical_note: 'Need HDMI cable adapter.'
     }));
     expect(setDoc).toHaveBeenCalledWith('event_equipment/event-123_1', expect.objectContaining({
-      equipment_type: 'Microphone', quantity: 4, technical_note: null
+      equipment_type: 'VISUAL', quantity: 4, technical_note: null
     }));
   });
 });

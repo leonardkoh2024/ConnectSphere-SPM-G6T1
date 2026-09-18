@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from "react";
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../lib/firebase";
-import { LAYOUTS, FACILITIES, ACCESSIBILITY_OPTIONS, PREFERRED_LOCATIONS } from "../../domain/events";
+import { LAYOUTS, FACILITIES, ACCESSIBILITY_OPTIONS, PREFERRED_LOCATIONS, EQUIPMENT_TYPES } from "../../domain/events";
 import { NO, UNANSWERED, YES, createReferenceNo, equipmentLinesWithContent, todayIso, validateEventRequest } from "../../domain/eventRequest";
 import ToggleList from "./components/ToggleList";
 import YesNo from "./components/YesNo";
@@ -316,9 +316,14 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
             {form.equipmentLines.map((line, index) => (
               <div className="cs-equipment-line" key={line.id}>
                 <div className="cs-form-grid">
-                  <label className="cs-field"><FieldName required>Equipment type</FieldName><input aria-label={`Equipment type ${index + 1}`} readOnly={isReadOnly} value={line.equipmentType} onChange={(e) => updateEquipmentLine(line.id, "equipmentType", e.target.value)} /></label>
+                  <label className="cs-field"><FieldName required>Equipment type</FieldName>
+                    <select aria-label={`Equipment type ${index + 1}`} disabled={isReadOnly} value={line.equipmentType} onChange={(e) => updateEquipmentLine(line.id, "equipmentType", e.target.value)} required>
+                      <option value="">Choose equipment type</option>
+                      {EQUIPMENT_TYPES.map((item) => <option value={item} key={`${line.id}-${item}`}>{item.replaceAll("_", " ")}</option>)}
+                    </select>
+                  </label>
                   <label className="cs-field"><FieldName required>Quantity</FieldName><input aria-label={`Quantity ${index + 1}`} readOnly={isReadOnly} type="number" min="1" step="1" value={line.quantity} onChange={(e) => updateEquipmentLine(line.id, "quantity", e.target.value)} /></label>
-                  <label className="cs-field cs-field-wide"><FieldName optional>Technical note</FieldName><textarea aria-label={`Technical note ${index + 1}`} readOnly={isReadOnly} rows="2" value={line.technicalNote} onChange={(e) => updateEquipmentLine(line.id, "technicalNote", e.target.value)} /></label>
+                  <label className="cs-field cs-field-wide"><FieldName optional>Technical note / Other Equipment Type</FieldName><textarea aria-label={`Technical note ${index + 1}`} readOnly={isReadOnly} rows="2" value={line.technicalNote} onChange={(e) => updateEquipmentLine(line.id, "technicalNote", e.target.value)} /></label>
                 </div>
                 {form.equipmentLines.length > 1 && !isReadOnly && <button type="button" className="cs-btn cs-btn-ghost" onClick={() => removeEquipmentLine(line.id)}>Remove line</button>}
               </div>
