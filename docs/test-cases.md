@@ -175,6 +175,38 @@ whether the organiser has finished.
 | TC-062 | A draft with no times reads cleanly | The organiser has a draft with no date or times | Open **My events** | The record reads "Date not set · Time not set" rather than leaving a dangling separator | As expected | Pass | |
 | TC-063 | An empty list points the organiser at the request form | The organiser has no events | Open **My events** | A message saying they have not created any events yet | As expected | Pass | |
 
+
+## C1 / SCRUM - 102 / Have submitted events assigned to a coordinator automatically
+
+**Legend:** `C1`, `C2`, `C3` = Coordinator 1/2/3 (assignees) · `E1`, `E2`, … = Event 1/2/… submitted by the Organiser. Test-data labels, not C4 diagram levels.
+
+**Assignment rule — circular rotation by coordinator ID:** On each assignment, choose the *active* coordinator whose ID is the smallest one **greater than** the last-assigned coordinator's ID; if none is greater, **wrap** to the smallest active ID. Inactive coordinators are skipped. The first ever assignment (no last-assigned yet) starts at the lowest active ID. On assignment, the event's `assignedAt` timestamp is recorded in **SGT** and the last-assigned marker advances.
+
+**Agreed decisions (remind your group):**
+1. Strategy is **circular rotation by coordinator ID** (ascending, wrap back to the first) — **this replaces the earlier LRA direction; update the ADR to match.**
+2. Set changes (add / remove / (de)activate a coordinator) need **no manual cursor repositioning** — the next active ID after the last-assigned is recomputed each time, so inactive coordinators are skipped and newly added ones are picked up in ID order.
+3. A queued (unassigned) event is **auto-assigned** as soon as a coordinator becomes active; multiple queued events are assigned in **submission order**.
+4. Timestamps stored in **SGT**.
+5. If a coordinator becomes inactive, their events are **reassigned to the next coordinator** by rotation (or returned to the queue if none are active).
+6. Coordinators are **never "busy"** — while active, a coordinator is always eligible regardless of how many events they already hold (no limit — customer Session 2). "Inactive" means the availability status is off (e.g. on leave), **not** overloaded.
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+|---|---|---|---|---|---|---|---|
+| TC-072 | Event submitted while active coordinators exist is assigned to exactly one, with identity + timestamp recorded | Active coordinators `{C1, C2}`; no prior assignments; Organiser authenticated | 1. Organiser submits event E1<br>2. Retrieve E1 | E1 assigned to exactly one active coordinator (C1 — the lowest active ID, the rotation start); E1.assignedAt non-null in SGT; E1.status = Assigned; E1 not in unassigned queue |  | Not Executed | AC1, AC2, AC3 — happy path |
+| TC-073 | Consecutive submissions spread across coordinators in ascending ID order | active = `{C1, C2, C3}`; no prior assignments | 1. Submit E1<br>2. Submit E2<br>3. Submit E3<br>4. Retrieve assignments | E1→C1, E2→C2, E3→C3 (rotation follows ascending ID from the start); each event has exactly one coordinator |  | Not Executed | AC3 — rotation order |
+| TC-074 | After the highest ID is reached, rotation wraps back to the first | Continues from TC-073: C1, C2, C3 each assigned once (last-assigned = C3) | 1. Submit E4<br>2. Retrieve E4 | E4→C1 (no active ID greater than C3, so rotation wraps to the smallest active ID); C1 now holds 2 events (E1, E4) |  | Not Executed | AC3, AC5 — wrap boundary |
+| TC-075 | Single active coordinator receives all events | active = `{C1}` only | 1. Submit E1<br>2. Submit E2<br>3. Submit E3 | All three → C1 (one coordinator holds multiple events); each event has exactly one coordinator |  | Not Executed | AC5 — boundary |
+| TC-076 | Inactive coordinators are skipped in the rotation | C1(active), C2(inactive), C3(active); no prior assignments | 1. Submit E1<br>2. Submit E2<br>3. Submit E3<br>4. Submit E4 | E1→C1, E2→C3 (C2 skipped), E3→C1, E4→C3; C2 never assigned |  | Not Executed | AC3 — inactive skipped |
+| TC-077 | Coordinator deactivated before next assignment is skipped | active = `{C1, C2, C3}`; E1→C1 done (last-assigned = C1) | 1. Set C2 inactive<br>2. Submit E2<br>3. Retrieve E2 | E2→C3 (smallest active ID greater than C1; C2 skipped); not C2 |  | Not Executed | AC3 — negative |
+| TC-078 | A newly activated coordinator joins the rotation by ID position, not by assignment history | active = `{C1, C2}`; E1→C1, E2→C2 completed (last-assigned = C2) | 1. Activate C3 (never assigned)<br>2. Submit next event E3<br>3. Retrieve E3 | E3→C3, because C3 is the next active ID after C2 — **not** because it was never assigned. (Contrast: had the last-assigned been C1, E3 would go to C2 even though C3 has never been assigned — the opposite of what LRA would do.) |  | Not Executed | Rotation, not LRA — this row is what distinguishes the two strategies |
+| TC-079 | No active coordinator → event stays in unassigned queue and is visible | Zero active coordinators (all inactive, or none exist) | 1. Submit E1<br>2. Query the unassigned queue<br>3. Retrieve E1 | E1.coordinatorId = null; E1.assignedAt = null; E1.status = Unassigned; E1 present and retrievable in the queue; not dropped/lost |  | Not Executed | AC4 — negative |
+| TC-080 | An event is never assigned to two coordinators (invariant) | active = `{C1, C2}`; E1 already assigned to C1 | 1. Attempt to assign a second coordinator to E1<br>2. Inspect E1's assignment record(s) | E1 still references exactly one coordinator; the second assignment is rejected / not persisted |  | Not Executed | AC1 — invariant |
+| TC-081 | Concurrent submissions each get exactly one, distinct coordinator | active = `{C1, C2}`; no prior assignments | 1. Submit E1 and E2 simultaneously (concurrent requests)<br>2. Retrieve E1, E2 | E1 and E2 each assigned to exactly one coordinator; the two go to different coordinators (C1 and C2 — the next two in rotation); the last-assigned marker advances once per assignment; no double-assignment or skip from a race |  | Not Executed | AC1, AC3 — concurrency |
+| TC-082 | Assignment timestamp recorded at assignment time, in SGT | active = `{C1}`; note current time T | 1. Submit E1 at ~T<br>2. Read E1.assignedAt | E1.assignedAt non-null; equals assignment time within tolerance (e.g. ±2s); stored in SGT; recorded with coordinatorId |  | Not Executed | AC2 |
+| TC-083 | Queued event is auto-assigned when a coordinator becomes active | Zero active coordinators; E1 sitting in the unassigned queue | 1. Activate C1<br>2. Retrieve E1 and query the queue | E1 auto-assigned to C1; E1.coordinatorId = C1; E1.assignedAt set (SGT); E1 removed from the unassigned queue; E1.status = Assigned |  | Not Executed | AC4 extended (decision 3); if multiple events queued, assign in submission order |
+| TC-084 | Assigned coordinator becomes inactive → event reassigned to next coordinator | E1 assigned to C1; C2 also active | 1. Set C1 inactive<br>2. Retrieve E1 | E1 reassigned by rotation to the next active coordinator (C2); E1.coordinatorId updated to C2; new E1.assignedAt (SGT); still exactly one coordinator |  | Not Executed | Decision 5 |
+| TC-085 | Assigned coordinator becomes inactive with no fallback → event returns to queue | E1 assigned to C1; C1 is the only active coordinator | 1. Set C1 inactive<br>2. Retrieve E1 and query the queue | With no other active coordinator, E1 returns to the unassigned queue (coordinatorId null, status Unassigned), visible and not lost; later auto-assigned per TC-083 |  | Not Executed | Decision 5 + AC4 — boundary |
+
 ---
 
 ## Open defects
