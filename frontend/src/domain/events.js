@@ -4,6 +4,29 @@
 // Firestore field names are snake_case; these are stored values, so they stay
 // SCREAMING_SNAKE exactly as written here.
 
+// B7 asks that a draft stay distinguishable from a submitted request. The word in
+// the pill does that on its own, but only once you read it, so each status also
+// carries a tone.
+//
+// The design system is explicit that the nine statuses map onto its five status
+// tones rather than taking nine colours of their own, which is why APPROVED and
+// CONFIRMED share one: the tone says how the event is doing, the word says exactly
+// where it has got to. Accent violet is deliberately not used — the system warns
+// against placing it next to info blue as though the two were a scale.
+export const STATUS_TONE = {
+  DRAFT: "neutral",
+  SUBMITTED: "info",
+  UNDER_REVIEW: "warning",
+  APPROVED: "positive",
+  PLANNING: "info",
+  CONFIRMED: "positive",
+  COMPLETED: "neutral",
+  CANCELLED: "danger",
+  REJECTED: "danger"
+};
+
+export const statusTone = (status) => STATUS_TONE[String(status || "").toUpperCase()] || "neutral";
+
 // Values are stable identifiers written to `preferred_location`; labels give
 // organisers useful Singapore examples without making the saved data ambiguous.
 export const PREFERRED_LOCATIONS = [

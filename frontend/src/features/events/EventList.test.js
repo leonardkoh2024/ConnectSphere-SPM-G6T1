@@ -48,6 +48,19 @@ describe('the organiser event list', () => {
     expect(screen.getByText('SUBMITTED')).toBeInTheDocument();
   });
 
+  test('B7 a draft and a submitted request are told apart by colour, not only by wording', async () => {
+    givenEvents();
+    render(<EventList user={USER} role={ROLES.ORGANISER} />);
+
+    await screen.findByText('Q4 Partner Summit');
+    const draftPill = screen.getByText('DRAFT');
+    const submittedPill = screen.getByText('SUBMITTED');
+
+    expect(draftPill).toHaveClass('cs-pill', 'cs-pill-neutral');
+    expect(submittedPill).toHaveClass('cs-pill', 'cs-pill-info');
+    expect(draftPill.className).not.toEqual(submittedPill.className);
+  });
+
   test('a draft carries its last-saved time; a submitted request does not', async () => {
     givenEvents();
     render(<EventList user={USER} role={ROLES.ORGANISER} />);
@@ -179,19 +192,38 @@ describe('B8 deleting a draft', () => {
     expect(within(submitted).queryByRole('button', { name: /delete/i })).not.toBeInTheDocument();
   });
 
-  test('TC-077 deletion takes an explicit confirmation, and Keep calls it off', async () => {
+  test('TC-077 the confirmation is asked in a dialog, not inside the card, and Keep calls it off', async () => {
+    givenEvents();
+    const { container } = render(<EventList user={USER} role={ROLES.ORGANISER} onEdit={jest.fn()} />);
+
+    await screen.findByText('Volunteer Onboarding');
+    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(within(dialog).getByRole('heading', { name: /delete this draft\?/i })).toBeInTheDocument();
+    // The draft it is about to delete is named, and the question is outside the card.
+    expect(within(dialog).getByText(/Volunteer Onboarding/)).toBeInTheDocument();
+    const card = [...container.querySelectorAll('.cs-record')].find((item) => item.textContent.includes('Volunteer Onboarding'));
+    expect(card.textContent).not.toMatch(/delete this draft\?/i);
+    expect(deleteDoc).not.toHaveBeenCalled();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: /keep draft/i }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(deleteDoc).not.toHaveBeenCalled();
+    expect(screen.getByText('Volunteer Onboarding')).toBeInTheDocument();
+  });
+
+  test('TC-077 Escape dismisses the dialog and keeps the draft', async () => {
     givenEvents();
     render(<EventList user={USER} role={ROLES.ORGANISER} onEdit={jest.fn()} />);
 
     await screen.findByText('Volunteer Onboarding');
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+    await userEvent.keyboard('{Escape}');
 
-    expect(screen.getByText(/delete this draft\?/i)).toBeInTheDocument();
-    expect(deleteDoc).not.toHaveBeenCalled();
-
-    await userEvent.click(screen.getByRole('button', { name: /keep/i }));
-
-    expect(screen.queryByText(/delete this draft\?/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(deleteDoc).not.toHaveBeenCalled();
     expect(screen.getByText('Volunteer Onboarding')).toBeInTheDocument();
   });
@@ -203,7 +235,7 @@ describe('B8 deleting a draft', () => {
 
     await screen.findByText('Volunteer Onboarding');
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
-    await userEvent.click(screen.getByRole('button', { name: /yes, delete/i }));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /yes, delete/i }));
 
     await waitFor(() => expect(screen.queryByText('Volunteer Onboarding')).not.toBeInTheDocument());
     expect(deleteDoc).toHaveBeenCalledWith('event_venue_requirements/b');
