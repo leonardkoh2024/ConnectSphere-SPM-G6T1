@@ -1,49 +1,43 @@
 # ADR 0001 — Coordinator auto-assignment: circular rotation by coordinator ID
 
-- **Status:** Accepted (interim for Release 1) — supersedes the earlier least-recently-assigned (LRA) proposal
-- **Date:** 2026-09-18
-- **Deciders:** Shi Han
-- **Story:** C1 / SCRUM-102 — *Have submitted events assigned to a coordinator automatically*
+ADR 0001 — Coordinator auto-assignment: circular rotation by coordinator_seq, backend-owned
+Status: Accepted (Release 1) — supersedes the earlier LRA proposal and the "active coordinators + unassigned queue" draft
+Date: 2026-09-19
+Deciders: Shi Han
+Story: C1 / SCRUM-102 — Have submitted events assigned to a coordinator automatically
+Context
 
-## Context
+C1 requires every submitted event to be picked up by exactly one Event Coordinator automatically, so a request never sits unclaimed. The mechanism must be simple to implement, deterministic to test, and consistent with the customer's answers.
 
-C1 requires every submitted event to be picked up by exactly one Event Coordinator automatically, so a request never sits unclaimed. The mechanism has to be simple to implement, deterministic to test, and consistent with what the customer has told us.
+Constraints from the source documents:
 
-What the source documents constrain:
+Auto-assigned, one coordinator per event (Customer Q&A Session 1, Q10).
+No limit on concurrent events per coordinator (Session 2, Q12) — a coordinator is never "busy"; load never disqualifies them.
+Coordinator unavailability is out of scope (Session 1, Q16) — no active/inactive handling and no reassignment as part of C1.
+No account/staff management in Release 1 (Session 2) — coordinators are seeded.
+The Week 4 instructions describe assignment as "submitted events can be assigned to a coordinator… reassigned when responsibilities or availability change"; the reassignment half lives in C9, not C1.
 
-- **Auto-assigned, one coordinator per event.** (Customer Q&A Session 1, Q10)
-- **No limit on how many events a coordinator handles concurrently.** (Session 2, Q12)
-- **Coordinators are never "busy."** No requirement gives a coordinator a workload or schedule dimension. The Week 4 project instructions (*Coordinator Assignment*) say events "can be assigned to an Event Coordinator… and may subsequently be **reassigned when staff responsibilities or availability change**" — so the only eligibility axis is a binary **active / inactive** availability status, which also triggers reassignment. It is *not* a load or time-window calculation.
-- Session 1 (Q16) initially said unavailability handling was not required; the Week 4 core features and backlog story C9 reinstate reassignment, still as a status change.
+Note: the C1 acceptance criteria in docs/final-product-backlog.csv are stale (they still say "round-robin across active coordinators" and an "unassigned queue"). The finalised ACs are agreed but not yet committed to the repo (they land next sprint). Until then, docs/test-cases.md (TC-072–TC-080) is the authoritative C1 spec.
 
-We previously explored **LRA** (assign to the active coordinator whose most recent assignment is oldest; never-assigned counts as oldest). For Release 1 we are simplifying.
+Decision
+Circular rotation by coordinator_seq. Each coordinator carries an integer coordinator_seq (1, 2, 3, …). On assignment, pick the coordinator whose seq is the next one greater than the last-assigned seq; if none is greater, wrap to the lowest. All seeded coordinators participate.
+Exactly one coordinator, assigned once. Assignment runs only when coordinator_id is empty (first submission) and is never re-run; coordinator_id is immutable once set.
+No active/inactive flag, no unassigned queue, no reassignment in C1 (Q16; manual reassignment is C9 if pursued).
+Assignment runs in the backend (Option B) via the Firebase Admin SDK. The rotation cursor (last-assigned coordinator_seq) lives server-side and is advanced atomically (transaction / single writer), so concurrent submissions cannot double-assign or skip.
+Integrity enforced in firestore.rules: clients may not write or change coordinator_id or assigned_at; only the backend service account may. The rules change ships in the same commit as the feature (A4 is graded on server-side rules).
+Status unchanged by assignment — the event stays Submitted. Timestamps in SGT. No cap on events per coordinator.
 
-## Decision
+State persisted: the rotation cursor (last-assigned coordinator_seq). Each event carries coordinator_id, assigned_at (SGT), status.
 
-Use **circular rotation by coordinator ID**:
-
-1. On each assignment, choose the active coordinator with the **smallest ID greater than the last-assigned coordinator's ID**; if none is greater, **wrap** to the smallest active ID.
-2. **Inactive coordinators are skipped.** The first ever assignment (no last-assigned) starts at the lowest active ID.
-3. **Exactly one** coordinator per event; **no cap** on events per coordinator.
-4. **Coordinators are never busy** — while active, a coordinator is always eligible regardless of current load. "Inactive" means the availability status is off (e.g. on leave), not overloaded.
-5. **No active coordinator** → the event stays in a visible **unassigned queue** and is auto-assigned as soon as a coordinator becomes active (queued events processed in submission order).
-6. A coordinator going **inactive** → their events are reassigned by rotation, or returned to the queue if none are active.
-7. All assignment timestamps are stored in **SGT**.
-
-**State persisted:** the last-assigned coordinator ID (the rotation cursor). Each event carries `coordinator_id`, `assigned_at` (SGT) and `status`.
-
-## Alternatives considered
-
-- **Least-recently-assigned (LRA).** Fairer: it catches up a newly activated or returning coordinator (never-assigned = oldest → picked first) and rebalances after periods of inactivity. **Rejected for Release 1** as more state and complexity than the demo needs. Revisit if fairness across uneven coordinator activity becomes a real requirement.
-- **Load-aware / schedule-aware assignment** (assign only to a coordinator free during the event's window). **Rejected** — it directly contradicts the customer's "no limit" answer (Session 2, Q12): excluding a coordinator for having an overlapping event is a de-facto cap of one per window. It also has no basis in the requirements and would need capacity and event-window definitions. Out of scope; would require customer sign-off at Session 3.
-
-## Consequences
-
-- **Positive:** trivial to implement and to test; fully deterministic; robust to coordinators being added, removed, or (de)activated with no manual cursor repositioning.
-- **Negative:** rotation ignores assignment history, so a coordinator who was inactive for many events is **not** "caught up" when they return, and distribution can skew if coordinators toggle active frequently. Acceptable for a Release 1 demo; noted here as the cost of the simpler rule.
-- **Traceability:** satisfies C1 AC1–AC5; exercised by test cases **TC-072 – TC-085** in `docs/test-cases.md`.
-
-## Open / to confirm (Session 3)
-
-- What sets a coordinator's **active flag** on and off, given there is no account/staff management in Release 1. Current assumption: a **seeded field on the coordinator record, defaulting to on**.
-- Whether LRA (or another fairness rule) is wanted for a later release.
+Alternatives considered
+Least-recently-assigned (LRA). Fairer — catches up idle/returning coordinators. Rejected for R1 as more state than needed; revisit if fairness across uneven activity is ever required.
+Load- / schedule-aware assignment. Rejected — contradicts "no limit" (Session 2, Q12) and has no basis in the requirements; would need customer sign-off.
+Client-side assignment (Option A). No backend; a Firestore transaction gives race-safety. Rejected because the rules cannot validate the rotation pick, so a client could forge coordinator_id. Option B gives real, server-enforced integrity (A4). Option A remains the documented fallback if backend work slips — with the integrity gap stated.
+Consequences
+Positive: simple, deterministic, easy to test; a single trusted writer; robust to coordinators being added/removed; strong server-side integrity.
+Negative: rotation ignores assignment history, so a coordinator idle for a stretch is not "caught up." Acceptable for a Release 1 demo.
+Traceability: satisfies C1 AC1, AC2, AC3, AC5, AC6, AC7 (finalised set); exercised by TC-072 – TC-080 in docs/test-cases.md.
+Requirements this creates
+Each seeded coordinator must carry an integer coordinator_seq.
+A server-side rotation-cursor document.
+firestore.rules making coordinator_id / assigned_at client-unwritable and immutable once set.
