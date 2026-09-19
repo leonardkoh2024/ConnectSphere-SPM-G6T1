@@ -13,14 +13,17 @@
 //
 // Planned services, matching the epics in Jira:
 //
-//   auth          /api/auth           users                               epic A
-//   event         /api/events         events, event_history, …            epics B–D
-//   venue         /api/venues         venue catalogue, bookings           epics E–F
-//   equipment     /api/equipment      equipment counts, reservations      epic G
-//   registration  /api/registrations  attendee registrations, waiting list
-//   notification  /api/notifications  inbox items
+//   auth                   /api/auth                     users                               epic A
+//   event                  /api/events                   events, event_history, …            epics B–D
+//   coordinatorAssignment  /api/coordinator-assignment   coordinators, assignment_cursor      epic C (C1 only — see backend/README.md)
+//   venue                  /api/venues                   venue catalogue, bookings            epics E–F
+//   equipment              /api/equipment                equipment counts, reservations       epic G
+//   registration           /api/registrations            attendee registrations, waiting list
+//   notification           /api/notifications             inbox items
 
-const SERVICES = [];
+import coordinatorAssignmentService from "./coordinatorAssignment/index.js";
+
+const SERVICES = [{ name: "coordinatorAssignment", prefix: "/api/coordinator-assignment", router: coordinatorAssignmentService }];
 
 /** Mount every registered service onto the app. Called once at startup. */
 export function registerServices(app) {

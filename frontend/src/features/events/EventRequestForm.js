@@ -167,6 +167,12 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
       const eventData = {
         reference_no: referenceNo,
         organiser_id: user.uid,
+        // C1 — the backend is the only writer of coordinator_id (firestore.rules
+        // enforces this); it is unconditionally null here because this form never
+        // sets it. Note for whoever opens editing back up after submission: the
+        // rules also require this field to round-trip unchanged on update, so
+        // once an event is assigned, any further updateDoc through this eventData
+        // shape must stop forcing it to null, or the whole write will be rejected.
         coordinator_id: null,
         name: form.name.trim(),
         purpose: form.purpose.trim(),
@@ -241,6 +247,24 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
         description: submit ? "Event request submitted by organiser." : "Event draft created by organiser.",
         created_at: serverTimestamp()
       });
+      // C1 — hand the new submission to the backend for coordinator assignment.
+      // firestore.rules stops this form writing coordinator_id itself, so this is
+      // the only path an event gets one. Best-effort: the event is already
+      // correctly SUBMITTED regardless of whether this succeeds, and the
+      // assignment is safe to retry later since the backend only assigns once
+      // (guarded on coordinator_id being empty) — so a failure here is logged
+      // rather than surfaced as a failed submission.
+      if (submit) {
+        try {
+          await fetch("/api/coordinator-assignment/assign", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ eventId: eventRef.id })
+          });
+        } catch (assignError) {
+          console.error("Could not assign a coordinator:", assignError);
+        }
+      }
       setForm(initialForm);
       // B9 AC6 — the confirmation carries the reference number, which is the only
       // thing the organiser can quote when they follow the request up.

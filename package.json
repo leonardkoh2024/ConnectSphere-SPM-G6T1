@@ -12,7 +12,8 @@
     "start:frontend": "dotenv -e .env -- npm start --workspace frontend",
     "start:backend": "dotenv -e .env -- npm start --workspace backend",
     "build": "dotenv -e .env -- npm run build --workspace frontend",
-    "test": "dotenv -e .env -- npm test --workspace frontend"
+    "test": "dotenv -e .env -- npm test --workspace frontend",
+    "test:backend": "dotenv -e .env -- npm test --workspace backend"
   },
   "devDependencies": {
     "concurrently": "^9.2.4",

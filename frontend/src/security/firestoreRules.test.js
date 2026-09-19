@@ -94,3 +94,30 @@ describe('TC-016 events are readable only by the roles related to them', () => {
     expect(events).toMatch(/allow update:\s*if hasRole\('EVENT_ORGANISER'\) && resource\.data\.organiser_id == request\.auth\.uid/);
   });
 });
+
+// TC-080 — coordinator_id and assigned_at are the backend's alone to write; a
+// client (even the owning organiser) may never set or change either. As with
+// TC-015/016, this asserts the rule text — the text is what a loosened rule
+// would change — with full behavioural proof left to a Rules Playground
+// screenshot in the evidence pack, since this repo runs no emulator.
+describe('TC-080 the client can never write or change the coordinator', () => {
+  test('create requires coordinator_id and assigned_at to be absent or null', () => {
+    const events = matchBlock('events');
+    const createRule = events.match(/allow create:\s*if([^;]*);/)[1];
+
+    expect(createRule).toContain('noClientCoordinatorWrite()');
+
+    expect(events).toContain("request.resource.data.get('coordinator_id', null) == null");
+    expect(events).toContain("request.resource.data.get('assigned_at', null) == null");
+  });
+
+  test('update requires coordinator_id and assigned_at to stay exactly as they were', () => {
+    const events = matchBlock('events');
+    const updateRule = events.match(/allow update:\s*if([^;]*);/)[1];
+
+    expect(updateRule).toContain('coordinatorUnchanged()');
+
+    expect(events).toContain("request.resource.data.get('coordinator_id', null) == resource.data.get('coordinator_id', null)");
+    expect(events).toContain("request.resource.data.get('assigned_at', null) == resource.data.get('assigned_at', null)");
+  });
+});

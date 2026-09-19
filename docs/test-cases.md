@@ -6,16 +6,18 @@ automated test unless its remark says otherwise.
 **Running them**
 
 ```
-npm test                     # from the repo root — all suites
+npm test                     # from the repo root — all frontend suites
 npm test -- --testPathPattern EventRequestForm      # one suite
+npm run test:backend         # from the repo root — the backend's own suite (node's test runner)
 ```
 
 **Test case ID allocation** — `TC-014`, `TC-015` and `TC-016` were already in use in the code before this
 document existed, and keep their numbers. `TC-001` to `TC-013` belong to the team's earlier test plan and are
 reserved here so nothing collides. New IDs run from `TC-017`.
 
-**Actual Result / status** — recorded from the run of `npm test` on **17 Sep 2026** (97 tests, 5 suites).
-Re-run and update the two right-hand columns before submitting.
+**Actual Result / status** — recorded from a run of `npm test` and `npm run test:backend` on **19 Sep 2026**
+(118 frontend tests across 6 suites, 6 backend tests). Re-run and update the two right-hand columns before
+submitting.
 
 The rules themselves live in `frontend/src/domain/eventRequest.js`, which holds no React and no Firebase, so
 they can be read next to the acceptance criteria and move into the service layer unchanged.
@@ -33,11 +35,14 @@ they can be read next to the acceptance criteria and move into the service layer
 | B9 | SCRUM-100 | Submit an event request | TC-030 – TC-046, TC-064 – TC-066, TC-069 |
 | — | — | The form marks what is compulsory | TC-070 |
 | — | — | Confirmations appear as toasts | TC-071 |
+| C1 | SCRUM-102 | Have submitted events assigned to a coordinator automatically | TC-072 – TC-080 |
 
 Suites: `frontend/src/features/events/EventRequestForm.test.js` (TC-017 – TC-047, TC-064 – TC-070),
 `frontend/src/features/events/EventList.test.js` (TC-016, TC-058 – TC-063),
 `frontend/src/app/Workspace.test.js` (TC-014, TC-015, TC-071), `frontend/src/app/App.test.js` (TC-048 – TC-057),
-`frontend/src/security/firestoreRules.test.js` (TC-015, TC-016).
+`frontend/src/security/firestoreRules.test.js` (TC-015, TC-016, TC-080),
+`frontend/src/domain/coordinatorAssignment.test.js` (TC-073, TC-074, TC-075),
+`backend/src/services/coordinatorAssignment/assignCoordinator.test.js` (TC-072, TC-076, TC-077, TC-078, TC-079).
 
 ---
 
@@ -191,15 +196,15 @@ whether the organiser has finished.
 
 | Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
 |---|---|---|---|---|---|---|---|
-| TC-072 | Happy path — a valid submission produces a well-formed assignment | Coordinators seeded `{C1, C2}`; no prior assignments; Organiser authenticated | 1. Organiser submits a valid event E1<br>2. Retrieve E1 | E1 has a `coordinator_id` referencing one seeded coordinator; `assigned_at` is non-null and in SGT; E1.status = **Submitted** (unchanged) |  | Not Executed | AC2 — shape of a successful assignment. *Which* coordinator is chosen → TC-073; the never-two invariant → TC-076 |
-| TC-073 | Consecutive submissions rotate in ascending `coordinator_seq` | seeded `{C1, C2, C3}` (seq 1, 2, 3); no prior assignments | 1. Submit E1<br>2. Submit E2<br>3. Submit E3<br>4. Retrieve assignments | E1→C1, E2→C2, E3→C3; each has exactly one coordinator; each stays Submitted |  | Not Executed | AC3 — rotation order |
-| TC-074 | Rotation wraps after the last coordinator back to the first | Continues from TC-073: C1, C2, C3 each assigned once (last-assigned seq = 3) | 1. Submit E4<br>2. Retrieve E4 | E4→C1 (no higher seq, so rotation wraps to the lowest); C1 now holds 2 events (E1, E4) |  | Not Executed | AC3, AC5 — wrap boundary |
-| TC-075 | A single seeded coordinator receives all events | Only one coordinator seeded `{C1}` | 1. Submit E1<br>2. Submit E2<br>3. Submit E3 | All three → C1 (one coordinator holds multiple events); each event has exactly one coordinator |  | Not Executed | AC5 — boundary (no cap) |
-| TC-076 | An event is never assigned to two coordinators (invariant) | seeded `{C1, C2}`; E1 already assigned to C1 | 1. Attempt to assign a second coordinator to E1<br>2. Inspect E1's assignment record(s) | E1 still references exactly one coordinator; the second assignment is rejected / not persisted |  | Not Executed | AC1 — invariant |
-| TC-077 | Concurrent submissions each get exactly one, distinct coordinator | seeded `{C1, C2}`; no prior assignments | 1. Submit E1 and E2 simultaneously (concurrent requests)<br>2. Retrieve E1, E2 | E1 and E2 each assigned to exactly one coordinator, and to different coordinators (C1 and C2); the rotation cursor advances once per assignment; no double-assignment or skipped seq from a race |  | Not Executed | AC1, AC3 — concurrency. Holds because the backend serialises the cursor (single writer / transaction, per Option B) |
-| TC-078 | Assignment timestamp recorded at assignment time, in SGT | seeded `{C1}`; note current time T | 1. Submit E1 at ~T<br>2. Read E1.assigned_at | E1.assigned_at non-null; equals assignment time within tolerance (e.g. ±2s); stored in SGT; recorded alongside coordinator_id |  | Not Executed | AC2 |
-| TC-079 | Assignment happens once — re-saving or editing an already-assigned event does not reassign | E1 already assigned to C1 (coordinator_id set) | 1. Edit and re-save a detail on E1 (or re-trigger a submit on it)<br>2. Retrieve E1 | E1.coordinator_id is still C1 (unchanged); no fresh assignment runs, because assignment only fires when coordinator_id is empty |  | Not Executed | AC7 — assign once |
-| TC-080 | The client can never write or change the coordinator (server-side rule) | Organiser authenticated; `firestore.rules` in force; for step 2, E1 already assigned to C1 | 1. Attempt a direct client write creating an event with `coordinator_id` pre-filled<br>2. Attempt a direct client write changing or clearing `coordinator_id` (or `assigned_at`) on E1 | Both writes are rejected by `firestore.rules`: `coordinator_id` is not client-writable on create and is immutable to the client once set; only the backend may write it (and `assigned_at`) |  | Not Executed | AC6, AC7 — server-side integrity (A4). Assert via `firestoreRules.test.js` |
+| TC-072 | Happy path — a valid submission produces a well-formed assignment | Coordinators seeded `{C1, C2}`; no prior assignments; Organiser authenticated | 1. Organiser submits a valid event E1<br>2. Retrieve E1 | E1 has a `coordinator_id` referencing one seeded coordinator; `assigned_at` is non-null and in SGT; E1.status = **Submitted** (unchanged) | As expected | Pass | AC2 — shape of a successful assignment. *Which* coordinator is chosen → TC-073; the never-two invariant → TC-076 |
+| TC-073 | Consecutive submissions rotate in ascending `coordinator_seq` | seeded `{C1, C2, C3}` (seq 1, 2, 3); no prior assignments | 1. Submit E1<br>2. Submit E2<br>3. Submit E3<br>4. Retrieve assignments | E1→C1, E2→C2, E3→C3; each has exactly one coordinator; each stays Submitted | As expected | Pass | AC3 — rotation order |
+| TC-074 | Rotation wraps after the last coordinator back to the first | Continues from TC-073: C1, C2, C3 each assigned once (last-assigned seq = 3) | 1. Submit E4<br>2. Retrieve E4 | E4→C1 (no higher seq, so rotation wraps to the lowest); C1 now holds 2 events (E1, E4) | As expected | Pass | AC3, AC5 — wrap boundary |
+| TC-075 | A single seeded coordinator receives all events | Only one coordinator seeded `{C1}` | 1. Submit E1<br>2. Submit E2<br>3. Submit E3 | All three → C1 (one coordinator holds multiple events); each event has exactly one coordinator | As expected | Pass | AC5 — boundary (no cap) |
+| TC-076 | An event is never assigned to two coordinators (invariant) | seeded `{C1, C2}`; E1 already assigned to C1 | 1. Attempt to assign a second coordinator to E1<br>2. Inspect E1's assignment record(s) | E1 still references exactly one coordinator; the second assignment is rejected / not persisted | As expected | Pass | AC1 — invariant |
+| TC-077 | Concurrent submissions each get exactly one, distinct coordinator | seeded `{C1, C2}`; no prior assignments | 1. Submit E1 and E2 simultaneously (concurrent requests)<br>2. Retrieve E1, E2 | E1 and E2 each assigned to exactly one coordinator, and to different coordinators (C1 and C2); the rotation cursor advances once per assignment; no double-assignment or skipped seq from a race | As expected against a mocked transaction (see Remarks) | Pass | AC1, AC3 — concurrency. Holds because the backend serialises the cursor in one Firestore transaction (Option B). Exercised as two sequential calls against a mock, not two requests racing over the network — that stronger claim needs the emulator this repo does not run (see TC-015) |
+| TC-078 | Assignment timestamp recorded at assignment time, in SGT | seeded `{C1}`; note current time T | 1. Submit E1 at ~T<br>2. Read E1.assigned_at | E1.assigned_at non-null; equals assignment time within tolerance (e.g. ±2s); stored in SGT; recorded alongside coordinator_id | As expected | Pass | AC2. Stored as a Firestore `Timestamp` via `FieldValue.serverTimestamp()`, same as `created_at`/`submitted_at` elsewhere; SGT is a display concern, not a storage format |
+| TC-079 | Assignment happens once — re-saving or editing an already-assigned event does not reassign | E1 already assigned to C1 (coordinator_id set) | 1. Edit and re-save a detail on E1 (or re-trigger a submit on it)<br>2. Retrieve E1 | E1.coordinator_id is still C1 (unchanged); no fresh assignment runs, because assignment only fires when coordinator_id is empty | As expected | Pass | AC7 — assign once |
+| TC-080 | The client can never write or change the coordinator (server-side rule) | Organiser authenticated; `firestore.rules` in force; for step 2, E1 already assigned to C1 | 1. Attempt a direct client write creating an event with `coordinator_id` pre-filled<br>2. Attempt a direct client write changing or clearing `coordinator_id` (or `assigned_at`) on E1 | Both writes are rejected by `firestore.rules`: `coordinator_id` is not client-writable on create and is immutable to the client once set; only the backend may write it (and `assigned_at`) | As expected | Pass | AC6, AC7 — server-side integrity (A4). Same approach as TC-015/016: asserts the rule text, not live behaviour, for the same emulator/Java-runtime reason |
 
 ---
 

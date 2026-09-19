@@ -25,12 +25,26 @@ service cloud.firestore {
       //
       // get() with a default keeps a missing field from erroring the whole
       // expression: an event created today has only organiser_id.
-      allow create: if hasRole('EVENT_ORGANISER') && request.resource.data.organiser_id == request.auth.uid && request.resource.data.created_by == request.auth.uid;
+      // C1 — coordinator_id and assigned_at are the backend's alone to write
+      // (it uses the Admin SDK, which these rules do not govern). A client may
+      // create an event with no coordinator yet, and may never set or change
+      // either field itself: create requires both absent/null, and update must
+      // leave both exactly as they were, however unrelated the rest of the edit.
+      function noClientCoordinatorWrite() {
+        return request.resource.data.get('coordinator_id', null) == null
+          && request.resource.data.get('assigned_at', null) == null;
+      }
+      function coordinatorUnchanged() {
+        return request.resource.data.get('coordinator_id', null) == resource.data.get('coordinator_id', null)
+          && request.resource.data.get('assigned_at', null) == resource.data.get('assigned_at', null);
+      }
+
+      allow create: if hasRole('EVENT_ORGANISER') && request.resource.data.organiser_id == request.auth.uid && request.resource.data.created_by == request.auth.uid && noClientCoordinatorWrite();
       allow get, list: if (hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid)
         || (hasRole('EVENT_COORDINATOR') && resource.data.get('coordinator_id', '') == request.auth.uid)
         || (hasRole('VENUE_STAFF') && resource.data.get('venue_staff_id', '') == request.auth.uid)
         || (hasRole('TECHNICAL_SUPPORT_STAFF') && resource.data.get('tech_support_id', '') == request.auth.uid);
-      allow update: if hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid;
+      allow update: if hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid && coordinatorUnchanged();
       // B8 — only the owning organiser, and only while it is still a draft. Once a
       // request has been submitted it is part of a coordinator's queue, so it is
       // no longer the organiser's alone to remove.
