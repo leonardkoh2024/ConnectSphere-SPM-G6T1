@@ -708,6 +708,12 @@
   font-weight: 600;
 }
 
+/* The plain :hover above outranks the single active class, so without this the
+   selected screen turns grey under the cursor and its white label disappears. */
+.cs-sidebar-item-active:hover {
+  background: var(--cs-accent-hover);
+}
+
 .cs-sidebar-toggle {
   flex: 0 0 auto;
   margin-left: auto;
