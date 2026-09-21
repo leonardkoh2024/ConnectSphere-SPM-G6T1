@@ -9,11 +9,15 @@ service cloud.firestore {
     match /users/{userId} {
       allow create: if signedIn() && userId == request.auth.uid
         && request.resource.data.user_id == request.auth.uid
-        && request.resource.data.role in ['EVENT_ORGANISER', 'ATTENDEE'];
+        && request.resource.data.role in ['EVENT_ORGANISER', 'ATTENDEE']
+        && request.resource.data.mobile_number is string
+        && request.resource.data.mobile_number.matches('^[0-9]{7,15}$');
       allow get: if signedIn() && userId == request.auth.uid;
       allow update: if signedIn() && userId == request.auth.uid
         && request.resource.data.role == resource.data.role
-        && request.resource.data.user_id == resource.data.user_id;
+        && request.resource.data.user_id == resource.data.user_id
+        && request.resource.data.mobile_number is string
+        && request.resource.data.mobile_number.matches('^[0-9]{7,15}$');
     }
 
     match /events/{eventId} {

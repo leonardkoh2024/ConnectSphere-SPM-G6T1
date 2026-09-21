@@ -43,6 +43,10 @@
   --cs-positive: #1f8900;
   --cs-positive-faded: #edfbe9;
   --cs-warning: #b7570b;
+  /* The published set has no tint for warning; this is mixed to sit at the same
+     lightness as the danger, positive and info tints so a row of status pills
+     reads as one family. */
+  --cs-warning-faded: #fdf1e7;
   --cs-info: #2d76ec;
   --cs-info-faded: #eaf1fd;
 
@@ -168,6 +172,15 @@
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
+
+/* B7 — a status pill takes the tone its status maps to in domain/events.js, so a
+   draft and a submitted request differ at a glance and not only in wording. The
+   default pill above stays accent for the non-status pills (role, portal). */
+.cs-pill-neutral { background: var(--cs-surface-alt); color: var(--cs-muted); }
+.cs-pill-info { background: var(--cs-info-faded); color: var(--cs-info); }
+.cs-pill-warning { background: var(--cs-warning-faded); color: var(--cs-warning); }
+.cs-pill-positive { background: var(--cs-positive-faded); color: var(--cs-positive); }
+.cs-pill-danger { background: var(--cs-danger-faded); color: var(--cs-danger); }
 
 .cs-lede {
   color: var(--cs-muted);
@@ -695,6 +708,12 @@
   font-weight: 600;
 }
 
+/* The plain :hover above outranks the single active class, so without this the
+   selected screen turns grey under the cursor and its white label disappears. */
+.cs-sidebar-item-active:hover {
+  background: var(--cs-accent-hover);
+}
+
 .cs-sidebar-toggle {
   flex: 0 0 auto;
   margin-left: auto;
@@ -1046,8 +1065,6 @@
   gap: 8px;
 }
 
-.cs-record-confirm { font-size: 13px; color: var(--cs-ink); }
-
 .cs-record-danger { color: var(--cs-danger); }
 .cs-record-danger:hover { border-color: var(--cs-danger); background: var(--cs-danger-faded); }
 
@@ -1066,6 +1083,35 @@
 }
 
 .cs-empty p { margin: 0; }
+
+/* A destructive question is asked over the list rather than inside the card, so
+   nothing else on the screen competes with it. Modal radius is 24 and dialogs use
+   the raised elevation, per the design system. */
+.cs-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(19, 19, 19, 0.45);
+}
+
+.cs-modal {
+  width: min(440px, 100%);
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+  border-radius: var(--cs-radius-2xl);
+  background: var(--cs-surface);
+  box-shadow: var(--cs-elevation-raised);
+}
+
+.cs-modal h2 { margin: 0; font-size: 20px; }
+
+.cs-modal p { margin: 0; color: var(--cs-muted); font-size: 15px; }
+
+.cs-modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px; }
 
 @media (max-width: 900px) {
   .cs-record {

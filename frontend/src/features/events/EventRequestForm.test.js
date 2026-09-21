@@ -57,7 +57,7 @@ const CORE = {
   date: EVENT_DAY,
   start: '09:00',
   end: '17:00',
-  location: 'Level 3 atrium, east wing',
+  location: 'CENTRAL',
   layout: 'THEATRE'
 };
 
@@ -95,7 +95,7 @@ const fillVenueRequirements = (overrides = {}) => {
   setField(/required layout/i, values.layout);
 };
 
-const fillEquipmentLine = ({ type = 'Projector', quantity = '2' } = {}) => {
+const fillEquipmentLine = ({ type = 'AUDIO', quantity = '2' } = {}) => {
   setField('Equipment type 1', type);
   setField('Quantity 1', quantity);
 };
@@ -361,7 +361,7 @@ describe('B9 an incomplete request is not submitted (TC-032, TC-033)', () => {
     expect(screen.getByLabelText(/event name/i)).toHaveValue(CORE.name);
     expect(screen.getByLabelText(/purpose/i)).toHaveValue(CORE.purpose);
     expect(screen.getByLabelText(/proposed date/i)).toHaveValue(CORE.date);
-    expect(screen.getByLabelText('Equipment type 1')).toHaveValue('Projector');
+    expect(screen.getByLabelText('Equipment type 1')).toHaveValue('AUDIO');
   });
 });
 
@@ -515,6 +515,24 @@ describe('B9 the block names exactly the fields that are wrong (TC-043)', () => 
 });
 
 describe('B9 venue requirements and accessibility must be answered (TC-044 … TC-046)', () => {
+  test('preferred location is a Singapore area selector and saves its canonical value', async () => {
+    render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
+
+    const location = screen.getByLabelText(/preferred location or area/i);
+    expect(location.tagName).toBe('SELECT');
+    expect(within(location).getByRole('option', { name: /central.*city hall/i })).toHaveValue('CENTRAL');
+    expect(within(location).getByRole('option', { name: /near an mrt station/i })).toHaveValue('NEAR_MRT');
+
+    fillValidRequest();
+    await submit();
+
+    await expectAccepted();
+    expect(setDoc).toHaveBeenCalledWith(
+      'event_venue_requirements/event-123',
+      expect.objectContaining({ preferred_location: 'CENTRAL' })
+    );
+  });
+
   test('TC-044 a request with no venue requirements is refused, naming both of them', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
@@ -657,22 +675,22 @@ describe('B4 equipment lines (TC-047)', () => {
     answer(QUESTIONS.accessibility, 'No');
     answer(QUESTIONS.equipment, 'Yes');
 
-    await userEvent.type(screen.getByLabelText('Equipment type 1'), 'Projector');
+    await userEvent.selectOptions(screen.getByLabelText('Equipment type 1'), 'AUDIO');
     await userEvent.type(screen.getByLabelText('Quantity 1'), '2');
     await userEvent.type(screen.getByLabelText('Technical note 1'), 'Need HDMI cable adapter.');
 
     await userEvent.click(screen.getByRole('button', { name: /add equipment line/i }));
-    await userEvent.type(screen.getByLabelText('Equipment type 2'), 'Microphone');
+    await userEvent.selectOptions(screen.getByLabelText('Equipment type 2'), 'VISUAL');
     await userEvent.type(screen.getByLabelText('Quantity 2'), '4');
 
     await submit();
 
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(setDoc).toHaveBeenCalledWith('event_equipment/event-123_0', expect.objectContaining({
-      equipment_type: 'Projector', quantity: 2, technical_note: 'Need HDMI cable adapter.'
+      equipment_type: 'AUDIO', quantity: 2, technical_note: 'Need HDMI cable adapter.'
     }));
     expect(setDoc).toHaveBeenCalledWith('event_equipment/event-123_1', expect.objectContaining({
-      equipment_type: 'Microphone', quantity: 4, technical_note: null
+      equipment_type: 'VISUAL', quantity: 4, technical_note: null
     }));
   });
 });

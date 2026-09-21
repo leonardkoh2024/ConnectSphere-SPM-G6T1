@@ -13,6 +13,7 @@ import React, { useEffect, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { ROLES, eventScopeField } from "../../domain/roles";
+import { statusTone } from "../../domain/events";
 import deleteEventRequest from "./deleteEventRequest";
 
 // Firestore hands back a Timestamp; a document written moments ago can still
@@ -40,9 +41,12 @@ export default function EventList({ user, role, onEdit, onView, onCreate, onDele
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  // B8 AC2 — deletion takes an explicit confirmation, so one click arms it and a
-  // second carries it out. Only one draft can be armed at a time.
-  const [confirmingId, setConfirmingId] = useState("");
+  // B8 AC2 — deletion takes an explicit confirmation, which is asked for in a modal
+  // rather than inside the card: the card's four columns stay put, and a
+  // destructive question gets the reader's whole attention instead of competing
+  // with the rest of the list. Holding the event itself (not just its id) lets the
+  // dialog name what is about to go.
+  const [pendingDelete, setPendingDelete] = useState(null);
   const [deletingId, setDeletingId] = useState("");
   const scopeField = eventScopeField(role);
 
@@ -70,15 +74,27 @@ export default function EventList({ user, role, onEdit, onView, onCreate, onDele
     return () => { mounted = false; };
   }, [user.uid, scopeField]);
 
+  // Escape closes the dialog, the same as Keep. It is not wired while a delete is
+  // in flight, so the dialog cannot be dismissed out from under a request.
+  useEffect(() => {
+    if (!pendingDelete || deletingId) return undefined;
+    const onKeyDown = (keyEvent) => { if (keyEvent.key === "Escape") setPendingDelete(null); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [pendingDelete, deletingId]);
+
   const remove = async (event) => {
     setDeletingId(event.id);
     try {
       await deleteEventRequest(event.id);
       setEvents((current) => current.filter((item) => item.id !== event.id));
-      setConfirmingId("");
+      setPendingDelete(null);
       if (onDeleted) onDeleted(`Draft ${event.reference_no || ""} deleted.`.replace("  ", " "));
     } catch (deleteError) {
       console.error("Could not delete draft:", deleteError);
+      // Close the dialog so the message is read against the list it refers to,
+      // rather than leaving the organiser holding a dialog that failed.
+      setPendingDelete(null);
       setError("We could not delete that draft. Please try again.");
     } finally {
       setDeletingId("");
@@ -107,7 +123,6 @@ export default function EventList({ user, role, onEdit, onView, onCreate, onDele
       const status = String(event.status || "").toUpperCase();
       const isDraft = status === "DRAFT";
       const saved = savedAt(event.updated_at);
-      const confirming = confirmingId === event.id;
       return <article className="cs-record" key={event.id}>
         <div className="cs-record-title">
           <h2>{event.name || "Untitled event"}</h2>
@@ -115,7 +130,7 @@ export default function EventList({ user, role, onEdit, onView, onCreate, onDele
         </div>
         <p className="cs-record-ref">{event.reference_no}</p>
         <div className="cs-record-status">
-          <span className="cs-pill">{event.status}</span>
+          <span className={`cs-pill cs-pill-${statusTone(status)}`}>{event.status}</span>
         </div>
         <div className="cs-record-modified">
           {saved
@@ -125,16 +140,26 @@ export default function EventList({ user, role, onEdit, onView, onCreate, onDele
         <div className="cs-record-actions">
           {isDraft && onEdit && <button type="button" className="cs-btn cs-btn-ghost cs-record-btn" onClick={() => onEdit(event)}>Edit</button>}
           {!isDraft && VIEWABLE.includes(status) && onView && <button type="button" className="cs-btn cs-btn-ghost cs-record-btn" onClick={() => onView(event)}>View details</button>}
-          {isDraft && !confirming && <button type="button" className="cs-btn cs-btn-ghost cs-record-btn cs-record-danger" onClick={() => setConfirmingId(event.id)}>Delete</button>}
-          {isDraft && confirming && <>
-            <span className="cs-record-confirm">Delete this draft?</span>
-            <button type="button" className="cs-btn cs-btn-ghost cs-record-btn cs-record-danger" disabled={deletingId === event.id} onClick={() => remove(event)}>
-              {deletingId === event.id ? "Deleting…" : "Yes, delete"}
-            </button>
-            <button type="button" className="cs-btn cs-btn-ghost cs-record-btn" onClick={() => setConfirmingId("")}>Keep</button>
-          </>}
+          {isDraft && <button type="button" className="cs-btn cs-btn-ghost cs-record-btn cs-record-danger" onClick={() => setPendingDelete(event)}>Delete</button>}
         </div>
       </article>;
     })}</div>
+    {pendingDelete && <div className="cs-modal-backdrop" onMouseDown={(clickEvent) => { if (clickEvent.target === clickEvent.currentTarget && !deletingId) setPendingDelete(null); }}>
+      <div className="cs-modal" role="dialog" aria-modal="true" aria-labelledby="cs-delete-draft-title">
+        <h2 id="cs-delete-draft-title">Delete this draft?</h2>
+        <p>
+          <strong>{pendingDelete.name || "Untitled event"}</strong>
+          {pendingDelete.reference_no ? ` (${pendingDelete.reference_no})` : ""} will be deleted along with
+          everything saved with it. This cannot be undone.
+        </p>
+        <div className="cs-modal-actions">
+          {/* The safe choice takes focus, so Enter on an unread dialog keeps the draft. */}
+          <button type="button" autoFocus className="cs-btn cs-btn-ghost" disabled={Boolean(deletingId)} onClick={() => setPendingDelete(null)}>Keep draft</button>
+          <button type="button" className="cs-btn cs-btn-ghost cs-record-danger" disabled={Boolean(deletingId)} onClick={() => remove(pendingDelete)}>
+            {deletingId ? "Deleting…" : "Yes, delete"}
+          </button>
+        </div>
+      </div>
+    </div>}
   </>;
 }

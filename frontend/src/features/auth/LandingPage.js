@@ -59,6 +59,16 @@ function LandingPage() {
     setSuccess("");
   };
 
+  // The header actions always mean "take me to sign in". This is deliberately
+  // separate from switching tabs inside the form, where a visitor may be
+  // comparing the two registration paths and should remain in that mode.
+  const openLogin = (nextPortal) => {
+    switchPortal(nextPortal);
+    setMode("login");
+    setPassword("");
+    setConfirmPassword("");
+  };
+
   const handleRegister = async (event) => {
     event.preventDefault();
     setError("");
@@ -79,7 +89,7 @@ function LandingPage() {
     }
 
     if (!isValidMobileNumber(mobileNumber)) {
-      setError("Enter a mobile number containing at least 8 digits.");
+      setError("Enter a mobile number containing between 7 and 15 digits.");
       return;
     }
 
@@ -167,14 +177,14 @@ function LandingPage() {
           <a
             className="cs-btn cs-btn-ghost"
             href="#sign-in"
-            onClick={() => switchPortal(PORTALS.individual.id)}
+            onClick={() => openLogin(PORTALS.individual.id)}
           >
             Attendee log in
           </a>
           <a
             className="cs-btn cs-btn-primary"
             href="#sign-in"
-            onClick={() => switchPortal(PORTALS.corporate.id)}
+            onClick={() => openLogin(PORTALS.corporate.id)}
           >
             Staff log in
           </a>
@@ -244,7 +254,7 @@ function LandingPage() {
                   )}
                   <label className="cs-field" htmlFor="cs-mobile">
                     <span>Mobile number</span>
-                    <input id="cs-mobile" type="tel" autoComplete="tel" required inputMode="numeric" pattern="[0-9]{8,}" minLength="8" placeholder="At least 8 digits" value={mobileNumber} onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, ""))} />
+                    <input id="cs-mobile" type="tel" autoComplete="tel" required inputMode="numeric" pattern="[0-9]{7,15}" minLength="7" maxLength="15" placeholder="7 to 15 digits" value={mobileNumber} onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, ""))} />
                   </label>
                   <label className="cs-field" htmlFor="cs-contact-method">
                     <span>Preferred contact method</span>

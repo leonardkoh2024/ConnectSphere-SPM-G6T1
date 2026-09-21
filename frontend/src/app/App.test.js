@@ -45,6 +45,20 @@ describe('landing page', () => {
     );
   });
 
+  test.each([
+    [/attendee log in/i, /individual account sign-in/i],
+    [/staff log in/i, /corporate account sign-in/i]
+  ])('the %s header link opens its login form from registration', async (linkName, formName) => {
+    render(<App />);
+
+    await userEvent.click(screen.getByRole('button', { name: /create an account/i }));
+    expect(screen.getByRole('form', { name: /registration/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('link', { name: linkName }));
+
+    expect(screen.getByRole('form', { name: formName })).toBeInTheDocument();
+  });
+
   test('the corporate portal pre-sets the role from the work email', async () => {
     render(<App />);
 
@@ -106,9 +120,21 @@ describe('isStrongPassword', () => {
 });
 
 describe('isValidMobileNumber', () => {
-  test('requires at least eight digits and does not allow separators', () => {
-    expect(isValidMobileNumber('1234567')).toBe(false);
+  test('accepts a mobile number below the 15-digit maximum', () => {
+    expect(isValidMobileNumber('91234567890123')).toBe(true);
+  });
+
+  test('accepts a mobile number at the 15-digit maximum', () => {
+    expect(isValidMobileNumber('912345678901234')).toBe(true);
+  });
+
+  test('rejects a mobile number above the 15-digit maximum', () => {
+    expect(isValidMobileNumber('9123456789012345')).toBe(false);
+  });
+
+  test('requires 7 to 15 digits and does not allow separators', () => {
+    expect(isValidMobileNumber('123456')).toBe(false);
     expect(isValidMobileNumber('+65 9123 4567')).toBe(false);
-    expect(isValidMobileNumber('91234567')).toBe(true);
+    expect(isValidMobileNumber('9123456')).toBe(true);
   });
 });
