@@ -417,7 +417,7 @@ describe('B9 equipment must be answered before submission (TC-034, TC-035, TC-03
     await expectAccepted();
     expect(setDoc).toHaveBeenCalledWith(
       'event_equipment/event-123_0',
-      expect.objectContaining({ equipment_type: 'Projector', quantity: 1 })
+      expect.objectContaining({ equipment_type: 'AUDIO', quantity: 1 })
     );
   });
 });
