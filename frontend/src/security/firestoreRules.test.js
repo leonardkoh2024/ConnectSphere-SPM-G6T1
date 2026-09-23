@@ -42,12 +42,12 @@ describe('TC-015 no request is left unguarded', () => {
     expect(RULES).not.toMatch(/allow\s+[a-z,\s]+:\s*if\s+signedIn\(\)\s*;/);
   });
 
-  test('every allow rule tests the caller identity or their role', () => {
+  test('every allow rule tests the caller identity/role or explicitly denies all clients', () => {
     const conditions = allowConditions(RULES.replace(/\s+/g, ' '));
 
     expect(conditions.length).toBeGreaterThan(0);
     conditions.forEach((condition) =>
-      expect(condition).toMatch(/request\.auth\.uid|hasRole\(|ownsEvent\(/)
+      expect(condition).toMatch(/request\.auth\.uid|hasRole\(|ownsEvent\(|currentCoordinator\(|canReadEvent\(|^false$/)
     );
   });
 
@@ -58,8 +58,11 @@ describe('TC-015 no request is left unguarded', () => {
     expect(users).toContain('request.resource.data.role == resource.data.role');
   });
 
-  test('a user profile is readable only by the user it belongs to', () => {
-    expect(matchBlock('users')).toMatch(/allow get:\s*if signedIn\(\) && userId == request\.auth\.uid/);
+  test('a user profile is private except for active coordinator directory entries', () => {
+    const users = matchBlock('users');
+    expect(users).toContain('userId == request.auth.uid');
+    expect(users).toContain("resource.data.role == 'EVENT_COORDINATOR'");
+    expect(users).toContain('resource.data.is_active == true');
   });
 });
 
@@ -87,11 +90,12 @@ describe('TC-016 events are readable only by the roles related to them', () => {
     expect(matchBlock('events')).not.toContain(ROLES.ATTENDEE);
   });
 
-  test('only the owning organiser may write an event', () => {
+  test('event writes are limited to the owning organiser or assigned coordinator workflow', () => {
     const events = matchBlock('events');
 
     expect(events).toMatch(/allow create:\s*if hasRole\('EVENT_ORGANISER'\) && request\.resource\.data\.organiser_id == request\.auth\.uid/);
-    expect(events).toMatch(/allow update:\s*if hasRole\('EVENT_ORGANISER'\) && resource\.data\.organiser_id == request\.auth\.uid/);
+    expect(events).toContain("hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid");
+    expect(events).toContain('coordinatorWorkflowUpdate()');
   });
 });
 
@@ -100,7 +104,7 @@ describe('TC-016 events are readable only by the roles related to them', () => {
 // TC-015/016, this asserts the rule text — the text is what a loosened rule
 // would change — with full behavioural proof left to a Rules Playground
 // screenshot in the evidence pack, since this repo runs no emulator.
-describe('TC-080 the client can never write or change the coordinator', () => {
+describe('TC-080 coordinator assignment fields remain protected', () => {
   test('create requires coordinator_id and assigned_at to be absent or null', () => {
     const events = matchBlock('events');
     const createRule = events.match(/allow create:\s*if([^;]*);/)[1];
@@ -111,7 +115,7 @@ describe('TC-080 the client can never write or change the coordinator', () => {
     expect(events).toContain("request.resource.data.get('assigned_at', null) == null");
   });
 
-  test('update requires coordinator_id and assigned_at to stay exactly as they were', () => {
+  test('organiser updates require coordinator_id and assigned_at to stay unchanged', () => {
     const events = matchBlock('events');
     const updateRule = events.match(/allow update:\s*if([^;]*);/)[1];
 
@@ -119,5 +123,36 @@ describe('TC-080 the client can never write or change the coordinator', () => {
 
     expect(events).toContain("request.resource.data.get('coordinator_id', null) == resource.data.get('coordinator_id', null)");
     expect(events).toContain("request.resource.data.get('assigned_at', null) == resource.data.get('assigned_at', null)");
+  });
+
+  test('C9 reassignment is limited to the current coordinator and an active coordinator target', () => {
+    const events = matchBlock('events');
+
+    expect(events).toContain('resource.data.coordinator_id == request.auth.uid');
+    expect(events).toContain("data.role == 'EVENT_COORDINATOR'");
+    expect(events).toContain('data.is_active == true');
+    expect(events).toContain("hasOnly(['coordinator_id', 'assigned_at', 'updated_at'])");
+  });
+});
+
+describe('C7 TC-074 rejected events are immutable to the organiser', () => {
+  test('organiser updates are limited to drafts or the open clarification window', () => {
+    const events = matchBlock('events');
+    const updateRule = events.match(/allow update:\s*if([^;]*);/)[1];
+
+    expect(updateRule).toContain('organiserMayEdit()');
+    expect(events).toContain("resource.data.status == 'DRAFT'");
+    expect(events).toContain("resource.data.status == 'UNDER_REVIEW'");
+    expect(events).toContain("resource.data.get('open_clarification_id', null) != null");
+    const organiserRule = events.slice(events.indexOf('function organiserMayEdit()'), events.indexOf('allow create:'));
+    expect(organiserRule).not.toContain("resource.data.status == 'REJECTED'");
+  });
+});
+
+describe('C4/C7/C9 workflow records are guarded for browser SDK access', () => {
+  test.each(['clarification_requests', 'clarification_responses', 'coordinator_assignments', 'notifications'])('%s checks role or relationship', (collection) => {
+    const block = matchBlock(collection);
+    expect(block).not.toMatch(/allow read, write:\s*if false/);
+    expect(block).toMatch(/request\.auth\.uid|hasRole\(|canReadEvent\(|currentCoordinator\(|ownsEvent\(/);
   });
 });

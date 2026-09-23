@@ -5,6 +5,9 @@ service cloud.firestore {
     function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
     function hasRole(role) { return signedIn() && profile().role == role; }
     function ownsEvent(eventId) { return signedIn() && get(/databases/$(database)/documents/events/$(eventId)).data.organiser_id == request.auth.uid; }
+    function currentCoordinator(eventId) { return signedIn() && get(/databases/$(database)/documents/events/$(eventId)).data.coordinator_id == request.auth.uid; }
+    function previousCoordinator(eventId) { return signedIn() && exists(/databases/$(database)/documents/coordinator_assignments/$(eventId + '_' + request.auth.uid)); }
+    function canReadEvent(eventId) { return ownsEvent(eventId) || currentCoordinator(eventId) || previousCoordinator(eventId); }
 
     match /users/{userId} {
       allow create: if signedIn() && userId == request.auth.uid
@@ -12,7 +15,15 @@ service cloud.firestore {
         && request.resource.data.role in ['EVENT_ORGANISER', 'ATTENDEE']
         && request.resource.data.mobile_number is string
         && request.resource.data.mobile_number.matches('^[0-9]{7,15}$');
-      allow get: if signedIn() && userId == request.auth.uid;
+      // C8/C9 need the assigned coordinator's name and the active coordinator
+      // directory. Only active coordinator profiles are exposed to other signed-
+      // in users; list access remains coordinator-only and therefore requires a
+      // role/is_active constrained query.
+      allow get: if signedIn() && (userId == request.auth.uid
+        || (resource.data.role == 'EVENT_COORDINATOR' && resource.data.is_active == true));
+      allow list: if hasRole('EVENT_COORDINATOR')
+        && resource.data.role == 'EVENT_COORDINATOR'
+        && resource.data.is_active == true;
       allow update: if signedIn() && userId == request.auth.uid
         && request.resource.data.role == resource.data.role
         && request.resource.data.user_id == resource.data.user_id
@@ -29,11 +40,10 @@ service cloud.firestore {
       //
       // get() with a default keeps a missing field from erroring the whole
       // expression: an event created today has only organiser_id.
-      // C1 — coordinator_id and assigned_at are the backend's alone to write
-      // (it uses the Admin SDK, which these rules do not govern). A client may
-      // create an event with no coordinator yet, and may never set or change
-      // either field itself: create requires both absent/null, and update must
-      // leave both exactly as they were, however unrelated the rest of the edit.
+      // C1 assigns the initial coordinator through the existing backend. A
+      // browser may create an event with no coordinator, and organiser edits
+      // must preserve these fields. The narrow C9 coordinator workflow below
+      // is the only browser-side exception.
       function noClientCoordinatorWrite() {
         return request.resource.data.get('coordinator_id', null) == null
           && request.resource.data.get('assigned_at', null) == null;
@@ -42,13 +52,51 @@ service cloud.firestore {
         return request.resource.data.get('coordinator_id', null) == resource.data.get('coordinator_id', null)
           && request.resource.data.get('assigned_at', null) == resource.data.get('assigned_at', null);
       }
+      function coordinatorWorkflowUpdate() {
+        return hasRole('EVENT_COORDINATOR')
+          && resource.data.coordinator_id == request.auth.uid
+          && (
+            (resource.data.status == 'SUBMITTED'
+              && request.resource.data.status == 'UNDER_REVIEW'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updated_at']))
+            || (resource.data.status == 'UNDER_REVIEW'
+              && resource.data.get('open_clarification_id', null) == null
+              && request.resource.data.open_clarification_id is string
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['open_clarification_id', 'updated_at']))
+            || (resource.data.status == 'UNDER_REVIEW'
+              && resource.data.get('open_clarification_id', null) == null
+              && request.resource.data.status == 'REJECTED'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updated_at']))
+            || (!(resource.data.status in ['COMPLETED', 'CANCELLED', 'REJECTED'])
+              && request.resource.data.coordinator_id != request.auth.uid
+              && get(/databases/$(database)/documents/users/$(request.resource.data.coordinator_id)).data.role == 'EVENT_COORDINATOR'
+              && get(/databases/$(database)/documents/users/$(request.resource.data.coordinator_id)).data.is_active == true
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coordinator_id', 'assigned_at', 'updated_at']))
+          );
+      }
+      // C7 AC3 — terminal requests are not editable through a crafted client
+      // call. Drafts may be saved/submitted; Under Review is writable only for
+      // the narrow C5 clarification-amendment window, without changing the
+      // workflow marker itself, except when the organiser's response transaction
+      // closes that marker atomically.
+      function organiserMayEdit() {
+        return resource.data.status == 'DRAFT'
+          || (resource.data.status == 'UNDER_REVIEW'
+            && resource.data.get('open_clarification_id', null) != null
+            && request.resource.data.status == 'UNDER_REVIEW'
+            && (request.resource.data.get('open_clarification_id', null) == resource.data.get('open_clarification_id', null)
+              || (request.resource.data.get('open_clarification_id', null) == null
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['open_clarification_id', 'updated_at']))));
+      }
 
       allow create: if hasRole('EVENT_ORGANISER') && request.resource.data.organiser_id == request.auth.uid && request.resource.data.created_by == request.auth.uid && noClientCoordinatorWrite();
       allow get, list: if (hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid)
         || (hasRole('EVENT_COORDINATOR') && resource.data.get('coordinator_id', '') == request.auth.uid)
+        || (hasRole('EVENT_COORDINATOR') && previousCoordinator(eventId))
         || (hasRole('VENUE_STAFF') && resource.data.get('venue_staff_id', '') == request.auth.uid)
         || (hasRole('TECHNICAL_SUPPORT_STAFF') && resource.data.get('tech_support_id', '') == request.auth.uid);
-      allow update: if hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid && coordinatorUnchanged();
+      allow update: if (hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid && coordinatorUnchanged() && organiserMayEdit())
+        || coordinatorWorkflowUpdate();
       // B8 — only the owning organiser, and only while it is still a draft. Once a
       // request has been submitted it is part of a coordinator's queue, so it is
       // no longer the organiser's alone to remove.
@@ -71,6 +119,60 @@ service cloud.firestore {
       allow create: if ownsEvent(request.resource.data.event_id);
       allow get, list, update, delete: if ownsEvent(resource.data.event_id);
     }
-    match /event_history/{historyId} { allow create: if hasRole('EVENT_ORGANISER') && request.resource.data.actor_id == request.auth.uid && ownsEvent(request.resource.data.event_id); allow get, list: if ownsEvent(resource.data.event_id); }
+    match /event_history/{historyId} {
+      allow create: if signedIn()
+        && request.resource.data.get('history_id', historyId) == historyId
+        && request.resource.data.actor_id == request.auth.uid
+        && (ownsEvent(request.resource.data.event_id) || currentCoordinator(request.resource.data.event_id));
+      allow get, list: if canReadEvent(resource.data.event_id);
+    }
+
+    match /clarification_requests/{clarificationId} {
+      allow get, list: if canReadEvent(resource.data.event_id);
+      allow create: if hasRole('EVENT_COORDINATOR')
+        && request.resource.data.clarification_id == clarificationId
+        && request.resource.data.created_by == request.auth.uid
+        && currentCoordinator(request.resource.data.event_id)
+        && get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.status == 'UNDER_REVIEW'
+        && get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.get('open_clarification_id', null) == null;
+      allow update: if hasRole('EVENT_ORGANISER')
+        && ownsEvent(resource.data.event_id)
+        && resource.data.status == 'OPEN'
+        && request.resource.data.status == 'ANSWERED'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'responded_at']);
+    }
+
+    match /clarification_responses/{responseId} {
+      function clarification() { return get(/databases/$(database)/documents/clarification_requests/$(request.resource.data.clarification_id)).data; }
+      function existingClarification() { return get(/databases/$(database)/documents/clarification_requests/$(resource.data.clarification_id)).data; }
+      allow get, list: if canReadEvent(existingClarification().event_id);
+      allow create: if hasRole('EVENT_ORGANISER')
+        && request.resource.data.response_id == responseId
+        && request.resource.data.responder_id == request.auth.uid
+        && ownsEvent(clarification().event_id)
+        && clarification().status == 'OPEN';
+    }
+
+    match /coordinator_assignments/{assignmentId} {
+      allow get, list: if signedIn()
+        && (resource.data.coordinator_id == request.auth.uid || canReadEvent(resource.data.event_id));
+      allow create, update: if hasRole('EVENT_COORDINATOR')
+        && currentCoordinator(request.resource.data.event_id)
+        && assignmentId == request.resource.data.event_id + '_' + request.resource.data.coordinator_id;
+    }
+
+    match /notifications/{notificationId} {
+      allow get, list, update: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.notification_id == notificationId
+        && (
+          (currentCoordinator(request.resource.data.event_id)
+            && request.resource.data.user_id in [request.auth.uid,
+              get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.organiser_id,
+              getAfter(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.coordinator_id])
+          || (ownsEvent(request.resource.data.event_id)
+            && request.resource.data.user_id == get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.coordinator_id)
+        );
+    }
   }
 }

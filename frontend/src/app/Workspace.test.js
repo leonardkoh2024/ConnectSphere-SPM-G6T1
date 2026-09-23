@@ -21,6 +21,8 @@ jest.mock('../lib/firebase', () => ({ auth: {}, db: {} }));
 jest.mock('firebase/auth', () => ({ signOut: jest.fn() }));
 jest.mock('../features/events/EventRequestForm', () => ({ __esModule: true, default: () => null }));
 jest.mock('../features/events/EventList', () => ({ __esModule: true, default: () => null }));
+jest.mock('../features/events/EventReviewScreen', () => ({ __esModule: true, default: () => null }));
+jest.mock('../features/events/components/DecisionSummary', () => ({ __esModule: true, default: () => null }));
 
 const USER = { uid: 'u1', email: 'nadia.organiser@connectsphere.com' };
 

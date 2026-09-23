@@ -1130,6 +1130,51 @@
   font-size: 13px;
 }
 
+/* ---------- event review and decisions ---------- */
+
+.cs-decision-summary { margin: 24px 0 0; }
+
+.cs-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin: 0;
+}
+
+.cs-detail-grid div { min-width: 0; }
+.cs-detail-grid .cs-detail-wide { grid-column: 1 / -1; }
+.cs-detail-grid dt { margin-bottom: 4px; color: var(--cs-muted); font-size: 13px; font-weight: 600; }
+.cs-detail-grid dd { margin: 0; white-space: pre-wrap; }
+
+.cs-review-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.cs-review-heading h2 { margin: 0 0 4px; font-size: 24px; }
+.cs-review-heading p { margin: 0; color: var(--cs-muted); }
+
+.cs-exchange { display: grid; gap: 12px; margin-top: 24px; }
+.cs-exchange h3, .cs-action-box h3 { margin: 0; font-size: 19px; }
+.cs-exchange article { padding: 16px; border-left: 3px solid var(--cs-accent); background: var(--cs-surface-alt); border-radius: var(--cs-radius-m); }
+.cs-exchange article strong { margin-right: 8px; }
+.cs-exchange article time { color: var(--cs-muted); font-size: 13px; }
+.cs-exchange article p { margin: 8px 0 0; white-space: pre-wrap; }
+
+.cs-inline-form { display: grid; gap: 12px; margin-top: 24px; }
+.cs-inline-form .cs-btn { justify-self: end; }
+.cs-attention { margin: 24px 0 0; padding: 16px; border-radius: var(--cs-radius-l); background: var(--cs-danger-faded); color: var(--cs-danger); }
+.cs-review-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+.cs-action-box { margin-top: 20px; }
+
+@media (max-width: 900px) {
+  .cs-detail-grid { grid-template-columns: 1fr; }
+  .cs-detail-grid .cs-detail-wide { grid-column: auto; }
+}
+
 /* ---------- responsive ---------- */
 
 @media (max-width: 900px) {
