@@ -17,7 +17,8 @@
   },
   "devDependencies": {
     "concurrently": "^9.2.4",
-    "dotenv-cli": "^11.0.0"
+    "dotenv-cli": "^11.0.0",
+    "firebase-tools": "^15.31.0"
   },
   "engines": {
     "node": ">=18"
