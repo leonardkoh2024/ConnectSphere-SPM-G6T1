@@ -36,6 +36,7 @@ they can be read next to the acceptance criteria and move into the service layer
 | — | — | The form marks what is compulsory | TC-070 |
 | — | — | Confirmations appear as toasts | TC-071 |
 | C1 | SCRUM-102 | Have submitted events assigned to a coordinator automatically | TC-072 – TC-080 |
+| C6 | SCRUM-TBD | Approve a submitted request | TC-112 - TC-117 |
 
 Suites: `frontend/src/features/events/EventRequestForm.test.js` (TC-017 – TC-047, TC-064 – TC-070),
 `frontend/src/features/events/EventList.test.js` (TC-016, TC-058 – TC-063),
@@ -205,6 +206,25 @@ whether the organiser has finished.
 | TC-078 | Assignment timestamp recorded at assignment time, in SGT | seeded `{C1}`; note current time T | 1. Submit E1 at ~T<br>2. Read E1.assigned_at | E1.assigned_at non-null; equals assignment time within tolerance (e.g. ±2s); stored in SGT; recorded alongside coordinator_id | As expected | Pass | AC2. Stored as a Firestore `Timestamp` via `FieldValue.serverTimestamp()`, same as `created_at`/`submitted_at` elsewhere; SGT is a display concern, not a storage format |
 | TC-079 | Assignment happens once — re-saving or editing an already-assigned event does not reassign | E1 already assigned to C1 (coordinator_id set) | 1. Edit and re-save a detail on E1 (or re-trigger a submit on it)<br>2. Retrieve E1 | E1.coordinator_id is still C1 (unchanged); no fresh assignment runs, because assignment only fires when coordinator_id is empty | As expected | Pass | AC7 — assign once |
 | TC-080 | The client can never write or change the coordinator (server-side rule) | Organiser authenticated; `firestore.rules` in force; for step 2, E1 already assigned to C1 | 1. Attempt a direct client write creating an event with `coordinator_id` pre-filled<br>2. Attempt a direct client write changing or clearing `coordinator_id` (or `assigned_at`) on E1 | Both writes are rejected by `firestore.rules`: `coordinator_id` is not client-writable on create and is immutable to the client once set; only the backend may write it (and `assigned_at`) | As expected | Pass | AC6, AC7 — server-side integrity (A4). Same approach as TC-015/016: asserts the rule text, not live behaviour, for the same emulator/Java-runtime reason |
+
+---
+
+## C6 / SCRUM-TBD — Approve a submitted request
+
+> As an Event Coordinator, I want to approve a request I have reviewed so that it can proceed to planning.
+
+**Scope:** this story is the **Approve** transition only (Under Review -> Approved). The confirm gate (venue + technical arrangements -> Confirmed) is owned by **D3**. IDs run from TC-112 because TC-081 - TC-111 are reserved by the spec-first `test.js` suite (C5, E2, E5, E6). SCRUM ticket to be filled in.
+
+Pre-condition for every case: an Event Coordinator is signed in, and the event named is assigned to a coordinator as the row states.
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-112 | Happy path - the assigned coordinator approves a request that is under review | E1 is `Under Review`, assigned to coordinator C1; C1 signed in | 1. Open E1<br>2. Approve E1 | E1.status becomes `Approved`; the decision, `deciding_coordinator_id` = C1 and a decision timestamp (SGT) are recorded |  | Not Executed | AC1, AC2 - happy path |
+| TC-113 | Approve is offered only from Under Review | E1 set to `Submitted`, then `Approved`, then `Rejected`, then `Draft` in turn; C1 signed in | For each status: attempt to approve E1 | Blocked each time; status unchanged and nothing is written | | Not Executed | AC1 - negative/boundary. Runs as four variants |
+| TC-114 | Only the assigned coordinator may approve | E1 `Under Review`, assigned to C1; a different coordinator C2 signed in | Attempt to approve E1 as C2 | Refused; E1 is unchanged | | Not Executed | AC3 (with A4/A5) |
+| TC-115 | Approve is unavailable while a clarification request is open | E1 `Under Review` with an open clarification request (C4); C1 signed in | 1. Attempt to approve E1<br>2. Close the clarification (organiser responds)<br>3. Attempt to approve again | The first attempt is blocked (awaiting the organiser); after the clarification closes, approve succeeds and status becomes `Approved` | | Not Executed | AC4 - interaction with C4 AC2 |
+| TC-116 | Approval writes an audit-history entry | E1 `Under Review`, assigned to C1 | Approve E1 | An `event_history` entry (`action_type` = `EVENT_APPROVED`, actor C1, timestamp in SGT) is written | | Not Executed | AC5 - audit, ties to D6 |
+| TC-117 | The client cannot approve by writing the status directly (server-side rule) | E1 `Under Review`; `firestore.rules` in force | Attempt a direct client write setting `status = Approved` (or the decision fields) on E1 | The write is rejected by `firestore.rules`; only the backend may make the transition | | Not Executed | integrity (A4) - assert via `firestoreRules.test.js` |
 
 ---
 
