@@ -107,11 +107,11 @@ Acceptance Criteria:
 Story,C1,"C — Review, Approval and Coordinator Assignment",Have submitted events assigned to a coordinator automatically,"As an Event Organiser, I want my submitted event picked up by a named coordinator without anyone having to notice it so that my request does not sit unclaimed.
 
 Acceptance Criteria:
-1. On submission, exactly one Event Coordinator is assigned; an event is never assigned to two coordinators at once.
-2. The coordinator identity and the assignment timestamp are recorded on the event.
-3. Assignment uses round-robin across active coordinators.
-4. If no active coordinator exists, the event stays in the unassigned queue and is visible there rather than being lost.
-5. A coordinator can have more than one event assigned to them.",20
+1. On first submission, exactly one Event Coordinator is assigned; an event is never assigned to two coordinators at once.
+2. The coordinator identity and the assignment timestamp (in SGT) are recorded on the event; assignment does not change the event's status, which stays Submitted.
+3. Assignment uses circular rotation across all coordinators by ascending coordinator_seq, wrapping from the last back to the first.
+4. A coordinator can hold any number of events; a coordinator is never considered busy and there is no cap.
+5. The coordinator is system-assigned: the client cannot set or change coordinator_id or assigned_at (enforced in firestore.rules); assignment runs once, only when coordinator_id is empty, and is immutable thereafter.",20
 Story,C2,"C — Review, Approval and Coordinator Assignment",See the events I am responsible for,"As an Event Coordinator, I want a list of the event requests assigned to me so that I know what I am accountable for.
 
 Acceptance Criteria:
@@ -137,17 +137,16 @@ Acceptance Criteria:
 1. While a clarification request is open, the Organiser can edit their request's fields and add a response message.
 2. Submitting the response closes the clarification request, clears the awaiting-organiser marker, and records the response and its timestamp.
 3. The full exchange is visible to both parties in chronological order.",8
-Story,C6,"C — Review, Approval and Coordinator Assignment",Approve a submitted request,"As an Event Coordinator, I want to confirm the details of an event once its venue and technical arrangements are in place, so that the Event Organiser and the technical team work from one agreed set of arrangements.
+Story,C6,"C — Review, Approval and Coordinator Assignment",Approve a submitted request,"As an Event Coordinator, I want to approve a request I have reviewed so that it can proceed to planning.
 
 Acceptance Criteria:
 1. Approve is offered only from Under Review.
-2. On approval the status becomes Approved and the decision, deciding coordinator and timestamp are recorded.
-3. Cannot confirm an event unless its venue booking has been approved. (defines a mandatory arrangement)
-4. Cannot confirm an event unless the requested technical arrangements have been reserved. (the second mandatory arrangement)
-5. Where no technical support was requested for the event, has the technical condition treated as satisfied.
-6. On confirming, sees the event's status change to """"Confirmed"""".
-7. Has the Event Organiser and the technical team informed once the event is confirmed.
-8. Receives an error identifying what is still outstanding if they attempt to confirm while a mandatory arrangement is missing.""",13
+2. On approval the status becomes Approved and the decision, deciding coordinator and timestamp (SGT) are recorded.
+3. Only the coordinator assigned to the event may approve it.
+4. Approve is unavailable while a clarification request is open (see C4).
+5. The approval is recorded in the event's history.
+
+Note: the confirm gate (venue and technical arrangements must be in place before Confirmed) is owned by D3, not C6.",13
 Story,C7,"C — Review, Approval and Coordinator Assignment",Reject a request with a reason,"As an Event Coordinator, I want to reject a request and state why so that the organiser understands the outcome instead of waiting indefinitely.
 
 Acceptance Criteria:
@@ -183,12 +182,14 @@ Acceptance Criteria:
 3. Saving requires an explicit acknowledgement of that warning; cancelling leaves the event untouched.
 4. The change is recorded with old and new values, actor and timestamp.
 5. No booking or reservation is altered by this story",5
-Story,D3,D — Event Status and Information Management,Confirm an event once arrangements are in place,"As an Event Organiser, I want my event confirmed only when its arrangements are actually secured so that I am never told it is confirmed when it is not.
+Story,D3,D — Event Status and Information Management,Confirm an event once arrangements are in place,"As an Event Coordinator, I want an event confirmed only when its arrangements are actually secured, so that the Event Organiser and the technical team work from one agreed set of arrangements.
 
 Acceptance Criteria:
 1. Confirm is offered only when the event has an approved venue booking AND an equipment request marked arranged by Technical Support.
-2. If either is missing, Confirm is unavailable and the view names which arrangement is outstanding.
-3. On confirmation the status becomes Confirmed and the confirmation timestamp is recorded.",5
+2. Where no technical support was requested for the event, the technical condition is treated as satisfied.
+3. If a mandatory arrangement is missing, Confirm is unavailable and the view names which arrangement is still outstanding.
+4. On confirmation the status becomes Confirmed and the confirmation timestamp (SGT) is recorded.
+5. On confirmation, the Event Organiser and the technical team are informed.",5
 Story,D4,D — Event Status and Information Management,Cancel an event,"As an Event Coordinator, I want to cancel an event so that venue, equipment and attendees are released when it will not go ahead.
 
 Acceptance Criteria:
