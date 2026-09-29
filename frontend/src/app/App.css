@@ -1170,6 +1170,31 @@
 .cs-review-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
 .cs-action-box { margin-top: 20px; }
 
+.cs-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.cs-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: var(--cs-radius-round);
+  background: var(--cs-accent-faded);
+  color: var(--cs-accent-active);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cs-result-count {
+  margin: 20px 0 0;
+  color: var(--cs-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 @media (max-width: 900px) {
   .cs-detail-grid { grid-template-columns: 1fr; }
   .cs-detail-grid .cs-detail-wide { grid-column: auto; }

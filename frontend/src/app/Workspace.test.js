@@ -23,6 +23,8 @@ jest.mock('../features/events/EventRequestForm', () => ({ __esModule: true, defa
 jest.mock('../features/events/EventList', () => ({ __esModule: true, default: () => null }));
 jest.mock('../features/events/EventReviewScreen', () => ({ __esModule: true, default: () => null }));
 jest.mock('../features/events/components/DecisionSummary', () => ({ __esModule: true, default: () => null }));
+jest.mock('../features/venues/VenueCatalogue', () => ({ __esModule: true, default: () => null }));
+jest.mock('../features/venues/VenueSearch', () => ({ __esModule: true, default: () => null }));
 
 const USER = { uid: 'u1', email: 'nadia.organiser@connectsphere.com' };
 

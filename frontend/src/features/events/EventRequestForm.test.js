@@ -496,6 +496,22 @@ describe('B9 a request cannot be submitted twice (TC-041, TC-042)', () => {
     expect(screen.queryByRole('button', { name: /save draft/i })).not.toBeInTheDocument();
     expect(screen.getByLabelText(/event name/i)).toHaveAttribute('readonly');
   });
+
+  test('TC-081 a request with an open clarification is editable, and submit is replaced by save changes', async () => {
+    const draft = {
+      id: 'event-123',
+      status: 'UNDER_REVIEW',
+      reference_no: 'EVT-100234',
+      name: 'Q4 Partner Summit',
+      open_clarification_id: 'CLR-001'
+    };
+    render(<EventRequestForm user={USER} draft={draft} onSaved={jest.fn()} />);
+
+    expect(await screen.findByText(/a clarification is open/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /save changes/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /submit request/i })).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/event name/i)).not.toHaveAttribute('readonly');
+  });
 });
 
 describe('B9 the block names exactly the fields that are wrong (TC-043)', () => {

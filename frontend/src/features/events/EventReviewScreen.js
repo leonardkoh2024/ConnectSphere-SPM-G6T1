@@ -5,7 +5,7 @@ import { reviewApi } from "./reviewApi";
 
 const shownTime = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Not recorded";
 
-export default function EventReviewScreen({ queueOnly = false, onNotice }) {
+export default function EventReviewScreen({ queueOnly = false, onNotice, onFindVenues }) {
   const [events, setEvents] = useState([]);
   const [selected, setSelected] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -74,7 +74,8 @@ export default function EventReviewScreen({ queueOnly = false, onNotice }) {
       </dl>
       {exchange.length > 0 && <section className="cs-exchange"><h3>Clarification history</h3>{exchange.map((item) => <article key={`${item.kind}-${item.id}`}><strong>{item.kind === "QUESTION" ? "Coordinator" : "Organiser"}</strong><time>{shownTime(item.created_at)}</time><p>{item.message}</p></article>)}</section>}
       {hasOpen && <p className="cs-attention">Awaiting the organiser. Clarify and Reject are unavailable until they respond.</p>}
-      {(canDecide || canReassign) && <div className="cs-review-actions">
+      {(canDecide || canReassign || typeof onFindVenues === "function") && <div className="cs-review-actions">
+        {typeof onFindVenues === "function" && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => onFindVenues(event)}>Find venues</button>}
         {canDecide && <><button className="cs-btn cs-btn-secondary" type="button" onClick={() => { setMode("clarify"); setMessage(""); }}>Request clarification</button><button className="cs-btn cs-btn-ghost cs-record-danger" type="button" onClick={() => { setMode("reject"); setMessage(""); }}>Reject request</button></>}
         {canReassign && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => setMode("reassign")}>Reassign event</button>}
       </div>}

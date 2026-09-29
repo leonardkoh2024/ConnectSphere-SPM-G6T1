@@ -174,5 +174,29 @@ service cloud.firestore {
             && request.resource.data.user_id == get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.coordinator_id)
         );
     }
+
+    // E2 / E5 — catalogue and search reads are Coordinator and Venue Staff only.
+    // Hiding the screen is not the boundary (A4 / TC-015).
+    match /venues/{venueId} {
+      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
+    }
+    match /venue_layouts/{layoutId} {
+      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
+    }
+    match /venue_facilities/{facilityId} {
+      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
+    }
+    match /venue_accessibility/{accessibilityId} {
+      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
+    }
+    match /venue_operating_hours/{hoursId} {
+      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
+    }
+    match /venue_unavailability/{unavailabilityId} {
+      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
+    }
+    match /venue_bookings/{bookingId} {
+      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
+    }
   }
 }

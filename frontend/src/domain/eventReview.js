@@ -38,3 +38,57 @@ export const chronologicalClarifications = (clarifications = [], responses = [])
     ...clarifications.map((item) => ({ ...item, kind: "QUESTION" })),
     ...responses.map((item) => ({ ...item, kind: "RESPONSE" }))
   ].sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+
+const SERVER_TIMESTAMP = "SERVER_TIMESTAMP";
+
+export const canAmendDuringClarification = (event) =>
+  Boolean(event && event.status === EVENT_STATUS.UNDER_REVIEW && event.open_clarification_id);
+
+export const canRespondToClarification = (event, clarification, userId) => {
+  if (!event || !clarification || !userId) return false;
+  if (clarification.status !== "OPEN") return false;
+  const clarificationId = clarification.clarification_id || clarification.id;
+  if (event.open_clarification_id !== clarificationId) return false;
+  if (event.organiser_id !== userId) return false;
+  return true;
+};
+
+export const submitClarificationResponse = ({
+  event,
+  clarification,
+  responses = [],
+  userId,
+  message,
+  fieldEdits = {},
+  now = SERVER_TIMESTAMP
+}) => {
+  if (!canRespondToClarification(event, clarification, userId)) {
+    return { ok: false, event, clarification, responses };
+  }
+  if (!cleanRequiredText(message)) {
+    return { ok: false, reason: "empty", event, clarification, responses };
+  }
+
+  const response = {
+    clarification_id: clarification.clarification_id || clarification.id,
+    responder_id: userId,
+    message: cleanRequiredText(message),
+    created_at: now
+  };
+
+  return {
+    ok: true,
+    event: {
+      ...event,
+      ...fieldEdits,
+      open_clarification_id: null,
+      status: EVENT_STATUS.UNDER_REVIEW
+    },
+    clarification: {
+      ...clarification,
+      status: "ANSWERED",
+      responded_at: now
+    },
+    responses: [...responses, response]
+  };
+};

@@ -78,7 +78,7 @@ function submitClarificationResponse({
     },
     clarification: {
       ...clarification,
-      status: "CLOSED",
+      status: "ANSWERED",
       responded_at: now
     },
     responses: [...responses, response]
@@ -185,7 +185,7 @@ function timesOverlap(aStart, aEnd, bStart, bEnd) {
 
 function isOccupied(venue, window, bookings = [], unavailability = []) {
   const blocks = [
-    ...bookings.filter((b) => b.venue_id === venue.venue_id && b.status === "Approved"),
+    ...bookings.filter((b) => b.venue_id === venue.venue_id && String(b.status || "").toUpperCase() === "APPROVED"),
     ...unavailability.filter((u) => u.venue_id === venue.venue_id)
   ];
   return blocks.some((block) =>
@@ -321,7 +321,7 @@ describe("C5 / SCRUM-106 Respond to a request for clarification", () => {
     });
 
     assert.equal(result.ok, true);
-    assert.equal(result.clarification.status, "CLOSED");
+    assert.equal(result.clarification.status, "ANSWERED");
     assert.equal(result.event.open_clarification_id, null);
     assert.equal(result.responses[0].responder_id, "u1");
     assert.equal(result.responses[0].created_at, SERVER_TIMESTAMP);
@@ -345,7 +345,7 @@ describe("C5 / SCRUM-106 Respond to a request for clarification", () => {
   });
 
   test("TC-085 AC2 negative — there is nothing to respond to", () => {
-    const closed = openClarification({ status: "CLOSED" });
+    const closed = openClarification({ status: "ANSWERED" });
     const event = openEvent({ open_clarification_id: null });
 
     assert.equal(canRespondToClarification(event, closed, "u1"), false);
@@ -359,7 +359,7 @@ describe("C5 / SCRUM-106 Respond to a request for clarification", () => {
 
     assert.equal(result.ok, false);
     assert.equal(result.responses.length, 0);
-    assert.equal(result.clarification.status, "CLOSED");
+    assert.equal(result.clarification.status, "ANSWERED");
   });
 
   test("TC-086 AC1 security — only the organiser the question was asked of may answer it", () => {

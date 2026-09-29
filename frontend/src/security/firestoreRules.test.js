@@ -156,3 +156,14 @@ describe('C4/C7/C9 workflow records are guarded for browser SDK access', () => {
     expect(block).toMatch(/request\.auth\.uid|hasRole\(|canReadEvent\(|currentCoordinator\(|ownsEvent\(/);
   });
 });
+
+describe('E2 TC-094 venue catalogue reads are role-gated', () => {
+  test.each(['venues', 'venue_layouts', 'venue_facilities', 'venue_accessibility', 'venue_operating_hours', 'venue_unavailability', 'venue_bookings'])('%s is readable only by coordinators and venue staff', (collection) => {
+    const block = matchBlock(collection);
+    expect(block).toContain("hasRole('EVENT_COORDINATOR')");
+    expect(block).toContain("hasRole('VENUE_STAFF')");
+    expect(block).not.toContain('EVENT_ORGANISER');
+    expect(block).not.toContain('ATTENDEE');
+    expect(block).not.toContain('TECHNICAL_SUPPORT_STAFF');
+  });
+});

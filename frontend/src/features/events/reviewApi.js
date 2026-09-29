@@ -4,7 +4,7 @@
 
 import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
 import { auth, db } from "../../lib/firebase";
-import { EVENT_STATUS, canOpenReview, canRejectEvent, canReassignEvent, canRequestClarification, cleanRequiredText } from "../../domain/eventReview";
+import { EVENT_STATUS, canOpenReview, canRejectEvent, canReassignEvent, canRequestClarification, canRespondToClarification, cleanRequiredText } from "../../domain/eventReview";
 import { clarificationRecord, clarificationResponseRecord, coordinatorAssignmentRecord, eventHistoryRecord, notificationRecord } from "../../domain/eventReviewRecords";
 import { ROLES } from "../../domain/roles";
 
@@ -191,8 +191,8 @@ const respond = async (eventId, clarificationId, value) => {
     const [eventSnapshot, clarificationSnapshot] = await Promise.all([tx.get(eventRef), tx.get(clarificationRef)]);
     if (!eventSnapshot.exists() || !clarificationSnapshot.exists()) throw new Error("Clarification not found.");
     const event = eventSnapshot.data();
-    const clarification = clarificationSnapshot.data();
-    if (event.organiser_id !== user.uid || clarification.status !== "OPEN" || event.open_clarification_id !== clarificationId) throw new Error("You cannot answer this clarification.");
+    const clarification = { clarification_id: clarificationId, ...clarificationSnapshot.data() };
+    if (!canRespondToClarification(event, clarification, user.uid)) throw new Error("You cannot answer this clarification.");
     const changedAt = serverTimestamp();
     tx.set(responseRef, clarificationResponseRecord({ responseId: responseRef.id, clarificationId, responderId: user.uid, message, createdAt: changedAt }));
     tx.update(clarificationRef, { status: "ANSWERED", responded_at: changedAt });
