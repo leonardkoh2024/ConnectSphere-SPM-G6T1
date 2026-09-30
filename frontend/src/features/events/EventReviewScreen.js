@@ -63,7 +63,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     const exchange = chronologicalClarifications(detail.clarifications, detail.responses);
     return <div className="cs-review-detail">
       <button type="button" className="cs-btn cs-btn-ghost cs-back" onClick={() => { setDetail(null); setSelected(null); }}>Back to events</button>
-      {error && <p className="cs-error">{error}</p>}
+      {error && !mode && <p className="cs-error" role="alert">{error}</p>}
       {!event.editable && <p className="cs-panel-note">This event was reassigned. You can view the assignment record, but only the current coordinator can make changes.</p>}
       <div className="cs-review-heading"><div><h2>{event.name}</h2><p>{event.reference_no}</p></div><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div>
       <dl className="cs-detail-grid">
@@ -76,14 +76,15 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
       {hasOpen && <p className="cs-attention">Awaiting the organiser. Clarify and Reject are unavailable until they respond.</p>}
       {(canDecide || canReassign || typeof onFindVenues === "function") && <div className="cs-review-actions">
         {typeof onFindVenues === "function" && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => onFindVenues(event)}>Find venues</button>}
-        {canDecide && <><button className="cs-btn cs-btn-secondary" type="button" onClick={() => { setMode("clarify"); setMessage(""); }}>Request clarification</button><button className="cs-btn cs-btn-ghost cs-record-danger" type="button" onClick={() => { setMode("reject"); setMessage(""); }}>Reject request</button></>}
-        {canReassign && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => setMode("reassign")}>Reassign event</button>}
+        {canDecide && <><button className="cs-btn cs-btn-secondary" type="button" onClick={() => { setMode("clarify"); setMessage(""); setError(""); }}>Request clarification</button><button className="cs-btn cs-btn-ghost cs-record-danger" type="button" onClick={() => { setMode("reject"); setMessage(""); setError(""); }}>Reject request</button></>}
+        {canReassign && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => { setMode("reassign"); setError(""); }}>Reassign event</button>}
       </div>}
       {mode && <section className="cs-form-section cs-action-box">
         <h3>{mode === "clarify" ? "Request clarification" : mode === "reject" ? "Reject request" : "Reassign event"}</h3>
         {mode === "reassign" ? <label className="cs-field"><span className="cs-field-name">New active coordinator</span><select value={target} onChange={(e) => setTarget(e.target.value)}><option value="">Choose a coordinator</option>{detail.coordinators.filter((item) => item.id !== event.coordinator_id).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
-          : <label className="cs-field"><span className="cs-field-name">{mode === "reject" ? "Reason" : "Message"}<span className="cs-required" aria-hidden="true">*</span></span><textarea rows="4" required value={message} onChange={(e) => setMessage(e.target.value)} /></label>}
-        <div className="cs-form-actions"><button type="button" className="cs-btn cs-btn-ghost" onClick={() => setMode("")}>Cancel</button><button type="button" className={mode === "reject" ? "cs-btn cs-btn-ghost cs-record-danger" : "cs-btn cs-btn-primary"} disabled={busy} onClick={() => act(mode, mode === "clarify" ? "Clarification request sent." : mode === "reject" ? "Event request rejected." : "Event reassigned.")}>{busy ? "Saving…" : mode === "clarify" ? "Send request" : mode === "reject" ? "Reject event" : "Reassign"}</button></div>
+          : <label className="cs-field"><span className="cs-field-name">{mode === "reject" ? "Reason" : "Message"}<span className="cs-required" aria-hidden="true">*</span></span><textarea rows="4" required value={message} aria-invalid={Boolean(error)} aria-describedby={error ? "cs-review-action-error" : undefined} onChange={(e) => { setMessage(e.target.value); if (error) setError(""); }} /></label>}
+        {error && <p id="cs-review-action-error" className="cs-error" role="alert">{error}</p>}
+        <div className="cs-form-actions"><button type="button" className="cs-btn cs-btn-ghost" onClick={() => { setMode(""); setError(""); }}>Cancel</button><button type="button" className={mode === "reject" ? "cs-btn cs-btn-ghost cs-record-danger" : "cs-btn cs-btn-primary"} disabled={busy} onClick={() => act(mode, mode === "clarify" ? "Clarification request sent." : mode === "reject" ? "Event request rejected." : "Event reassigned.")}>{busy ? "Saving…" : mode === "clarify" ? "Send request" : mode === "reject" ? "Reject event" : "Reassign"}</button></div>
       </section>}
     </div>;
   }
