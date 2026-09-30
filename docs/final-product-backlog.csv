@@ -107,11 +107,13 @@ Acceptance Criteria:
 Story,C1,"C — Review, Approval and Coordinator Assignment",Have submitted events assigned to a coordinator automatically,"As an Event Organiser, I want my submitted event picked up by a named coordinator without anyone having to notice it so that my request does not sit unclaimed.
 
 Acceptance Criteria:
-1. On first submission, exactly one Event Coordinator is assigned; an event is never assigned to two coordinators at once.
-2. The coordinator identity and the assignment timestamp (in SGT) are recorded on the event; assignment does not change the event's status, which stays Submitted.
-3. Assignment uses circular rotation across all coordinators by ascending coordinator_seq, wrapping from the last back to the first.
-4. A coordinator can hold any number of events; a coordinator is never considered busy and there is no cap.
-5. The coordinator is system-assigned: the client cannot set or change coordinator_id or assigned_at (enforced in firestore.rules); assignment runs once, only when coordinator_id is empty, and is immutable thereafter.",20
+1. Exactly one, on first submission. When an event is first submitted, exactly one Event Coordinator is assigned; an event is never assigned to two coordinators.
+2. Identity and timestamp recorded; status unchanged. The assigned coordinator's identity and the assignment timestamp (in SGT) are recorded on the event. Assignment does not change the event's status - it remains Submitted (there is no ""Assigned"" or ""Unassigned"" status).
+3. Circular rotation across all coordinators. Assignment follows circular rotation across all coordinators in ascending coordinator_seq order (1, 2, 3, ...), wrapping from the last back to the first; the rotation cursor is the last-assigned coordinator_seq.
+4. (Removed - this was the ""no active coordinator -> unassigned queue"" criterion. Dropped because coordinators are seeded and always available, so the case cannot arise. The number is kept as a placeholder so the AC5-AC7 references in the test cases stay stable. See ADR-0001.)
+5. No cap per coordinator. A coordinator can hold any number of events at once; there is no limit, and being busy never disqualifies a coordinator.
+6. System-assigned, not organiser-chosen (integrity). The organiser never chooses the coordinator: the create-event form has no coordinator field, and the client cannot set or change coordinator_id / assigned_at. Only the backend writes them, enforced in firestore.rules.
+7. Assigned once, then immutable. Assignment runs only when coordinator_id is empty (on first submission), and coordinator_id cannot be changed afterwards.",20
 Story,C2,"C — Review, Approval and Coordinator Assignment",See the events I am responsible for,"As an Event Coordinator, I want a list of the event requests assigned to me so that I know what I am accountable for.
 
 Acceptance Criteria:
