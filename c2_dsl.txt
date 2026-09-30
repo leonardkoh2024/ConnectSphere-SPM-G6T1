@@ -1,0 +1,114 @@
+workspace "ConnectSphere C4 Model" "C4 model for the ConnectSphere event management platform." {
+
+    !identifiers hierarchical
+
+    model {
+
+        // People (Users)
+        eventOrganiser = person "Event Organiser" "Creates, submits and manages event requests." "User"
+        eventCoordinator = person "Event Coordinator" "Reviews, approves, assigns and manages event requests." "User"
+        venueStaff = person "Venue Staff" "Manages venues and responds to venue booking requests." "User"
+        technicalSupport = person "Technical Support Staff" "Manages equipment availability and reservations." "User"
+        attendee = person "Attendee" "Registers for events and manages event registrations." "User"
+
+        // Main System Boundary
+        connectSphere = softwareSystem "ConnectSphere" "Event request, venue, equipment, registration and event coordination platform." {
+
+            webApp = container "Web Application" "Provides the user interface for all ConnectSphere roles." "ReactJS" "WebApp"
+            apiGateway = container "API Gateway" "Provides a single entry point for the web application and routes requests to the appropriate microservice." "Node.js + Express"
+            userService = container "User Service" "Manages user profiles, roles and role-based access." "Node.js + Express"
+            eventService = container "Event Service" "Manages event requests, approvals, and history." "Node.js + Express"
+            venueService = container "Venue Service" "Manages venue requirements, availability and bookings." "Node.js + Express"
+            equipmentService = container "Equipment Service" "Manages equipment requests and reservations." "Node.js + Express"
+            registrationService = container "Registration Service" "Manages event registration and waiting lists." "Node.js + Express"
+            notificationService = container "Notification Service" "Manages in-system notifications and external triggers." "Node.js + Express"
+            calendarService = container "Calendar Integration Service" "Synchronises schedules with external calendars." "Node.js + Express"
+        }
+
+        // External Systems (Outside the boundary)
+        firebaseAuthentication = softwareSystem "Firebase Authentication" "Provides user authentication and account creation." "External System"
+        firebaseFirestore = softwareSystem "Firebase Firestore" "Provides persistent cloud document storage." "External System"
+        externalCalendar = softwareSystem "External Calendar Service" "Provides scheduling capabilities outside ConnectSphere." "External System"
+        externalMessaging = softwareSystem "External Messaging Service" "Provides external email or SMS capabilities." "External System"
+
+        // Relationships: People -> Web Application (Container Level)
+        eventOrganiser -> connectSphere.webApp "Uses the web app to manage events."
+        eventCoordinator -> connectSphere.webApp "Uses the web app to review events."
+        venueStaff -> connectSphere.webApp "Uses the web app to manage venues."
+        technicalSupport -> connectSphere.webApp "Uses the web app to manage equipment."
+        attendee -> connectSphere.webApp "Uses the web app to register for events."
+
+        // Relationships: Frontend -> API Gateway
+        connectSphere.webApp -> connectSphere.apiGateway "Sends authenticated API requests to" "JSON/HTTPS"
+
+        // Relationships: API Gateway -> Microservices
+        connectSphere.apiGateway -> connectSphere.userService "Routes user requests to"
+        connectSphere.apiGateway -> connectSphere.eventService "Routes event requests to"
+        connectSphere.apiGateway -> connectSphere.venueService "Routes venue requests to"
+        connectSphere.apiGateway -> connectSphere.equipmentService "Routes equipment requests to"
+        connectSphere.apiGateway -> connectSphere.registrationService "Routes registration requests to"
+        connectSphere.apiGateway -> connectSphere.notificationService "Routes notification requests to"
+        connectSphere.apiGateway -> connectSphere.calendarService "Routes calendar requests to"
+
+        // Relationships: Microservices -> Internal & External Systems
+        connectSphere.userService -> firebaseAuthentication "Authenticates users via"
+        connectSphere.userService -> firebaseFirestore "Reads/Writes user profiles to"
+
+        connectSphere.eventService -> firebaseFirestore "Reads/Writes event history to"
+
+        connectSphere.venueService -> firebaseFirestore "Reads/Writes venue data to"
+
+        connectSphere.equipmentService -> firebaseFirestore "Reads/Writes equipment data to"
+
+        connectSphere.registrationService -> firebaseFirestore "Reads/Writes registration data to"
+
+        connectSphere.notificationService -> firebaseFirestore "Reads/Writes notification records to"
+        connectSphere.notificationService -> externalMessaging "Sends external messages via"
+
+        connectSphere.calendarService -> firebaseFirestore "Reads/Writes sync metadata to"
+        connectSphere.calendarService -> externalCalendar "Updates external schedules in"
+
+        
+    }
+
+    views {
+
+        // Container View Only
+        container connectSphere "ContainerView" {
+            title "ConnectSphere - Container View"
+            description "Container view showing the React frontend, microservices, and external dependencies."
+            include *
+            autoLayout tb
+        }
+
+        // Styling for standard C4 visual distinction
+        styles {
+            element "Person" {
+                shape person
+                background #08427b
+                color #ffffff
+            }
+            element "Software System" {
+                background #1168bd
+                color #ffffff
+            }
+            element "Container" {
+                shape roundedbox
+                background #438dd5
+                color #ffffff
+            }
+            element "WebApp" {
+                shape WebBrowser
+            }
+            element "External System" {
+                shape roundedbox
+                background #999999
+                color #ffffff
+            }
+        }
+    }
+
+    configuration {
+        scope softwaresystem
+    }
+}
