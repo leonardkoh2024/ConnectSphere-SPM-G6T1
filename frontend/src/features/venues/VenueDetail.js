@@ -10,9 +10,10 @@ const word = (value) => String(value || "").replaceAll("_", " ");
 export default function VenueDetail({ venue }) {
   const record = venueRecord(venue);
   return (
-    <section className="cs-form-section" aria-label="Venue record">
+    <section className="cs-venue-detail" aria-label="Venue record">
       <h2>{record.name}</h2>
       <dl className="cs-detail-grid">
+        <div><dt>Building</dt><dd>{venue.building || "Not set"}</dd></div>
         <div><dt>Location</dt><dd>{locationLabel(record.location)}</dd></div>
         <div><dt>Capacity</dt><dd>{record.max_capacity}</dd></div>
         <div className="cs-detail-wide"><dt>Headline facilities</dt><dd>{facilitiesLabel(record.headline_facilities)}</dd></div>
@@ -21,12 +22,13 @@ export default function VenueDetail({ venue }) {
         <div className="cs-detail-wide"><dt>Operating hours</dt><dd>{record.operating_hours.length
           ? record.operating_hours.map((row) => `${word(row.weekday)} ${row.opens_at}–${row.closes_at}`).join("; ")
           : "None listed"}</dd></div>
+        <div className="cs-detail-wide"><dt>Space availability for special requirements</dt><dd>{venue.special_space_availability || "None listed"}</dd></div>
       </dl>
     </section>
   );
 }
 
-export function VenueRows({ venues, selectedId, onSelect }) {
+export function VenueRows({ venues, selectedId, onSelect, onUpdate = onSelect, canEdit = () => false, renderSelected }) {
   const rows = venues;
   if (!rows.length) return <p className="cs-panel-note">No venues match the current criteria.</p>;
   return (
@@ -44,13 +46,14 @@ export function VenueRows({ venues, selectedId, onSelect }) {
           <div className="cs-record-actions">
             <button
               type="button"
-              className="cs-btn cs-btn-ghost cs-record-btn"
+              className={`cs-btn ${canEdit(venue) ? "cs-btn-update" : "cs-btn-ghost"} cs-record-btn`}
               aria-pressed={selectedId === venue.venue_id}
-              onClick={() => onSelect(venue)}
+              onClick={() => canEdit(venue) ? onUpdate(venue) : onSelect(venue)}
             >
-              {selectedId === venue.venue_id ? "Selected" : "View venue"}
+              {canEdit(venue) ? "Update venue" : "View venue"}
             </button>
           </div>
+          {selectedId === venue.venue_id && renderSelected && <div className="cs-record-expanded">{renderSelected(venue)}</div>}
         </article>
       ))}
     </div>

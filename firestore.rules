@@ -177,8 +177,30 @@ service cloud.firestore {
 
     // E2 / E5 — catalogue and search reads are Coordinator and Venue Staff only.
     // Hiding the screen is not the boundary (A4 / TC-015).
+    match /venue_staff/{venueId} {
+      allow get, list: if hasRole('VENUE_STAFF')
+        && resource.data.user_id == request.auth.uid;
+    }
     match /venues/{venueId} {
       allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
+      allow update: if hasRole('VENUE_STAFF')
+        && exists(/databases/$(database)/documents/venue_staff/$(venueId))
+        && get(/databases/$(database)/documents/venue_staff/$(venueId)).data.user_id == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'building', 'location', 'max_capacity', 'layouts', 'facilities',
+          'accessibility', 'operating_hours', 'special_space_availability'
+        ])
+        && request.resource.data.name is string
+        && request.resource.data.building is string
+        && request.resource.data.location is string
+        && request.resource.data.max_capacity is int
+        && request.resource.data.max_capacity > 0
+        && request.resource.data.layouts is list
+        && request.resource.data.layouts.size() > 0
+        && request.resource.data.facilities is list
+        && request.resource.data.accessibility is list
+        && request.resource.data.operating_hours is list
+        && request.resource.data.special_space_availability is string;
     }
     match /venue_layouts/{layoutId} {
       allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');

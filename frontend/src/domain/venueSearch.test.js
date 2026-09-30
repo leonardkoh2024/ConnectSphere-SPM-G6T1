@@ -99,6 +99,18 @@ describe('E5 / SCRUM-121 find venues that fit my event', () => {
     expect(result.matches).toEqual([]);
   });
 
+  test('a multi-date unavailability period blocks the full interval and allows a touching endpoint', () => {
+    const result = searchVenues({
+      venues: [venue('VEN-BLOCKED', { max_capacity: 500 }), venue('VEN-FREE', { max_capacity: 500 })],
+      window,
+      unavailability: [
+        { venue_id: 'VEN-BLOCKED', start_datetime: '2026-10-22T18:00:00', end_datetime: '2026-10-23T10:00:00' },
+        { venue_id: 'VEN-FREE', start_datetime: '2026-10-23T01:00:00', end_datetime: '2026-10-23T09:00:00' }
+      ]
+    });
+    expect(result.matches.map((item) => item.venue_id)).toEqual(['VEN-FREE']);
+  });
+
   test('TC-099 capacity equal to attendance is a fit', () => {
     expect(capacityFits({ max_capacity: 180 }, 180)).toBe(true);
     expect(searchVenues({ venues: [venue('VEN-003', { max_capacity: 180 })], window }).matches).toHaveLength(1);

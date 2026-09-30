@@ -32,7 +32,7 @@ const USER = { uid: 'u1', email: 'nadia.organiser@connectsphere.com' };
 // organiser starts one from the button on My events, not from the navigation.
 const PERMITTED_SCREENS = {
   [ROLES.ORGANISER]: ['My events', 'Change requests', 'Registrations', 'Notifications'],
-  [ROLES.COORDINATOR]: ['Review queue', 'Assigned events', 'Venue search', 'Venue bookings', 'Equipment requests', 'Registrations', 'Notifications'],
+  [ROLES.COORDINATOR]: ['Review queue', 'Assigned events', 'Venue search', 'Venue catalogue', 'Venue bookings', 'Equipment requests', 'Registrations', 'Notifications'],
   [ROLES.VENUE_STAFF]: ['Booking requests', 'Venue catalogue', 'Availability calendar', 'Notifications'],
   [ROLES.TECH_SUPPORT]: ['Equipment queue', 'Availability check', 'Reservations', 'Notifications'],
   [ROLES.ATTENDEE]: ['Browse events', 'My registrations', 'Notifications']

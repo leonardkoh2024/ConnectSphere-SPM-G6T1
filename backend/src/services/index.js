@@ -11,7 +11,7 @@
 //   import eventService from "./event/index.js";
 //   { name: "event", prefix: "/api/events", router: eventService }
 //
-// Planned services, matching the epics in Jira:
+// Service boundaries, matching the epics in Jira:
 //
 //   auth                   /api/auth                     users                               epic A
 //   event                  /api/events                   events, event_history, …            epics B–D
@@ -22,8 +22,12 @@
 //   notification           /api/notifications             inbox items
 
 import coordinatorAssignmentService from "./coordinatorAssignment/index.js";
+import venueService from "./venue/index.js";
 
-const SERVICES = [{ name: "coordinatorAssignment", prefix: "/api/coordinator-assignment", router: coordinatorAssignmentService }];
+const SERVICES = [
+  { name: "coordinatorAssignment", prefix: "/api/coordinator-assignment", router: coordinatorAssignmentService },
+  { name: "venue", prefix: "/api/venues", router: venueService }
+];
 
 /** Mount every registered service onto the app. Called once at startup. */
 export function registerServices(app) {

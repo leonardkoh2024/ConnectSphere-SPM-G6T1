@@ -12,7 +12,7 @@
 // deployment; the mock in the test file stands in for what the emulator would
 // otherwise verify.
 
-import { pickNextCoordinator } from "../../../../frontend/src/domain/coordinatorAssignment.js";
+import { pickNextCoordinator } from "../../../../frontend/src/domain/coordinatorAssignment.mjs";
 
 const CURSOR_DOC_ID = "default";
 

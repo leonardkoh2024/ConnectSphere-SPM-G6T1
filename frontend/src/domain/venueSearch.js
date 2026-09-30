@@ -90,6 +90,14 @@ export const isOccupied = (venue, window, bookings = [], unavailability = []) =>
     ...unavailability.filter((item) => item.venue_id === venue.venue_id)
   ];
   return blocks.some((block) => {
+    const requestedStart = asDate(`${window.event_date || ""}T${window.start_time || ""}`);
+    const requestedEnd = asDate(`${window.event_date || ""}T${window.end_time || ""}`);
+    const blockStart = asDate(block.start_datetime);
+    const blockEnd = asDate(block.end_datetime);
+    if (requestedStart && requestedEnd && blockStart && blockEnd) {
+      return requestedStart < blockEnd && blockStart < requestedEnd;
+    }
+
     const date = blockDate(block);
     if (window.event_date && date && date !== window.event_date) return false;
     const { start, end } = blockTimes(block);

@@ -103,6 +103,12 @@ export const ROLE_META = {
           "Filter the venue catalogue by date, time, expected attendance, location, capacity, accessibility, layout and required facilities, with suitability flagged for you."
       },
       {
+        name: "Venue catalogue",
+        icon: "building",
+        blurb:
+          "Browse the ConnectSphere venues and their facilities, accessibility, room layouts and operating hours."
+      },
+      {
         name: "Venue bookings",
         icon: "building",
         blurb:

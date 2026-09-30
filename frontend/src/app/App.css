@@ -125,6 +125,17 @@
   color: var(--cs-on-accent);
 }
 
+.cs-btn-update {
+  background: var(--cs-info);
+  color: var(--cs-on-accent);
+}
+
+.cs-btn-update:hover {
+  border-color: var(--cs-info);
+  background: var(--cs-info-faded);
+  color: var(--cs-info);
+}
+
 .cs-btn-primary:hover:enabled,
 .cs-btn-primary:hover {
   background: var(--cs-accent-hover);
@@ -1000,6 +1011,17 @@
 
 .cs-choice-list { display: flex; flex-wrap: wrap; gap: 8px; }
 
+.cs-venue-hours { display: grid; gap: 12px; }
+
+.cs-venue-hours-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) repeat(2, minmax(120px, 1fr));
+  align-items: end;
+  gap: 12px;
+}
+
+.cs-venue-hours-row > .cs-check { align-self: center; }
+
 .cs-check {
   display: inline-flex;
   align-items: center;
@@ -1056,6 +1078,79 @@
 .cs-record-status { justify-self: start; }
 .cs-record-modified p { margin: 0; }
 .cs-record-saved { font-size: 13px; }
+
+.cs-record-expanded {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+}
+
+.cs-venue-detail,
+.cs-venue-editor {
+  padding-top: 20px;
+  border-top: 1px solid var(--cs-line);
+}
+
+.cs-venue-detail h2 { margin: 0 0 20px; font-size: 19px; }
+
+.cs-venue-editor {
+  padding-right: 0;
+  padding-bottom: 0;
+  padding-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.cs-venue-periods,
+.cs-availability-calendar {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--cs-line);
+}
+
+.cs-venue-periods h3,
+.cs-availability-calendar h2 { margin: 0 0 16px; font-size: 19px; }
+
+.cs-availability-list { margin: 0; padding: 0; list-style: none; }
+
+.cs-availability-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--cs-line);
+}
+
+.cs-availability-entry strong { font-size: 14px; font-weight: 600; }
+.cs-availability-entry p { margin: 4px 0 0; color: var(--cs-muted); }
+.cs-availability-actions { display: flex; align-items: center; gap: 8px; }
+
+.cs-availability-blocked,
+.cs-availability-booked,
+.cs-availability-pending {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border-radius: var(--cs-radius-round);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cs-availability-blocked { background: var(--cs-danger-faded); color: var(--cs-danger); }
+.cs-availability-booked { background: var(--cs-positive-faded); color: var(--cs-positive); }
+.cs-availability-pending { background: var(--cs-info-faded); color: var(--cs-info); }
+
+.cs-availability-form,
+.cs-availability-calendar { display: grid; gap: 16px; }
+.cs-availability-form h4 { margin: 0; font-size: 16px; }
+.cs-calendar-venue { max-width: 440px; }
+
+@media (max-width: 560px) {
+  .cs-availability-entry { align-items: flex-start; flex-direction: column; }
+}
 
 .cs-record-actions {
   display: flex;
@@ -1198,6 +1293,7 @@
 @media (max-width: 900px) {
   .cs-detail-grid { grid-template-columns: 1fr; }
   .cs-detail-grid .cs-detail-wide { grid-column: auto; }
+  .cs-venue-hours-row { grid-template-columns: 1fr; }
 }
 
 /* ---------- responsive ---------- */

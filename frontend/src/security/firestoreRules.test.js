@@ -167,3 +167,25 @@ describe('E2 TC-094 venue catalogue reads are role-gated', () => {
     expect(block).not.toContain('TECHNICAL_SUPPORT_STAFF');
   });
 });
+
+describe('E1 venue catalogue updates are assigned-staff only', () => {
+  test('updates preserve ownership and enforce valid capacity and supported layouts', () => {
+    const venues = matchBlock('venues');
+    const updateRule = venues.match(/allow update:\s*if([^;]*);/)[1];
+
+    expect(updateRule).toContain("hasRole('VENUE_STAFF')");
+    expect(updateRule).toContain('venue_staff/$(venueId)');
+    expect(updateRule).toContain('.data.user_id == request.auth.uid');
+    expect(updateRule).toContain('request.resource.data.max_capacity is int');
+    expect(updateRule).toContain('request.resource.data.max_capacity > 0');
+    expect(updateRule).toContain('request.resource.data.layouts.size() > 0');
+    expect(updateRule).not.toContain("hasRole('EVENT_COORDINATOR')");
+    expect(updateRule).not.toContain('venue_bookings');
+  });
+
+  test('assignment records are only readable by their assigned Venue Staff user', () => {
+    const assignments = matchBlock('venue_staff');
+    expect(assignments).toContain("hasRole('VENUE_STAFF')");
+    expect(assignments).toContain('resource.data.user_id == request.auth.uid');
+  });
+});
