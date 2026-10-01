@@ -4,7 +4,7 @@
 
 import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
 import { auth, db } from "../../lib/firebase";
-import { EVENT_STATUS, canOpenReview, canRejectEvent, canReassignEvent, canRequestClarification, canRespondToClarification, cleanRequiredText } from "../../domain/eventReview";
+import { EVENT_STATUS, canApproveEvent, canOpenReview, canRejectEvent, canReassignEvent, canRequestClarification, canRespondToClarification, cleanRequiredText } from "../../domain/eventReview";
 import { clarificationRecord, clarificationResponseRecord, coordinatorAssignmentRecord, eventHistoryRecord, notificationRecord } from "../../domain/eventReviewRecords";
 import { ROLES } from "../../domain/roles";
 
@@ -203,4 +203,23 @@ const respond = async (eventId, clarificationId, value) => {
   return { ok: true };
 };
 
-export const reviewApi = { list, detail, openReview, clarify, reject, reassign, respond };
+// C6 / SCRUM-107 — approve a submitted request. Same shape as reject: guard with
+// canApproveEvent (AC1 under review, AC3 assigned coordinator, AC4 no open
+// clarification), set the event Approved (AC2), and write an EVENT_APPROVED history
+// entry (AC5) whose actor_id + created_at are the deciding coordinator + timestamp.
+const approve = async (eventId) => {
+  const user = requireUser();
+  const eventRef = doc(db, "events", eventId);
+  const historyRef = doc(collection(db, "event_history"));
+  await runTransaction(db, async (tx) => {
+    const snapshot = await tx.get(eventRef);
+    if (!snapshot.exists() || !canApproveEvent(snapshot.data(), user.uid)) throw new Error("This event cannot be approved now.");
+    const event = snapshot.data();
+    const changedAt = serverTimestamp();
+    tx.update(eventRef, { status: EVENT_STATUS.APPROVED, updated_at: changedAt });
+    tx.set(historyRef, eventHistoryRecord({ historyId: historyRef.id, eventId, actorId: user.uid, actionType: "EVENT_APPROVED", fieldName: "status", oldValue: event.status, newValue: EVENT_STATUS.APPROVED, description: "Coordinator approved the request.", createdAt: changedAt }));
+  });
+  return { ok: true };
+};
+
+export const reviewApi = { list, detail, openReview, clarify, reject, reassign, respond, approve };

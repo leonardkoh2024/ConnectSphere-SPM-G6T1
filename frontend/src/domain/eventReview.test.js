@@ -1,5 +1,7 @@
 import {
+  approveEvent,
   canAmendDuringClarification,
+  canApproveEvent,
   canOpenReview,
   canRejectEvent,
   canReassignEvent,
@@ -130,5 +132,41 @@ describe('C5 / SCRUM-106 respond to a request for clarification', () => {
     expect(canAmendDuringClarification(openEvent())).toBe(true);
     expect(canAmendDuringClarification(openEvent({ open_clarification_id: null }))).toBe(false);
     expect(canAmendDuringClarification(openEvent({ status: 'SUBMITTED' }))).toBe(false);
+  });
+});
+
+describe('C6 / SCRUM-107 approve a submitted request', () => {
+  test('C6-TC1/TC3 the assigned coordinator can approve an under-review event', () => {
+    expect(canApproveEvent(event(), 'c1')).toBe(true);
+  });
+
+  test('C6-TC2 AC1 approve is unavailable from any status other than Under Review', () => {
+    expect(canApproveEvent(event({ status: 'SUBMITTED' }), 'c1')).toBe(false);
+    expect(canApproveEvent(event({ status: 'APPROVED' }), 'c1')).toBe(false);
+    expect(canApproveEvent(event({ status: 'REJECTED' }), 'c1')).toBe(false);
+  });
+
+  test('C6-TC4 AC3 only the assigned coordinator can approve', () => {
+    expect(canApproveEvent(event(), 'c2')).toBe(false);
+  });
+
+  test('C6-TC5 AC4 approve is blocked while a clarification is open', () => {
+    expect(canApproveEvent(event({ open_clarification_id: 'CLR-1' }), 'c1')).toBe(false);
+  });
+
+  test('C6-TC6 AC2/AC5 approving sets APPROVED and yields an EVENT_APPROVED history entry', () => {
+    const result = approveEvent({ event: event(), userId: 'c1', now: 'T' });
+    expect(result.ok).toBe(true);
+    expect(result.event.status).toBe('APPROVED');
+    expect(result.history.actionType).toBe('EVENT_APPROVED');
+    expect(result.history.actorId).toBe('c1');
+    expect(result.history.newValue).toBe('APPROVED');
+    expect(result.history.createdAt).toBe('T');
+  });
+
+  test('C6-TC7 re-approving an already-approved event is a no-op (idempotency)', () => {
+    const result = approveEvent({ event: event({ status: 'APPROVED' }), userId: 'c1' });
+    expect(result.ok).toBe(false);
+    expect(result.event.status).toBe('APPROVED');
   });
 });

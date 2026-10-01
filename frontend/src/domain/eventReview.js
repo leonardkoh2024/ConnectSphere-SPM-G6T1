@@ -4,6 +4,7 @@
 export const EVENT_STATUS = {
   SUBMITTED: "SUBMITTED",
   UNDER_REVIEW: "UNDER_REVIEW",
+  APPROVED: "APPROVED",
   REJECTED: "REJECTED",
   COMPLETED: "COMPLETED",
   CANCELLED: "CANCELLED"
@@ -24,6 +25,11 @@ export const canRequestClarification = (event, userId) =>
 
 export const canRejectEvent = canRequestClarification;
 
+// C6 / SCRUM-107 — approve is offered only to the assigned coordinator (AC3),
+// only while the event is Under Review (AC1), and not while a clarification is
+// open (AC4). Same boundary as reject/clarify.
+export const canApproveEvent = canRequestClarification;
+
 const TERMINAL = new Set([EVENT_STATUS.COMPLETED, EVENT_STATUS.CANCELLED, EVENT_STATUS.REJECTED]);
 
 export const canReassignEvent = (event, userId, targetCoordinator) =>
@@ -43,6 +49,33 @@ const SERVER_TIMESTAMP = "SERVER_TIMESTAMP";
 
 export const canAmendDuringClarification = (event) =>
   Boolean(event && event.status === EVENT_STATUS.UNDER_REVIEW && event.open_clarification_id);
+
+// C6 / SCRUM-107 — pure approval transition. Returns the new event state (status
+// Approved, AC2) and the history entry to persist (AC5); the deciding coordinator
+// and timestamp live on that history record, mirroring reject's EVENT_REJECTED.
+// The Firestore write is in features/events/reviewApi.js. Returns ok:false when
+// the guard fails, so re-approving an already-approved event is a no-op (AC1).
+export const approveEvent = ({ event, userId, now = SERVER_TIMESTAMP }) => {
+  if (!canApproveEvent(event, userId)) {
+    return { ok: false, event };
+  }
+  return {
+    ok: true,
+    event: {
+      ...event,
+      status: EVENT_STATUS.APPROVED,
+      updated_at: now
+    },
+    history: {
+      actionType: "EVENT_APPROVED",
+      fieldName: "status",
+      oldValue: EVENT_STATUS.UNDER_REVIEW,
+      newValue: EVENT_STATUS.APPROVED,
+      actorId: userId,
+      createdAt: now
+    }
+  };
+};
 
 export const canRespondToClarification = (event, clarification, userId) => {
   if (!event || !clarification || !userId) return false;
