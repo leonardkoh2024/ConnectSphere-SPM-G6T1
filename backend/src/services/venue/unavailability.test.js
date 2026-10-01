@@ -115,6 +115,21 @@ test("creates a venue unavailability period with its venue, dates, reason and ac
   });
 });
 
+test("allows assigned staff when the assignment document ID differs from the venue ID", async () => {
+  const firestore = fakeFirestore({
+    "venues/VEN-001": { name: "Hall A" },
+    "venue_staff/auto-generated-assignment": { venue_id: "VEN-001", user_id: "staff-1" }
+  });
+  const save = createSaveVenueUnavailability({ firestore, serverTimestamp: () => "STAMP" });
+
+  await assert.doesNotReject(() => save({
+    venueId: "VEN-001",
+    userId: "staff-1",
+    keepPeriodIds: [],
+    additions: []
+  }));
+});
+
 test("refuses an overlap with an approved booking and names that booking", async () => {
   const firestore = fakeFirestore(seedAssignedVenue({
     "venue_bookings/book-42": {

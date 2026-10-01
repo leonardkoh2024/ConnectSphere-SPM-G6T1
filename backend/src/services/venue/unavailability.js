@@ -55,18 +55,20 @@ export function createSaveVenueUnavailability({ firestore, serverTimestamp }) {
 
     return firestore.runTransaction(async (transaction) => {
       const venueRef = firestore.collection("venues").doc(venueId);
-      const assignmentRef = firestore.collection("venue_staff").doc(venueId);
+      const assignmentQuery = firestore.collection("venue_staff")
+        .where("venue_id", "==", venueId)
+        .where("user_id", "==", userId);
       const venuePeriodsQuery = firestore.collection("venue_unavailability").where("venue_id", "==", venueId);
       const bookingsQuery = firestore.collection("venue_bookings").where("venue_id", "==", venueId);
-      const [venue, assignment, periodsSnapshot, bookingSnapshot] = await Promise.all([
+      const [venue, assignments, periodsSnapshot, bookingSnapshot] = await Promise.all([
         transaction.get(venueRef),
-        transaction.get(assignmentRef),
+        transaction.get(assignmentQuery),
         transaction.get(venuePeriodsQuery),
         transaction.get(bookingsQuery)
       ]);
 
       if (!venue.exists) throw new VenueNotFoundError(venueId);
-      if (!assignment.exists || assignment.data().user_id !== userId) throw new VenueAssignmentError();
+      if (assignments.docs.length === 0) throw new VenueAssignmentError();
 
       const keptIds = new Set(keepPeriodIds);
       const existingIds = new Set(periodsSnapshot.docs.map((item) => item.id));
