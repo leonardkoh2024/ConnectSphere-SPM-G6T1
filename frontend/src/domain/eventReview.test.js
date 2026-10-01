@@ -28,49 +28,120 @@ describe('C4 clarification workflow', () => {
     expect(canRejectEvent(event({ open_clarification_id: 'CLR-1' }), 'c1')).toBe(false);
   });
 
-  test('the retained exchange is presented oli\Ýš\œÝ	Ë
+  test('the retained exchange is presented oldest first', () => {
+    const result = chronologicalClarifications(
+      [{ id: 'q1', created_at: '2026-09-23T10:00:00Z' }],
+      [{ id: 'a1', created_at: '2026-09-23T11:00:00Z' }]
+    );
+    expect(result.map(({ kind }) => kind)).toEqual(['QUESTION', 'RESPONSE']);
+  });
+});
 
-HOˆÂˆÛÛœÝ™\Ý[HÚ›Û›ÛÙÚXØ[Û\šYšXØ][ÛœÊˆÞÈYˆ	ÜLIËÜ™X]YØ]ˆ	ÌŒ‹LKLŒÕLŒŒ‰ÈWKˆÞÈYˆ	ØLIËÜ™X]YØ]ˆ	ÌŒ‹LKLŒÕLNŒŒ‰ÈWBˆ
-NÂˆ^XÝ
-™\Ý[›X\
+describe('C7 and C9 workflow boundaries', () => {
+  test('TC-072 rejection is unavailable while a clarification is open', () => {
+    expect(canRejectEvent(event(), 'c1')).toBe(true);
+    expect(canRejectEvent(event({ open_clarification_id: 'CLR-1' }), 'c1')).toBe(false);
+  });
 
-ÈÚ[™JHOˆÚ[™
-JKÑ\]X[
-ÉÔUQTÕSÓ‰Ë	Ô‘TÔÓ”ÑI×JNÂˆJNÂŸJNÂ‚™\ØÜšX™J	ÐÍÈ[™ÎHÛÜšÙ›ÝÈ›Ý[™\šY\ÉË
+  test('opening a submitted assignment starts review', () => {
+    expect(canOpenReview(event({ status: 'SUBMITTED' }), 'c1')).toBe(true);
+    expect(canOpenReview(event({ status: 'SUBMITTED' }), 'c2')).toBe(false);
+  });
 
-KÓâ°¢FW7B‚uD2Ós"&V¦V7F–öâ—2Væf–Æ&ÆRv†–ÆR„±…É¥™¥…Ñ¥½¸¥Ì½Á•¸œ°€ ¤€ôøì(€€€•áÁ•Ð¡…¹I•©•ÑÙ•¹Ð¡•Ù•¹Ð ¤°€ŒÄœ¤¤¹Ñ½	”¡ÑÉÕ”¤ì(€€€•áÁ•Ð¡…¹I•©•ÑÙ•¹Ð¡•Ù•¹Ð¡ì½Á•¹}±…É¥™¥…Ñ¥½¹}¥è€1H´Äœô¤°€ŒÄœ¤¤¹Ñ½	”¡™…±Í”¤ì(€ô¤ì((€Ñ•ÍÐ ½Á•¹¥¹œ„ÍÕ‰µ¥ÑÑ•…ÍÍ¥¹µ•¹ÐÍÑ…ÉÑÌÉ•Ù¥•Üœ°€ ¤€ôøì(€€€•áÁ•Ð¡…¹=Á•¹I•Ù¥•Ü¡•Ù•¹Ð¡ìÍÑ…ÑÕÌè€MU	5%QQœô¤°€ŒÄœ¤¤¹Ñ½	”¡ÑÉÕ”¤ì(€€€•áÁ•Ð¡…¹=Á•¹I•Ù¥•Ü¡•Ù•¹Ð¡ìÍÑ…ÑÕÌè€MU	5%QQœô¤°€ŒÈœ¤¤¹Ñ½	”¡™…±Í”¤ì(€ô¤ì((€Ñ•ÍÐ Q´ÀÜÜ¼ÀàÀÉ•…ÍÍ¥¹µ•¹Ð¹••‘ÌÑ¡”ÕÉÉ•¹Ð½½É‘¥¹…Ñ½È…¹…¹½Ñ¡•È…Ñ¥Ù”Ñ…É•Ðœ°€ ¤€ôøì(€€€•áÁ•Ð¡…¹I•…ÍÍ¥¹Ù•¹Ð¡•Ù•¹Ð ¤°€ŒÄœ°ì¥è€ŒÈœ°…Ñ¥Ù”èÑÉÕ”ô¤¤¹Ñ½	”¡ÑÉÕ”¤ì(€€€•áÁ•Ð¡…¹I•…ÍÍ¥¹Ù•¹Ð¡•Ù•¹Ð ¤°€ŒÌœ°ì¥è€ŒÈœ°…Ñ¥Ù”èÑÉÕ”ô¤¤¹Ñ½	”¡™…±Í”¤ì(€€€•áÁ•Ð¡…¹I•…ÍÍ¥¹Ù•¹Ð¡•Ù•¹Ð ¤°€ŒÄœ°ì¥è€ŒÈœ°…Ñ¥Ù”è™…±Í”ô¤¤¹Ñ½	”¡™…±Í”¤ì(€€€•áÁ•Ð¡…¹I•…ÍÍ¥¹Ù•¹Ð¡•Ù•¹Ð ¤°€ŒÄœ°ì¥è€ŒÄœ°…Ñ¥Ù”èÑÉÕ”ô¤¤¹Ñ½	”¡™…±Í”¤ì(€ô¤ì((€åst.each(['COMPLETED', 'CANCELLED', 'REJECTED'])('terminal %s events cannot be reassigned', (status) => {
+  test('TC-077/080 reassignment needs the current coordinator and another active target', () => {
+    expect(canReassignEvent(event(), 'c1', { id: 'c2', active: true })).toBe(true);
+    expect(canReassignEvent(event(), 'c3', { id: 'c2', active: true })).toBe(false);
+    expect(canReassignEvent(event(), 'c1', { id: 'c2', active: false })).toBe(false);
+    expect(canReassignEvent(event(), 'c1', { id: 'c1', active: true })).toBe(false);
+  });
+
+  test.each(['COMPLETED', 'CANCELLED', 'REJECTED'])('terminal %s events cannot be reassigned', (status) => {
     expect(canReassignEvent(event({ status }), 'c1', { id: 'c2', active: true })).toBe(false);
   });
 });
 
-describe('C5 / SCRUM-106 respond to a request)›ÜˆÛ\šYšXØ][Û‰Ë
-
-HOˆÂˆÛÛœÝ
-÷VäWfVçBÒ†6†ævW2Ò·Ò’ÓâWfVçB‡°¢WfVçEö–C¢tUeBÓrÂ÷&væ—6W%ö–C¢wSrÂW‡V7FVEöGFVæFæ6S¢À¢÷Våö6Æ&–f–6F–öåö–C¢t4Å"ÓrÂââæ6†ævW0¢Ò“°¢6öç7B÷Vä6Æ&–f–6F–öâÒ†6†ævW2Ò·Ò’Óâ‡°¢6Æ&–f–6F–öåö–C¢t4Å"ÓrÂWfVçEö–C¢tUeBÓrÂ7&VFVEö'“¢v3rÀ¢ÖW76vS¢t6öæf—&ÒW‡V7FVBGFVæFæ6RrÂ7FGW3¢tõTârÂ7&VFVEöC¢s##bÓ’Ó#5C££rÀ¢ââæ6†ævW0¢Ò“° ¢FW7B‚uD2Óƒ3F†R÷&væ—6W"6âÖVæBf–VÆBæBç7vW"v†–ÆRF†R6Æ&–f–6F–öâ—2÷VârÂ‚’Óâ°¢6öç7B&W7VÇBÒ7V&Ö—D6Æ&–f–6F–öå&W7öç6R‡°¢WfVçC¢÷VäWfVçB‚’Â6Æ&–f–6F–öã¢÷Vä6Æ&–f–6F–öâ‚’ÂW6W$–C¢wSrÀ¢ÖW76vS¢t6öæf—&ÖVBÂSV÷ÆRârÂf–VÆDVF—G3¢²W‡V7FVEöGFVæFæ6S¢SÐ¢Ò“°¢W‡V7B‡&W7VÇBæö²’çFô&R‡G'VR“°¢W‡V7B‡&W7VÇBæWfVçBæW‡V7FVEöGFVæFæ6R’çFô&RƒS“°¢W‡V7B‡&W7VÇBç&W7öç6W5³ÒæÖW76vR’çFô&R‚t6öæf—&ÖVBÂSV÷ÆRâr“°¢Ò“° ¢FW7B‚uD2Óƒ"3âV×G’&W7öç6R6ææ÷B&R7V&Ö—GFVBrÂ‚’Óâ°¢½¹ÍÐÉ•ÍÕ±Ð€ôÍÕ‰µ¥Ñ±…É¥™¥…Ñ¥½¹I•ÍÁ½¹Í”¡ì(€€€€€•Ù•¹Ðè½Á•¹Ù•¹Ð ¤°±…É¥™¥…Ñ¥½¸è½Á•¹±…É¥™¥…Ñ¥½¸ ¤°ÕÍ•É%è€ÔÄœ°µ•ÍÍ…”è€œ€€€œ(€€€ô¤ì(€€€•áÁ•Ð¡É•ÍÕ±Ð¹½¬¤¹Ñ½	”¡™…±Í”¤ì(€€€•áÁ•Ð¡É•ÍÕ±Ð¹É•…Í½¸¤¹Ñ½	” •µÁÑäœ¤ì(€€€•áÁ•Ð¡É•ÍÕ±Ð¹±…É¥™¥…Ñ¥½¸¹ÍÑ…ÑÕÌ¤¹Ñ½	” =A8œ¤ì(€ô¤ì((€Ñ•ÍÐ Q´ÀàÌÈ³ubmitting the response(ÛÜÙ\ÈHÛ\šYšXØ][Ûˆ\ÈS”ÕÑT‘Q	Ë
-
-HOˆÂˆ
-6öç7B&W7VÇBÒ7V&Ö—D6Æ&–f–6F–öå&W7öç6R‡°¢WfVçC¢÷VäWfVçB‚’Â6Æ&–f–6F–öã¢÷Vä6Æ&–f–6F–öâ‚’ÂW6W$–C¢wSrÂÖW76vS¢t6öæf—&ÖVBâp¢Ò“°¢W‡V7B‡&W7VÇBæö²’çFô&R‡G'VR“°¢W‡V7B‡&W7VÇBæ6Æ&–f–6F–öâç7FGW2’çFô&R‚tå5tU$TBr“°¢W‡V7B‡&W7VÇBæWfVçBæ÷Våö6Æ&–f–6F–öåö–B’çFô&TçVÆÂ‚“°¢W‡V7B‡&W7VÇBæWfVçBç7FGW2’çFô&R‚uTäDU%õ$Ud”Urr“°¢Ò“° ¢FW7B‚uD2ÓƒBF†RWfVçB7F—2VæFW"&Wf–Wr7&÷72F†RW†6†ævRrÂ‚’Óâ°¢W‡V7B†÷VäWfVçB‚’ç7FGW2’çFô&R‚uTäDU%õ$Ud”Urr“°¢6öç7B&W7VÇBôÍÕ‰µ¥Ñ±…É¥™¥…Ñ¥½¹I•ÍÁ½¹Í”¡ì(€€€€€•Ù•¹Ðè½Á•¹Ù•¹Ð ¤°±…É¥™¥…Ñ¥½¸è½Á•¹±…É¥™¥…Ñ¥½¸ ¤°ÕÍ•É%è€ÔÄœ°µ•ÍÍ…”è€½¹™¥Éµ•¸œ(€€€ô¤ì(€€€•áÁ•Ð¡É•ÍÕ±Ð¹•Ù•¹Ð¹ÍÑ…ÑÕÌ¤¹ïBe('UNDER_REVIEW');
+describe('C5 / SCRUM-106 respond to a request for clarification', () => {
+  const openEvent = (changes = {}) => event({
+    event_id: 'EVT-1', organiser_id: 'u1', expected_attendance: 100,
+    open_clarification_id: 'CLR-001', ...changes
+  });
+  const openClarification = (changes = {}) => ({
+    clarification_id: 'CLR-001', event_id: 'EVT-1', created_by: 'c1',
+    message: 'Confirm expected attendance', status: 'OPEN', created_at: '2026-09-23T10:00:00',
+    ...changes
   });
 
-  test('TC-085 a closed clarification cannot be answered twice', ()/OˆÂˆ^XÝ
-Ø[”™\ÜÛ™ô6Æ&–f–6F–öâ†÷VäWfVçB‡²÷Våö6Æ&–f–6F–öåö–C¢çVÆÂÒ’Â÷Vä6Æ&–f–6F–öâ‡²7FGW3¢tå5tU$TBrÒ’ÂwSr’’çFô&R†fÇ6R“°¢Ò“° ¢FW7B‚uD2ÓƒböæÇ’F†R÷&væ—6W"F†RVW7F–öâv26¶VBöbÖ’ç7vW"—BrÂ‚’Óâ°¢6öç7B&W7VÇBÒ7V&Ö—D6Æ&–f–6F–öå&W7öç6R‡°¢WfVçC¢÷VäWfVçB‚’Â6Æ&–f–6F–öã¢÷Vä6Æ&–f–6F–öâ‚’ÂW6W$–C¢wS"rÂÖW76vS¢tæ÷BÖ–æRâp¢Ò“°¢W‡V7B‡&W7VÇBæö²’çFô&R†fÇ6R“°¢W‡V7B‡&W7VÇBæ6Æ&–f–6F–öâç7FGW2’çFô&R‚tõTâr“°¢Ò“° ¢FW7B‚uD2Óƒr&÷F‚'F–W26VRF†RW†6†ævRöÆFW7Bf—'7BrÂ‚’Óâ°¢6öç7BF‡&VBÒ6‡&öæöÆöv–6Ä6Æ&–f–6F–öç2€¢¶÷Vä6Æ&–f–6F–öâ‚•ÒÀ¢·²6Æ&–f–6F–öåö–C¢t4Å"ÓrÂÖW76vS¢t6öæf—&ÖVBârÂ7&VFVEöC¢s##bÓ’Ó#5C££rÕÐ¢“°¢W‡V7B‡F‡&VBæÖ‚‡²­¥¹ô¤€ôø­¥¹¤¤¹Ñ½ÅÕ…°¡lEUMQ%=8œ°€IMA=9Mt¤ì(€ô¤ì((€Ñ•ÍÐ …¹µ•¹‘ÕÉ¥¹±…É¥™¥…Ñ¥½¸©s true only while a clarification is open', () => {
+  test('TC-081 AC1 the organiser can amend a field and answer while the clarification is open', () => {
+    const result = submitClarificationResponse({
+      event: openEvent(), clarification: openClarification(), userId: 'u1',
+      message: 'Confirmed, 150 people.', fieldEdits: { expected_attendance: 150 }
+    });
+    expect(result.ok).toBe(true);
+    expect(result.event.expected_attendance).toBe(150);
+    expect(result.responses[0].message).toBe('Confirmed, 150 people.');
+  });
+
+  test('TC-082 AC1 an empty response cannot be submitted', () => {
+    const result = submitClarificationResponse({
+      event: openEvent(), clarification: openClarification(), userId: 'u1', message: '   '
+    });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe('empty');
+    expect(result.clarification.status).toBe('OPEN');
+  });
+
+  test('TC-083 AC2 submitting the response closes the clarification as ANSWERED', () => {
+    const result = submitClarificationResponse({
+      event: openEvent(), clarification: openClarification(), userId: 'u1', message: 'Confirmed.'
+    });
+    expect(result.ok).toBe(true);
+    expect(result.clarification.status).toBe('ANSWERED');
+    expect(result.event.open_clarification_id).toBeNull();
+    expect(result.event.status).toBe('UNDER_REVIEW');
+  });
+
+  test('TC-084 the event stays Under Review across the exchange', () => {
+    expect(openEvent().status).toBe('UNDER_REVIEW');
+    const result = submitClarificationResponse({
+      event: openEvent(), clarification: openClarification(), userId: 'u1', message: 'Confirmed.'
+    });
+    expect(result.event.status).toBe('UNDER_REVIEW');
+  });
+
+  test('TC-085 a closed clarification cannot be answered twice', () => {
+    expect(canRespondToClarification(openEvent({ open_clarification_id: null }), openClarification({ status: 'ANSWERED' }), 'u1')).toBe(false);
+  });
+
+  test('TC-086 only the organiser the question was asked of may answer it', () => {
+    const result = submitClarificationResponse({
+      event: openEvent(), clarification: openClarification(), userId: 'u2', message: 'Not mine.'
+    });
+    expect(result.ok).toBe(false);
+    expect(result.clarification.status).toBe('OPEN');
+  });
+
+  test('TC-087 both parties see the exchange oldest first', () => {
+    const thread = chronologicalClarifications(
+      [openClarification()],
+      [{ clarification_id: 'CLR-001', message: 'Confirmed.', created_at: '2026-09-23T11:00:00' }]
+    );
+    expect(thread.map(({ kind }) => kind)).toEqual(['QUESTION', 'RESPONSE']);
+  });
+
+  test('canAmendDuringClarification is true only while a clarification is open', () => {
     expect(canAmendDuringClarification(openEvent())).toBe(true);
     expect(canAmendDuringClarification(openEvent({ open_clarification_id: null }))).toBe(false);
     expect(canAmendDuringClarification(openEvent({ status: 'SUBMITTED' }))).toBe(false);
   });
 });
 
-describe('C6 / SCRUM-107 approve(HÝX›Z]Y™\]Y\Ý	Ë
+describe('C6 / SCRUM-107 approve a submitted request', () => {
+  test('C6-TC1/TC3 the assigned coordinator can approve an under-review event', () => {
+    expect(canApproveEvent(event(), 'c1')).toBe(true);
+  });
 
-HOˆÂˆ\Ý
-	ÐÍ‹UÌKÕÌÈH\ÜÚYÛ™YÛÛÜ™[˜]ÜˆØ[ˆ\›Ý™H[ˆ[™\‹\™]šY]È]™[	Ë
-
-HOˆÂˆ^XÝ
-Ø[\›Ý™Q]™[
-]™[
-
-K	ØÌIÊJKÐ™JYJNÂˆJNÂ‚ˆ\Ý
-	ÐÍ‹UÌˆPÌH\›Ý™H\È[˜]˜Z[X›Hœ›ÛH[žHÝ]\ÈÞ†W"F†âVæFW"&Wf–WrrÂ‚’ôøì(€€€•áÁ•Ð¡…¹ÁÁÉ½Ù•Ù•¹Ð¡•Ù•¹Ð{ status: 'SUBMITTED' }), 'c1')).toBe(false);
+  test('C6-TC2 AC1 approve is unavailable from any status other than Under Review', () => {
+    expect(canApproveEvent(event({ status: 'SUBMITTED' }), 'c1')).toBe(false);
     expect(canApproveEvent(event({ status: 'APPROVED' }), 'c1')).toBe(false);
     expect(canApproveEvent(event({ status: 'REJECTED' }), 'c1')).toBe(false);
   });
@@ -79,12 +150,23 @@ K	ØÌIÊJKÐ™JYJNÂˆJNÂ‚ˆ\Ý
     expect(canApproveEvent(event(), 'c2')).toBe(false);
   });
 
-  test('C6-TC5 AC4 approve*\È›ØÚÙYÚ[HHÛ\šYšXØ][ÛŠ—2÷VârÂ‚’Óâ°¢W‡V7B†6ä&÷fTWfVçB†WfVçB‡²÷Våö6Æ&–f–6F–öåö–C¢t4Å"ÓrÒ’Âv3r’’ç½	”¡™…±Í”¤ì(€ô¤ì((€Ñ•ÍÐ ØµQØÈ½Ô¡pproving sets APPROVED([™ZY[È[ˆU‘S•ÐT“Õ‘Q\Þ÷'’VçG'’rÂ‚’ôøì(€€€½¹ÍÐÉ•ÍÕ±Ð€ô¡pproveEvent({ event: event(), userId: 'c1', now: 'T' });
+  test('C6-TC5 AC4 approve is blocked while a clarification is open', () => {
+    expect(canApproveEvent(event({ open_clarification_id: 'CLR-1' }), 'c1')).toBe(false);
+  });
+
+  test('C6-TC6 AC2/AC5 approving sets APPROVED and yields an EVENT_APPROVED history entry', () => {
+    const result = approveEvent({ event: event(), userId: 'c1', now: 'T' });
     expect(result.ok).toBe(true);
     expect(result.event.status).toBe('APPROVED');
-    expect(result.history.acz[Û•\JKÐ™J	ÑU‘S•ÐT“Õ‘Q	ÊNÂˆ^XÝ
-™\Ý[š\ÝÜžK˜XÝÜ’Y
-KÐ™J	ØÌIÊNÂˆ^XÝ
-™\Ý[š\Þ÷'’ææWufÇVR’ç½	” AAI=Yœ¤ì(€€€•áÁ•Ð¡É•ÍÕ±Ð¹¡¥Íïry.createdAt).toBe	Õ	ÊNÂˆJNÂ‚ˆW7B‚t3bÕD3r&RÖ&÷f–ærâÇ&VG’Ö&÷fVBWfVçB—2æòÖ÷†–FV×÷•¹ä¤œ°€ §Óâ°¢6öç7B&W7VÇBÒ&÷fTWfVçB‡²WfVçC¢WfVçB‡²7FGW3¢t$õdTBrÒ’ÂW6W$–C¢v3rÒ“°¢W‡V7B‡&W7VÇBæö²’ç½	”¡™…±Í”¤ì(€€€•áÁ•Ð¡É•ÍÕ±Ð¹•Ù•¹Ð¹ÍÑ…ÑÕÌ¤¹ïBe('APPROVED');
+    expect(result.history.actionType).toBe('EVENT_APPROVED');
+    expect(result.history.actorId).toBe('c1');
+    expect(result.history.newValue).toBe('APPROVED');
+    expect(result.history.createdAt).toBe('T');
+  });
+
+  test('C6-TC7 re-approving an already-approved event is a no-op (idempotency)', () => {
+    const result = approveEvent({ event: event({ status: 'APPROVED' }), userId: 'c1' });
+    expect(result.ok).toBe(false);
+    expect(result.event.status).toBe('APPROVED');
   });
 });
