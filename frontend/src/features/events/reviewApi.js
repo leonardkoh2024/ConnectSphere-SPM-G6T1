@@ -4,7 +4,7 @@
 
 import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
 import { auth, db } from "../../lib/firebase";
-import { EVENT_STATUS, canOpenReview, canRejectEvent, canReassignEvent, canRequestClarification, cleanRequiredText } from "../../domain/eventReview";
+import { EVENT_STATUS, canApproveEvent, canOpenReview, canRejectEvent, canReassignEvent, canRequestClarification, canRespondToClarification, cleanRequiredText } from "../../domain/eventReview";
 import { clarificationRecord, clarificationResponseRecord, coordinatorAssignmentRecord, eventHistoryRecord, notificationRecord } from "../../domain/eventReviewRecords";
 import { ROLES } from "../../domain/roles";
 
@@ -79,74 +79,72 @@ const detail = async (eventId) => {
     getDocs(query(collection(db, "clarification_requests"), where("event_id", "==", eventId))),
     getDocs(query(collection(db, "coordinator_assignments"), where("event_id", "==", eventId))),
     getDocs(query(collection(db, "event_history"), where("event_id", "==", eventId))),
-    coordinatorFor(event.coordinator_id), profileFor(user.uid)
-  ]);
-  const [coordinators, responseSnapshots] = await Promise.all([
-    profile.role === ROLES.COORDINATOR ? activeCoordinators() : Promise.resolve([]),
-    Promise.all(questions.docs.map((question) => getDocs(query(collection(db, "clarification_responses"), where("clarification_id", "==", question.id)))))
-  ]);
-  const byCreated = (a, b) => String(a.created_at || "").localeCompare(String(b.created_at || ""));
-  const historyRecords = history.docs.map(record).sort(byCreated);
-  const decisions = historyRecords.filter((item) => ["EVENT_APPROVED", "EVENT_REJECTED"].includes(item.action_type));
-  const decision = decisions.length ? decisions[decisions.length - 1] : null;
-  return {
-    event: { ...event, editable: event.coordinator_id === user.uid, decision: decision?.new_value || null, decision_reason: decision?.description || null, decided_by: decision?.actor_id || null, decided_at: decision?.created_at || null },
-    coordinator, coordinators,
-    clarifications: questions.docs.map(record).sort(byCreated),
-    responses: responseSnapshots.flatMap((snapshot) => snapshot.docs.map(record)).sort(byCreated),
-    assignments: assignments.docs.map(record).sort(byCreated)
-  };
-};
+    coordinator›ÜŠ]™[˜ÛÛÜ™[˜]Ü—ÚY
+K›Ùš[Q›ÜŠ\Ù\‹ZY
+BˆJNÂˆÛÛœÝØÛÛÜ™[˜]ÜœË™\ÜÛœÙTÛ˜\ÚÝ×HH]ØZ]›ÛZ\ÙK˜[
+Âˆ›Ùš[Kœ›ÛHOOH“ÓTËÓÓÔ‘SUÔˆÈXÝ]™PÛÛÜ™[˜]ÜœÊ
+Hˆ›ÛZ\ÙKœ™\ÛÛ™J×JKˆ›ÛZ\ÙK˜[
+]Y\Ý[ÛœË™ØÜË›X\
 
-const openReview = async (eventId) => {
-  const user = requireUser();
-  const eventRef = doc(db, "events", eventId);
-  const historyRef = doc(collection(db, "event_history"));
-  await runTransaction(db, async (tx) => {
-    const snapshot = await tx.get(eventRef);
-    if (!snapshot.exists() || !canOpenReview(snapshot.data(), user.uid)) throw new Error("Only the assigned coordinator can open this submitted request.");
-    const changedAt = serverTimestamp();
-    tx.update(eventRef, { status: EVENT_STATUS.UNDER_REVIEW, updated_at: changedAt });
-    tx.set(historyRef, eventHistoryRecord({ historyId: historyRef.id, eventId, actorId: user.uid, actionType: "REVIEW_STARTED", fieldName: "status", oldValue: EVENT_STATUS.SUBMITTED, newValue: EVENT_STATUS.UNDER_REVIEW, description: "Coordinator opened the request for review.", createdAt: changedAt }));
-  });
-  return { ok: true };
-};
+]Y\Ý[ÛŠHOˆÙ]ØÜÊ]Y\žJÛÛXÝ[ÛŠ‹˜Û\šYšXØ][Û—Ü™\ÜÛœÙ\ÈŠKÚ\™J˜Û\šYšXØ][Û—ÚY‹OH‹]Y\Ý[Û‹šY
+JJJJBˆJNÂˆÛÛœÝžPÜ™X]YH
+KŠHOˆÝš[™ÊK˜Ü™X]YØ]ˆŠK›ØØ[PÛÛ\\™JÝš[™Ê‹˜Ü™X]YØ]ˆŠJNÂˆÛÛœÝ\ÝÜžT™XÛÜ™ÈH\ÝÜžK™ØÜË›X\
+™XÛÜ™
+KœÛÜ
+žPÜ™X]Y
+NÂˆÛÛœÝXÚ\Ú[ÛœÈH\ÝÜžT™XÛÜ™Ë™š[\Š
+][JHOˆÈ‘U‘S•ÐT“Õ‘Q‹‘U‘S•Ô‘R‘PÕQ—Kš[˜ÛY\Ê][K˜XÝ[Û—Ý\JJNÂˆÛÛœÝXÚ\Ú[ÛˆHXÚ\Ú[ÛœË›[™ÝÈXÚ\Ú[ÛœÖÙXÚ\Ú[ÛœË›[™ÝHWHˆ[Âˆ™]\›ˆÂˆ]™[ˆÈ‹‹™]™[Y]X›Nˆ]™[˜ÛÛÜ™[˜]Ü—ÚYOOH\Ù\‹ZYXÚ\Ú[ÛŽˆXÚ\Ú[ÛË›™]×Ý˜[YH[XÚ\Ú[Û—Ü™X\ÛÛŽˆXÚ\Ú[ÛË™\ØÜš\[Ûˆ[XÚYYØžNˆXÚ\Ú[ÛË˜XÝÜ—ÚY[XÚYYØ]ˆXÚ\Ú[ÛË˜Ü™X]YØ][KˆÛÛÜ™[˜]Ü‹ÛÛÜ™[˜]ÜœËˆÛ\šYšXØ][ÛœÎˆ]Y\Ý[ÛœË™ØÜË›X\
+™XÛÜ™
+KœÛÜ
+žPÜ™X]Y
+Kˆ™\ÜÛœÙ\Îˆ™\ÜÛœÙTÛ˜\ÚÝË™›]X\
 
-const clarify = async (eventId, value) => {
-  const user = requireUser();
-  const message = cleanRequiredText(value);
-  if (!message) throw new Error("Clarification message is required.");
-  const eventRef = doc(db, "events", eventId);
-  const clarificationRef = doc(collection(db, "clarification_requests"));
-  const historyRef = doc(collection(db, "event_history"));
-  const notificationRef = doc(collection(db, "notifications"));
-  await runTransaction(db, async (tx) => {
-    const snapshot = await tx.get(eventRef);
-    if (!snapshot.exists() || !canRequestClarification(snapshot.data(), user.uid)) throw new Error("A clarification cannot be requested for this event.");
-    const event = snapshot.data();
-    const changedAt = serverTimestamp();
-    tx.set(clarificationRef, clarificationRecord({ clarificationId: clarificationRef.id, eventId, createdBy: user.uid, message, createdAt: changedAt }));
-    tx.update(eventRef, { status: EVENT_STATUS.UNDER_REVIEW, open_clarification_id: clarificationRef.id, updated_at: changedAt });
-    tx.set(historyRef, eventHistoryRecord({ historyId: historyRef.id, eventId, actorId: user.uid, actionType: "CLARIFICATION_REQUESTED", description: message, createdAt: changedAt }));
-    tx.set(notificationRef, notificationRecord({ notificationId: notificationRef.id, userId: event.organiser_id, eventId, type: "CLARIFICATION_REQUESTED", message: `${event.name || event.reference_no}: clarification requested â€” ${message}`, createdAt: changedAt }));
-  });
-  return { ok: true, clarificationId: clarificationRef.id };
-};
+Û˜\ÚÝ
+HOˆÛ˜\ÚÝ™ØÜË›X\
+™XÛÜ™
+JKœÛÜ
+žPÜ™X]Y
+Kˆ\ÜÚYÛ›Y[Îˆ\ÜÚYÛ›Y[Ë™ØÜË›X\
+™XÛÜ™
+KœÛÜ
+žPÜ™X]Y
+BˆNÂŸNÂ‚˜ÛÛœÝÜ[”™]šY]ÈH\Þ[˜È
+]™[Y
+HOˆÂˆÛÛœÝ\Ù\ˆH™\]Z\™U\Ù\Š
+NÂˆÛÛœÝ]™[™YˆHØÊ‹™]™[È‹]™[Y
+NÂˆÛÛœÝ\ÝÜžT™YˆHØÊÛÛXÝ[ÛŠ‹™]™[Ú\ÝÜžHŠJNÂˆ]ØZ][•˜[œØXÝ[ÛŠ‹\Þ[˜È
+
+HOˆÂˆÛÛœÝÛ˜\ÚÝH]ØZ]™Ù]
+]™[™YŠNÂˆYˆ
+\Û˜\ÚÝ™^\ÝÊ
+HXØ[“Ü[”™]šY]ÊÛ˜\ÚÝ™]J
+K\Ù\‹ZY
+JH›ÝÈ™]È\œ›ÜŠ“Û›HH\ÜÚYÛ™YÛÛÜ™[˜]ÜˆØ[ˆÜ[ˆ\ÈÝX›Z]Y™\]Y\ÝˆŠNÂˆÛÛœÝÚ[™ÙY]HÙ\™\•[Y\Ý[\
 
-const reject = async (eventId, value) => {
-  const user = requireUser();
-  const reason = cleanRequiredText(value);
-  if (!reason) throw new Error("Rejection reason is required.");
-  const eventRef = doc(db, "events", eventId);
-  const historyRef = doc(collection(db, "event_history"));
-  const notificationRef = doc(collection(db, "notifications"));
-  await runTransaction(db, async (tx) => {
-    const snapshot = await tx.get(eventRef);
-    if (!snapshot.exists() || !canRejectEvent(snapshot.data(), user.uid)) throw new Error("This event cannot be rejected now.");
-    const event = snapshot.data();
-    const changedAt = serverTimestamp();
-    tx.update(eventRef, { status: EVENT_STATUS.REJECTED, updated_at: changedAt });
-    tx.set(historyRef, eventHistoryRecord({ historyId: historyRef.id, eventId, actorId: user.uid, actionType: "EVENT_REJECTED", fieldName: "status", oldValue: event.status, newValue: EVENT_STATUS.REJECTED, description: reason, createdAt: changedAt }));
+NÂˆ\]J]™[™Y‹ÈÝ]\ÎˆU‘S•ÔÕUTË•S‘T—Ô‘U’QUË\]YØ]ˆÚ[™ÙY]JNÂˆœÙ]
+\ÝÜžT™Y‹]™[\ÝÜžT™XÛÜ™
+È\ÝÜžRYˆ\ÝÜžT™Y‹šY]™[YXÝÜ’Yˆ\Ù\‹ZYXÝ[Û•\Nˆ”‘U’QU×ÔÕT•Q‹šY[˜[YNˆœÝ]\È‹Û˜[YNˆU‘S•ÔÕUTË”ÕP“RUQ™]Õ˜[YNˆU‘S•ÔÕUTË•S‘T—Ô‘U’QUË\ØÜš\[ÛŽˆÛÛÜ™[˜]ÜˆÜ[™YH™\]Y\Ý›Üˆ™]šY]Ëˆ‹Ü™X]Y]ˆÚ[™ÙY]JJNÂˆJNÂˆ™]\›ˆÈÚÎˆYHNÂŸNÂ‚˜ÛÛœÝÛ\šYžHH\Þ[˜È
+]™[Y˜[YJHOˆÂˆÛÛœÝ\Ù\ˆH™\]Z\™U\Ù\Š
+NÂˆÛÛœÝY\ÜØYÙHHÛX[”™\]Z\™Y^
+˜[YJNÂˆYˆ
+[Y\ÜØYÙJH›ÝÈ™]È\œ›ÜŠÛ\šYšXØ][ÛˆY\ÜØYÙH\È™\]Z\™YˆŠNÂˆÛÛœÝ]™[™YˆHØÊ‹™]™[È‹]™[Y
+NÂˆÛÛœÝÛ\šYšXØ][Û”™YˆHØÊÛÛXÝ[ÛŠ‹˜Û\šYšXØ][Û—Ü™\]Y\ÝÈŠJNÂˆÛÛœÝ\ÝÜžT™YˆHØÊÛÛXÝ[ÛŠ‹™]™[Ú\ÝÜžHŠJNÂˆÛÛœÝ›ÝYšXØ][Û”™YˆHØÊÛÛXÝ[ÛŠ‹››ÝYšXØ][ÛœÈŠJNÂˆ]ØZ][•˜[œØXÝ[ÛŠ‹\Þ[˜È
+
+HOˆÂˆÛÛœÝÛ˜\ÚÝH]ØZ]™Ù]
+]™[™YŠNÂˆYˆ
+\Û˜\ÚÝ™^\ÝÊ
+HXØ[”™\]Y\ÝÛ\šYšXØ][ÛŠÛ˜\ÚÝ™]J
+K\Ù\‹ZY
+JH›ÝÈ™]È\œ›ÜŠHÛ\šYšXØ][ÛˆØ[››Ý™H™\]Y\ÝY›Üˆ\È]™[ˆŠNÂˆÛÛœÝ]™[HÛ˜\ÚÝ™]J
+NÂˆÛÛœÝÚ[™ÙY]HÙ\™\•[Y\Ý[\
+
+NÂˆœÙ]
+Û\šYšXØ][Û”™Y‹Û\šYšXØ][Û”™XÛÜ™
+ÈÛ\šYšXØ][Û’YˆÛ\šYšXØ][Û”™Y‹šY]™[YÜ™X]YžNˆ\Ù\‹ZYY\ÜØYÙKÜ™X]Y]ˆÚ[™ÙY]JJNÂˆ\]J]™[™Y‹ÈÝ]\ÎˆU‘S•ÔÕUTË•S‘T—Ô‘U’QUËÜ[—ØÛ\šYšXØ][Û—ÚYˆÛ\šYšXØ][Û”™Y‹šY\]YØ]ˆÚ[™ÙY]JNÂˆœÙ]
+\ÝÜžT™Y‹]™[\ÝÜžT™XÛÜ™
+È\ÝÜžRYˆ\ÝÜžT™Y‹šY]™[YXÝÜ’Yˆ\Ù\‹ZYXÝ[Û•\NˆÓT’Q’PÐUSÓ—Ô‘TUQTÕQ‹\ØÜš\[ÛŽˆY\ÜØYÙKÜ™X]Y]ˆÚ[™ÙY]JJNÂˆœÙ]
+›ÝYšXØ][Û”™Y‹›ÝYšXØ][Û”™XÛÜ™
+È›ÝYšXØ][Û’Yˆ›ÝYšXØ][Û”™Y‹šY\Ù\’YŠWfVçBæ÷&væ—6W%ö–BÂWfVçD–BÂG—S¢$4Ä$”d”4D”ôåõ$UTU5DTB"ÂÖW76vS¢G¶WfVçBææÖRÇÂWfVçBç&VfW&Væ6Uöæ÷Ó¢6Æ&–f–6F–öâ&WVW7FVB(	BG¶ÖW76vWÖÂ7&VFVDC¢6†ævVDBÒ’“°¢Ò“°¢&WGW&â²ö³¢G'VRÂ6Æ&–f–6F–öä–C¢6Æ&–f–6F–öå&Vbæ–BÓ°§Ó° ¦6öç7B&V¦V7BÒ7–æ2†WfVçD–BÂfÇVR’Óâ°¢6öç7BW6W"Ò&WV—&UW6W"‚“°¢6öç7B&V6öâÒ6ÆVå&WV—&VEFW‡B‡fÇVR“°¢–b‚&V6öâ’F‡&÷ræWrW'&÷"‚%&V¦V7F–öâ&V6öâ—2&WV—&VBâ"“°¢6öç7BWfVçE&VbÒFö2†F"Â&WfVçG2"ÂWfVçD–B“°¢6öç7B†—7F÷'•&VbÒFö2†6öÆÆV7F–öâ†F"Â&WfVçEö†—7F÷'’"’“°¢6öç7Bæ÷F–f–6F–öå&VbÒFö2†6öÆÆV7F–öâ†F"Â&æ÷F–f–6F–öç2"’“°¢v—B'VåG&ç67F–öâ†F"Â7–æ2‡G‚’Óâ°¢6öç7B6æ6†÷BÒv—BG‚ævWB†WfVçE&Vb“°¢–b‚6æ6†÷BæW†—7G2‚’ÇÂ6å&V¦V7DWfVçB‡6æ6†÷BæFF‚’ÂW6W"çV–B’’F‡&÷ræWrW'&÷"‚%F†—2WfVçB6ææ÷B&R&V¦V7FVBæ÷râ"“°¢6öç7BWfVçBÒ6æ6†÷BæFF‚“°¢6öç7B6†ævVDBôÍ•ÉÙ•ÉQ¥µ•ÍÑ…µÀ ¤ì(€€€Ñà¹ÕÁ‘…Ñ”¡•Ù•¹ÑI•˜°ìÍÑ…ÑÕÌèY9Q}MQQUL¹I)Q°ÕÁ‘…Ñ•‘}…Ðè¡…¹•‘Ðô¤ì(€€€Ñà¹Í•Ð¡¡¥ÍÑ½ÉåI•˜°•Ù•¹Ñ!¥ÍÑ½ÉåI•½É¡ì¡¥ÍÑ½Éå%è¡¥ÍÑ½ÉåI•˜¹¥°•Ù•¹Ñ%°…Ñ½É%èÕÍ•È¹Õ¥°…Ñ¥½¹QåÁ”è€‰Y9Q}I)Qˆ°™¥•±‘9…µ”è€‰ÍÑ…ÑÕÌˆ°½±‘Y…±Õ”è•Ù•¹Ð¹ÍÑ…ÑÕÌ°¹•ÝY…±Õ”èY9Q}MQQUL¹I)Q°‘•ÍÉ¥Áéon: reason, createdAt: changedAt }));
     tx.set(notificationRef, notificationRecord({ notificationId: notificationRef.id, userId: event.organiser_id, eventId, type: "EVENT_REJECTED", message: `${event.name || event.reference_no} was rejected â€” ${reason}`, createdAt: changedAt }));
   });
   return { ok: true };
@@ -155,52 +153,34 @@ const reject = async (eventId, value) => {
 const reassign = async (eventId, coordinatorId) => {
   const user = requireUser();
   const eventRef = doc(db, "events", eventId);
-  const targetRef = doc(db, "users", coordinatorId);
-  const previousRef = doc(db, "coordinator_assignments", `${eventId}_${user.uid}`);
-  const nextRef = doc(db, "coordinator_assignments", `${eventId}_${coordinatorId}`);
-  const historyRef = doc(collection(db, "event_history"));
-  const notificationRefs = [doc(collection(db, "notifications")), doc(collection(db, "notifications")), doc(collection(db, "notifications"))];
-  await runTransaction(db, async (tx) => {
-    const [eventSnapshot, targetSnapshot, previousSnapshot] = await Promise.all([tx.get(eventRef), tx.get(targetRef), tx.get(previousRef)]);
-    if (!eventSnapshot.exists() || !targetSnapshot.exists()) throw new Error("Event or coordinator not found.");
-    const event = eventSnapshot.data();
-    const targetData = targetSnapshot.data();
-    const target = targetData.role === ROLES.COORDINATOR ? { id: targetSnapshot.id, ...targetData, active: targetData.is_active !== false } : null;
-    if (!canReassignEvent(event, user.uid, target)) throw new Error("Only the current coordinator can reassign this event to another active coordinator.");
-    const changedAt = serverTimestamp();
-    tx.update(eventRef, { coordinator_id: coordinatorId, assigned_at: changedAt, updated_at: changedAt });
-    tx.set(previousRef, coordinatorAssignmentRecord({ assignmentId: previousRef.id, eventId, coordinatorId: user.uid, assignedAt: previousSnapshot.exists() ? previousSnapshot.data().assigned_at : event.assigned_at || null, endedAt: changedAt }));
-    tx.set(nextRef, coordinatorAssignmentRecord({ assignmentId: nextRef.id, eventId, coordinatorId, assignedAt: changedAt }));
-    tx.set(historyRef, eventHistoryRecord({ historyId: historyRef.id, eventId, actorId: user.uid, actionType: "COORDINATOR_REASSIGNED", fieldName: "coordinator_id", oldValue: user.uid, newValue: coordinatorId, description: `Event reassigned to ${target.name || targetData.email || coordinatorId}.`, createdAt: changedAt }));
-    const note = `${event.name || event.reference_no} was reassigned to ${target.name || targetData.email || coordinatorId}.`;
-    [user.uid, coordinatorId, event.organiser_id].forEach((recipient, index) => tx.set(notificationRefs[index], notificationRecord({ notificationId: notificationRefs[index].id, userId: recipient, eventId, type: "COORDINATOR_REASSIGNED", message: note, createdAt: changedAt })));
+  const targetRef = doc(db, "users",(ÛÛÜ™[˜]Ü’Y
+NÂˆÛÛœÝ™]š[Ý\Ô™YˆHØÊ‹˜ÛÛÜ™[˜]Ü—Ø\ÜÚYÛ›Y[È‹	Ù]™[YWÉÝ\Ù\‹ZYX
+NÂˆÛÛœÝ™^™YˆHØÊ‹˜ÛÛÜ™[˜]Ü—Ø\ÜÚYÛ›Y[È‹	Ù]™[YWÉØÛÛÜ™[˜]Ü’YX
+NÂˆÛÛœÝ\ÝÜžT™YˆHØÊÛÛXÝ[ÛŠ‹™]™[Ú\ÝÜžHŠJNÂˆÛÛœÝ›ÝYšXØ][Û”™YœÈHÙØÊÛÛXÝ[ÛŠ‹››ÝYšXØ][ÛœÈŠJKØÊÛÛXÝ[ÛŠ‹››ÝYšXØ][ÛœÈŠJKØÊÛÛXÝ[ÛŠ‹››ÝYšXØ][ÛœÈŠJWNÂˆ]ØZ][•˜[œØXÝ[ÛŠ‹\Þ[˜È
+
+HOˆÂˆÛÛœÝÙ]™[Û˜\ÚÝ\™Ù]Û˜\ÚÝ™]š[Ý\ÔÛ˜\ÚÝHH]ØZ]›ÛZ\ÙK˜[
+Ý™Ù]
+]™[™YŠK™Ù]
+\™Ù]™YŠK™Ù]
+™]š[Ý\Ô™YŠWJNÂˆYˆ
+Y]™[Û˜\ÚÝ™^\ÝÊ
+H]\™Ù]Û˜\ÚÝ™^\ÝÊ
+JH›ÝÈ™]È\œ›ÜŠ‘]™[ÜˆÛÛÜ™[˜]Üˆ›Ý›Ý[™ˆŠNÂˆÛÛœÝ]™[H]™[Û˜\ÚÝ™]J
+NÂˆÛÛœÝ\™Ù]]HH\™Ù]Û˜\ÚÝ™]J
+NÂˆÛÛœÝ\™Ù]H\™Ù]]Kœ›ÛHOOH“ÓTËÓÓÔ‘SUÔˆÈÈYˆ\™Ù]Û˜\ÚÝšY‹‹\™Ù]]KXÝ]™Nˆ\™Ù]]Kš\×ØXÝ]™HOOH˜[ÙHHŠçVÆÃ°¢–b‚6å&V76–väWfVçB†WfVçBÂW6W"çV–BÂF&vWB’’F‡&÷ræWrW'&÷"‚$öæÇ’F†R7W'&VçB6ö÷&F–æF÷"6â&V76–vâF†—2WfVçBFòæ÷F†W"7F—fR6ö÷&F–æF÷"â"“°¢6öç7B6†ævVDBÒ6W'fW%F–ÖW7F×‚“°¢G‚çWFFR†WfVçE&VbÂ²6ö÷&F–æF÷%ö–C¢6ö÷&F–æF÷$–BÂ76–væVEöC¢6†ævVDBÂWFFVEöC¢6†ævVDBÒ“°¢G‚ç6WB‡&Wf–÷W5&VbÂ6ö÷&F–æF÷$76–væÖVçE&V6÷&B‡²76–væÖVçD–C¢&Wf–÷W5&Vbæ–BÂWfVçD–BÂ6ö÷&F–æF÷$–C¢W6W"çV–BÂ76–væVDC¢&Wf–÷W56æ6†÷BæW†—7G2‚’ò&Wf–÷W56æ6†÷BæFF‚’æ76–væVEöB¢WfVçBæ76–væVEöBÇÂçVÆÂÂVæFVDC¢6†ævVDBÒ’“°¢G‚ç6WB†æW‡E&VbÂ6ö÷&F–æF÷$76–væÖVçE&V6÷&B‡²76–væÖVçD–C¢æW‡E&Vbæ–BÂWfVçD–BÂ½½É‘¥¹…Ñ½É%°…ÍÍ¥¹•‘Ðè¡…¹•‘Ðô¤¤ì(€€€Ñà¹Í•Ð¡¡¥ÍÑ½ÉåI•˜°•Ù•¹Ñ!¥ÍÑ½ÉåI•½É¡ì¡¥ÍÑ½Éå%è¡¥ÍÑ½ÉåI•˜¹¥°•Ù•¹Ñ%°…Ñ½É%èÕÍ•È¹Õ¥°…Ñ¥½¹QåÁ”è€‰==I%9Q=I}IMM%9ˆ°™¥•±‘9…µ”è€‰½½É‘¥¹…Ñ½É}¥ˆ°½±‘Y…±Õ”èÕÍ•È¹Õ¥°¹•ÝY…±Õ”è½½É‘¥¹…Ñ½É%°‘•ÍÉ¥ÁÑ¥½¸èÙ•¹ÐÉ•…ÍÍ¥¹•Ñ¼€‘íÑ…É•Ð¹¹…µ”ñðÑ…É•Ñ…Ñ„¹•µ…¥°ñð½½É‘¥¹…Ñ½É%‘ô¹€°É•…Ñ•‘Ðè¡…¹•‘Ðô¤¤ì(€€€½¹ÍÐ¹½Ñ”€ô€‘í•Ù•¹Ð¹¹…µ”ñð•Ù•¹Ð¹É•™•É•¹•}¹½ôÝ…ÌÉ•…ÍÍ¥¹•Ñ¼€‘íÑ…É•Ð¹¹…µ”ñðÑ…É•Ñ…Ñ„¹•µ…¥°ñð½½É‘¥¹…Ñ½É%‘ô¹€ì(€€€mÕÍ•È¹Õ¥°½½É‘¥¹…Ñ½É%°•Ù•¹Ð¹½É…¹¥Í•É}¥‘t¹™½É…  ¡É•¥Á¥•¹Ð°¥¹‘•à¤€ôøÑà¹Í•Ð¡¹½Ñ¥™¥…Ñ¥½¹I•™Ím¥¹‘•át°¹½Ñ¥™¥…Ñ¥½¹I•½É¡ì¹½Ñ¥™¥…Ñ¥½¹%è¹½Ñ¥™¥…Ñ¥½¹I•™Ím¥¹‘•át¹¥°ÕÍ•É%èÉ•¥Á¥•¹Ð°•Ù•¹Ñ%°ÑåÁ”è€‰==I%9Q=I}IMM%9ˆ°µ•ÍÍ…”è¹½Ñ”°É•…Ñ•‘Ðè¡…¹•‘Ðô¤¤¤ì(€ô¤ì(€É•ÑÕÉ¸ì½¬èÑÉÕ”ôì)ôì()½¹ÍÐÉ•ÍÁ½¹€ô…Íå¹Œ€¡•Ù•¹Ñ%°±…É¥™¥…Ñ¥½¹%°Ù…±Õ”¤€ôøì(€½¹ÍÐÕÍ•È€ôÉ•ÅÕ¥É•UÍ•È ¤ì(€½¹ÍÐµ•ÍÍ…”€ô±•…¹I•ÅÕ¥É•‘Q•áÐ¡Ù…±Õ”¤ì(€¥˜€ …µ•ÍÍ…”¤Ñ¡É½Ü¹•ÜÉÉ½È ‰I•ÍÁ½¹Í”µ•ÍÍ…”¥ÌÉ•ÅÕ¥É•¸ˆ¤ì(€½¹ÍÐ•Ù•¹ÑI•˜€ô‘½Œ¡‘ˆ°€‰•Ù•¹ÑÌˆ°•Ù•¹Ñ%¤ì(€½¹ÍÐ±…É¥™¥…Ñ¥½¹I•˜€ô‘½Œ¡‘ˆ°€‰±…É¥™¥…Ñ¥½¹}É•ÅÕ•ÍÑÌˆ°±…É¥™¥…Ñ¥½¹%¤ì(€½¹ÍÐÉ•ÍÁ½¹Í•I•˜€ô‘½Œ¡½±±•Ñ¥½¸¡‘ˆ°€‰±…É¥™¥…Ñ¥½¹}É•ÍÁ½¹Í•Ìˆ¤¤ì(€½¹ÍÐ¡¥ÍÑ½ÉåI•˜€ô‘½Œ¡½±±•Ñ¥½¸¡‘ˆ°€‰•Ù•¹Ñ}¡¥ÍÑ½Éäˆ¤¤ì(€½¹ÍÐ¹½Ñ¥™¥…Ñ¥½¹I•˜€ô‘½Œ¡½±±•Ñ¥½¸¡‘ˆ°€‰¹½Ñ¥™¥…Ñ¥½¹Ìˆ¤¤ì(€…Ý…¥ÐÉÕ¹QÉ…¹Í…Ñ¥½¸¡‘ˆ°…Íå¹Œ€¡Ñà¤€ôøì(€€€½¹ÍÐm•Ù•¹ÑM¹…ÁÍ¡½Ð°±…É¥™¥…Ñ¥½¹M¹…ÁÍ¡½Ñt€ô…Ý…¥ÐAÉ½µ¥Í”¹…±°¡mÑà¹•Ð¡•Ù•¹ÑI•˜¤°Ñà¹•Ð¡±…É¥™¥…Ñ¥½¹I•˜¥t¤ì(€€€¥˜€ …•Ù•¹ÑM¹…ÁÍ¡½Ð¹•á¥ÍÑÌ ¤ñð€…±…É¥™¥…Ñ¥½¹M¹…ÁÍ¡½Ð¹•á¥ÍÑÌ ¤¤èrow new Error("Clarification+›Ý›Ý[™ˆŠNÂˆÛÛœÝ]™[H]™[Û˜\ÚÝ™]J
+NÂˆÛÛœÝÛ\šYšXØ][ÛˆHÈÛ\šYšXØ][Û—ÚYˆÛ\šYšXØ][Û’Y‹‹˜Û\šYšXØ][Û”Û˜\ÚÝ™]J
+HNÂˆYˆ
+XØ[”™\ÜÛ™ÐÛ\šYšXØ][ÛŠ]™[Û\šYšXØ][Û‹\Ù\‹ZY
+JH›ÝÈ™]È\œ›ÜŠ–[ÝHØ[››Ý[œÝÙ\ˆ\ÈÛ\šYšXØ][Û‹ˆŠNÂˆÛÛœÝÚ[™ÙY]HÙ\™\•[Y\Ý[\
+
+NÂˆœÙ]
+™\ÜÛœÙT™Y‹Û\šYšXØ][Û”™\ÜÛœÙT™XÛÜ™
+È™\ÜÛœÙRYˆ™\ÜÛœÙT™Y‹šYÛ\šYšXØ][Û’Y™\ÜÛ™\’Yˆ\Ù\‹ZYY\ÜØYÙKÜ™X]Y]ˆÚ[™ÙY]JJNÂˆ\]JÛ\šYšXØ][Û”™Y‹ÈÝ]\ÎˆS”ÕÑT‘Q‹™\ÜÛ™YØ]ˆÚ[™ÙY]JNÂˆ\]J]™[™Y‹ÈÜ[—ØÛ\šYšXØ][Û—ÚYˆ[\]YØ]ˆÚ[™ÙY]JNÂˆœÙ]
+\ÝÜžT™Y‹]™[\ÝÜžT™XÛÜ™
+È\ÝÜžRYˆ\ÝÜžT™Y‹šY]™[YXÝÜ’Yˆ\Ù\‹ZYXÝ[Û•\NˆÓT’Q’PÐUSÓ—Ô‘TÔÓ‘Q‹\ØÜš\[ÛŽˆY\ÜØYÙKÜ™X]Y]ˆÚ[™ÙY]JJNÂˆœÙ]
+›ÝYšXØ][Û”™Y‹›ÝYšXØ^–öå&V6÷&B‡²æ÷F–f–6F–öä–C¢æ÷F–f–6F–öå&Vbæ–BÂW6W$–C¢WfVçBæ6ö÷&F–æF÷%ö–BÂ•Ù•¹Ñ%°ÑåÁ”è€‰1I%%Q%=9}IMA=9ˆ°µ•ÍÍ…”è€‘í•Ù•¹Ð¹¹…µ”ñð•Ù•¹Ð¹É•™•É•¹•}¹½ôèÑ¡”½É…¹¥Í•È…¹ÍÝ•É•å½ÕÈ±…É¥™¥…Ñ¥½¸¹€°É•…Ñ•‘Ðè¡…¹•‘Ðô¤¤ì(€ô¤ì(€É•ÑÕÉ¸ì½¬èÑÉÕ”ôì)ôì((¼¼Ø€¼MIU4´ÄÀÜƒŠP…ÁÁÉ½Ù”„ÍÕ‰µ¥ÑÑ•É•ÅÕ•ÍÐ¸M…µ”Í¡…Á”…ÌÉ•©•ÐèÕ…ÉÝ¥Ñ (¼¼…¹ÁÁÉ½Ù•Ù•¹Ð€¡ÄÕ¹‘•ÈÉ•Ù¥•Ü°Ì…ÍÍ¥¹•½½É‘¥¹…Ñ½È°Ð¹¼½Á•¸(¼¼±…É¥™¥…Ñ¥½¸¤°Í•ÐÑ¡”•Ù•¹ÐÁÁÉ½Ù•€¡È¤°…¹ÝÉ¥Ñ”…¸Y9Q}AAI=Y¡¥ÍÑ½Éä(¼¼•¹ÑÉä€¡Ô¤Ý¡½Í”…Ñ½É}¥€¬É•…Ñ•‘}…Ð…É”Ñ¡”‘•¥‘¥¹œ½½É‘¥¹…Ñ½È€¬Ñ¥µ•ÍÑ…µÀ¸)½¹ÍÐ…ÁÁÉ½Ù”€ô…Íå¹Œ€¡•Ù•¹Ñ%¤€ôøì(€½¹ÍÐÕÍ•È€ôÉ•ÅÕ¥É•UÍ•È ¤ì(€½¹ÍÐ•Ù•¹ÑI•˜€ô‘½Œ¡‘ˆ°€‰•Ù•¹ÑÌˆ°•Ù•¹Ñ%¤ì(€½¹ÍÐ¡¥ÍÑ½ÉåI•˜€ô‘½Œ¡½±±•Ñ¥½¸¡‘ˆ°€‰•Ù•¹Ñ}¡¥ÍÑ½Éäˆ¤¤ì(€…Ý…¥ÐÉÕ¹QÉ…¹Í…Ñ¥½¸¡‘ˆ°…Íå¹Œ€¡Ñà¤€ôøì(€€€½¹ÍÐÍ¹…ÁÍ¡½Ð€ô…Ý…¥ÐÑà¹•Ð¡•Ù•¹ÑI•˜¤ì(€€€¥˜€ …Í¹…ÁÍ¡½Ð¹•á¥ÍÑÌ ¤ñð€……¹ÁÁÉ½Ù•Ù•¹Ð¡Í¹…ÁÍ¡½Ð¹‘…Ñ„ ¤°ÕÍ•È¹Õ¥¤¤Ñ¡É½Ü¹•ÜÉÉ½È ‰Q¡¥Ì•Ù•¹Ð…¹¹½Ð‰”…ÁÁÉ½Ù•¹½Ü¸ˆ¤ì(€€€½¹ÍÐ•Ù•¹Ð€ôÍ¹…ÁÍ¡½Ð¹‘…Ñ„ ¤ì(€€€½¹ÍÐ¡…¹•‘Ð€ôÍ•ÉÙ•ÉQ¥µ•ÍÑ…µÀ ¤ì(€€€Ñà¹ÕÁ‘…Ñ”¡•Ù•¹ÑI•˜°ìÍÑ…ÑÕÌèY9Q}MQQUL¹AAI=Y°ÕÁ‘…Ñ•‘}…Ðè¡…¹•‘Ðô¤ì(€€€Ñà¹Í•Ð¡¡¥ÍÑ½ÉåI•˜°•Ù•¹Ñ!¥ÍÑ½ÉåI•½É¡ì¡¥ÍÑ½Éå%è¨istoryRef.id, eventId, actorId: user.uid, actionType: "EVENT_APPROVED", fieldName: "status", oldValue: event.status, newValue: EVENT_STATUS.APPROVED, description: "Coordinator approved the request.", createdAt: changedAt }));
   });
   return { ok: true };
 };
 
-const respond = async (eventId, clarificationId, value) => {
-  const user = requireUser();
-  const message = cleanRequiredText(value);
-  if (!message) throw new Error("Response message is required.");
-  const eventRef = doc(db, "events", eventId);
-  const clarificationRef = doc(db, "clarification_requests", clarificationId);
-  const responseRef = doc(collection(db, "clarification_responses"));
-  const historyRef = doc(collection(db, "event_history"));
-  const notificationRef = doc(collection(db, "notifications"));
-  await runTransaction(db, async (tx) => {
-    const [eventSnapshot, clarificationSnapshot] = await Promise.all([tx.get(eventRef), tx.get(clarificationRef)]);
-    if (!eventSnapshot.exists() || !clarificationSnapshot.exists()) throw new Error("Clarification not found.");
-    const event = eventSnapshot.data();
-    const clarification = clarificationSnapshot.data();
-    if (event.organiser_id !== user.uid || clarification.status !== "OPEN" || event.open_clarification_id !== clarificationId) throw new Error("You cannot answer this clarification.");
-    const changedAt = serverTimestamp();
-    tx.set(responseRef, clarificationResponseRecord({ responseId: responseRef.id, clarificationId, responderId: user.uid, message, createdAt: changedAt }));
-    tx.update(clarificationRef, { status: "ANSWERED", responded_at: changedAt });
-    tx.update(eventRef, { open_clarification_id: null, updated_at: changedAt });
-    tx.set(historyRef, eventHistoryRecord({ historyId: historyRef.id, eventId, actorId: user.uid, actionType: "CLARIFICATION_RESPONDED", description: message, createdAt: changedAt }));
-    tx.set(notificationRef, notificationRecord({ notificationId: notificationRef.id, userId: event.coordinator_id, eventId, type: "CLARIFICATION_RESPONDED", message: `${event.name || event.reference_no}: the organiser answered your clarification.`, createdAt: changedAt }));
-  });
-  return { ok: true };
-};
-
-export const reviewApi = { list, detail, openReview, clarify, reject, reassign, respond };
+export const reviewApi = { list, detail, openReview, clarify, reject, reassign, respond, approve };
