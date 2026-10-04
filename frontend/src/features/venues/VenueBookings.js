@@ -23,12 +23,16 @@ const venueFeatures = (venue) => [
 
 const venueVerdict = (venue, requirements) => {
   const assessment = assessVenue(venue, requirements);
-  if (isBlocked(assessment)) return { tone: "blocked", label: `Too small for ${requirements.expected_attendance}` };
-  if (assessment.warnings.length) {
-    const short = assessment.warnings.reduce((total, warning) => total + warning.missing.length, 0);
-    return { tone: "short", label: `${short} requirement${short === 1 ? "" : "s"} not met` };
-  }
-  return { tone: "met", label: "Meets all requirements" };
+  // One count for every requirement this venue does not meet, whatever kind it
+  // is: capacity and opening hours both block, so neither can be described by a
+  // label of its own without the other reading wrong.
+  const unmet = assessment.blocking.length
+    + assessment.warnings.reduce((total, warning) => total + warning.missing.length, 0);
+  if (!unmet) return { tone: "met", label: "Meets all requirements" };
+  return {
+    tone: isBlocked(assessment) ? "blocked" : "short",
+    label: `${unmet} requirement${unmet === 1 ? "" : "s"} not met`
+  };
 };
 
 export default function VenueBookings({ user, event: initialEvent = null, venue: initialVenue = null, onViewEvent, onBackChange, creating: creatingProp, onCreatingChange }) {

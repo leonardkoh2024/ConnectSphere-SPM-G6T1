@@ -167,6 +167,50 @@ describe('E8 / SCRUM-124 unit — facility, accessibility and layout shortfalls 
   });
 });
 
+describe('E7 AC4 / SCRUM-123 unit — a venue shut for the requested time is a hard stop', () => {
+  // 2026-11-20 is a Friday.
+  const fridayOnly = { ...hallA, operating_hours: [{ weekday: 'FRIDAY', opens_at: '10:00', closes_at: '20:00' }] };
+  const window = (fields) => needs({ event_date: '2026-11-20', start_time: '10:00', end_time: '17:00', ...fields });
+
+  test('TC-175 a window inside the venue opening hours for that day passes', () => {
+    const assessment = assessVenue(fridayOnly, window());
+    expect(assessment.blocking).toEqual([]);
+    expect(assessment.evaluated).toContain(CRITERIA.OPERATING_HOURS);
+    expect(assessment.suitable).toBe(true);
+  });
+
+  test('TC-176 a window starting before the venue opens blocks the request', () => {
+    const assessment = assessVenue(fridayOnly, window({ start_time: '09:00' }));
+    expect(assessment.blocking.map((item) => item.criterion)).toEqual([CRITERIA.OPERATING_HOURS]);
+    expect(submissionBlockReason({ assessment, acknowledged: [] }))
+      .toMatch(/opens 10:00–20:00 on FRIDAY/i);
+    expect(canSubmitBooking({ assessment, acknowledged: [CRITERIA.OPERATING_HOURS] })).toBe(false);
+  });
+
+  test('TC-177 a venue that does not open that day at all blocks the request', () => {
+    const mondayOnly = { ...hallA, operating_hours: [{ weekday: 'MONDAY', opens_at: '10:00', closes_at: '20:00' }] };
+    const assessment = assessVenue(mondayOnly, window());
+    expect(assessment.blocking.map((item) => item.criterion)).toEqual([CRITERIA.OPERATING_HOURS]);
+    expect(submissionBlockReason({ assessment, acknowledged: [] })).toMatch(/does not open on FRIDAY/i);
+  });
+
+  test('TC-178 a venue stating no hours at all is treated as open, not shut', () => {
+    expect(assessVenue(hallA, window()).blocking).toEqual([]);
+  });
+
+  test('TC-179 a date with no times asks only that the venue opens that day', () => {
+    const dayOnly = window({ start_time: '', end_time: '' });
+    expect(assessVenue(fridayOnly, dayOnly).blocking).toEqual([]);
+    const mondayOnly = { ...hallA, operating_hours: [{ weekday: 'MONDAY', opens_at: '10:00', closes_at: '20:00' }] };
+    expect(assessVenue(mondayOnly, dayOnly).blocking.map((item) => item.criterion))
+      .toEqual([CRITERIA.OPERATING_HOURS]);
+  });
+
+  test('TC-180 no date stated means the criterion is not evaluated at all', () => {
+    expect(assessVenue(fridayOnly, needs({})).evaluated).not.toContain(CRITERIA.OPERATING_HOURS);
+  });
+});
+
 describe('E8 / SCRUM-124 unit — the coordinator must acknowledge before submitting', () => {
   const withShortfalls = () => assessVenue(hallA, needs({
     facilities: ['KITCHEN_PANTRY'],
@@ -262,6 +306,9 @@ describe('E8 / SCRUM-124 unit — the event record supplies what is required', (
       accessibility: ['HEARING_LOOP']
     })).toEqual({
       expected_attendance: 180,
+      event_date: '',
+      start_time: '',
+      end_time: '',
       facilities: ['WIFI', 'STAGE'],
       accessibility: ['HEARING_LOOP'],
       layout: 'BANQUET'
@@ -270,7 +317,15 @@ describe('E8 / SCRUM-124 unit — the event record supplies what is required', (
 
   test('TC-131 an event that answered No to a section asks for nothing on it', () => {
     expect(bookingRequirements({ expected_attendance: 40, required_layout: null }))
-      .toEqual({ expected_attendance: 40, facilities: [], accessibility: [], layout: null });
+      .toEqual({
+        expected_attendance: 40,
+        event_date: '',
+        start_time: '',
+        end_time: '',
+        facilities: [],
+        accessibility: [],
+        layout: null
+      });
   });
 });
 
@@ -383,7 +438,8 @@ describe('E8 / SCRUM-124 functional — a shortfall warns and waits to be acknow
     expect(screen.getByText('KITCHEN PANTRY')).toBeInTheDocument();
     expect(screen.getByText('BANQUET')).toBeInTheDocument();
     expect(screen.getAllByText('Not met')).toHaveLength(2);
-    expect(screen.getAllByText('Met')).toHaveLength(2);
+    // Capacity, WIFI, and the hours (Hall A states none, so it is open any time).
+    expect(screen.getAllByText('Met')).toHaveLength(3);
 
     expect(screen.getByRole('checkbox', { name: /kitchen pantry/i })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /banquet/i })).toBeInTheDocument();
@@ -712,7 +768,9 @@ describe('E8 / SCRUM-124 functional — the booking screen is where an unsuitabl
     expect(within(hallA).getByText('THEATRE')).toBeInTheDocument();
 
     const small = await venueCard('Seminar Room');
-    expect(within(small).getByText('Too small for 150')).toBeInTheDocument();
+    // Capacity, plus the missing WIFI and THEATRE — counted the same way whatever
+    // the kind, so a venue blocked on hours is not mislabelled as too small.
+    expect(within(small).getByText('3 requirements not met')).toBeInTheDocument();
     expect(within(small).getByText('20 pax')).toBeInTheDocument();
   });
 
