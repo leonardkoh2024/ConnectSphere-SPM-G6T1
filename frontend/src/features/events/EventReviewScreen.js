@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { statusTone } from "../../domain/events";
-import { chronologicalClarifications } from "../../domain/eventReview";
+import { canFindVenues, chronologicalClarifications } from "../../domain/eventReview";
 import { reviewApi } from "./reviewApi";
+import RecordLead from "../../components/RecordLead";
+import Icon from "../../app/Icon";
 
 const shownTime = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Not recorded";
 
-export default function EventReviewScreen({ queueOnly = false, onNotice, onFindVenues }) {
+export default function EventReviewScreen({ queueOnly = false, onNotice, onFindVenues, initialEventId = null, onBackChange }) {
   const [events, setEvents] = useState([]);
   const [selected, setSelected] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -22,6 +24,22 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     return data.events || [];
   };
   useEffect(() => { loadList().catch((e) => setError(e.message)).finally(() => setLoading(false)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Opened from a venue booking: show that request without starting a review on
+  // it, so arriving here to read never moves a Submitted event to Under Review.
+  useEffect(() => {
+    if (initialEventId) loadDetail(initialEventId, false);
+  }, [initialEventId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Inside the workspace the back button lives in the page header; this screen
+  // only says when it has a detail view open and how to close it.
+  const closeDetail = () => { setDetail(null); setSelected(null); };
+  const detailOpen = Boolean(detail);
+  useEffect(() => {
+    if (!onBackChange) return undefined;
+    onBackChange(detailOpen ? closeDetail : null);
+    return () => onBackChange(null);
+  }, [detailOpen, onBackChange]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const visible = useMemo(() => queueOnly
     ? events.filter((event) => ["SUBMITTED", "UNDER_REVIEW"].includes(event.status) && event.editable)
@@ -60,9 +78,10 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     const hasOpen = Boolean(event.open_clarification_id);
     const canDecide = event.editable && event.status === "UNDER_REVIEW" && !hasOpen;
     const canReassign = event.editable && !["COMPLETED", "CANCELLED", "REJECTED"].includes(event.status);
+    const showFindVenues = typeof onFindVenues === "function" && canFindVenues(event);
     const exchange = chronologicalClarifications(detail.clarifications, detail.responses);
     return <div className="cs-review-detail">
-      <button type="button" className="cs-btn cs-btn-ghost cs-back" onClick={() => { setDetail(null); setSelected(null); }}>Back to events</button>
+      {!onBackChange && <button type="button" className="cs-btn cs-btn-ghost cs-back" onClick={closeDetail}><Icon name="chevron-left" />Back to events</button>}
       {error && !mode && <p className="cs-error" role="alert">{error}</p>}
       {!event.editable && <p className="cs-panel-note">This event was reassigned. You can view the assignment record, but only the current coordinator can make changes.</p>}
       <div className="cs-review-heading"><div><h2>{event.name}</h2><p>{event.reference_no}</p></div><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div>
@@ -74,8 +93,8 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
       </dl>
       {exchange.length > 0 && <section className="cs-exchange"><h3>Clarification history</h3>{exchange.map((item) => <article key={`${item.kind}-${item.id}`}><strong>{item.kind === "QUESTION" ? "Coordinator" : "Organiser"}</strong><time>{shownTime(item.created_at)}</time><p>{item.message}</p></article>)}</section>}
       {hasOpen && <p className="cs-attention">Awaiting the organiser. Clarify and Reject are unavailable until they respond.</p>}
-      {(canDecide || canReassign || typeof onFindVenues === "function") && <div className="cs-review-actions">
-        {typeof onFindVenues === "function" && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => onFindVenues(event)}>Find venues</button>}
+      {(canDecide || canReassign || showFindVenues) && <div className="cs-review-actions">
+        {showFindVenues && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => onFindVenues(event)}>Find venues</button>}
         {canDecide && <><button className="cs-btn cs-btn-secondary" type="button" onClick={() => { setMode("clarify"); setMessage(""); setError(""); }}>Request clarification</button><button className="cs-btn cs-btn-ghost cs-record-danger" type="button" onClick={() => { setMode("reject"); setMessage(""); setError(""); }}>Reject request</button></>}
         {canReassign && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => { setMode("reassign"); setError(""); }}>Reassign event</button>}
       </div>}
@@ -90,5 +109,5 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
   }
 
   if (!visible.length) return <div className="cs-empty"><p>{error || (queueOnly ? "No requests are waiting for review." : "No events are assigned to you.")}</p></div>;
-  return <>{error && <p className="cs-error">{error}</p>}<div className="cs-record-list">{visible.map((event) => <article className="cs-record cs-review-record" key={event.id}><div className="cs-record-title"><h2>{event.name || "Untitled event"}</h2><p>{event.event_date || "Date not set"}</p></div><p className="cs-record-ref">{event.reference_no}</p><div className="cs-record-status"><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div><div className="cs-record-modified"><p className="cs-record-saved">{event.editable ? "Current assignment" : "Previous assignment · read only"}</p></div><div className="cs-record-actions"><button className="cs-btn cs-btn-ghost cs-record-btn" type="button" disabled={busy} onClick={() => loadDetail(event.id)}>View request</button></div></article>)}</div></>;
+  return <>{error && <p className="cs-error">{error}</p>}<div className="cs-record-list">{visible.map((event) => <article className="cs-record cs-review-record" key={event.id}><div className="cs-record-title"><RecordLead date={event.event_date} /><div><h2>{event.name || "Untitled event"}</h2><p>{event.event_date || "Date not set"}</p></div></div><p className="cs-record-ref">{event.reference_no}</p><div className="cs-record-status"><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div><div className="cs-record-modified"><p className="cs-record-saved">{event.editable ? "Current assignment" : "Previous assignment · read only"}</p></div><div className="cs-record-actions"><button className="cs-btn cs-btn-ghost cs-record-btn" type="button" disabled={busy} onClick={() => loadDetail(event.id)}>View request</button></div></article>)}</div></>;
 }

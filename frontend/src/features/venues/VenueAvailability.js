@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
+import { BookingAcknowledgementNotice } from "./VenueBookingRequest";
 import { loadVenueSearchContext } from "./venuesApi";
+import Icon from "../../app/Icon";
 
 const formatDateTime = (value) => {
   const date = new Date(value);
@@ -107,7 +109,7 @@ export function VenueUnavailabilityManager({ venue, periods = [], canEdit = fals
             <label className="cs-field"><span className="cs-field-name">Ends</span><input required type="datetime-local" value={endDateTime} onChange={(event) => setEndDateTime(event.target.value)} /></label>
             <label className="cs-field cs-field-wide"><span className="cs-field-name">Reason</span><textarea required rows="2" value={reason} onChange={(event) => setReason(event.target.value)} /></label>
           </div>
-          <button type="submit" className="cs-btn cs-btn-secondary">Add period</button>
+          <button type="submit" className="cs-btn cs-btn-secondary"><Icon name="plus" />Add period</button>
         </form>
       )}
       {canEdit && <div className="cs-form-actions cs-availability-save-actions">
@@ -162,7 +164,11 @@ export default function VenueAvailabilityCalendar({ user, role }) {
         {entries.length ? <ol className="cs-availability-list">
           {entries.map((item) => (
             <li className="cs-availability-entry" key={`${item.kind}-${item.id || item.booking_id}`}>
-              <div><strong>{formatDateTime(item.start_datetime)} to {formatDateTime(item.end_datetime)}</strong><p>{item.label}</p></div>
+              <div>
+                <strong>{formatDateTime(item.start_datetime)} to {formatDateTime(item.end_datetime)}</strong><p>{item.label}</p>
+                {/* E8 AC3 — the shortfalls the coordinator accepted, where Venue Staff assess the booking. */}
+                <BookingAcknowledgementNotice acknowledgement={item.suitability_acknowledgement} />
+              </div>
               <span className={`cs-availability-${item.kind}`}>{item.kind === "blocked" ? "Blocked" : item.kind === "booked" ? "Approved booking" : "Pending booking"}</span>
             </li>
           ))}

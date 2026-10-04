@@ -4,12 +4,17 @@ import {
   activeFilters,
   applyFilters,
   emptyFilters,
+  prefillFilters,
   prefillSearch,
   searchVenues
 } from "../../domain/venueSearch";
+import { ROLES } from "../../domain/roles";
 import ToggleList from "../events/components/ToggleList";
+import { VenueUnavailabilityManager } from "./VenueAvailability";
+import VenueCalendar from "./VenueCalendar";
 import { loadVenueSearchContext } from "./venuesApi";
 import VenueDetail, { VenueRows } from "./VenueDetail";
+import { existingBookingFor } from "../../domain/venueSuitability";
 
 const chipLabel = (item) => {
   if (item.key === "location") return item.value.replaceAll("_", " ");
@@ -25,13 +30,16 @@ const chipLabel = (item) => {
   return String(item.value);
 };
 
-export default function VenueSearch({ event }) {
+export default function VenueSearch({ event, onBookVenue, role = ROLES.COORDINATOR, showCalendar = false, onCloseCalendar }) {
   const [catalogue, setCatalogue] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [unavailability, setUnavailability] = useState([]);
-  const [filters, setFilters] = useState(emptyFilters());
+  // Opened from an event, the shortlist starts narrowed to what that event asked
+  // for; opened from the sidebar, it starts as the whole catalogue.
+  const [filters, setFilters] = useState(() => (event ? prefillFilters(event) : emptyFilters()));
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState("");
+  const [bookingNotice, setBookingNotice] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -43,7 +51,7 @@ export default function VenueSearch({ event }) {
         setBookings(data.bookings);
         setUnavailability(data.unavailability);
       })
-      .catch((loadError) => { if (mounted) setError(loadError.message || "Venue search could not be loaded."); })
+      .catch((loadError) => { if (mounted) setError(loadError.message || "The venue catalogue could not be loaded."); })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, []);
@@ -54,7 +62,10 @@ export default function VenueSearch({ event }) {
     return searchVenues({ venues: catalogue, window: windowPrefill, bookings, unavailability });
   }, [catalogue, bookings, unavailability, windowPrefill]);
 
-  const shown = applyFilters(shortlist.matches, filters);
+  // The coordinator's only venue screen: the whole catalogue A–Z until an event
+  // or a filter narrows it.
+  const shown = applyFilters(shortlist.matches, filters)
+    .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), undefined, { sensitivity: "base" }));
   const chips = activeFilters(filters);
 
   const updateFilter = (field, value) => setFilters((current) => ({ ...current, [field]: value }));
@@ -62,6 +73,12 @@ export default function VenueSearch({ event }) {
 
   if (loading) return <p className="cs-panel-note">Loading venues…</p>;
   if (error) return <p className="cs-error">{error}</p>;
+
+  // E4 — "View calendar" in the page header swaps the shortlist for the shared
+  // availability calendar. Filters are held here, so Back returns to the same shortlist.
+  if (showCalendar) {
+    return <VenueCalendar venues={catalogue} bookings={bookings} unavailability={unavailability} role={role} onBack={onCloseCalendar} />;
+  }
 
   return (
     <>
@@ -113,8 +130,30 @@ export default function VenueSearch({ event }) {
           </ul>
         </div>
       )}
-      <VenueRows venues={shown} selectedId={selected?.venue_id} onSelect={setSelected} />
-      {selected && <VenueDetail venue={selected} />}
+      {bookingNotice && <p className="cs-error" role="alert">{bookingNotice}</p>}
+      <VenueRows
+        venues={shown}
+        selectedId={selected?.venue_id}
+        onSelect={setSelected}
+        /* E8 — the shortlist only offers venues that already fit, so booking one
+           from here carries both choices straight to the booking screen. The
+           suitability gate still runs there; this route simply never trips it. */
+        renderActions={event && onBookVenue
+          ? (venue) => <button type="button" className="cs-btn cs-btn-primary cs-record-btn" onClick={() => {
+            const raised = existingBookingFor(bookings, { eventId: event.id || event.event_id, venueId: venue.venue_id });
+            if (raised) {
+              setBookingNotice(`${venue.name} already has a ${String(raised.status || "").toLowerCase()} request for this event. Withdraw or wait for that one rather than raising a second.`);
+              return;
+            }
+            setBookingNotice("");
+            onBookVenue(event, venue);
+          }}>Book venue</button>
+          : undefined}
+        renderSelected={(venue) => <>
+          <VenueDetail venue={venue} />
+          <VenueUnavailabilityManager venue={venue} periods={unavailability.filter((period) => period.venue_id === venue.venue_id)} />
+        </>}
+      />
     </>
   );
 }

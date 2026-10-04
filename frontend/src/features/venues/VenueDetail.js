@@ -28,7 +28,7 @@ export default function VenueDetail({ venue }) {
   );
 }
 
-export function VenueRows({ venues, selectedId, onSelect, onUpdate = onSelect, canEdit = () => false, renderSelected }) {
+export function VenueRows({ venues, selectedId, onSelect, onUpdate = onSelect, canEdit = () => false, renderSelected, renderActions }) {
   const rows = venues;
   if (!rows.length) return <p className="cs-panel-note">No venues match the current criteria.</p>;
   return (
@@ -36,8 +36,10 @@ export function VenueRows({ venues, selectedId, onSelect, onUpdate = onSelect, c
       {rows.map((venue) => (
         <article className="cs-record" key={venue.venue_id}>
           <div className="cs-record-title">
-            <h2>{venue.name}</h2>
-            <p>{locationLabel(venue.location)}</p>
+            <div>
+              <h2>{venue.name}</h2>
+              <p>{locationLabel(venue.location)}</p>
+            </div>
           </div>
           <p className="cs-record-ref">Capacity {venue.max_capacity}</p>
           <div className="cs-record-modified">
@@ -52,6 +54,7 @@ export function VenueRows({ venues, selectedId, onSelect, onUpdate = onSelect, c
             >
               {canEdit(venue) ? "Update venue" : "View venue"}
             </button>
+            {renderActions && renderActions(venue)}
           </div>
           {selectedId === venue.venue_id && renderSelected && <div className="cs-record-expanded">{renderSelected(venue)}</div>}
         </article>
