@@ -15,6 +15,7 @@ import VenueCalendar from "./VenueCalendar";
 import { loadVenueSearchContext } from "./venuesApi";
 import VenueDetail, { VenueRows } from "./VenueDetail";
 import { existingBookingFor } from "../../domain/venueSuitability";
+import VenueSuitabilityForm from "./VenueSuitabilityForm";
 
 const chipLabel = (item) => {
   if (item.key === "location") return item.value.replaceAll("_", " ");
@@ -87,6 +88,7 @@ export default function VenueSearch({ event, onBookVenue, role = ROLES.COORDINAT
           Pre-filled from the event: {windowPrefill.event_date} · {windowPrefill.start_time}–{windowPrefill.end_time} · {windowPrefill.expected_attendance} attending
         </p>
       )}
+      <VenueSuitabilityForm venues={catalogue} event={event} />
       <section className="cs-form-section" aria-label="Narrow the shortlist">
         <h2>Filters</h2>
         <div className="cs-form-grid">

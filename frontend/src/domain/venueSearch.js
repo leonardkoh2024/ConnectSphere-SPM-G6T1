@@ -121,6 +121,105 @@ export const isOccupied = (venue, window, bookings = [], unavailability = []) =>
 
 export const capacityFits = (venue, attendance) => venue.max_capacity >= attendance;
 
+const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+const isValidTime = (value) => {
+  if (typeof value !== "string" || !/^\d{2}:\d{2}$/.test(value)) return false;
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours <= 23 && minutes <= 59;
+};
+
+export const assessVenueSuitability = ({ venue, event }) => {
+  const criteria = [];
+  const attendance = Number(event.expected_attendance);
+  const capacity = Number(venue.max_capacity);
+  const validAttendance = Number.isInteger(attendance) && attendance > 0;
+  const validCapacity = Number.isFinite(capacity) && capacity >= 0;
+
+  criteria.push({
+    key: "capacity",
+    label: "Attendance and capacity",
+    passed: validAttendance && validCapacity && attendance <= capacity,
+    detail: validAttendance && validCapacity
+      ? `${capacity} places for ${attendance} expected attendees.`
+      : "Expected attendance or venue capacity is missing or invalid."
+  });
+
+  const requirements = [
+    {
+      key: "facility",
+      label: "Required facility",
+      pluralLabel: "Required facilities",
+      emptyDetail: "No facilities required.",
+      requested: event.facilities || [],
+      available: venue.facilities || []
+    },
+    {
+      key: "accessibility",
+      label: "Accessibility feature",
+      pluralLabel: "Accessibility features",
+      emptyDetail: "No accessibility features required.",
+      requested: event.accessibility || [],
+      available: venue.accessibility || []
+    }
+  ];
+  requirements.forEach(({ key, label, pluralLabel, emptyDetail, requested, available }) => {
+    if (requested.length === 0) {
+      criteria.push({ key, label: pluralLabel, passed: true, detail: emptyDetail });
+      return;
+    }
+    requested.forEach((item) => {
+      const present = available.includes(item);
+      criteria.push({
+        key: `${key}-${item}`,
+        label: `${label}: ${String(item).replaceAll("_", " ")}`,
+        passed: present,
+        detail: present ? "Available at this venue." : "Required but not listed for this venue."
+      });
+    });
+  });
+
+  const requestedLayout = event.layout || "";
+  criteria.push({
+    key: "layout",
+    label: "Required room layout",
+    passed: !requestedLayout || (venue.layouts || []).includes(requestedLayout),
+    detail: requestedLayout
+      ? (venue.layouts || []).includes(requestedLayout)
+        ? `${String(requestedLayout).replaceAll("_", " ")} is supported.`
+        : `${String(requestedLayout).replaceAll("_", " ")} is not listed for this venue.`
+      : "No room layout required."
+  });
+
+  const dateParts = typeof event.event_date === "string" ? event.event_date.split("-").map(Number) : [];
+  const date = dateParts.length === 3 ? new Date(dateParts[0], dateParts[1] - 1, dateParts[2]) : null;
+  const validDate = date && date.getFullYear() === dateParts[0] && date.getMonth() === dateParts[1] - 1 && date.getDate() === dateParts[2];
+  const weekday = validDate ? WEEKDAYS[date.getDay()] : null;
+  const hours = weekday
+    ? (venue.operating_hours || []).filter((row) => String(row.weekday).toUpperCase() === weekday)
+    : [];
+  const validWindow = isValidTime(event.start_time) && isValidTime(event.end_time) && event.start_time < event.end_time;
+  const withinHours = validWindow && hours.some((row) =>
+    isValidTime(row.opens_at) && isValidTime(row.closes_at) &&
+    event.start_time >= row.opens_at && event.end_time <= row.closes_at
+  );
+  criteria.push({
+    key: "operating-hours",
+    label: "Requested time within operating hours",
+    passed: withinHours,
+    detail: withinHours
+      ? `${event.start_time}–${event.end_time} is within ${weekday} operating hours.`
+      : !validDate
+        ? "The event date is missing or invalid."
+        : !validWindow
+          ? "The requested start and end times are missing or invalid."
+          : hours.length
+            ? `${event.start_time}–${event.end_time} is outside ${weekday} operating hours (${hours.map((row) => `${row.opens_at}–${row.closes_at}`).join(", ")}).`
+            : `No operating hours are listed for ${weekday}.`
+  });
+
+  return { suitable: criteria.every((criterion) => criterion.passed), criteria };
+};
+
 export const searchVenues = ({ venues, window, bookings = [], unavailability = [] }) => {
   const occupied = [];
   const tooSmall = [];
