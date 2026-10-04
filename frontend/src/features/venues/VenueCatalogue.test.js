@@ -117,3 +117,25 @@ test('assigned staff save venue details without changing existing bookings', asy
   expect(screen.getByText(/quiet room available beside the hall/i)).toBeInTheDocument();
   expect(updateDoc.mock.calls[0][0].collectionName).toBe('venues');
 });
+
+// E4 / SCRUM-120 — the availability calendar opens from the catalogue.
+test('TC-229 the catalogue swaps to one shared calendar and back, with no per-venue calendar button', async () => {
+  assignedStaffId = 'staff-1';
+  const onCloseCalendar = jest.fn();
+  const { rerender } = render(<VenueCatalogue user={{ uid: 'staff-1' }} role={ROLES.VENUE_STAFF} />);
+  await screen.findByText('Hall A');
+  expect(screen.queryByRole('button', { name: /view calendar/i })).not.toBeInTheDocument();
+
+  rerender(<VenueCatalogue user={{ uid: 'staff-1' }} role={ROLES.VENUE_STAFF} showCalendar onCloseCalendar={onCloseCalendar} />);
+  expect(screen.getByRole('region', { name: /availability calendar/i })).toBeInTheDocument();
+  // Opens across every venue; each is one choice away in the Venue filter.
+  const venuesField = screen.getByRole('button', { name: /^venues/i });
+  expect(venuesField).toHaveTextContent('All venues');
+  await userEvent.click(venuesField);
+  expect(screen.getAllByRole('checkbox', { name: /all venues|annex|hall a/i }).map((box) => box.closest('label').textContent)).toEqual(['All venues', 'Annex', 'Hall A']);
+  expect(screen.getByRole('checkbox', { name: 'All venues' })).toBeChecked();
+  expect(screen.queryByText(/2 venues/i)).not.toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole('button', { name: /back to catalogue/i }));
+  expect(onCloseCalendar).toHaveBeenCalled();
+});

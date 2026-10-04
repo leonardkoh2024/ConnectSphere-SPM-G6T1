@@ -44,3 +44,21 @@ test('TC-109 one action clears the active filters', async () => {
   await userEvent.click(screen.getByRole('button', { name: /clear filters/i }));
   expect(screen.queryByRole('button', { name: /clear filters/i })).not.toBeInTheDocument();
 });
+
+// E4 / SCRUM-120 — the coordinator's catalogue opens the calendar too, and
+// keeps its filters when the coordinator comes back.
+test('TC-230 the coordinator returns from the shared calendar to the same filters', async () => {
+  const { rerender } = render(<VenueSearch role="EVENT_COORDINATOR" />);
+  await screen.findByText('Clear Hall');
+  expect(screen.queryByRole('button', { name: /view calendar/i })).not.toBeInTheDocument();
+  await userEvent.selectOptions(screen.getByLabelText(/^location$/i), 'CENTRAL');
+
+  rerender(<VenueSearch role="EVENT_COORDINATOR" showCalendar onCloseCalendar={() => {}} />);
+  expect(screen.getByRole('region', { name: /availability calendar/i })).toBeInTheDocument();
+  expect(screen.getByRole('table')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^venues/i })).toHaveTextContent('All venues');
+
+  rerender(<VenueSearch role="EVENT_COORDINATOR" />);
+  expect(screen.getByLabelText(/^location$/i)).toHaveValue('CENTRAL');
+  expect(screen.getByText('Clear Hall')).toBeInTheDocument();
+});

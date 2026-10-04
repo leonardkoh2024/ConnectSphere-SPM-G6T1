@@ -4,6 +4,7 @@ import { ROLES } from "../../domain/roles";
 import { listCatalogue } from "../../domain/venueSearch";
 import ToggleList from "../events/components/ToggleList";
 import { VenueUnavailabilityManager } from "./VenueAvailability";
+import VenueCalendar from "./VenueCalendar";
 import { loadVenueSearchContext, saveVenueCatalogue, saveVenueUnavailability } from "./venuesApi";
 import VenueDetail, { VenueRows } from "./VenueDetail";
 
@@ -17,8 +18,9 @@ const draftFrom = (venue) => ({
   operating_hours: venue.operating_hours.map((hours) => ({ ...hours }))
 });
 
-export default function VenueCatalogue({ user, role }) {
+export default function VenueCatalogue({ user, role, showCalendar = false, onCloseCalendar }) {
   const [venues, setVenues] = useState([]);
+  const [bookings, setBookings] = useState([]);
   const [unavailability, setUnavailability] = useState([]);
   const [selected, setSelected] = useState(null);
   const [draft, setDraft] = useState(null);
@@ -33,6 +35,7 @@ export default function VenueCatalogue({ user, role }) {
       .then((context) => {
         if (!mounted) return;
         setVenues(context.venues);
+        setBookings(context.bookings);
         setUnavailability(context.unavailability);
       })
       .catch((loadError) => { if (mounted) setError(loadError.message || "The venue catalogue could not be loaded."); })
@@ -127,6 +130,12 @@ export default function VenueCatalogue({ user, role }) {
       <div className="cs-form-actions"><button type="button" className="cs-btn cs-btn-ghost" onClick={() => { setDraft(null); setSaveError(""); }}>Cancel</button><button type="submit" className="cs-btn cs-btn-primary" disabled={saving}>{saving ? "Saving…" : "Save venue"}</button></div>
     </form>
   );
+
+  // E4 — "View calendar" in the page header swaps the list for the shared
+  // availability calendar; Back returns to the list as it was left.
+  if (showCalendar) {
+    return <VenueCalendar venues={venues} bookings={bookings} unavailability={unavailability} role={role} onBack={onCloseCalendar} />;
+  }
 
   return (
     <>
