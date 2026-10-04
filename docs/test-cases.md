@@ -245,12 +245,16 @@ criterion, and the decision is written onto the booking for Venue Staff to read 
 3. **The gate is enforced server-side.** `firestore.rules` re-reads the venue's `max_capacity` and re-checks it
    against `expected_attendance`, and refuses any booking without a well-formed acknowledgement. A disabled
    button is not the control (story A4).
-4. **Operating hours are not evaluated here.** That is E7 AC4 and E4 AC3; E8 names only capacity, facility,
-   accessibility and layout.
+4. **Operating hours are evaluated here, as a hard stop.** Originally left out as E7 AC4's concern, but once
+   the booking screen became the place a venue and event are assessed together, E7 AC1 and AC5 were being met
+   there while AC4 was not checked at all — a coordinator could be told a venue "meets all requirements" on a
+   day it is shut. It blocks alongside capacity rather than warning, which goes further than E8 AC1 (that
+   names only capacity); the deviation is deliberate. A venue stating no hours at all is treated as open at
+   any time, since that is missing data rather than a closure.
 5. The rules are in `frontend/src/domain/venueSuitability.js` — no React, no Firebase — so they can be read
    next to the acceptance criteria and move into the service layer unchanged.
 6. **All 36 cases live in one suite**, `features/venues/VenueBookingRequest.test.js`, in three labelled
-   parts: `unit —` (TC-112 – TC-131, TC-148 – TC-150, TC-158 – TC-159, TC-166 – TC-168), `functional —` (TC-132 – TC-143,
+   parts: `unit —` (TC-112 – TC-131, TC-148 – TC-150, TC-158 – TC-159, TC-166 – TC-168, TC-175 – TC-180), `functional —` (TC-132 – TC-143,
    TC-152 – TC-157, TC-160 – TC-165, TC-169 – TC-173) and `rules —` (TC-144 – TC-147, TC-151, TC-174).
    Run just this story with `npm test -- --testPathPattern VenueBookingRequest`.
 
@@ -319,6 +323,12 @@ criterion, and the decision is written onto the booking for Venue Staff to read 
 | TC-172 | A request that is not pending offers no withdraw | One APPROVED request | 1. Expand it | No withdraw action is offered | As expected | Pass | Only a request still awaiting Venue Staff is the raiser's to pull |
 | TC-173 | A withdraw that fails is reported and does not claim success | The withdraw will fail | 1. Expand the request<br>2. Confirm the withdraw | The failure is shown; the request is not presented as withdrawn | As expected | Pass | The coordinator is never told a request is gone when it is not |
 | TC-174 | Withdrawing is the only update, and only the raiser may do it | `firestore.rules` in force | 1. Inspect the `venue_bookings` update rule | Requires the coordinator role and `requested_by == request.auth.uid`; only PENDING to WITHDRAWN; only `status` and `withdrawn_at` may change | As expected | Pass | AC3 — the acknowledgement stays pinned (TC-147); withdrawal cannot be used to rewrite what was accepted |
+| TC-175 | A window inside the venue's hours for that day passes | Hall A open FRIDAY 10:00–20:00; event Friday 10:00–17:00 | 1. Assess | No blocking failure; operating hours appear among the criteria evaluated; suitable | As expected | Pass | E7 AC4 |
+| TC-176 | A window starting before the venue opens blocks the request | As TC-175 but the event starts 09:00 | 1. Assess<br>2. Attempt to submit having acknowledged it | Blocking failure on operating hours; the refusal names the venue's hours and the day; acknowledging it does not allow submission | As expected | Pass | E7 AC4 as a hard stop — a shut venue is not a judgement call |
+| TC-177 | A venue that does not open that day at all blocks the request | Venue open MONDAY only; event on a Friday | 1. Assess | Blocking failure on operating hours; the refusal says it does not open on FRIDAY | As expected | Pass | E7 AC4 |
+| TC-178 | A venue stating no hours at all is treated as open, not shut | Hall A lists no operating hours | 1. Assess with a full window | No blocking failure | As expected | Pass | Missing data is not a closure — the same stance E4 AC8 takes |
+| TC-179 | A date with no times asks only that the venue opens that day | A date, no start or end time | 1. Assess a venue open that day<br>2. Assess one that is not | The first passes; the second is blocked on operating hours | As expected | Pass | The date alone is a usable question; the times narrow it |
+| TC-180 | No date stated means the criterion is not evaluated at all | An event with no date | 1. Assess | Operating hours are absent from the criteria evaluated | As expected | Pass | A criterion with nothing stated behind it is not judged |
 
 ---
 
