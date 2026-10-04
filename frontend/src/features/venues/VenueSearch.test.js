@@ -76,3 +76,135 @@ test('TC-110 viewing a venue displays its details in that venue result', async (
   expect(screen.getAllByLabelText(/venue record/i)).toHaveLength(1);
   expect(details.closest('.cs-record')).toBe(venue);
 });
+
+// E7 as a filter — a blank requirement is no constraint, not a failure, and a
+// venue that states no operating hours is open at all hours rather than closed.
+test('TC-250 a stated window alone rules nothing out', async () => {
+  render(<VenueSearch />);
+  await screen.findAllByRole('button', { name: /view venue/i });
+
+  await userEvent.type(screen.getByLabelText('Event date'), '2026-10-23');
+  await userEvent.type(screen.getByLabelText('Start time'), '09:00');
+  await userEvent.type(screen.getByLabelText('End time'), '17:00');
+
+  // No minimum capacity given, and neither venue states operating hours.
+  expect([...document.querySelectorAll('.cs-record-title h2')].map((h) => h.textContent))
+    .toEqual(['Clear Hall', 'Tiny Room']);
+});
+
+test('TC-251 a stated minimum capacity does rule a venue out, with the reason', async () => {
+  render(<VenueSearch />);
+  await screen.findAllByRole('button', { name: /view venue/i });
+
+  await userEvent.type(screen.getByLabelText('Event date'), '2026-10-23');
+  await userEvent.type(screen.getByLabelText('Start time'), '09:00');
+  await userEvent.type(screen.getByLabelText('End time'), '17:00');
+  await userEvent.type(screen.getByLabelText(/minimum capacity/i), '150');
+
+  expect([...document.querySelectorAll('.cs-record-title h2')].map((h) => h.textContent))
+    .toEqual(['Clear Hall']);
+});
+
+// "Stated but not covering that day" is not the same as "not stated at all":
+// a venue that lists hours and is shut on the requested weekday is unavailable.
+test('TC-252 a venue open other days but not that one is filtered out, with the reason', async () => {
+  getDocs.mockReset();
+  getDocs
+    .mockResolvedValueOnce(snap([
+      { id: 'VEN-WEEKDAY', venue_id: 'VEN-WEEKDAY', name: 'Weekday Hall', location: 'CENTRAL', max_capacity: 200 },
+      { id: 'VEN-SILENT', venue_id: 'VEN-SILENT', name: 'Silent Hall', location: 'CENTRAL', max_capacity: 200 }
+    ]))
+    .mockResolvedValueOnce(empty)
+    .mockResolvedValueOnce(empty)
+    .mockResolvedValueOnce(empty)
+    // Weekday Hall opens Mondays only; Silent Hall states no hours at all.
+    .mockResolvedValueOnce(snap([
+      { id: 'h1', venue_id: 'VEN-WEEKDAY', weekday: 'MONDAY', opens_at: '09:00', closes_at: '18:00' }
+    ]))
+    .mockResolvedValueOnce(empty)
+    .mockResolvedValueOnce(empty);
+
+  render(<VenueSearch />);
+  await screen.findAllByRole('button', { name: /view venue/i });
+
+  // 2026-10-23 is a Friday.
+  await userEvent.type(screen.getByLabelText('Event date'), '2026-10-23');
+  await userEvent.type(screen.getByLabelText('Start time'), '09:00');
+  await userEvent.type(screen.getByLabelText('End time'), '17:00');
+
+  expect([...document.querySelectorAll('.cs-record-title h2')].map((h) => h.textContent))
+    .toEqual(['Silent Hall']);
+});
+
+// A date on its own filters: the venue has to open that day. The times, when
+// given, narrow it to a window inside those hours.
+test('TC-253 a date alone filters on the opening day, before any times are given', async () => {
+  getDocs.mockReset();
+  getDocs
+    .mockResolvedValueOnce(snap([
+      { id: 'VEN-FRI', venue_id: 'VEN-FRI', name: 'Friday Hall', location: 'CENTRAL', max_capacity: 200 },
+      { id: 'VEN-MON', venue_id: 'VEN-MON', name: 'Monday Hall', location: 'CENTRAL', max_capacity: 200 }
+    ]))
+    .mockResolvedValueOnce(empty)
+    .mockResolvedValueOnce(empty)
+    .mockResolvedValueOnce(empty)
+    .mockResolvedValueOnce(snap([
+      { id: 'h1', venue_id: 'VEN-FRI', weekday: 'FRIDAY', opens_at: '10:00', closes_at: '20:00' },
+      { id: 'h2', venue_id: 'VEN-MON', weekday: 'MONDAY', opens_at: '10:00', closes_at: '20:00' }
+    ]))
+    .mockResolvedValueOnce(empty)
+    .mockResolvedValueOnce(empty);
+
+  render(<VenueSearch />);
+  await screen.findAllByRole('button', { name: /view venue/i });
+
+  // 2026-10-23 is a Friday; no times given yet.
+  await userEvent.type(screen.getByLabelText('Event date'), '2026-10-23');
+
+  expect([...document.querySelectorAll('.cs-record-title h2')].map((h) => h.textContent))
+    .toEqual(['Friday Hall']);
+});
+
+test('TC-254 adding times narrows it to a window inside the opening hours', async () => {
+  getDocs.mockReset();
+  getDocs
+    .mockResolvedValueOnce(snap([
+      { id: 'VEN-FRI', venue_id: 'VEN-FRI', name: 'Friday Hall', location: 'CENTRAL', max_capacity: 200 }
+    ]))
+    .mockResolvedValueOnce(empty)
+    .mockResolvedValueOnce(empty)
+    .mockResolvedValueOnce(empty)
+    .mockResolvedValueOnce(snap([
+      { id: 'h1', venue_id: 'VEN-FRI', weekday: 'FRIDAY', opens_at: '10:00', closes_at: '20:00' }
+    ]))
+    .mockResolvedValueOnce(empty)
+    .mockResolvedValueOnce(empty);
+
+  render(<VenueSearch />);
+  await screen.findAllByRole('button', { name: /view venue/i });
+
+  await userEvent.type(screen.getByLabelText('Event date'), '2026-10-23');
+  expect(document.querySelectorAll('.cs-record-title h2')).toHaveLength(1);
+
+  // 09:00 is before the venue opens, so the window no longer fits.
+  await userEvent.type(screen.getByLabelText('Start time'), '09:00');
+  await userEvent.type(screen.getByLabelText('End time'), '17:00');
+  expect(document.querySelectorAll('.cs-record-title h2')).toHaveLength(0);
+});
+
+// The window narrows the list as much as any filter does, so one action clears it.
+test('TC-255 clear filters also clears the date and time window', async () => {
+  render(<VenueSearch />);
+  await screen.findAllByRole('button', { name: /view venue/i });
+
+  await userEvent.type(screen.getByLabelText('Event date'), '2026-10-23');
+  await userEvent.type(screen.getByLabelText('Start time'), '09:00');
+  await userEvent.selectOptions(screen.getByLabelText(/^location$/i), 'EAST');
+
+  await userEvent.click(screen.getByRole('button', { name: /clear filters/i }));
+
+  expect(screen.getByLabelText('Event date')).toHaveValue('');
+  expect(screen.getByLabelText('Start time')).toHaveValue('');
+  expect(screen.getByLabelText(/^location$/i)).toHaveValue('');
+  expect(screen.queryByRole('button', { name: /clear filters/i })).not.toBeInTheDocument();
+});
