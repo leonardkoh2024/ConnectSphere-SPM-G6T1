@@ -12,6 +12,7 @@ import { LAYOUTS, FACILITIES, ACCESSIBILITY_OPTIONS, PREFERRED_LOCATIONS, EQUIPM
 import { NO, UNANSWERED, YES, createReferenceNo, equipmentLinesWithContent, todayIso, validateEventRequest } from "../../domain/eventRequest";
 import ToggleList from "./components/ToggleList";
 import YesNo from "./components/YesNo";
+import Icon from "../../app/Icon";
 
 // A red star marks a field that has to be filled in before the request can be
 // submitted. A draft is never blocked by one.
@@ -346,7 +347,7 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
                 {form.equipmentLines.length > 1 && !isReadOnly && <button type="button" className="cs-btn cs-btn-ghost" onClick={() => removeEquipmentLine(line.id)}>Remove line</button>}
               </div>
             ))}
-            {!isReadOnly && <button type="button" className="cs-btn cs-btn-secondary" onClick={addEquipmentLine}>Add equipment line</button>}
+            {!isReadOnly && <button type="button" className="cs-btn cs-btn-secondary" onClick={addEquipmentLine}><Icon name="plus" />Add equipment line</button>}
           </div>
         )}
       </section>

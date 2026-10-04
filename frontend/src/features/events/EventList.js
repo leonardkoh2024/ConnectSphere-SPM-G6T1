@@ -15,6 +15,8 @@ import { db } from "../../lib/firebase";
 import { ROLES, eventScopeField } from "../../domain/roles";
 import { statusTone } from "../../domain/events";
 import deleteEventRequest from "./deleteEventRequest";
+import RecordLead from "../../components/RecordLead";
+import Icon from "../../app/Icon";
 
 // Firestore hands back a Timestamp; a document written moments ago can still
 // have null here while the server value is pending.
@@ -37,7 +39,7 @@ const sortKey = (event) => event.updated_at?.toMillis?.() ?? event.created_at?.t
 
 const VIEWABLE = ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "PLANNING", "CONFIRMED", "COMPLETED", "REJECTED"];
 
-export default function EventList({ user, role, onEdit, onView, onCreate, onDeleted }) {
+export default function EventList({ user, role, onEdit, onView, onCreate, onDeleted, headerHosted = false }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -102,7 +104,7 @@ export default function EventList({ user, role, onEdit, onView, onCreate, onDele
   };
 
   const createButton = onCreate
-    ? <button type="button" className="cs-btn cs-btn-primary" onClick={onCreate}>Create new event request</button>
+    ? <button type="button" className="cs-btn cs-btn-primary" onClick={onCreate}><Icon name="plus" />Create new event request</button>
     : null;
 
   if (!scopeField) return <p className="cs-panel-note">Your role reaches events through your own registrations rather than this list.</p>;
@@ -118,15 +120,18 @@ export default function EventList({ user, role, onEdit, onView, onCreate, onDele
 
   return <>
     {error && <p className="cs-error">{error}</p>}
-    {role === ROLES.ORGANISER && createButton && <div className="cs-list-actions">{createButton}</div>}
+    {!headerHosted && role === ROLES.ORGANISER && createButton && <div className="cs-list-actions">{createButton}</div>}
     <div className="cs-record-list">{events.map((event) => {
       const status = String(event.status || "").toUpperCase();
       const isDraft = status === "DRAFT";
       const saved = savedAt(event.updated_at);
       return <article className="cs-record" key={event.id}>
         <div className="cs-record-title">
-          <h2>{event.name || "Untitled event"}</h2>
-          <p>{event.event_date || "Date not set"} · {whenText(event)}</p>
+          <RecordLead date={event.event_date} />
+          <div>
+            <h2>{event.name || "Untitled event"}</h2>
+            <p>{event.event_date || "Date not set"} · {whenText(event)}</p>
+          </div>
         </div>
         <p className="cs-record-ref">{event.reference_no}</p>
         <div className="cs-record-status">
