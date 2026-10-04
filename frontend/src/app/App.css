@@ -31,6 +31,9 @@
   --cs-surface-alt: #f2f2f2;
   --cs-surface-alt-hover: #e5e5e5;
   --cs-neutral: #d3d3d3;
+  /* The ground the signed-in panel sits on. Cards stay --cs-surface, so content
+     reads as white sheets on a faint grey desk rather than borders on white. */
+  --cs-canvas: #f7f7f8;
   --cs-glass: #ffffffb3;
 
   /* border */
@@ -62,11 +65,26 @@
   --cs-elevation-base: 0 2px 4px 0 #1313131f;
   --cs-shadow: 0 4px 12px 0 #13131314, 0 2px 6px 2px #13131305;
   --cs-elevation-raised: 0 2px 8px 0 #13131314, 0 4px 20px 0 #1313131f;
+  /* A card resting on the canvas: barely there, it only separates sheet from desk. */
+  --cs-elevation-card: 0 1px 2px 0 #1313130d;
+  /* Behind a modal. */
+  --cs-scrim: rgba(19, 19, 19, 0.45);
 
   /* type */
   --cs-font-body: "Plus Jakarta Sans", Inter, -apple-system, BlinkMacSystemFont,
     "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --cs-font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:focus-visible {
+  outline: 2px solid var(--cs-focus-ring);
+  outline-offset: 2px;
 }
 
 .cs-page,
@@ -117,23 +135,33 @@
   font-size: 14px;
   text-decoration: none;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+    box-shadow 0.15s ease, transform 0.15s ease;
 }
 
 .cs-btn-primary {
   background: var(--cs-accent);
   color: var(--cs-on-accent);
+  box-shadow: var(--cs-elevation-base);
 }
 
+.cs-btn-primary:hover:enabled,
+a.cs-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--cs-shadow);
+}
+
+/* A row's edit action: the same outlined button as every other row action, with
+   the accent only on its label. (It was info blue — a second brand colour.) */
 .cs-btn-update {
-  background: var(--cs-info);
-  color: var(--cs-on-accent);
+  background: var(--cs-surface);
+  border-color: var(--cs-line);
+  color: var(--cs-accent);
 }
 
 .cs-btn-update:hover {
-  border-color: var(--cs-info);
-  background: var(--cs-info-faded);
-  color: var(--cs-info);
+  background: var(--cs-accent-faded);
+  border-color: var(--cs-accent-border);
 }
 
 .cs-btn-primary:hover:enabled,
@@ -152,12 +180,15 @@
 }
 
 .cs-btn-ghost {
-  background: transparent;
+  background: var(--cs-surface);
   border-color: var(--cs-line);
   color: var(--cs-ink);
 }
 
-.cs-btn-ghost:hover {
+.cs-btn-ghost:disabled { color: var(--cs-disabled-ink); cursor: not-allowed; }
+
+.cs-btn-ghost:hover:enabled,
+a.cs-btn-ghost:hover {
   background: var(--cs-surface-hover);
   border-color: var(--cs-line-strong);
 }
@@ -173,7 +204,9 @@
 }
 
 .cs-pill {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
   padding: 4px 10px;
   border-radius: var(--cs-radius-round);
   background: var(--cs-accent-faded);
@@ -185,13 +218,40 @@
 }
 
 /* B7 — a status pill takes the tone its status maps to in domain/events.js, so a
-   draft and a submitted request differ at a glance and not only in wording. The
-   default pill above stays accent for the non-status pills (role, portal). */
-.cs-pill-neutral { background: var(--cs-surface-alt); color: var(--cs-muted); }
-.cs-pill-info { background: var(--cs-info-faded); color: var(--cs-info); }
-.cs-pill-warning { background: var(--cs-warning-faded); color: var(--cs-warning); }
-.cs-pill-positive { background: var(--cs-positive-faded); color: var(--cs-positive); }
-.cs-pill-danger { background: var(--cs-danger-faded); color: var(--cs-danger); }
+   draft and a submitted request differ at a glance and not only in wording.
+   Every status-like badge is built the same way — the tone's faded tint behind
+   and the tone itself for the label — so a new badge only has to name its tone.
+   The plain pill above stays accent for role and portal. */
+.cs-pill-neutral,
+.cs-pill-info,
+.cs-pill-warning,
+.cs-pill-positive,
+.cs-pill-danger,
+.cs-availability-blocked,
+.cs-availability-booked,
+.cs-availability-pending,
+.cs-requirement-outcome,
+.cs-venue-verdict {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--cs-radius-round);
+  background: var(--cs-tone-faded, var(--cs-surface-alt));
+  color: var(--cs-tone, var(--cs-muted));
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cs-pill-neutral { --cs-tone: var(--cs-muted); --cs-tone-faded: var(--cs-surface-alt); }
+.cs-pill-info, .cs-availability-pending { --cs-tone: var(--cs-info); --cs-tone-faded: var(--cs-info-faded); }
+.cs-pill-warning, .cs-requirement-unmet, .cs-venue-verdict-short { --cs-tone: var(--cs-warning); --cs-tone-faded: var(--cs-warning-faded); }
+.cs-requirement-met .cs-requirement-outcome { background: var(--cs-positive-faded); color: var(--cs-positive); }
+.cs-requirement-unmet .cs-requirement-outcome { background: var(--cs-warning-faded); color: var(--cs-warning); }
+.cs-pill-positive, .cs-availability-booked, .cs-requirement-met, .cs-venue-verdict-met { --cs-tone: var(--cs-positive); --cs-tone-faded: var(--cs-positive-faded); }
+.cs-pill-danger, .cs-availability-blocked, .cs-venue-verdict-blocked { --cs-tone: var(--cs-danger); --cs-tone-faded: var(--cs-danger-faded); }
 
 .cs-lede {
   color: var(--cs-muted);
@@ -221,6 +281,16 @@
 }
 
 /* ---------- hero + login ---------- */
+
+/* A soft wash of the accent tint behind the hero, fading to the page, gives the
+   first screen some depth without adding a colour. */
+.cs-page main > .cs-hero:first-child {
+  background: radial-gradient(60% 70% at 85% 0%, var(--cs-accent-faded), transparent 70%),
+    radial-gradient(50% 60% at 0% 30%, var(--cs-surface-hover), transparent 70%);
+  max-width: none;
+  padding-left: max(40px, calc((100% - 1080px) / 2));
+  padding-right: max(40px, calc((100% - 1080px) / 2));
+}
 
 .cs-hero {
   display: grid;
@@ -342,6 +412,13 @@
   color: var(--cs-ink);
 }
 
+/* One control height whatever the element; box-sizing above makes the padding
+   count inside it, so an input and a select in the same row line up. */
+.cs-field input:not([type="checkbox"]):not([type="radio"]),
+.cs-field select {
+  height: 44px;
+}
+
 .cs-field input {
   min-height: 44px;
   padding: 10px 16px;
@@ -367,6 +444,12 @@
   resize: vertical;
 }
 
+.cs-field input:hover:enabled,
+.cs-field select:hover:enabled,
+.cs-field textarea:hover:enabled {
+  border-color: var(--cs-line-strong);
+}
+
 .cs-field select:focus,
 .cs-field textarea:focus {
   outline: 2px solid var(--cs-focus-ring);
@@ -378,13 +461,72 @@
   border-color: var(--cs-accent);
 }
 
-.cs-role-preview {
+/* PasswordField — the eye button sits inside the input's right edge, so the
+   field keeps the same 44px height and width as every other input. */
+.cs-password-input {
+  position: relative;
+}
+
+.cs-password-input input {
+  width: 100%;
+  padding-right: 48px;
+}
+
+.cs-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--cs-radius-m);
+  background: transparent;
+  color: var(--cs-muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.cs-password-toggle:hover {
+  background: var(--cs-surface-hover);
+  color: var(--cs-ink);
+}
+
+/* The live password rules: grey and hollow before anything is typed, red with a
+   cross while unmet, green with a tick once met. The icon changes as well as the
+   colour, so the state never rests on colour alone. */
+.cs-password-checks {
+  display: grid;
+  gap: 4px;
   margin: 0;
-  padding: 12px 16px;
-  border-radius: var(--cs-radius-l);
-  background: var(--cs-info-faded);
-  color: var(--cs-info);
-  font-size: 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.cs-password-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--cs-muted);
+  font-size: 13px;
+  font-weight: 400;
+  transition: color 0.15s ease;
+}
+
+.cs-password-check .cs-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.cs-password-check-unmet {
+  color: var(--cs-danger);
+}
+
+.cs-password-check-met {
+  color: var(--cs-positive);
 }
 
 .cs-error {
@@ -531,9 +673,12 @@
   gap: 20px;
 }
 
-.cs-grid-roles {
-  max-width: 1160px;
-  margin: 0 auto;
+/* The grey band runs full width, but its content keeps the same 1080px column
+   as every other section so the heading lines up with the cards under it. */
+.cs-section.cs-section-alt > * {
+  max-width: 1080px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .cs-card {
@@ -552,6 +697,27 @@
   margin: 0;
   color: var(--cs-muted);
   font-size: 16px;
+}
+
+.cs-card {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.cs-card:hover {
+  border-color: var(--cs-line-strong);
+  box-shadow: var(--cs-shadow);
+  transform: translateY(-2px);
+}
+
+.cs-feature-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 16px;
+  border-radius: var(--cs-radius-l);
+  background: var(--cs-accent-faded);
+  color: var(--cs-accent);
 }
 
 .cs-card-role h3 {
@@ -582,18 +748,37 @@
 }
 
 .cs-steps li {
-  padding-top: 16px;
-  border-top: 2px solid var(--cs-accent);
+  position: relative;
+  padding-top: 0;
 }
 
+/* Numbered discs joined by a rule, so the five steps read as one path. */
+.cs-steps li::after {
+  content: "";
+  position: absolute;
+  top: 20px;
+  left: 52px;
+  right: -8px;
+  height: 2px;
+  background: var(--cs-accent-border);
+}
+
+.cs-steps li:last-child::after { display: none; }
+
 .cs-step-number {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--cs-accent);
+  color: var(--cs-on-accent);
   font-size: 13px;
   font-weight: 700;
-  color: var(--cs-accent);
 }
 
 .cs-steps h3 {
-  margin: 8px 0 8px;
+  margin: 16px 0 8px;
   font-size: 19px;
 }
 
@@ -605,10 +790,12 @@
 
 .cs-cta {
   padding: 72px 40px;
-  background: linear-gradient(140deg, var(--cs-accent), var(--cs-accent-active));
+  background: radial-gradient(80% 120% at 50% 0%, var(--cs-accent-light), transparent 60%), var(--cs-accent);
   color: var(--cs-on-accent);
   text-align: center;
 }
+
+.cs-cta h2 + .cs-btn { margin-top: 12px; }
 
 .cs-cta p {
   max-width: 520px;
@@ -639,7 +826,7 @@
 }
 
 .cs-user-email {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--cs-muted);
 }
 
@@ -661,7 +848,7 @@
   gap: 4px;
   padding: 16px 12px;
   border-right: 1px solid var(--cs-line);
-  background: var(--cs-surface-alt);
+  background: var(--cs-surface);
   min-height: 0;
   overflow: hidden;
 }
@@ -702,27 +889,35 @@
   background: none;
   font: inherit;
   font-size: 14px;
-  color: var(--cs-ink);
+  font-weight: 500;
+  color: var(--cs-muted);
   text-align: left;
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
 .cs-sidebar-item:hover,
 .cs-sidebar-toggle:hover {
-  background: var(--cs-surface-alt-hover);
+  background: var(--cs-surface-hover);
+  color: var(--cs-ink);
 }
 
+/* A tint, not a solid block: the current screen is obvious without a slab of
+   violet competing with the page's own primary button. */
 .cs-sidebar-item-active {
-  background: var(--cs-accent);
-  color: var(--cs-on-accent);
+  position: relative;
+  background: var(--cs-accent-faded);
+  color: var(--cs-accent-active);
   font-weight: 600;
 }
 
+.cs-sidebar-item-active .cs-icon { color: var(--cs-accent); }
+
 /* The plain :hover above outranks the single active class, so without this the
-   selected screen turns grey under the cursor and its white label disappears. */
+   selected screen loses its tint under the cursor. */
 .cs-sidebar-item-active:hover {
-  background: var(--cs-accent-hover);
+  background: var(--cs-accent-faded-hover);
+  color: var(--cs-accent-active);
 }
 
 .cs-sidebar-toggle {
@@ -759,8 +954,15 @@
   min-width: 0;
 }
 
+/* The role is a label here, not a badge. */
 .cs-sidebar-user-detail .cs-pill {
   justify-self: start;
+  padding: 0;
+  background: none;
+  color: var(--cs-ink);
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .cs-sidebar-user .cs-user-email {
@@ -778,8 +980,8 @@
   height: 36px;
   flex: 0 0 36px;
   border-radius: 50%;
-  background: var(--cs-accent);
-  color: var(--cs-on-accent);
+  background: var(--cs-accent-faded);
+  color: var(--cs-accent-active);
   font-size: 14px;
 }
 
@@ -828,6 +1030,7 @@
 .cs-panel-scroll {
   min-width: 0;
   overflow-y: auto;
+  background: var(--cs-canvas);
 }
 
 .cs-panel {
@@ -857,8 +1060,20 @@
 /* Inside the sticky header and above the page title, so leaving is the first
    thing on the screen and stays reachable however far the form is scrolled. */
 .cs-back {
-  margin-bottom: 12px;
-  padding-left: 12px;
+  min-height: 32px;
+  margin: 0 0 12px -12px;
+  padding: 0 12px 0 8px;
+  gap: 4px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--cs-muted);
+  font-size: 13px;
+}
+
+.cs-back:hover:enabled {
+  border-color: transparent;
+  background: var(--cs-surface-hover);
+  color: var(--cs-ink);
 }
 
 .cs-panel-head {
@@ -866,18 +1081,43 @@
   top: 0;
   z-index: 5;
   margin: calc(var(--cs-panel-pad-y) * -1) 0 24px;
-  padding: var(--cs-panel-pad-y) 0 16px;
-  background: var(--cs-surface);
-  border-bottom: 1px solid var(--cs-line);
+  padding: var(--cs-panel-pad-y) 0 20px;
+  background: var(--cs-canvas);
 }
 
 .cs-panel-head .cs-lede {
   margin: 0;
+  max-width: 640px;
+  font-size: 14px;
 }
 
+/* The screen's own icon, in the same glyph as its nav item, gives each page a
+   visual anchor and ties it back to where it was opened from. */
+.cs-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.cs-panel-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--cs-radius-l);
+  background: var(--cs-accent);
+  color: var(--cs-on-accent);
+  box-shadow: var(--cs-elevation-base);
+}
+
+.cs-panel-icon .cs-icon { width: 22px; height: 22px; }
+
 .cs-panel h1 {
-  margin: 0 0 8px;
+  margin: 0 0 4px;
   font-size: 28px;
+  font-weight: 700;
   letter-spacing: -0.6px;
 }
 
@@ -888,8 +1128,9 @@
 .cs-panel-note {
   margin-top: 24px;
   padding: 16px;
+  border: 1px solid var(--cs-line);
   border-radius: var(--cs-radius-l);
-  background: var(--cs-surface-alt);
+  background: var(--cs-surface);
   color: var(--cs-muted);
   font-size: 14px;
 }
@@ -907,11 +1148,24 @@
   border: 1px solid var(--cs-line);
   border-radius: var(--cs-radius);
   background: var(--cs-surface);
+  box-shadow: var(--cs-elevation-card);
 }
 
 .cs-form-section h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin: 0 0 20px;
-  font-size: 19px;
+  font-size: 16px;
+}
+
+.cs-form-section h2::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 4px;
+  height: 16px;
+  border-radius: var(--cs-radius-round);
+  background: var(--cs-accent);
 }
 
 .cs-form-section h2 span {
@@ -1026,11 +1280,21 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 8px 14px;
   border: 1px solid var(--cs-line);
-  border-radius: var(--cs-radius-m);
+  border-radius: var(--cs-radius-round);
+  background: var(--cs-surface);
   color: var(--cs-ink);
   font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.cs-check:hover { border-color: var(--cs-line-strong); }
+
+.cs-check:has(input:checked) {
+  border-color: var(--cs-accent-border);
+  background: var(--cs-accent-faded);
 }
 
 .cs-check input {
@@ -1057,7 +1321,7 @@
 
 .cs-list-actions { display: flex; justify-content: flex-end; margin-top: 24px; }
 
-.cs-record-list { display: grid; gap: 12px; margin-top: 20px; }
+.cs-record-list { display: grid; gap: 8px; margin-top: 16px; }
 
 /* Left to right: what it is, its reference, where it has got to, what you can do
    with it. Each column keeps its own width so the four read as columns down the
@@ -1067,12 +1331,69 @@
   grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 190px) auto;
   align-items: center;
   gap: 20px;
-  padding: 20px;
+  padding: 16px 20px;
   border: 1px solid var(--cs-line);
   border-radius: var(--cs-radius);
+  background: var(--cs-surface);
+  box-shadow: var(--cs-elevation-card);
+  transition: border-color 0.12s ease;
 }
 
-.cs-record h2 { margin: 0 0 4px; font-size: 19px; }
+.cs-record {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.cs-record:hover {
+  border-color: var(--cs-line-strong);
+  box-shadow: var(--cs-shadow);
+}
+
+.cs-record-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.cs-record-title > div { min-width: 0; }
+
+/* RecordLead — a 44px tile: an icon on the accent tint, or a calendar leaf for a
+   dated event, so a list can be scanned by date before a word is read. */
+.cs-record-lead {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--cs-radius-l);
+  background: var(--cs-accent-faded);
+  color: var(--cs-accent);
+}
+
+.cs-record-lead-date {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0;
+  border: 1px solid var(--cs-accent-border);
+  background: var(--cs-surface);
+  line-height: 1.1;
+}
+
+.cs-record-lead-month {
+  color: var(--cs-accent);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.cs-record-lead-day {
+  color: var(--cs-ink);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.cs-record h2 { margin: 0 0 2px; font-size: 16px; }
 .cs-record p, .cs-record-ref { margin: 0; color: var(--cs-muted); font-size: 14px; }
 .cs-record-ref { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .cs-record-status { justify-self: start; }
@@ -1091,7 +1412,10 @@
   border-top: 1px solid var(--cs-line);
 }
 
-.cs-venue-detail h2 { margin: 0 0 20px; font-size: 19px; }
+.cs-venue-detail h2 { margin: 0 0 20px; font-size: 16px; }
+
+/* Inside its own row the venue's name is already the row title. */
+.cs-record-expanded .cs-venue-detail h2 { display: none; }
 
 .cs-venue-editor {
   padding-right: 0;
@@ -1112,7 +1436,7 @@
 }
 
 .cs-venue-periods h3,
-.cs-availability-calendar h2 { margin: 0 0 16px; font-size: 19px; }
+.cs-availability-calendar h2 { margin: 0 0 16px; font-size: 16px; }
 
 .cs-availability-list { margin: 0; padding: 0; list-style: none; }
 
@@ -1129,19 +1453,6 @@
 .cs-availability-entry p { margin: 4px 0 0; color: var(--cs-muted); }
 .cs-availability-actions { display: flex; align-items: center; gap: 8px; }
 
-.cs-availability-blocked,
-.cs-availability-booked,
-.cs-availability-pending {
-  flex: 0 0 auto;
-  padding: 4px 10px;
-  border-radius: var(--cs-radius-round);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.cs-availability-blocked { background: var(--cs-danger-faded); color: var(--cs-danger); }
-.cs-availability-booked { background: var(--cs-positive-faded); color: var(--cs-positive); }
-.cs-availability-pending { background: var(--cs-info-faded); color: var(--cs-info); }
 
 .cs-availability-form,
 .cs-availability-calendar { display: grid; gap: 16px; }
@@ -1161,7 +1472,7 @@
 }
 
 .cs-record-danger { color: var(--cs-danger); }
-.cs-record-danger:hover { border-color: var(--cs-danger); background: var(--cs-danger-faded); }
+.cs-record-danger:hover:enabled { border-color: var(--cs-danger); background: var(--cs-danger-faded); }
 
 /* Nothing to list yet is still a screen, not an error: it says so and offers the
    one action that changes it. */
@@ -1171,8 +1482,9 @@
   gap: 16px;
   margin-top: 24px;
   padding: 48px 24px;
-  border: 1px dashed var(--cs-line-strong);
+  border: 1px dashed var(--cs-accent-border);
   border-radius: var(--cs-radius);
+  background: var(--cs-surface);
   color: var(--cs-muted);
   text-align: center;
 }
@@ -1189,7 +1501,7 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(19, 19, 19, 0.45);
+  background: var(--cs-scrim);
 }
 
 .cs-modal {
@@ -1202,9 +1514,9 @@
   box-shadow: var(--cs-elevation-raised);
 }
 
-.cs-modal h2 { margin: 0; font-size: 20px; }
+.cs-modal h2 { margin: 0; font-size: 19px; }
 
-.cs-modal p { margin: 0; color: var(--cs-muted); font-size: 15px; }
+.cs-modal p { margin: 0; color: var(--cs-muted); font-size: 14px; }
 
 .cs-modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px; }
 
@@ -1238,8 +1550,17 @@
 
 .cs-detail-grid div { min-width: 0; }
 .cs-detail-grid .cs-detail-wide { grid-column: 1 / -1; }
+
+/* The base rule's margin: 0 would cancel the section's 20px rhythm, so a detail
+   block that follows a field (the event picked on Venue bookings) gets it back,
+   plus a rule so the answers read apart from the question. */
+.cs-form-section > .cs-form-grid + .cs-detail-grid {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--cs-line);
+}
 .cs-detail-grid dt { margin-bottom: 4px; color: var(--cs-muted); font-size: 13px; font-weight: 600; }
-.cs-detail-grid dd { margin: 0; white-space: pre-wrap; }
+.cs-detail-grid dd { margin: 0; font-size: 14px; white-space: pre-wrap; }
 
 .cs-review-heading {
   display: flex;
@@ -1249,12 +1570,12 @@
   margin-bottom: 24px;
 }
 
-.cs-review-heading h2 { margin: 0 0 4px; font-size: 24px; }
+.cs-review-heading h2 { margin: 0 0 4px; font-size: 22px; }
 .cs-review-heading p { margin: 0; color: var(--cs-muted); }
 
 .cs-exchange { display: grid; gap: 12px; margin-top: 24px; }
-.cs-exchange h3, .cs-action-box h3 { margin: 0; font-size: 19px; }
-.cs-exchange article { padding: 16px; border-left: 3px solid var(--cs-accent); background: var(--cs-surface-alt); border-radius: var(--cs-radius-m); }
+.cs-exchange h3, .cs-action-box h3 { margin: 0; font-size: 16px; }
+.cs-exchange article { padding: 16px; border: 1px solid var(--cs-line); background: var(--cs-surface); border-radius: var(--cs-radius-l); }
 .cs-exchange article strong { margin-right: 8px; }
 .cs-exchange article time { color: var(--cs-muted); font-size: 13px; }
 .cs-exchange article p { margin: 8px 0 0; white-space: pre-wrap; }
@@ -1277,8 +1598,8 @@
   align-items: center;
   padding: 4px 10px;
   border-radius: var(--cs-radius-round);
-  background: var(--cs-accent-faded);
-  color: var(--cs-accent-active);
+  background: var(--cs-surface-alt);
+  color: var(--cs-ink);
   font-size: 12px;
   font-weight: 600;
 }
@@ -1442,6 +1763,10 @@
     padding: 16px;
   }
 
+  .cs-steps li::after { display: none; }
+
+  .cs-panel-icon { flex-basis: 40px; width: 40px; height: 40px; }
+
   /* two portal tabs side by side leave no room for their descriptions */
   .cs-tabs {
     grid-template-columns: 1fr;
@@ -1477,4 +1802,419 @@
   .cs-form-actions .cs-btn {
     flex: 1;
   }
+}
+
+/* E8 — the venue bookings screen: event card, venue picker, suitability gate. */
+.cs-venue-bookings {
+  display: grid;
+  gap: 24px;
+  padding-top: 4px;
+}
+
+/* The form view leads with a card, which wants room under the header; the list
+   view leads with its one action, which does not. */
+.cs-venue-bookings > .cs-form-section:first-child { margin-top: 20px; }
+
+/* E8 — the suitability gate in front of a venue booking request. */
+.cs-booking-sent {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--cs-radius-m);
+  background: var(--cs-positive-faded);
+  color: var(--cs-positive);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cs-booking-request { display: grid; gap: 16px; margin-top: 8px; }
+.cs-booking-request h3 { margin: 0; font-size: 16px; }
+
+/* One line per requirement, shared by the venue picker and the booking gate. */
+.cs-suitability-criteria { margin: 0; display: grid; gap: 4px; }
+.cs-suitability-criteria dt,
+.cs-venue-card-lines dt {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--cs-muted);
+}
+.cs-suitability-criteria dd,
+.cs-venue-card-lines dd { margin: 0; display: grid; gap: 2px; }
+
+.cs-requirement-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--cs-line);
+}
+
+.cs-requirement-label { font-size: 14px; }
+
+.cs-feature-line {
+  display: block;
+  padding: 3px 0;
+  font-size: 14px;
+}
+
+.cs-feature-none { color: var(--cs-muted); }
+
+
+
+/* The venue picker — a scrollable list of cards, one per venue. */
+.cs-venue-picker {
+  margin: 16px 0 0;
+  padding: 0 4px 0 0;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+  max-height: 560px;
+  overflow-y: auto;
+}
+
+.cs-venue-card {
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--cs-line);
+  border-radius: var(--cs-radius-l);
+  background: var(--cs-surface);
+}
+
+.cs-venue-card-chosen { border-color: var(--cs-accent); box-shadow: var(--cs-elevation-base); }
+.cs-venue-card-blocked { opacity: 0.85; }
+.cs-venue-card h3 { margin: 0; font-size: 16px; }
+.cs-venue-card-sub { margin: 2px 0 0; font-size: 13px; color: var(--cs-muted); }
+.cs-venue-card-lines { margin: 0; }
+
+.cs-venue-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.cs-venue-card-title { flex: 1 1 auto; }
+.cs-venue-radio { margin-top: 5px; flex: 0 0 auto; }
+
+
+
+.cs-suitability-warnings {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--cs-line);
+  border-radius: var(--cs-radius-l);
+  background: var(--cs-warning-faded);
+}
+
+.cs-suitability-warnings-lead {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cs-ink);
+}
+
+.cs-acknowledge-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.cs-acknowledge-field input { margin-top: 3px; }
+
+.cs-acknowledgement-notice {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--cs-warning);
+  border-radius: var(--cs-radius-s);
+  background: var(--cs-warning-faded);
+}
+
+.cs-acknowledgement-title { margin: 0; font-size: 13px; font-weight: 600; color: var(--cs-warning); }
+.cs-acknowledgement-notice ul { margin: 6px 0 0; padding-left: 18px; }
+.cs-acknowledgement-notice li { font-size: 13px; color: var(--cs-ink); }
+
+@media (max-width: 560px) {
+  .cs-requirement-line { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .cs-venue-card-head { flex-direction: column; }
+}
+
+/* E4 — venue availability calendar (features/venues/VenueCalendar.js). A month
+   grid across every venue, filters above it, and the chosen day's hour-by-hour
+   detail below: per venue, a 24-hour track of free, booked, blocked and closed
+   time with pending requests hatched over it, listed again in words. */
+.cs-venue-calendar { display: grid; gap: 20px; }
+.cs-venue-calendar > .cs-back { justify-self: start; }
+
+.cs-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Filters */
+/* Venues and Show use the form's own pill groups (.cs-choice-group), so a
+   ticked filter reads the same here as anywhere else. Location, Show and Clear
+   sit on one row that wraps, 24px apart. */
+.cs-calendar-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 20px 24px;
+}
+.cs-calendar-location { flex: 0 1 280px; min-width: 200px; }
+.cs-calendar-clear { margin-left: auto; }
+
+/* A select that holds several choices (features/venues/components/MultiSelectDropdown.js).
+   Closed, it matches .cs-field select exactly; open, its list floats below. */
+.cs-multiselect { position: relative; flex: 0 1 280px; min-width: 200px; }
+.cs-multiselect-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px 10px 16px;
+  border: 1px solid var(--cs-line);
+  border-radius: var(--cs-radius-l);
+  background: var(--cs-surface);
+  color: var(--cs-ink);
+  font: inherit;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+}
+.cs-multiselect-toggle:hover { border-color: var(--cs-line-strong); }
+.cs-multiselect-toggle:focus-visible,
+.cs-multiselect-toggle[aria-expanded="true"] { outline: 2px solid var(--cs-focus-ring); border-color: var(--cs-accent); }
+.cs-multiselect-toggle svg { flex: 0 0 auto; color: var(--cs-muted); transition: transform 0.12s ease; }
+.cs-multiselect-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+.cs-multiselect-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cs-multiselect-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  display: grid;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--cs-line);
+  border-radius: var(--cs-radius-l);
+  background: var(--cs-surface);
+  box-shadow: var(--cs-elevation-raised);
+}
+.cs-multiselect-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: var(--cs-radius-m);
+  color: var(--cs-ink);
+  font-size: 14px;
+  cursor: pointer;
+}
+.cs-multiselect-option:hover { background: var(--cs-surface-hover); }
+.cs-multiselect-option:first-child { border-bottom: 1px solid var(--cs-line); border-radius: var(--cs-radius-m) var(--cs-radius-m) 0 0; }
+.cs-multiselect-option input { width: 16px; height: 16px; margin: 0; accent-color: var(--cs-accent); }
+
+/* Month toolbar */
+.cs-month-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+}
+.cs-month-nav { display: flex; align-items: center; gap: 8px; }
+.cs-month-nav h2 { min-width: 168px; margin: 0; font-size: 22px; font-weight: 600; text-align: center; }
+.cs-icon-btn { width: 40px; padding: 0; justify-content: center; }
+
+.cs-calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--cs-muted);
+  font-size: 13px;
+}
+.cs-calendar-legend li { display: inline-flex; align-items: center; gap: 8px; }
+.cs-calendar-swatch { display: inline-block; flex: 0 0 auto; width: 12px; height: 12px; border-radius: var(--cs-radius-s); }
+
+/* Month grid */
+.cs-month-frame {
+  overflow: hidden;
+  border: 1px solid var(--cs-line);
+  border-radius: var(--cs-radius);
+  background: var(--cs-surface);
+  box-shadow: var(--cs-elevation-card);
+}
+.cs-month { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.cs-month th {
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--cs-line);
+  color: var(--cs-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  text-transform: uppercase;
+}
+.cs-month td {
+  height: 120px;
+  padding: 8px;
+  border-top: 1px solid var(--cs-line);
+  border-left: 1px solid var(--cs-line);
+  vertical-align: top;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.cs-month td:first-child { border-left: 0; }
+.cs-month td:hover { background: var(--cs-surface-hover); }
+.cs-month-cell-outside { background: var(--cs-canvas); }
+.cs-month-cell-outside .cs-month-day { color: var(--cs-disabled-ink); }
+.cs-month-cell-closed { background: var(--cs-surface-alt); }
+.cs-month td.cs-month-cell-selected { background: var(--cs-accent-faded); box-shadow: inset 0 0 0 2px var(--cs-accent); }
+
+.cs-month-day {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--cs-radius-round);
+  background: transparent;
+  color: var(--cs-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cs-month-day:focus-visible { outline: 2px solid var(--cs-focus-ring); outline-offset: 2px; }
+.cs-month-cell-today .cs-month-day { background: var(--cs-accent); color: var(--cs-on-accent); }
+
+.cs-month-closed { display: block; color: var(--cs-muted); font-size: 12px; }
+
+.cs-month-chips { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.cs-month-chip {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  padding: 2px 6px;
+  border-left: 3px solid var(--cs-tone);
+  border-radius: var(--cs-radius-s);
+  background: var(--cs-tone-faded);
+  color: var(--cs-ink);
+  font-size: 12px;
+  line-height: 18px;
+}
+.cs-month-chip-time { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-weight: 600; }
+.cs-month-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-month-chip-booked { --cs-tone: var(--cs-warning); --cs-tone-faded: var(--cs-warning-faded); }
+.cs-month-chip-pending { --cs-tone: var(--cs-info); --cs-tone-faded: var(--cs-info-faded); border-left-style: dashed; }
+.cs-month-chip-blocked { --cs-tone: var(--cs-danger); --cs-tone-faded: var(--cs-danger-faded); }
+.cs-month-more { display: block; margin-top: 4px; color: var(--cs-muted); font-size: 12px; font-weight: 600; }
+
+/* Day detail */
+.cs-calendar-days {
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid var(--cs-line);
+  border-radius: var(--cs-radius);
+  background: var(--cs-surface);
+  box-shadow: var(--cs-elevation-card);
+}
+.cs-calendar-days h3 { margin: 0; font-size: 19px; font-weight: 600; }
+
+.cs-calendar-axis {
+  display: flex;
+  justify-content: space-between;
+  color: var(--cs-muted);
+  font-size: 12px;
+}
+
+.cs-calendar-day { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--cs-line); }
+.cs-calendar-day-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 14px; }
+.cs-calendar-day-head span { color: var(--cs-muted); }
+
+.cs-calendar-track {
+  position: relative;
+  display: flex;
+  height: 28px;
+  overflow: hidden;
+  border: 1px solid var(--cs-line);
+  border-radius: var(--cs-radius-m);
+}
+.cs-calendar-segment { flex: 1 1 0; min-width: 0; }
+.cs-calendar-segment + .cs-calendar-segment { border-left: 1px solid var(--cs-surface); }
+
+.cs-calendar-free { background: var(--cs-positive-faded); }
+.cs-calendar-booked { background: var(--cs-warning); }
+.cs-calendar-blocked { background: var(--cs-danger); }
+.cs-calendar-closed,
+.cs-calendar-unknown { background: var(--cs-surface-alt); }
+.cs-calendar-pending { background: var(--cs-info-faded); border: 1px dashed var(--cs-info); }
+.cs-calendar-swatch.cs-calendar-free { border: 1px solid var(--cs-positive); }
+
+.cs-calendar-pending-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border: 2px dashed var(--cs-info);
+  border-radius: var(--cs-radius-s);
+  background: repeating-linear-gradient(135deg, var(--cs-info-faded) 0 4px, transparent 4px 8px);
+}
+
+.cs-calendar-slots { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.cs-calendar-slot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+.cs-calendar-time { min-width: 96px; font-variant-numeric: tabular-nums; font-weight: 500; }
+.cs-calendar-label { color: var(--cs-muted); }
+
+.cs-calendar-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--cs-radius-round);
+  background: var(--cs-tone-faded, var(--cs-surface-alt));
+  color: var(--cs-tone, var(--cs-muted));
+  font-size: 12px;
+  font-weight: 600;
+}
+.cs-calendar-badge-free { --cs-tone: var(--cs-positive); --cs-tone-faded: var(--cs-positive-faded); }
+.cs-calendar-badge-booked { --cs-tone: var(--cs-warning); --cs-tone-faded: var(--cs-warning-faded); }
+.cs-calendar-badge-pending { --cs-tone: var(--cs-info); --cs-tone-faded: var(--cs-info-faded); }
+.cs-calendar-badge-blocked { --cs-tone: var(--cs-danger); --cs-tone-faded: var(--cs-danger-faded); }
+
+/* On a phone the grid keeps its seven columns; chips shrink to coloured bars
+   and the day detail below carries the words. */
+@media (max-width: 720px) {
+  .cs-month td { height: 72px; padding: 4px; }
+  .cs-month th { padding: 8px 4px; }
+  .cs-month-chip { height: 4px; padding: 0; border-left: 0; background: var(--cs-tone); }
+  .cs-month-chip-time,
+  .cs-month-chip-text,
+  .cs-month-closed { display: none; }
+  .cs-month-more { margin-top: 2px; }
+  .cs-month-nav h2 { min-width: 0; font-size: 19px; }
+  .cs-calendar-days { padding: 16px; }
+  .cs-calendar-time { min-width: 0; }
 }
