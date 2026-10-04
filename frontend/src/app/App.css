@@ -2262,3 +2262,20 @@ a.cs-btn-ghost:hover {
 .cs-suitability-pass { color: var(--cs-positive); }
 .cs-suitability-fail { color: var(--cs-danger); }
 
+
+/* E6 + E7 share one card: the suitability check reads as a part of it, divided
+   from the filters above rather than floating in its own panel. */
+.cs-suitability-check {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--cs-line);
+}
+
+.cs-suitability-check h3 { margin: 0; font-size: 16px; }
+.cs-suitability-check .cs-panel-note { margin: 0; }
+
+
+/* A detail value made of several entries — operating hours, one line per day. */
+.cs-detail-lines { display: grid; gap: 2px; }

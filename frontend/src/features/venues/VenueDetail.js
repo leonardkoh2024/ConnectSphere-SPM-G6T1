@@ -19,8 +19,12 @@ export default function VenueDetail({ venue }) {
         <div className="cs-detail-wide"><dt>Headline facilities</dt><dd>{facilitiesLabel(record.headline_facilities)}</dd></div>
         <div className="cs-detail-wide"><dt>Layouts</dt><dd>{record.layouts.length ? record.layouts.map(word).join(", ") : "None listed"}</dd></div>
         <div className="cs-detail-wide"><dt>Accessibility</dt><dd>{record.accessibility.length ? record.accessibility.map(word).join(", ") : "None listed"}</dd></div>
+        {/* A venue can open on most days, so each one gets its own line rather
+            than a semicolon-separated run that wraps unreadably. */}
         <div className="cs-detail-wide"><dt>Operating hours</dt><dd>{record.operating_hours.length
-          ? record.operating_hours.map((row) => `${word(row.weekday)} ${row.opens_at}–${row.closes_at}`).join("; ")
+          ? <span className="cs-detail-lines">{record.operating_hours.map((row) => (
+            <span key={`${row.weekday}-${row.opens_at}`}>{word(row.weekday)} {row.opens_at}–{row.closes_at}</span>
+          ))}</span>
           : "None listed"}</dd></div>
         <div className="cs-detail-wide"><dt>Space availability for special requirements</dt><dd>{venue.special_space_availability || "None listed"}</dd></div>
       </dl>
