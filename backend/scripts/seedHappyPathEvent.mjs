@@ -88,9 +88,30 @@ const facilities = (venue.facilities || []).slice(0, 2);
 const accessibility = (venue.accessibility || []).slice(0, 1);
 const layout = (venue.layouts || [])[0] || null;
 
+// The window has to sit inside the venue's opening hours for the day chosen, or
+// the operating-hours criterion fails and the "happy path" is not happy. Walk
+// forward until a day the venue actually opens, then take a window inside it.
+const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+const hoursFor = (weekday) => (venue.operating_hours || [])
+  .find((row) => String(row.weekday).toUpperCase() === weekday);
+
 const date = new Date();
 date.setDate(date.getDate() + 30);
+let opening = null;
+for (let step = 0; step < 7; step += 1) {
+  opening = hoursFor(WEEKDAYS[date.getDay()]);
+  if (opening) break;
+  date.setDate(date.getDate() + 1);
+}
 const eventDate = date.toISOString().slice(0, 10);
+
+const addHour = (time) => {
+  const [h, m] = String(time).split(":").map(Number);
+  return `${String(Math.min(h + 1, 23)).padStart(2, "0")}:${String(m || 0).padStart(2, "0")}`;
+};
+const startTime = opening ? opening.opens_at : "09:00";
+const endTime = opening ? (addHour(opening.opens_at) < opening.closes_at ? addHour(opening.opens_at) : opening.closes_at) : "17:00";
+if (!opening) console.warn(`! ${venue.name} lists no operating hours; falling back to 09:00-17:00.`);
 
 // An organiser owns the request; a coordinator works it. Whichever role the
 // named user holds is the field they are attached to.
@@ -116,8 +137,8 @@ const event = {
   purpose: "Verifying the venue suitability gate end to end.",
   description: `Seeded to fit ${venue.name} exactly, so the booking request passes every criterion.`,
   event_date: eventDate,
-  start_time: "09:00",
-  end_time: "17:00",
+  start_time: startTime,
+  end_time: endTime,
   expected_attendance: Math.max(1, Math.floor(capacity / 2)),
   status: "APPROVED",
   organiser_id: organiserId,
