@@ -23,8 +23,10 @@ jest.mock('../features/events/EventRequestForm', () => ({ __esModule: true, defa
 jest.mock('../features/events/EventList', () => ({ __esModule: true, default: () => null }));
 jest.mock('../features/events/EventReviewScreen', () => ({ __esModule: true, default: () => null }));
 jest.mock('../features/events/components/DecisionSummary', () => ({ __esModule: true, default: () => null }));
-jest.mock('../features/venues/VenueCatalogue', () => ({ __esModule: true, default: () => null }));
-jest.mock('../features/venues/VenueSearch', () => ({ __esModule: true, default: () => null }));
+// The venue screens report only whether they were asked for the shared calendar
+// (E4), which is the one thing the shell decides for them.
+jest.mock('../features/venues/VenueCatalogue', () => ({ __esModule: true, default: (props) => (props.showCalendar ? 'calendar open' : 'venue list') }));
+jest.mock('../features/venues/VenueSearch', () => ({ __esModule: true, default: (props) => (props.showCalendar ? 'calendar open' : 'venue list') }));
 
 const USER = { uid: 'u1', email: 'nadia.organiser@connectsphere.com' };
 
@@ -32,7 +34,7 @@ const USER = { uid: 'u1', email: 'nadia.organiser@connectsphere.com' };
 // organiser starts one from the button on My events, not from the navigation.
 const PERMITTED_SCREENS = {
   [ROLES.ORGANISER]: ['My events', 'Change requests', 'Registrations', 'Notifications'],
-  [ROLES.COORDINATOR]: ['Review queue', 'Assigned events', 'Venue search', 'Venue catalogue', 'Venue bookings', 'Equipment requests', 'Registrations', 'Notifications'],
+  [ROLES.COORDINATOR]: ['Review queue', 'Assigned events', 'Venue catalogue', 'Venue bookings', 'Equipment requests', 'Registrations', 'Notifications'],
   [ROLES.VENUE_STAFF]: ['Booking requests', 'Venue catalogue', 'Availability calendar', 'Notifications'],
   [ROLES.TECH_SUPPORT]: ['Equipment queue', 'Availability check', 'Reservations', 'Notifications'],
   [ROLES.ATTENDEE]: ['Browse events', 'My registrations', 'Notifications']
@@ -170,5 +172,31 @@ describe('TC-071 confirmations appear as toasts in the corner', () => {
 
     expect(screen.queryByText(MESSAGE)).not.toBeInTheDocument();
     jest.useRealTimers();
+  });
+});
+
+// E4 / SCRUM-120 — one shared availability calendar, opened from the top right of
+// the Venue catalogue header rather than from each venue.
+describe('TC-232 the Venue catalogue header opens the shared calendar', () => {
+  test.each([ROLES.COORDINATOR, ROLES.VENUE_STAFF])('%s sees View calendar in the page header', async (role) => {
+    window.location.hash = screenHash(role, 'Venue catalogue');
+    const { container } = render(<Workspace user={USER} role={role} />);
+
+    const header = container.querySelector('.cs-panel-head');
+    const button = within(header).getByRole('button', { name: /view calendar/i });
+    expect(screen.getByText('venue list')).toBeInTheDocument();
+
+    await userEvent.click(button);
+    expect(screen.getByText('calendar open')).toBeInTheDocument();
+    expect(within(header).queryByRole('button', { name: /view calendar/i })).not.toBeInTheDocument();
+
+    await userEvent.click(within(container.querySelector('.cs-sidebar')).getByRole('button', { name: /venue catalogue/i }));
+    expect(screen.getByText('venue list')).toBeInTheDocument();
+  });
+
+  test('other screens do not offer it', () => {
+    window.location.hash = screenHash(ROLES.COORDINATOR, 'Review queue');
+    const { container } = render(<Workspace user={USER} role={ROLES.COORDINATOR} />);
+    expect(within(container.querySelector('.cs-panel-head')).queryByRole('button', { name: /view calendar/i })).not.toBeInTheDocument();
   });
 });
