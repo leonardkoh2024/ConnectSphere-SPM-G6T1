@@ -75,11 +75,16 @@ const detail = async (eventId) => {
   const eventSnapshot = await getDoc(doc(db, "events", eventId));
   if (!eventSnapshot.exists()) throw new Error("Event not found.");
   const event = record(eventSnapshot);
-  const [questions, assignments, history, coordinator, profile] = await Promise.all([
+  const [questions, assignments, history, coordinator, profile, requirement, facilities, accessibility] = await Promise.all([
     getDocs(query(collection(db, "clarification_requests"), where("event_id", "==", eventId))),
     getDocs(query(collection(db, "coordinator_assignments"), where("event_id", "==", eventId))),
     getDocs(query(collection(db, "event_history"), where("event_id", "==", eventId))),
-    coordinatorFor(event.coordinator_id), profileFor(user.uid)
+    coordinatorFor(event.coordinator_id), profileFor(user.uid),
+    // B2/B3 — the venue requirements the coordinator matches a venue against.
+    // Without these the suitability gate (E7/E8) only ever sees capacity.
+    getDoc(doc(db, "event_venue_requirements", eventId)),
+    getDocs(query(collection(db, "event_facilities"), where("event_id", "==", eventId))),
+    getDocs(query(collection(db, "event_accessibility"), where("event_id", "==", eventId)))
   ]);
   const [coordinators, responseSnapshots] = await Promise.all([
     profile.role === ROLES.COORDINATOR ? activeCoordinators() : Promise.resolve([]),
@@ -90,7 +95,14 @@ const detail = async (eventId) => {
   const decisions = historyRecords.filter((item) => ["EVENT_APPROVED", "EVENT_REJECTED"].includes(item.action_type));
   const decision = decisions.length ? decisions[decisions.length - 1] : null;
   return {
-    event: { ...event, editable: event.coordinator_id === user.uid, decision: decision?.new_value || null, decision_reason: decision?.description || null, decided_by: decision?.actor_id || null, decided_at: decision?.created_at || null },
+    event: {
+      ...event,
+      preferred_location: requirement.data()?.preferred_location || null,
+      required_layout: requirement.data()?.required_layout || null,
+      facilities: facilities.docs.map((item) => item.data().facility_id).filter(Boolean),
+      accessibility: accessibility.docs.map((item) => item.data().accessibility_id).filter(Boolean),
+      editable: event.coordinator_id === user.uid, decision: decision?.new_value || null, decision_reason: decision?.description || null, decided_by: decision?.actor_id || null, decided_at: decision?.created_at || null
+    },
     coordinator, coordinators,
     clarifications: questions.docs.map(record).sort(byCreated),
     responses: responseSnapshots.flatMap((snapshot) => snapshot.docs.map(record)).sort(byCreated),

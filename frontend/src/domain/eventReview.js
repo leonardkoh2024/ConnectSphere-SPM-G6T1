@@ -32,6 +32,10 @@ export const canApproveEvent = canRequestClarification;
 
 const TERMINAL = new Set([EVENT_STATUS.COMPLETED, EVENT_STATUS.CANCELLED, EVENT_STATUS.REJECTED]);
 
+// E8 — a venue is only worth seeking while the event can still happen. A
+// completed, cancelled or rejected event has nothing left to book.
+export const canFindVenues = (event) => Boolean(event) && !TERMINAL.has(event.status);
+
 export const canReassignEvent = (event, userId, targetCoordinator) =>
   isCurrentCoordinator(event, userId) &&
   !TERMINAL.has(event.status) &&

@@ -44,6 +44,19 @@ export const prefillSearch = (event) => ({
   expected_attendance: event.expected_attendance
 });
 
+// "Find venues" opens the shortlist already narrowed to what the event asked for,
+// rather than the whole catalogue. Every value lands as a visible chip the
+// coordinator can clear — clearing one widens the list to venues that fall short
+// on that criterion, which is what E8's acknowledge gate exists for.
+export const prefillFilters = (event) => ({
+  location: event?.preferred_location || null,
+  min_capacity: Number(event?.expected_attendance) || null,
+  max_capacity: null,
+  facilities: event?.facilities || [],
+  accessibility: event?.accessibility || [],
+  layout: event?.required_layout || null
+});
+
 const pad = (value) => String(value).padStart(2, "0");
 
 const asDate = (value) => {
