@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { getDocs } from 'firebase/firestore';
 import VenueSearch from './VenueSearch';
@@ -32,15 +32,29 @@ test('TC-095 search opened from an event arrives pre-filled', async () => {
   expect(await screen.findByText(/pre-filled from the event/i)).toBeInTheDocument();
   expect(screen.getByText(/2026-10-23/)).toBeInTheDocument();
   expect(screen.getByText(/09:00–17:00/)).toBeInTheDocument();
-  expect(await screen.findByText('Clear Hall')).toBeInTheDocument();
-  expect(screen.queryByText('Tiny Room')).not.toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: /view venue/i })).toBeInTheDocument();
+  expect([...document.querySelectorAll('.cs-record-title h2')].map((heading) => heading.textContent)).toEqual(['Clear Hall']);
 });
 
 test('TC-109 one action clears the active filters', async () => {
   render(<VenueSearch />);
-  await screen.findByText('Clear Hall');
+  await screen.findAllByRole('button', { name: /view venue/i });
   await userEvent.selectOptions(screen.getByLabelText(/^location$/i), 'EAST');
   expect(document.querySelector('.cs-chip')).toHaveTextContent('EAST');
   await userEvent.click(screen.getByRole('button', { name: /clear filters/i }));
   expect(screen.queryByRole('button', { name: /clear filters/i })).not.toBeInTheDocument();
+});
+
+test('TC-110 viewing a venue displays its details in that venue result', async () => {
+  render(<VenueSearch />);
+  const [viewButton] = await screen.findAllByRole('button', { name: /view venue/i });
+
+  const venue = viewButton.closest('.cs-record');
+  await userEvent.click(viewButton);
+
+  const details = within(venue).getByLabelText(/venue record/i);
+  expect(details).toBeInTheDocument();
+  expect(within(details).getByText(/THEATRE/i)).toBeInTheDocument();
+  expect(screen.getAllByLabelText(/venue record/i)).toHaveLength(1);
+  expect(details.closest('.cs-record')).toBe(venue);
 });

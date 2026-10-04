@@ -1,5 +1,6 @@
 import {
   activeFilters,
+  assessVenueSuitability,
   applyFilters,
   canSearchVenues,
   canViewCatalogue,
@@ -183,6 +184,76 @@ describe('E6 / SCRUM-122 narrow the shortlist', () => {
     expect(applyFilters(catalogue, { ...emptyFilters(), facilities: ['WIFI'] }).map((item) => item.venue_id)).toEqual(['X', 'Z', 'P', 'R']);
     expect(applyFilters(catalogue, { ...emptyFilters(), accessibility: ['WHEELCHAIR_ACCESS'] }).map((item) => item.venue_id)).toEqual(['Y', 'Z']);
     expect(applyFilters(catalogue, { ...emptyFilters(), layout: 'THEATRE' }).map((item) => item.venue_id)).toEqual(['Y', 'Z']);
+  });
+
+  describe('E7 venue suitability assessment', () => {
+    const event = {
+      event_date: '2026-10-05',
+      start_time: '09:00',
+      end_time: '17:00',
+      expected_attendance: 101,
+      facilities: ['WIFI', 'STAGE'],
+      accessibility: ['LIFT'],
+      layout: 'THEATRE'
+    };
+    const venue = {
+      name: 'Meeting Room',
+      max_capacity: 100,
+      facilities: ['WIFI'],
+      accessibility: [],
+      layouts: ['BOARDROOM'],
+      operating_hours: [{ weekday: 'MONDAY', opens_at: '10:00', closes_at: '16:00' }]
+    };
+
+    test('TC-112 the outcome identifies every missing or failing criterion', () => {
+      const result = assessVenueSuitability({ venue, event });
+
+      expect(result.suitable).toBe(false);
+      expect(result.criteria.filter((criterion) => !criterion.passed).map((criterion) => criterion.label)).toEqual([
+        'Attendance and capacity',
+        'Required facility: STAGE',
+        'Accessibility feature: LIFT',
+        'Required room layout',
+        'Requested time within operating hours'
+      ]);
+      expect(result.criteria.find((criterion) => criterion.key === 'facility-WIFI').passed).toBe(true);
+    });
+
+    test('TC-113 attendance equal to capacity and an operating-hours boundary are suitable', () => {
+      const result = assessVenueSuitability({
+        venue: {
+          ...venue,
+          operating_hours: [{ weekday: 'MONDAY', opens_at: '09:00', closes_at: '17:00' }]
+        },
+        event: {
+          ...event,
+          expected_attendance: 100,
+          start_time: '09:00',
+          end_time: '17:00',
+          facilities: [],
+          accessibility: [],
+          layout: ''
+        }
+      });
+
+      expect(result.suitable).toBe(true);
+      expect(result.criteria).toHaveLength(5);
+      expect(result.criteria.every((criterion) => criterion.passed)).toBe(true);
+    });
+
+    test('TC-114 a requested time outside operating hours fails, including when hours are unlisted', () => {
+      const outsideHours = assessVenueSuitability({
+        venue: { ...venue, operating_hours: [{ weekday: 'MONDAY', opens_at: '09:00', closes_at: '17:00' }] },
+        event: { ...event, start_time: '08:59', end_time: '10:00', facilities: [], accessibility: [], layout: '' }
+      });
+      const missingHours = assessVenueSuitability({
+        venue: { ...venue, operating_hours: [] },
+        event: { ...event, facilities: [], accessibility: [], layout: '' }
+      });
+
+      expect(outsideHours.criteria.find((criterion) => criterion.key === 'operating-hours')).toMatchObject({ passed: false });
+      expect(missingHours.criteria.find((criterion) => criterion.key === 'operating-hours').detail).toMatch(/no operating hours are listed/i);
+    });
   });
 
   test('TC-105 filters are AND, not OR', () => {

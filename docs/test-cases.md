@@ -36,13 +36,16 @@ they can be read next to the acceptance criteria and move into the service layer
 | — | — | The form marks what is compulsory | TC-070 |
 | — | — | Confirmations appear as toasts | TC-071 |
 | C1 | SCRUM-102 | Have submitted events assigned to a coordinator automatically | TC-072 – TC-080 |
+| E7 | — | Know whether a venue actually suits the event | TC-112 – TC-116 |
 
 Suites: `frontend/src/features/events/EventRequestForm.test.js` (TC-017 – TC-047, TC-064 – TC-070),
 `frontend/src/features/events/EventList.test.js` (TC-016, TC-058 – TC-063),
 `frontend/src/app/Workspace.test.js` (TC-014, TC-015, TC-071), `frontend/src/app/App.test.js` (TC-048 – TC-057),
 `frontend/src/security/firestoreRules.test.js` (TC-015, TC-016, TC-080),
 `frontend/src/domain/coordinatorAssignment.test.js` (TC-073, TC-074, TC-075),
-`backend/src/services/coordinatorAssignment/assignCoordinator.test.js` (TC-072, TC-076, TC-077, TC-078, TC-079).
+`backend/src/services/coordinatorAssignment/assignCoordinator.test.js` (TC-072, TC-076, TC-077, TC-078, TC-079),
+`frontend/src/domain/venueSearch.test.js` (TC-112 – TC-114),
+`frontend/src/features/venues/VenueSuitabilityForm.test.js` (TC-115, TC-116).
 
 ---
 
@@ -219,3 +222,15 @@ settled here: B9 AC2 requires accessibility needs to be *answered* before submis
 said whether a request with no accessibility needs counts as answered. The form takes the literal reading — an
 explicit No is an answer, an untouched question is not. If Session 3 says otherwise, the rule is one line in
 `domain/eventRequest.js`.
+
+---
+
+## E7 — Know whether a venue actually suits the event
+
+| Test Case ID | Test Scenario | Expected Result | Actual Result | Status | Remarks |
+|---|---|---|---|---|---|
+| TC-112 | A venue fails several requested criteria | Assessment names the capacity, each missing facility/accessibility feature, layout and operating-hours failures; passing requirements are still listed | As expected | Pass | AC1–AC4 |
+| TC-113 | Attendance equals capacity and event exactly fits opening/closing times | Venue is suitable; all five criterion groups are shown as passing | As expected | Pass | Capacity and time boundaries |
+| TC-114 | Requested time is outside hours or the venue has no hours listed | Operating-hours criterion fails with the applicable reason | As expected | Pass | AC4 |
+| TC-115 | Submit the suitability form with an unmet capacity and facility requirement | Outcome says Not suitable, names both failures and shows other evaluated criteria | As expected | Pass | AC1, AC5 |
+| TC-116 | Submit the suitability form for a venue that meets all requirements | Outcome says Suitable and shows every evaluated criterion | As expected | Pass | AC5 |
