@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 import { ROLES } from '../domain/roles';
-import { isStaffEmail, isStrongPassword, isValidMobileNumber, resolveRole } from '../domain/accounts';
+import { isStaffEmail, isStrongPassword, isValidMobileNumber, passwordChecks, resolveRole } from '../domain/accounts';
 
 // Firebase is stubbed so the tests exercise our own routing and role logic
 // without touching a real project. onAuthStateChanged reports a signed-out user.
@@ -59,7 +59,61 @@ describe('landing page', () => {
     expect(screen.getByRole('form', { name: formName })).toBeInTheDocument();
   });
 
-  test('the corporate portal pre-sets the role from the work email', async () => {
+  test('the eye button shows and hides the password', async () => {
+    render(<App />);
+    const input = screen.getByLabelText(/^password$/i);
+    await userEvent.type(input, 'secret');
+    expect(input).toHaveAttribute('type', 'password');
+
+    await userEvent.click(screen.getByRole('button', { name: /show password/i }));
+    expect(input).toHaveAttribute('type', 'text');
+    expect(screen.getByRole('button', { name: /hide password/i })).toHaveAttribute('aria-pressed', 'true');
+
+    await userEvent.click(screen.getByRole('button', { name: /hide password/i }));
+    expect(input).toHaveAttribute('type', 'password');
+  });
+
+  test('registering, each password rule is ticked off as it is typed', async () => {
+    render(<App />);
+    await userEvent.click(screen.getByRole('button', { name: /create an account/i }));
+    const rule = (name) => screen.getByText(name).closest('li');
+    const input = screen.getByLabelText(/^password$/i);
+
+    // Nothing typed yet: neither met nor flagged.
+    expect(rule('At least 12 characters')).not.toHaveClass('cs-password-check-met');
+    expect(rule('At least 12 characters')).not.toHaveClass('cs-password-check-unmet');
+
+    await userEvent.type(input, 'abc1');
+    expect(rule('One number')).toHaveClass('cs-password-check-met');
+    expect(rule('One special character')).toHaveClass('cs-password-check-unmet');
+    expect(rule('At least 12 characters')).toHaveClass('cs-password-check-unmet');
+
+    await userEvent.type(input, 'defghijk!');
+    expect(rule('One special character')).toHaveClass('cs-password-check-met');
+    expect(rule('At least 12 characters')).toHaveClass('cs-password-check-met');
+  });
+
+  test('registering, the confirm field says whether the passwords match', async () => {
+    render(<App />);
+    await userEvent.click(screen.getByRole('button', { name: /create an account/i }));
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'SecurePassword1!');
+    expect(screen.queryByText('Passwords match')).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/^confirm password$/i), 'Secure');
+    expect(screen.getByText('Passwords match').closest('li')).toHaveClass('cs-password-check-unmet');
+
+    await userEvent.type(screen.getByLabelText(/^confirm password$/i), 'Password1!');
+    expect(screen.getByText('Passwords match').closest('li')).toHaveClass('cs-password-check-met');
+  });
+
+  test('signing in does not show the password rules', () => {
+    render(<App />);
+    expect(screen.queryByText('At least 12 characters')).not.toBeInTheDocument();
+  });
+
+  // The role is still resolved from the work email (see resolveRole below); it is
+  // just no longer previewed on the sign-in form.
+  test('the corporate sign-in form does not preview a role', async () => {
     render(<App />);
 
     await userEvent.click(screen.getByRole('tab', { name: /corporate/i }));
@@ -68,9 +122,7 @@ describe('landing page', () => {
       'amir.coordinator@connectsphere.com'
     );
 
-    expect(screen.getByText(/detected role:/i)).toHaveTextContent(
-      'Event Coordinator'
-    );
+    expect(screen.queryByText(/detected role/i)).not.toBeInTheDocument();
   });
 });
 
@@ -116,6 +168,22 @@ describe('isStrongPassword', () => {
     expect(isStrongPassword('TwelveChars!')).toBe(false);
     expect(isStrongPassword('TwelveChars12')).toBe(false);
     expect(isStrongPassword('SecurePassword1!')).toBe(true);
+  });
+});
+
+describe('passwordChecks', () => {
+  test('reports each rule separately, in a fixed order', () => {
+    expect(passwordChecks('abc1').map(({ id, met }) => [id, met])).toEqual([
+      ['length', false],
+      ['number', true],
+      ['special', false]
+    ]);
+  });
+
+  test('agrees with isStrongPassword', () => {
+    ['', 'TwelveChars!', 'TwelveChars12', 'SecurePassword1!'].forEach((password) => {
+      expect(passwordChecks(password).every((check) => check.met)).toBe(isStrongPassword(password));
+    });
   });
 });
 

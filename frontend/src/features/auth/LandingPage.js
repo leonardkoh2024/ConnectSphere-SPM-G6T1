@@ -6,7 +6,7 @@
 // The role model, the portal list and the account rules live in `src/domain/`;
 // the marketing sections below the fold live in `components/PlatformOverview`.
 
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -19,9 +19,10 @@ import { PORTALS } from "../../domain/portals";
 import {
   isStrongPassword,
   isValidMobileNumber,
-  resolveRole
+  passwordChecks
 } from "../../domain/accounts";
 import PlatformOverview from "./components/PlatformOverview";
+import PasswordField from "./components/PasswordField";
 
 function LandingPage() {
   const [portal, setPortal] = useState(PORTALS.individual.id);
@@ -43,15 +44,6 @@ function LandingPage() {
 
   const activePortal = PORTALS[portal];
   const isCorporate = portal === PORTALS.corporate.id;
-
-  // Live preview of the role the email would be given, shown on the corporate tab
-  // so staff can see what they are about to sign in as.
-  const previewRole = useMemo(() => {
-    if (!email.includes("@")) {
-      return null;
-    }
-    return resolveRole(email, portal);
-  }, [email, portal]);
 
   const switchPortal = (nextPortal) => {
     setPortal(nextPortal);
@@ -195,20 +187,15 @@ function LandingPage() {
         <section className="cs-hero">
           <div className="cs-hero-copy">
             <p className="cs-eyebrow">Corporate event management</p>
-            <h1>
-              Every ConnectSphere event, from first request to full house, in one
-              place.
-            </h1>
+            <h1>Every event, from request to full house.</h1>
             <p className="cs-lede">
-              Organisers raise requests, coordinators secure venues and equipment,
-              and attendees register — and each person only ever sees the screens
-              their role is responsible for.
+              Requests, venues, equipment and registrations in one place.
             </p>
 
             <ul className="cs-hero-points">
-              <li>Venue availability and suitability checked as you plan</li>
-              <li>Overlapping bookings flagged before they are confirmed</li>
-              <li>Notifications whenever a decision or change lands</li>
+              <li>Venue availability checked as you plan</li>
+              <li>Double bookings caught early</li>
+              <li>Notified when anything changes</li>
             </ul>
           </div>
 
@@ -277,43 +264,30 @@ function LandingPage() {
                 />
               </label>
 
-              <label className="cs-field" htmlFor="cs-password">
-                <span>Password</span>
-                <input
-                  id="cs-password"
-                  type="password"
-                  autoComplete={mode === "login" ? "current-password" : "new-password"}
-                  required
-                  minLength={mode === "register" ? 12 : 6}
-                  placeholder={mode === "register" ? "12+ characters, number and special character" : "Your password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </label>
+              {/* Registering, each password rule is ticked off live as it is met;
+                  signing in, the rules are not shown — they are not being set. */}
+              <PasswordField
+                id="cs-password"
+                label="Password"
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                required
+                minLength={mode === "register" ? 12 : 6}
+                placeholder={mode === "register" ? "Create a password" : "Your password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                checks={mode === "register" ? passwordChecks(password) : undefined}
+              />
 
               {mode === "register" && (
-                <>
-                  <p className="cs-login-hint cs-password-hint">
-                    Use at least 12 characters, including one number and one special character.
-                  </p>
-                  <label className="cs-field" htmlFor="cs-confirm-password">
-                    <span>Confirm password</span>
-                    <input
-                      id="cs-confirm-password"
-                      type="password"
-                      autoComplete="new-password"
-                      required
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                    />
-                  </label>
-                </>
-              )}
-
-              {isCorporate && previewRole && mode === "login" && (
-                <p className="cs-role-preview">
-                  Detected role: <strong>{ROLE_META[previewRole].label}</strong>
-                </p>
+                <PasswordField
+                  id="cs-confirm-password"
+                  label="Confirm password"
+                  autoComplete="new-password"
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  checks={confirmPassword ? [{ id: "match", label: "Passwords match", met: confirmPassword === password }] : undefined}
+                />
               )}
 
               {error && (
@@ -350,11 +324,13 @@ function LandingPage() {
               </button>
             </p>
 
-            <p className="cs-login-hint">
-              {mode === "register" && isCorporate
+            {/* A portal with nothing to add (Individuals) shows no hint line at all. */}
+            {(() => {
+              const hint = mode === "register" && isCorporate
                 ? "Self-registration creates an Event Organiser account. Coordinator, venue and technical roles are provisioned separately."
-                : activePortal.hint}
-            </p>
+                : activePortal.hint;
+              return hint ? <p className="cs-login-hint">{hint}</p> : null;
+            })()}
           </section>
         </section>
 
