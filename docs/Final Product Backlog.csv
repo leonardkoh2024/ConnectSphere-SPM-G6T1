@@ -476,7 +476,7 @@ Acceptance Criteria:
 1. Notifications fire on: submission received, coordinator assigned, request returned for clarification, approved, rejected, confirmed, cancelled.
 2. Each names the event and the change and links to the event.
 3. Approval and rejection notifications carry the decision reason.",3
-Story,J3,J — Notifications,Be told when work arrives for me,"As an Events Organiser, I want to be told when something needs my attention so that requests do not sit unnoticed.
+Story,J3,J — Notifications,Be told when work arrives for me,"As an Event Coordinator, I want to be told when something needs my attention so that requests do not sit unnoticed.
 
 Acceptance Criteria:
 1. A Coordinator is notified on assignment of a new event
