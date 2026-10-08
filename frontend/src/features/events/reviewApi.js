@@ -49,6 +49,23 @@ const activeCoordinators = async () => {
     .map((item) => ({ id: item.id, name: item.name || item.email || item.id, active: true }));
 };
 
+// C2 / SCRUM-103 — AC2 asks each row to show the organiser. The event stores an
+// organiser_id, so resolve the unique ids to display names in one batch and
+// attach organiser_name to each event. The screen falls back to the id, then
+// "Unknown", so a missing profile never leaves the column blank.
+const withOrganiserNames = async (events) => {
+  const organiserIds = [...new Set(events.map((event) => event.organiser_id).filter(Boolean))];
+  const snapshots = await Promise.all(organiserIds.map((id) => getDoc(doc(db, "users", id))));
+  const nameById = new Map(snapshots.filter((snapshot) => snapshot.exists()).map((snapshot) => {
+    const data = snapshot.data();
+    return [snapshot.id, data.name || data.email || snapshot.id];
+  }));
+  return events.map((event) => ({
+    ...event,
+    organiser_name: event.organiser_name || nameById.get(event.organiser_id) || null
+  }));
+};
+
 const list = async () => {
   const user = requireUser();
   const profile = await profileFor(user.uid);
@@ -67,7 +84,8 @@ const list = async () => {
     snapshots = [...current.docs, ...prior.filter((item) => item.exists())];
   } else throw new Error("This role cannot review event requests.");
   const unique = [...new Map(snapshots.map((item) => [item.id, item])).values()];
-  return { events: unique.map((item) => ({ ...record(item), editable: item.data().coordinator_id === user.uid })) };
+  const events = unique.map((item) => ({ ...record(item), editable: item.data().coordinator_id === user.uid }));
+  return { events: await withOrganiserNames(events) };
 };
 
 const detail = async (eventId) => {

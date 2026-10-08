@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { statusTone } from "../../domain/events";
 import { chronologicalClarifications } from "../../domain/eventReview";
+import { ALL_STATUSES, buildAssignedView, statusOptions } from "../../domain/assignedEvents";
 import { reviewApi } from "./reviewApi";
 
 const shownTime = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Not recorded";
@@ -15,6 +16,9 @@ export default function EventReviewScreen({ queueOnly = false, onNotice }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  // C2 / SCRUM-103 — AC3 controls for the "Assigned events" list.
+  const [statusFilter, setStatusFilter] = useState(ALL_STATUSES);
+  const [sortDir, setSortDir] = useState("asc");
 
   const loadList = async () => {
     const data = await reviewApi.list();
@@ -26,6 +30,16 @@ export default function EventReviewScreen({ queueOnly = false, onNotice }) {
   const visible = useMemo(() => queueOnly
     ? events.filter((event) => ["SUBMITTED", "UNDER_REVIEW"].includes(event.status) && event.editable)
     : events, [events, queueOnly]);
+
+  // C2 / SCRUM-103 — the assigned list as display rows: name, organiser, proposed
+  // date, status and time since last activity (AC2), filtered by status and sorted
+  // by proposed date (AC3). Events arrive already scoped to this coordinator by
+  // reviewApi.list + firestore.rules (AC1), so no coordinatorId is passed here.
+  const assignedOptions = useMemo(() => statusOptions(events), [events]);
+  const assignedRows = useMemo(
+    () => buildAssignedView(events, { status: statusFilter, sort: sortDir }),
+    [events, statusFilter, sortDir]
+  );
 
   const loadDetail = async (eventId, open = true) => {
     setError(""); setBusy(true);
@@ -87,6 +101,38 @@ export default function EventReviewScreen({ queueOnly = false, onNotice }) {
     </div>;
   }
 
-  if (!visible.length) return <div className="cs-empty"><p>{error || (queueOnly ? "No requests are waiting for review." : "No events are assigned to you.")}</p></div>;
-  return <>{error && <p className="cs-error">{error}</p>}<div className="cs-record-list">{visible.map((event) => <article className="cs-record cs-review-record" key={event.id}><div className="cs-record-title"><h2>{event.name || "Untitled event"}</h2><p>{event.event_date || "Date not set"}</p></div><p className="cs-record-ref">{event.reference_no}</p><div className="cs-record-status"><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div><div className="cs-record-modified"><p className="cs-record-saved">{event.editable ? "Current assignment" : "Previous assignment · read only"}</p></div><div className="cs-record-actions"><button className="cs-btn cs-btn-ghost cs-record-btn" type="button" disabled={busy} onClick={() => loadDetail(event.id)}>View request</button></div></article>)}</div></>;
+  // The Review queue (queueOnly) is unchanged: it lists only the requests waiting
+  // for action and keeps its original card.
+  if (queueOnly) {
+    if (!visible.length) return <div className="cs-empty"><p>{error || "No requests are waiting for review."}</p></div>;
+    return <>{error && <p className="cs-error">{error}</p>}<div className="cs-record-list">{visible.map((event) => <article className="cs-record cs-review-record" key={event.id}><div className="cs-record-title"><h2>{event.name || "Untitled event"}</h2><p>{event.event_date || "Date not set"}</p></div><p className="cs-record-ref">{event.reference_no}</p><div className="cs-record-status"><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div><div className="cs-record-modified"><p className="cs-record-saved">{event.editable ? "Current assignment" : "Previous assignment · read only"}</p></div><div className="cs-record-actions"><button className="cs-btn cs-btn-ghost cs-record-btn" type="button" disabled={busy} onClick={() => loadDetail(event.id)}>View request</button></div></article>)}</div></>;
+  }
+
+  // C2 / SCRUM-103 — the coordinator's "Assigned events" list: everything they are
+  // accountable for, with the five columns the story asks for plus the status
+  // filter and proposed-date sort.
+  if (!events.length) return <div className="cs-empty"><p>{error || "No events are assigned to you."}</p></div>;
+  return <>
+    {error && <p className="cs-error">{error}</p>}
+    <div className="cs-review-toolbar">
+      <label className="cs-field cs-inline-field">
+        <span className="cs-field-name">Status</span>
+        <select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          {assignedOptions.map((status) => <option key={status} value={status}>{status === ALL_STATUSES ? "All statuses" : status}</option>)}
+        </select>
+      </label>
+      <button type="button" className="cs-btn cs-btn-ghost cs-sort-btn" aria-label="Sort by proposed date" onClick={() => setSortDir((dir) => (dir === "asc" ? "desc" : "asc"))}>
+        Proposed date {sortDir === "asc" ? "↑" : "↓"}
+      </button>
+    </div>
+    {assignedRows.length
+      ? <div className="cs-record-list">{assignedRows.map((row) => <article className="cs-record cs-review-record" key={row.id}>
+          <div className="cs-record-title"><h2>{row.name}</h2><p>{row.proposedDate || "Date not set"}</p></div>
+          <p className="cs-record-ref">{row.organiser}</p>
+          <div className="cs-record-status"><span className={`cs-pill cs-pill-${statusTone(row.status)}`}>{row.status}</span></div>
+          <div className="cs-record-modified"><p className="cs-record-saved">Last activity: {row.lastActivityLabel}</p></div>
+          <div className="cs-record-actions"><button className="cs-btn cs-btn-ghost cs-record-btn" type="button" disabled={busy} onClick={() => loadDetail(row.id)}>View request</button></div>
+        </article>)}</div>
+      : <div className="cs-empty"><p>No events match this filter.</p></div>}
+  </>;
 }

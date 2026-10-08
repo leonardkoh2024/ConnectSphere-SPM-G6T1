@@ -84,3 +84,46 @@ test('TC-078 an outgoing coordinator gets a read-only assignment view', async ()
   expect(screen.getByText(/reassigned.*view.*only the current coordinator/i)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /reassign event/i })).not.toBeInTheDocument();
 });
+
+// C2 / SCRUM-103 — the coordinator's "Assigned events" list. The list is scoped to
+// the signed-in coordinator by reviewApi.list + firestore.rules (AC1, covered by
+// the pure unit tests in domain/assignedEvents.test.js); these component tests
+// cover the row columns (AC2) and the status filter + proposed-date sort (AC3).
+const assignedEvents = [
+  { id: 'e-early', name: 'Alumni Mixer', reference_no: 'EVT-010', organiser_id: 'u1', organiser_name: 'Nadia Organiser', event_date: '2026-11-02', status: 'APPROVED', coordinator_id: 'c1', editable: true, updated_at: '2026-10-08T11:58:00Z' },
+  { id: 'e-late', name: 'Partner Summit', reference_no: 'EVT-011', organiser_id: 'u2', organiser_name: 'Owen Organiser', event_date: '2026-11-20', status: 'SUBMITTED', coordinator_id: 'c1', editable: true, updated_at: '2026-10-06T12:00:00Z' },
+  { id: 'e-mid', name: 'Careers Fair', reference_no: 'EVT-012', organiser_id: 'u3', organiser_name: 'Priya Organiser', event_date: '2026-11-10', status: 'APPROVED', coordinator_id: 'c1', editable: true, updated_at: '2026-10-08T09:00:00Z' }
+];
+const rowNames = () => screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent);
+
+test('TC-126 each assigned row shows name, organiser, proposed date, status and time since last activity', async () => {
+  reviewApi.list.mockResolvedValue({ events: [assignedEvents[0]] });
+  render(<EventReviewScreen />);
+  const row = (await screen.findByRole('heading', { name: 'Alumni Mixer' })).closest('article');
+  expect(within(row).getByText('Nadia Organiser')).toBeInTheDocument();
+  expect(within(row).getByText('2026-11-02')).toBeInTheDocument();
+  expect(within(row).getByText('APPROVED')).toBeInTheDocument();
+  expect(within(row).getByText(/last activity:/i)).toBeInTheDocument();
+});
+
+test('TC-127 the status filter narrows the list to the chosen status', async () => {
+  reviewApi.list.mockResolvedValue({ events: assignedEvents });
+  render(<EventReviewScreen />);
+  await screen.findByRole('heading', { name: 'Alumni Mixer' });
+  expect(screen.getByRole('heading', { name: 'Partner Summit' })).toBeInTheDocument();
+
+  await userEvent.selectOptions(screen.getByRole('combobox', { name: /filter by status/i }), 'SUBMITTED');
+  expect(screen.getByRole('heading', { name: 'Partner Summit' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Alumni Mixer' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Careers Fair' })).not.toBeInTheDocument();
+});
+
+test('TC-128 sorting by proposed date orders ascending, then descending on toggle', async () => {
+  reviewApi.list.mockResolvedValue({ events: assignedEvents });
+  render(<EventReviewScreen />);
+  await screen.findByRole('heading', { name: 'Alumni Mixer' });
+  expect(rowNames()).toEqual(['Alumni Mixer', 'Careers Fair', 'Partner Summit']);
+
+  await userEvent.click(screen.getByRole('button', { name: /sort by proposed date/i }));
+  expect(rowNames()).toEqual(['Partner Summit', 'Careers Fair', 'Alumni Mixer']);
+});
