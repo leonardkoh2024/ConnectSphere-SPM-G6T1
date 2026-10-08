@@ -16,17 +16,28 @@ import Workspace from './Workspace';
 import { screenHash } from './routes';
 import { ROLES } from '../domain/roles';
 import { DISMISS_AFTER_MS } from './Toasts';
+import useNotifications from '../features/notifications/useNotifications';
 
 jest.mock('../lib/firebase', () => ({ auth: {}, db: {} }));
 jest.mock('firebase/auth', () => ({ signOut: jest.fn() }));
 jest.mock('../features/events/EventRequestForm', () => ({ __esModule: true, default: () => null }));
 jest.mock('../features/events/EventList', () => ({ __esModule: true, default: () => null }));
-jest.mock('../features/events/EventReviewScreen', () => ({ __esModule: true, default: () => null }));
+// Reports the event it was asked to open, which is all View on a notification decides (J1).
+jest.mock('../features/events/EventReviewScreen', () => ({ __esModule: true, default: (props) => (props.initialEventId ? `review of ${props.initialEventId}` : null) }));
 jest.mock('../features/events/components/DecisionSummary', () => ({ __esModule: true, default: () => null }));
 // The venue screens report only whether they were asked for the shared calendar
 // (E4), which is the one thing the shell decides for them.
 jest.mock('../features/venues/VenueCatalogue', () => ({ __esModule: true, default: (props) => (props.showCalendar ? 'calendar open' : 'venue list') }));
 jest.mock('../features/venues/VenueSearch', () => ({ __esModule: true, default: (props) => (props.showCalendar ? 'calendar open' : 'venue list') }));
+// J1 — the live inbox is stubbed so the badge can be driven by hand.
+jest.mock('../features/notifications/useNotifications', () => ({ __esModule: true, default: jest.fn() }));
+// The stub offers View only when the shell hands it somewhere to go.
+jest.mock('../features/notifications/NotificationInbox', () => ({
+  __esModule: true,
+  default: (props) => (props.onViewEvent
+    ? require('react').createElement('button', { type: 'button', onClick: () => props.onViewEvent({ id: 'e1', name: 'Q4 Partner Summit', status: 'REJECTED' }) }, 'View event')
+    : 'inbox')
+}));
 
 const USER = { uid: 'u1', email: 'nadia.organiser@connectsphere.com' };
 
@@ -43,7 +54,10 @@ const PERMITTED_SCREENS = {
 const sidebarScreens = (container) =>
   [...container.querySelectorAll('.cs-sidebar-screens button')].map((button) => button.textContent);
 
+const givenUnread = (unread) => useNotifications.mockReturnValue({ notifications: [], unread, loading: false, error: '', markRead: jest.fn() });
+
 beforeEach(() => {
+  givenUnread(0);
   window.location.hash = '';
   sessionStorage.clear();
   localStorage.clear();
@@ -198,5 +212,57 @@ describe('TC-232 the Venue catalogue header opens the shared calendar', () => {
     window.location.hash = screenHash(ROLES.COORDINATOR, 'Review queue');
     const { container } = render(<Workspace user={USER} role={ROLES.COORDINATOR} />);
     expect(within(container.querySelector('.cs-panel-head')).queryByRole('button', { name: /view calendar/i })).not.toBeInTheDocument();
+  });
+});
+
+// J1 / SCRUM-150 AC3 — TC-260 and TC-261 in docs/test-cases.md.
+describe('J1 the unread badge on the inbox', () => {
+  test.each(Object.keys(PERMITTED_SCREENS))('TC-260 %s sees the unread count on Notifications', (role) => {
+    givenUnread(3);
+    render(<Workspace user={USER} role={role} />);
+
+    const item = screen.getByRole('button', { name: /^Notifications/ });
+    expect(within(item).getByLabelText('3 unread')).toHaveTextContent('3');
+  });
+
+  test('TC-261 with nothing unread there is no badge', () => {
+    render(<Workspace user={USER} role={ROLES.ORGANISER} />);
+
+    expect(screen.queryByLabelText(/unread/)).not.toBeInTheDocument();
+  });
+});
+
+// J1 / SCRUM-150 — View on a notification. TC-266 – TC-268 in docs/test-cases.md.
+describe('J1 viewing an event from a notification', () => {
+  const openInbox = (role) => {
+    window.location.hash = screenHash(role, 'Notifications');
+    render(<Workspace user={USER} role={role} />);
+  };
+
+  test('TC-266 an organiser lands on that event request, with a way back to the inbox', async () => {
+    openInbox(ROLES.ORGANISER);
+
+    await userEvent.click(screen.getByRole('button', { name: 'View event' }));
+
+    expect(window.location.hash).toBe(screenHash(ROLES.ORGANISER, 'New event request'));
+    expect(screen.getByRole('heading', { name: 'Event request' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Back to notifications' })).toBeInTheDocument();
+  });
+
+  test('TC-267 a coordinator lands on that event under Assigned events', async () => {
+    openInbox(ROLES.COORDINATOR);
+
+    await userEvent.click(screen.getByRole('button', { name: 'View event' }));
+
+    expect(window.location.hash).toBe(screenHash(ROLES.COORDINATOR, 'Assigned events'));
+    expect(screen.getByText('review of e1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Back to notifications' })).toBeInTheDocument();
+  });
+
+  test.each([ROLES.VENUE_STAFF, ROLES.TECH_SUPPORT, ROLES.ATTENDEE])('TC-268 %s is offered no View', (role) => {
+    openInbox(role);
+
+    expect(screen.queryByRole('button', { name: 'View event' })).not.toBeInTheDocument();
+    expect(screen.getByText('inbox')).toBeInTheDocument();
   });
 });

@@ -189,3 +189,51 @@ describe('E1 venue catalogue updates are assigned-staff only', () => {
     expect(assignments).toContain('resource.data.user_id == request.auth.uid');
   });
 });
+
+// J1 / SCRUM-150 — TC-262. A recipient reads only their own notifications and may
+// change nothing but the read marker; there is no delete, so read ones stay.
+describe('TC-262 notifications are private and only ever marked read', () => {
+  const notifications = () => matchBlock('notifications');
+
+  test('reads are limited to the addressee', () => {
+    expect(notifications()).toContain('allow get, list: if signedIn() && resource.data.user_id == request.auth.uid;');
+  });
+
+  test('the only update is marking one read', () => {
+    const update = notifications().match(/allow update:\s*if([^;]*);/);
+    expect(update).not.toBeNull();
+    expect(update[1]).toContain('resource.data.user_id == request.auth.uid');
+    expect(update[1]).toContain('request.resource.data.is_read == true');
+    expect(update[1]).toContain("affectedKeys().hasOnly(['is_read', 'read_at'])");
+  });
+
+  test('no client may delete a notification', () => {
+    expect(notifications()).not.toMatch(/allow[^:]*delete/);
+  });
+});
+
+// J1 / SCRUM-150 AC2 — TC-284. A notification can only be addressed to someone
+// related to its event by role, and only by someone who is themselves related
+// to it, so nobody's inbox can be filled from outside their events.
+describe('TC-284 notifications are only ever addressed to people related to the event', () => {
+  const create = () => {
+    const rule = matchBlock('notifications').match(/allow create:\s*if(.*)\);\s*$/);
+    expect(rule).not.toBeNull();
+    return rule[1];
+  };
+
+  test('the writer must be related to the event', () => {
+    expect(create()).toContain('currentCoordinator(request.resource.data.event_id)');
+    expect(create()).toContain('ownsEvent(request.resource.data.event_id)');
+  });
+
+  test("every branch ties the recipient to the event's organiser or coordinator", () => {
+    // The coordinator, organiser and safety-officer branches, in that order.
+    const branches = create().split(/\|\| \(/);
+    expect(branches).toHaveLength(3);
+    branches.forEach((branch) => {
+      expect(branch).toMatch(/request\.resource\.data\.user_id (==|in)/);
+      expect(branch).toMatch(/organiser_id|coordinator_id/);
+    });
+  });
+});

@@ -19,11 +19,19 @@ import VenueCatalogue from "../features/venues/VenueCatalogue";
 import VenueAvailabilityCalendar from "../features/venues/VenueAvailability";
 import VenueBookings from "../features/venues/VenueBookings";
 import VenueSearch from "../features/venues/VenueSearch";
+import NotificationInbox from "../features/notifications/NotificationInbox";
+import useNotifications from "../features/notifications/useNotifications";
+import { badgeText, eventViewScreen } from "../domain/notifications";
 import Icon from "./Icon";
 import Toasts from "./Toasts";
 
 export default function Workspace({ user, role }) {
   const meta = ROLE_META[role];
+  // J1 — one live inbox for the session: the Notifications screen lists it and
+  // the sidebar badge counts its unread items.
+  const inbox = useNotifications(user.uid);
+  const unreadBadge = badgeText(inbox.unread);
+  const viewScreen = eventViewScreen(role);
   // Confirmations are toasts in the corner, not a line at the top of a panel the
    // organiser has scrolled away from. The account-created message arrives the same
    // way, having been left in sessionStorage by the landing page.
@@ -108,6 +116,14 @@ export default function Workspace({ user, role }) {
   );
   const closeCalendar = () => setVenueCalendarOpen(false);
 
+  // J1 — View on a notification. The organiser's request page takes the event
+  // record itself, as My events hands it over; the coordinator's review screen
+  // loads the event by id.
+  const viewEvent = (event) => {
+    if (viewScreen === "New event request") setSelectedDraft(event);
+    goTo(viewScreen, { eventId: event.id });
+  };
+
   // Navigation from inside a page remembers where it started, so the next screen
   // can offer the way back. The sidebar calls chooseScreen directly and does not.
   const goTo = (name, extras = {}) => chooseScreen(name, { ...extras, from: screen.name });
@@ -135,7 +151,8 @@ export default function Workspace({ user, role }) {
   else if (role === ROLES.COORDINATOR && screen.name === "Venue bookings") contents = <>{head(screen.name, screen.blurb, newBooking)}<VenueBookings user={user} creating={bookingFormOpen} onCreatingChange={setBookingFormOpen} event={bookingTarget.event} venue={bookingTarget.venue} onBackChange={reportBack} onViewEvent={(eventId) => goTo("Assigned events", { eventId })} /></>;
   else if (role === ROLES.VENUE_STAFF && screen.name === "Venue catalogue") contents = <>{head(screen.name, screen.blurb, viewCalendar)}<VenueCatalogue user={user} role={role} showCalendar={venueCalendarOpen} /></>;
   else if (role === ROLES.VENUE_STAFF && screen.name === "Availability calendar") contents = <>{head(screen.name, screen.blurb)}<VenueAvailabilityCalendar user={user} role={role} /></>;
+  else if (screen.name === "Notifications") contents = <>{head(screen.name, screen.blurb)}<NotificationInbox notifications={inbox.notifications} loading={inbox.loading} error={inbox.error} onOpen={inbox.markRead} onViewEvent={viewScreen ? viewEvent : undefined} /></>;
   else contents = <>{head(screen.name, screen.blurb)}<p className="cs-panel-note">This screen is ready to be connected to its workflow in a later increment.</p></>;
 
-  return <div className={navCollapsed ? "cs-workspace cs-workspace-collapsed" : "cs-workspace"}><div className="cs-workspace-body"><nav className="cs-sidebar" aria-label="Your screens"><div className="cs-sidebar-head"><span className="cs-brand"><span className="cs-brand-mark" aria-hidden="true" /><span className="cs-sidebar-label">ConnectSphere</span></span><button type="button" className="cs-sidebar-toggle" aria-expanded={!navCollapsed} aria-label={navCollapsed ? "Expand navigation" : "Collapse navigation"} title={navCollapsed ? "Expand navigation" : "Collapse navigation"} onClick={() => setNavCollapsed((value) => !value)}><Icon name={navCollapsed ? "chevron-right" : "chevron-left"} /></button></div><div className="cs-sidebar-screens">{meta.screens.filter((item) => !item.hidden).map((item) => <button key={item.name} type="button" title={item.name} className={item.name === screen.name && !forbidden ? "cs-sidebar-item cs-sidebar-item-active" : "cs-sidebar-item"} onClick={() => chooseScreen(item.name)}><Icon name={item.icon} /><span className="cs-sidebar-label">{item.name}</span></button>)}</div><div className="cs-sidebar-user"><div className="cs-sidebar-user-row"><span className="cs-sidebar-avatar" aria-hidden="true">{(user.email || "?").charAt(0).toUpperCase()}</span><div className="cs-sidebar-label cs-sidebar-user-detail"><span className="cs-pill">{meta.label}</span><span className="cs-user-email" title={user.email}>{user.email}</span></div></div><button className="cs-btn cs-btn-ghost cs-sidebar-logout" type="button" title="Log out" aria-label="Log out" onClick={() => { window.location.hash = "#/sign-in"; signOut(auth); }}><Icon name="log-out" /><span className="cs-sidebar-label">Log out</span></button></div></nav><main className="cs-panel-scroll"><div className="cs-panel">{contents}</div></main></div><Toasts toasts={toasts} onDismiss={dismissToast} /></div>;
+  return <div className={navCollapsed ? "cs-workspace cs-workspace-collapsed" : "cs-workspace"}><div className="cs-workspace-body"><nav className="cs-sidebar" aria-label="Your screens"><div className="cs-sidebar-head"><span className="cs-brand"><span className="cs-brand-mark" aria-hidden="true" /><span className="cs-sidebar-label">ConnectSphere</span></span><button type="button" className="cs-sidebar-toggle" aria-expanded={!navCollapsed} aria-label={navCollapsed ? "Expand navigation" : "Collapse navigation"} title={navCollapsed ? "Expand navigation" : "Collapse navigation"} onClick={() => setNavCollapsed((value) => !value)}><Icon name={navCollapsed ? "chevron-right" : "chevron-left"} /></button></div><div className="cs-sidebar-screens">{meta.screens.filter((item) => !item.hidden).map((item) => <button key={item.name} type="button" title={item.name} className={item.name === screen.name && !forbidden ? "cs-sidebar-item cs-sidebar-item-active" : "cs-sidebar-item"} onClick={() => chooseScreen(item.name)}><Icon name={item.icon} /><span className="cs-sidebar-label">{item.name}</span>{item.name === "Notifications" && unreadBadge && <span className="cs-nav-badge" aria-label={`${inbox.unread} unread`}>{unreadBadge}</span>}</button>)}</div><div className="cs-sidebar-user"><div className="cs-sidebar-user-row"><span className="cs-sidebar-avatar" aria-hidden="true">{(user.email || "?").charAt(0).toUpperCase()}</span><div className="cs-sidebar-label cs-sidebar-user-detail"><span className="cs-pill">{meta.label}</span><span className="cs-user-email" title={user.email}>{user.email}</span></div></div><button className="cs-btn cs-btn-ghost cs-sidebar-logout" type="button" title="Log out" aria-label="Log out" onClick={() => { window.location.hash = "#/sign-in"; signOut(auth); }}><Icon name="log-out" /><span className="cs-sidebar-label">Log out</span></button></div></nav><main className="cs-panel-scroll"><div className="cs-panel">{contents}</div></main></div><Toasts toasts={toasts} onDismiss={dismissToast} /></div>;
 }

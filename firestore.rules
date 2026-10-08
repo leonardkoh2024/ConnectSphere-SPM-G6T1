@@ -207,7 +207,14 @@ service cloud.firestore {
     }
 
     match /notifications/{notificationId} {
-      allow get, list, update: if signedIn() && resource.data.user_id == request.auth.uid;
+      // J1 AC2 — a user reads only notifications addressed to them. AC3/AC4 — the
+      // one change they may make is marking one read: it cannot be re-addressed,
+      // reworded or marked unread, and with no delete rule it stays in the list.
+      allow get, list: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow update: if signedIn() && resource.data.user_id == request.auth.uid
+        && request.resource.data.is_read == true
+        && request.resource.data.read_at is timestamp
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['is_read', 'read_at']);
       allow create: if signedIn()
         && request.resource.data.notification_id == notificationId
         && (

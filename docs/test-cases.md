@@ -494,3 +494,70 @@ Pre-condition for the functional cases: an Event Coordinator is signed in and th
 | TC-126 | Each assigned row renders the five columns | One event assigned to the coordinator | Render the assigned list | The row shows event name, organiser, proposed date, status and a "Last activity: ..." label | | Not Executed | AC2 - rendered columns |
 | TC-127 | The status filter narrows the list | Three assigned events across SUBMITTED and APPROVED | 1. Render the list<br>2. Choose "SUBMITTED" in the "Filter by status" control | Only the SUBMITTED event remains visible | | Not Executed | AC3 - filter |
 | TC-128 | Sorting by proposed date reorders the rows | Three assigned events with different proposed dates | 1. Render (ascending by default)<br>2. Activate "Sort by proposed date" | Rows ascending by date first, then descending after the toggle | | Not Executed | AC3 - sort |
+
+---
+
+## J1 / SCRUM-150 — Have one place where things needing my attention appear
+
+> As a ConnectSphere user, I want the things that concern me collected in one inbox so that I do not have to keep checking every event.
+
+**Acceptance criteria:** AC1 — notifications are delivered to a per-user in-system inbox showing message, related event and timestamp. AC2 — a user receives only notifications for events they are related to by role. AC3 — unread notifications carry an unread indicator and are counted in a badge on the inbox; opening one marks it read and decrements the count. AC4 — read notifications remain listed and viewable.
+
+**Scope:** every role's Notifications screen is the inbox (`frontend/src/features/notifications/`). The workspace holds one live subscription, so the sidebar badge and the inbox count the same list. AC2 is enforced where notifications are written and in `firestore.rules`: a user reads only notifications addressed to them, and may change nothing but the read marker. Ordering, counting and labelling are pure functions in `frontend/src/domain/notifications.js`. Each row also offers **View**, which opens the related event on the screen that role already uses for one event: the organiser's event request page, or the coordinator's Assigned events detail. Roles with no such screen yet, and events the user can no longer read, get no View.
+
+**AC coverage:** AC1 — TC-250, TC-253 – TC-255, TC-259, TC-279, TC-281. AC2 — TC-262, TC-279, TC-284. AC3 — TC-251, TC-252, TC-256, TC-257, TC-260, TC-261, TC-280, TC-282. AC4 — TC-258, TC-262, TC-282. View — TC-263 – TC-268.
+
+**Unit test cases — `frontend/src/domain/notifications.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-250 | Notifications list newest first, undated last | Three notifications: one older, one newer, one with no timestamp yet | Call newestFirst(list) | Newer, then older, then the undated one; the input list is not reordered | | Not Executed | AC1 - ordering |
+| TC-251 | Only notifications not yet read count as unread | A mix of read, unread and unmarked notifications | Call unreadCount(list) | Unread and unmarked are counted; an empty list counts 0 | | Not Executed | AC3 - count |
+| TC-252 | The badge is absent at zero and capped at 99+ | Counts 0, 3, 99, 100 | Call badgeText(count) | No badge at 0; "3", "99", then "99+" | | Not Executed | AC3 - badge |
+| TC-253 | The related event reads as name and reference | Events with both, either, neither; and no event | Call eventLabel(event) | "Name (EVT-...)", then name, reference, "Untitled event"; null when the event cannot be read | | Not Executed | AC1 - related event |
+| TC-254 | Each stored type has words | Known types and an unknown one | Call notificationTypeLabel(type) | Known types read in words; an unknown one reads "Update" | | Not Executed | AC1 - message heading |
+| TC-263 | View goes to each role's own event screen | Each of the five roles, and an unknown role | Call eventViewScreen(role) | Organiser: "New event request"; Coordinator: "Assigned events"; Venue Staff, Technical Support, Attendee and an unknown role: none | | Not Executed | View - routing rule |
+
+**Functional test cases — `frontend/src/features/notifications/NotificationInbox.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-255 | Each row shows the message, the related event and when it arrived | One unread notification for event E1 | Render the inbox | The row shows the type, the message, "Name (EVT-...)" and a time stamped with created_at | | Not Executed | AC1 |
+| TC-256 | Unread rows carry the unread marker; read rows do not | One unread and one read notification | Render the inbox | Only the unread row has the dot, the bolder heading and the "Unread" label | | Not Executed | AC3 - indicator |
+| TC-257 | Opening an unread notification marks it read | One unread notification | 1. Render the inbox<br>2. Open the notification | The row expands with its detail and the inbox asks for it to be marked read | | Not Executed | AC3 - mark read |
+| TC-258 | A read notification stays listed and is not marked again | One read notification whose event is no longer readable | 1. Render the inbox<br>2. Open it | It is still listed and opens; nothing is written; the event reads "Event no longer available" | | Not Executed | AC4 |
+| TC-259 | An empty inbox says so | No notifications | Render the inbox | "You have no notifications yet." | | Not Executed | AC1 - empty state |
+| TC-264 | View opens the related event and marks the notification read | One unread notification for a readable event E1 | 1. Render the inbox with a View handler<br>2. Click "View" on the row | The handler receives E1's record and the notification is marked read | | Not Executed | View |
+| TC-265 | No View when there is nowhere to go | 1. A notification whose event is no longer readable<br>2. A role with no event screen | Render the inbox for each | No View button in either case; the first row reads "Event no longer available" | | Not Executed | View - boundary |
+
+**Functional test cases — `frontend/src/app/Workspace.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-260 | Every role sees the unread count on Notifications | Three unread notifications; each of the five roles in turn | Render the workspace | The Notifications item carries a badge reading 3, labelled "3 unread" | | Not Executed | AC3 - badge |
+| TC-261 | With nothing unread there is no badge | No unread notifications | Render the workspace | No unread badge is shown | | Not Executed | AC3 - badge |
+| TC-266 | An organiser's View opens that event request | Organiser on Notifications; a notification for E1 | Click "View" on the notification | The organiser's event request page opens for E1, with "Back to notifications" | | Not Executed | View - organiser |
+| TC-267 | A coordinator's View opens that event under Assigned events | Coordinator on Notifications; a notification for E1 | Click "View" on the notification | Assigned events opens with E1's detail, with "Back to notifications" | | Not Executed | View - coordinator |
+| TC-268 | Roles with no event screen are offered no View | Venue Staff, Technical Support, Attendee in turn, on Notifications | Render the workspace | No View button is offered | | Not Executed | View - boundary |
+
+**Functional test cases — `frontend/src/features/notifications/notificationsApi.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-279 | The inbox asks only for the signed-in user's notifications, newest first | User u1 signed in | 1. Start the inbox subscription for u1<br>2. Deliver two notifications | The query is notifications where user_id == u1; the list arrives newest first with ISO timestamps | | Not Executed | AC2 - client scope; AC1 - order |
+| TC-280 | Marking a notification read writes only the read marker | Notification n1 | Call markNotificationRead('n1') | notifications/n1 is updated with is_read true and a server read_at, nothing else | | Not Executed | AC3 - mark read |
+| TC-281 | An event the user can no longer read comes back empty | Events e1 (readable), one denied, one deleted, with a repeat and a blank id | Call eventsFor(ids) | e1's record, null for the other two, each event read once | | Not Executed | AC1 - related event |
+
+**Functional test cases — `frontend/src/features/notifications/useNotifications.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-282 | Opening an unread notification drops the unread count | Two unread and one read notification delivered | 1. Mark n1 read<br>2. Deliver the updated list | The count goes 2, then 1; all three stay listed; leaving the screen ends the subscription | | Not Executed | AC3 - decrement; AC4 |
+| TC-283 | A failed load or mark-read is reported | Subscription errors; then the mark-read write is refused | 1. Fail the subscription<br>2. Mark a notification read | Each shows its own error message | | Not Executed | AC1/AC3 - error states |
+
+**Security test cases — `frontend/src/security/firestoreRules.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-262 | Notifications are private and only ever marked read | firestore.rules in force | 1. Read another user's notification<br>2. Change a notification's message, recipient or mark it unread<br>3. Delete a notification | All three are refused; the only permitted update sets is_read true with read_at, on the user's own notification | | Not Executed | AC2 + AC3 + AC4 - assert via `firestoreRules.test.js` |
+| TC-284 | A notification is only ever addressed to someone related to its event | firestore.rules in force | Attempt to create a notification for a user who is neither the event's organiser nor its coordinator, or from a user not related to the event | Refused; every create branch requires the writer to be related to the event and ties the recipient to its organiser_id or coordinator_id | | Not Executed | AC2 - assert via `firestoreRules.test.js` |

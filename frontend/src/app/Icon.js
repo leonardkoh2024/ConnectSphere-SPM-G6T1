@@ -10,6 +10,7 @@
 
 import React from "react";
 import {
+  LuArrowRight,
   LuBell,
   LuBookmark,
   LuBuilding2,
@@ -56,6 +57,7 @@ const GLYPHS = {
   "chevron-down": LuChevronDown,
   "chevron-left": LuChevronLeft,
   "chevron-right": LuChevronRight,
+  "arrow-right": LuArrowRight,
   close: LuX,
   plus: LuPlus,
   eye: LuEye,

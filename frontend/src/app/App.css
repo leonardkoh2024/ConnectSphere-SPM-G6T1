@@ -1537,6 +1537,104 @@ a.cs-btn-ghost:hover {
   font-size: 13px;
 }
 
+/* ---------- notifications (J1) ---------- */
+
+/* The unread count on the sidebar's Notifications item. On the collapsed rail
+   the label is gone, so the badge sits on the icon's corner instead. */
+.cs-sidebar-item { position: relative; }
+
+.cs-nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: var(--cs-radius-round);
+  background: var(--cs-accent);
+  color: var(--cs-on-accent);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.cs-workspace-collapsed .cs-nav-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+}
+
+.cs-notification-list { margin: 16px 0 0; padding: 0; list-style: none; }
+
+/* One button across the row opens it, View sits at its end, and the detail
+   opens underneath. */
+.cs-notification { grid-template-columns: minmax(0, 1fr); padding: 0; }
+
+.cs-notification-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.cs-notification-view { margin-right: 20px; }
+
+.cs-notification-open {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 16px 20px;
+  border: 0;
+  border-radius: var(--cs-radius);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cs-notification-open:focus-visible { outline: 3px solid var(--cs-focus-ring); outline-offset: 2px; }
+
+.cs-notification-summary { display: grid; gap: 2px; min-width: 0; }
+.cs-notification-heading { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.cs-notification-heading strong { font-weight: 500; }
+.cs-notification-message {
+  overflow: hidden;
+  color: var(--cs-ink);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-notification-event,
+.cs-notification-time { color: var(--cs-muted); font-size: 13px; }
+.cs-notification-time { white-space: nowrap; }
+
+/* Unread: a dot, a bolder heading and an accent edge. Read rows keep the plain card. */
+.cs-notification-unread { border-color: var(--cs-accent-border); background: var(--cs-accent-faded); }
+.cs-notification-unread .cs-notification-heading strong { font-weight: 700; }
+.cs-notification-dot {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cs-accent);
+}
+
+.cs-notification-detail { margin: 0; padding: 0 20px 20px; }
+
+@media (max-width: 560px) {
+  .cs-notification-open { grid-template-columns: auto minmax(0, 1fr); }
+  .cs-notification-time { grid-column: 2; }
+  .cs-notification-row { grid-template-columns: minmax(0, 1fr); }
+  .cs-notification-view { justify-self: start; margin: 0 20px 16px; }
+}
+
 /* ---------- event review and decisions ---------- */
 
 .cs-decision-summary { margin: 24px 0 0; }
