@@ -3,6 +3,15 @@
  * TESTCASE.JS - AUTOMATED TEST SUITE
  * ================================================================
  *
+ * A1 / SCRUM-82   Self-register as an Event Organiser      TC-001 – TC-004
+ * A2 / SCRUM-83   Register an Attendee account             TC-005 – TC-008
+ * A3 / SCRUM-84   Sign in and sign out                     TC-009 – TC-013
+ * B2 / SCRUM-93   State the venue requirements             TC-022 – TC-024
+ * B3 / SCRUM-94   State the accessibility needs            TC-025 – TC-026
+ * C4               Request clarification or amendments
+ * C7               Reject a request with a reason
+ * C8               Understand the decision on my request
+ * C9               Reassign an event to another coordinator
  * C5 / SCRUM-106  Respond to a request for clarification   TC-081 – TC-088
  * E2 / SCRUM-118  Browse the venue catalogue               TC-089 – TC-094
  * E5 / SCRUM-121  Find venues that fit my event            TC-095 – TC-103
@@ -15,7 +24,7 @@
  * the screens must call; when those land, move the helpers into
  * frontend/src/domain/ and keep these assertions.
  *
- * Last Updated: 2026-09-23
+ * Last Updated: 2026-09-30
  * ================================================================
  */
 
@@ -30,8 +39,314 @@ const ROLES = {
   ATTENDEE: "ATTENDEE"
 };
 
-const STATUS = { UNDER_REVIEW: "UNDER_REVIEW" };
+const STATUS = {
+  SUBMITTED: "SUBMITTED",
+  UNDER_REVIEW: "UNDER_REVIEW",
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED",
+  COMPLETED: "COMPLETED",
+  CANCELLED: "CANCELLED"
+};
 const SERVER_TIMESTAMP = "SERVER_TIMESTAMP";
+
+// -----------------------------------------------------------------------------
+// A1 / A2 / A3 helpers
+// -----------------------------------------------------------------------------
+
+const PORTALS = { CORPORATE: "corporate", INDIVIDUAL: "individual" };
+const ROLE_PORTAL = {
+  [ROLES.ORGANISER]: PORTALS.CORPORATE,
+  [ROLES.COORDINATOR]: PORTALS.CORPORATE,
+  [ROLES.VENUE_STAFF]: PORTALS.CORPORATE,
+  [ROLES.TECH_SUPPORT]: PORTALS.CORPORATE,
+  [ROLES.ATTENDEE]: PORTALS.INDIVIDUAL
+};
+const GENERIC_REGISTRATION_ERROR = "We could not create an account with those details. Please check them and try again.";
+const GENERIC_LOGIN_ERROR = "We could not sign you in with those details. Please check them and try again.";
+const WRONG_PORTAL_ERROR = "This account cannot be used in this portal. Please use the correct sign-in area.";
+
+function isStrongPassword(password) {
+  return String(password).length >= 12
+    && /\d/.test(password)
+    && /[^A-Za-z0-9]/.test(password);
+}
+
+function isValidMobileNumber(number) {
+  return /^\d{7,15}$/.test(String(number));
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim());
+}
+
+function validateRegistration(input) {
+  const missing = [];
+  if (!String(input.name || "").trim()) missing.push("name");
+  if (input.portal === PORTALS.CORPORATE && !String(input.organisationName || "").trim()) missing.push("organisation_name");
+  if (!String(input.mobileNumber || "").trim()) missing.push("mobile_number");
+  if (!input.preferredContactMethod) missing.push("preferred_contact_method");
+  if (!String(input.email || "").trim()) missing.push("email");
+  if (!String(input.password || "")) missing.push("password");
+  if (!String(input.confirmPassword || "")) missing.push("confirm_password");
+
+  if (missing.length) return { ok: false, reason: "required", fields: missing };
+  if (!isValidEmail(input.email)) return { ok: false, reason: "email" };
+  if (!isValidMobileNumber(input.mobileNumber)) return { ok: false, reason: "mobile_number" };
+  if (!isStrongPassword(input.password)) return { ok: false, reason: "password" };
+  if (input.password !== input.confirmPassword) return { ok: false, reason: "confirm_password" };
+  return { ok: true };
+}
+
+function registrationInput(portal, overrides = {}) {
+  return {
+    portal,
+    name: portal === PORTALS.CORPORATE ? "Alice Tan" : "Ben Lee",
+    organisationName: portal === PORTALS.CORPORATE ? "ABC Events" : "",
+    mobileNumber: portal === PORTALS.CORPORATE ? "12345678" : "91234567",
+    preferredContactMethod: "EMAIL",
+    email: portal === PORTALS.CORPORATE ? "alice+eo@test.com" : "ben@test.com",
+    password: "qwerty12345!",
+    confirmPassword: "qwerty12345!",
+    ...overrides
+  };
+}
+
+function createUserRecord(uid, input, now = SERVER_TIMESTAMP) {
+  const validation = validateRegistration(input);
+  if (!validation.ok) return { ok: false, validation };
+  const corporate = input.portal === PORTALS.CORPORATE;
+  return {
+    ok: true,
+    signedIn: true,
+    approvalRequired: false,
+    user: {
+      user_id: uid,
+      name: input.name.trim(),
+      email: input.email.trim(),
+      role: corporate ? ROLES.ORGANISER : ROLES.ATTENDEE,
+      organisation_name: corporate ? input.organisationName.trim() : null,
+      mobile_number: input.mobileNumber.trim(),
+      preferred_contact_method: input.preferredContactMethod,
+      is_active: true,
+      created_at: now,
+      updated_at: now
+    }
+  };
+}
+
+function registrationError() {
+  return GENERIC_REGISTRATION_ERROR;
+}
+
+function canAccessRole(userRole, requiredRole) {
+  return userRole === requiredRole;
+}
+
+function signInAccount(account, { email, password, portal, requestedPath = null }) {
+  if (!account || account.email !== email || account.password !== password) {
+    return { ok: false, error: GENERIC_LOGIN_ERROR, signedIn: false };
+  }
+  if (ROLE_PORTAL[account.role] !== portal) {
+    return { ok: false, error: WRONG_PORTAL_ERROR, signedIn: false };
+  }
+  return { ok: true, signedIn: true, destination: requestedPath || "#/" };
+}
+
+function signOutSession(session) {
+  return { ...session, signedIn: false, destination: "#/sign-in" };
+}
+
+function protectedRoute(session, requestedPath) {
+  return session?.signedIn
+    ? { protectedContent: true, destination: requestedPath }
+    : { protectedContent: false, destination: "#/sign-in", requestedPath };
+}
+
+// -----------------------------------------------------------------------------
+// B2 / B3 helpers
+// -----------------------------------------------------------------------------
+
+// Mirrors the three Firestore writes made by EventRequestForm. Catalogue values
+// are stable identifiers (for example CENTRAL and THEATRE); display labels are
+// deliberately not persisted.
+function buildRequirementWrites({
+  eventId,
+  preferredLocation = "",
+  requiredLayout = "",
+  facilitiesRequired = false,
+  facilities = [],
+  accessibilityRequired = false,
+  accessibility = [],
+  accessibilityNotes = ""
+}) {
+  return {
+    event_venue_requirements: {
+      event_id: eventId,
+      preferred_location: preferredLocation,
+      required_layout: requiredLayout,
+      facilities_required: facilitiesRequired,
+      accessibility_needed: accessibilityRequired,
+      accessibility_notes: accessibilityNotes
+    },
+    event_facilities: facilitiesRequired
+      ? facilities.map((facilityId) => ({ event_id: eventId, facility_id: facilityId }))
+      : [],
+    event_accessibility: accessibilityRequired
+      ? accessibility.map((accessibilityId) => ({ event_id: eventId, accessibility_id: accessibilityId }))
+      : []
+  };
+}
+
+// -----------------------------------------------------------------------------
+// C4 / C7 / C8 / C9 helpers
+// -----------------------------------------------------------------------------
+
+function cleanRequiredText(value) {
+  return String(value || "").trim();
+}
+
+function isCurrentCoordinator(event, userId) {
+  return Boolean(event && userId && event.coordinator_id === userId);
+}
+
+function canRequestClarification(event, userId) {
+  return isCurrentCoordinator(event, userId)
+    && event.status === STATUS.UNDER_REVIEW
+    && !event.open_clarification_id;
+}
+
+function requestClarification({ event, userId, message, clarificationId, now = SERVER_TIMESTAMP }) {
+  const cleaned = cleanRequiredText(message);
+  if (!cleaned) return { ok: false, reason: "empty", event };
+  if (!canRequestClarification(event, userId)) return { ok: false, reason: "not_allowed", event };
+
+  const clarification = {
+    clarification_id: clarificationId,
+    event_id: event.event_id,
+    created_by: userId,
+    message: cleaned,
+    status: "OPEN",
+    created_at: now,
+    responded_at: null
+  };
+  return {
+    ok: true,
+    event: { ...event, status: STATUS.UNDER_REVIEW, open_clarification_id: clarificationId },
+    clarification,
+    history: {
+      event_id: event.event_id,
+      actor_id: userId,
+      action_type: "CLARIFICATION_REQUESTED",
+      description: cleaned,
+      created_at: now
+    }
+  };
+}
+
+function canRejectEvent(event, userId) {
+  return canRequestClarification(event, userId);
+}
+
+function canApproveEvent(event, userId) {
+  return canRequestClarification(event, userId);
+}
+
+function rejectEvent({ event, userId, reason, now = SERVER_TIMESTAMP }) {
+  const cleaned = cleanRequiredText(reason);
+  if (!cleaned) return { ok: false, reason: "empty", event };
+  if (!canRejectEvent(event, userId)) return { ok: false, reason: "not_allowed", event };
+
+  return {
+    ok: true,
+    event: { ...event, status: STATUS.REJECTED },
+    history: {
+      event_id: event.event_id,
+      actor_id: userId,
+      action_type: "EVENT_REJECTED",
+      field_name: "status",
+      old_value: event.status,
+      new_value: STATUS.REJECTED,
+      description: cleaned,
+      created_at: now
+    }
+  };
+}
+
+function canEditOrResubmit(event) {
+  return Boolean(event && event.status !== STATUS.REJECTED);
+}
+
+function decisionDetails(event, history, coordinator) {
+  const decisions = history
+    .filter((item) => ["EVENT_APPROVED", "EVENT_REJECTED"].includes(item.action_type))
+    .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+  const latest = decisions.at(-1);
+  return {
+    decision: latest?.new_value || event.status,
+    reason: latest?.description || null,
+    decided_at: latest?.created_at || null,
+    decided_by: latest?.actor_id || null,
+    coordinator_name: coordinator?.name || null
+  };
+}
+
+const TERMINAL_EVENT_STATUSES = new Set([STATUS.COMPLETED, STATUS.CANCELLED, STATUS.REJECTED]);
+
+function canReassignEvent(event, userId, targetCoordinator) {
+  return isCurrentCoordinator(event, userId)
+    && !TERMINAL_EVENT_STATUSES.has(event.status)
+    && Boolean(targetCoordinator?.id)
+    && targetCoordinator.active !== false
+    && targetCoordinator.id !== userId;
+}
+
+function reassignEvent({ event, assignments = [], userId, targetCoordinator, now = SERVER_TIMESTAMP }) {
+  if (!canReassignEvent(event, userId, targetCoordinator)) {
+    return { ok: false, reason: "not_allowed", event, assignments };
+  }
+
+  const previous = assignments.find((item) => item.coordinator_id === userId && item.ended_at == null) || {
+    assignment_id: `${event.event_id}_${userId}`,
+    event_id: event.event_id,
+    coordinator_id: userId,
+    assigned_at: event.assigned_at || null
+  };
+  const endedAssignments = assignments
+    .filter((item) => item !== previous && item.coordinator_id !== targetCoordinator.id)
+    .map((item) => ({ ...item }));
+  const nextAssignments = [
+    ...endedAssignments,
+    { ...previous, ended_at: now },
+    {
+      assignment_id: `${event.event_id}_${targetCoordinator.id}`,
+      event_id: event.event_id,
+      coordinator_id: targetCoordinator.id,
+      assigned_at: now,
+      ended_at: null
+    }
+  ];
+
+  return {
+    ok: true,
+    event: { ...event, coordinator_id: targetCoordinator.id, assigned_at: now },
+    assignments: nextAssignments,
+    history: {
+      event_id: event.event_id,
+      actor_id: userId,
+      action_type: "COORDINATOR_REASSIGNED",
+      field_name: "coordinator_id",
+      old_value: userId,
+      new_value: targetCoordinator.id,
+      created_at: now
+    }
+  };
+}
+
+function assignmentAccess(event, assignments, userId) {
+  const current = event.coordinator_id === userId;
+  const previouslyAssigned = assignments.some((item) => item.coordinator_id === userId);
+  return { canView: current || previouslyAssigned, canEdit: current };
+}
 
 // -----------------------------------------------------------------------------
 // C5 helpers
@@ -78,7 +393,7 @@ function submitClarificationResponse({
     },
     clarification: {
       ...clarification,
-      status: "CLOSED",
+      status: "ANSWERED",
       responded_at: now
     },
     responses: [...responses, response]
@@ -185,7 +500,7 @@ function timesOverlap(aStart, aEnd, bStart, bEnd) {
 
 function isOccupied(venue, window, bookings = [], unavailability = []) {
   const blocks = [
-    ...bookings.filter((b) => b.venue_id === venue.venue_id && b.status === "Approved"),
+    ...bookings.filter((b) => b.venue_id === venue.venue_id && String(b.status || "").toUpperCase() === "APPROVED"),
     ...unavailability.filter((u) => u.venue_id === venue.venue_id)
   ];
   return blocks.some((block) =>
@@ -271,6 +586,688 @@ function venue(id, fields) {
 
 
 // =============================================================================
+// A1 / SCRUM-82 — Self-register as an Event Organiser
+// =============================================================================
+
+describe("A1 / SCRUM-82 Self-register as an Event Organiser", () => {
+  test("TC-001 AC1 positive — all required organiser details are stored", () => {
+    const result = createUserRecord("user-organiser-1", registrationInput(PORTALS.CORPORATE));
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.user, {
+      user_id: "user-organiser-1",
+      name: "Alice Tan",
+      email: "alice+eo@test.com",
+      role: ROLES.ORGANISER,
+      organisation_name: "ABC Events",
+      mobile_number: "12345678",
+      preferred_contact_method: "EMAIL",
+      is_active: true,
+      created_at: SERVER_TIMESTAMP,
+      updated_at: SERVER_TIMESTAMP
+    });
+  });
+
+  test("TC-002 AC2 security — a self-registered corporate account receives only the organiser role", () => {
+    const result = createUserRecord("user-organiser-1", registrationInput(PORTALS.CORPORATE));
+
+    assert.equal(result.user.role, ROLES.ORGANISER);
+    assert.equal(canAccessRole(result.user.role, ROLES.ORGANISER), true);
+    assert.equal(canAccessRole(result.user.role, ROLES.ATTENDEE), false);
+    assert.equal(canAccessRole(result.user.role, ROLES.COORDINATOR), false);
+    assert.equal(canAccessRole(result.user.role, ROLES.VENUE_STAFF), false);
+    assert.equal(canAccessRole(result.user.role, ROLES.TECH_SUPPORT), false);
+  });
+
+  test("TC-003 AC3 negative — duplicate-email registration returns a non-disclosing error", () => {
+    const message = registrationError("auth/email-already-in-use");
+
+    assert.equal(message, GENERIC_REGISTRATION_ERROR);
+    assert.equal(/already|exists|organiser|attendee|role/i.test(message), false);
+  });
+
+  test("TC-004 AC4 positive — successful organiser registration starts a session without approval", () => {
+    const result = createUserRecord(
+      "user-organiser-2",
+      registrationInput(PORTALS.CORPORATE, { email: "alice+eo2@test.com" })
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.signedIn, true);
+    assert.equal(result.approvalRequired, false);
+    assert.equal(result.user.is_active, true);
+  });
+
+  test("A1 required-fields negative — missing organiser fields block submission", () => {
+    const fields = ["name", "organisationName", "mobileNumber", "email", "password", "confirmPassword"];
+
+    for (const field of fields) {
+      const result = validateRegistration(registrationInput(PORTALS.CORPORATE, { [field]: "" }));
+      assert.equal(result.ok, false, `${field} should be required`);
+      assert.equal(result.reason, "required");
+    }
+  });
+
+  test("A1 password boundaries — 11 is rejected while 12 and 13 characters are accepted", () => {
+    assert.equal(isStrongPassword("PassWord1!a"), false);
+    assert.equal(isStrongPassword("PassWord1!ab"), true);
+    assert.equal(isStrongPassword("PassWord1!abc"), true);
+  });
+
+  test("A1 mobile boundaries — only 7 through 15 digits are accepted", () => {
+    assert.equal(isValidMobileNumber("123456"), false);
+    assert.equal(isValidMobileNumber("1234567"), true);
+    assert.equal(isValidMobileNumber("912345678901234"), true);
+    assert.equal(isValidMobileNumber("9123456789012345"), false);
+  });
+
+  test("A1 password composition — a number and special character are both required", () => {
+    assert.equal(isStrongPassword("Password!abcde"), false);
+    assert.equal(isStrongPassword("Password1234"), false);
+  });
+
+  test("A1 confirmation boundary — matching passwords pass and mismatched passwords fail", () => {
+    const matching = validateRegistration(registrationInput(PORTALS.CORPORATE, {
+      password: "Password123!",
+      confirmPassword: "Password123!"
+    }));
+    const different = validateRegistration(registrationInput(PORTALS.CORPORATE, {
+      password: "Password123!",
+      confirmPassword: "Password123?"
+    }));
+
+    assert.equal(matching.ok, true);
+    assert.equal(different.ok, false);
+    assert.equal(different.reason, "confirm_password");
+  });
+});
+
+
+// =============================================================================
+// A2 / SCRUM-83 — Register an Attendee account
+// =============================================================================
+
+describe("A2 / SCRUM-83 Register an Attendee account", () => {
+  test("TC-005 AC1-AC5 positive — valid attendee details create an attendee profile", () => {
+    const result = createUserRecord("user-attendee-1", registrationInput(PORTALS.INDIVIDUAL));
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.user, {
+      user_id: "user-attendee-1",
+      name: "Ben Lee",
+      email: "ben@test.com",
+      role: ROLES.ATTENDEE,
+      organisation_name: null,
+      mobile_number: "91234567",
+      preferred_contact_method: "EMAIL",
+      is_active: true,
+      created_at: SERVER_TIMESTAMP,
+      updated_at: SERVER_TIMESTAMP
+    });
+  });
+
+  test("TC-006 AC6 negative — missing or invalid attendee fields block submission", () => {
+    const missingMobile = validateRegistration(registrationInput(PORTALS.INDIVIDUAL, { mobileNumber: "" }));
+    const invalidEmail = validateRegistration(registrationInput(PORTALS.INDIVIDUAL, { email: "not-an-email" }));
+
+    assert.equal(missingMobile.ok, false);
+    assert.equal(missingMobile.reason, "required");
+    assert.equal(invalidEmail.ok, false);
+    assert.equal(invalidEmail.reason, "email");
+  });
+
+  test("TC-007 AC7 negative — duplicate attendee email uses the same non-disclosing error", () => {
+    const message = registrationError("auth/email-already-in-use");
+
+    assert.equal(message, GENERIC_REGISTRATION_ERROR);
+    assert.equal(/already|exists|organiser|attendee|role/i.test(message), false);
+  });
+
+  test("TC-008 AC8 negative — an invalid attendee password blocks account creation", () => {
+    const result = createUserRecord(
+      "user-attendee-2",
+      registrationInput(PORTALS.INDIVIDUAL, { password: "weak", confirmPassword: "weak" })
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(result.validation.reason, "password");
+  });
+
+  test("A2 password boundaries — 11 is rejected while 12 and 13 characters are accepted", () => {
+    assert.equal(isStrongPassword("PassWord1!a"), false);
+    assert.equal(isStrongPassword("PassWord1!ab"), true);
+    assert.equal(isStrongPassword("PassWord1!abc"), true);
+  });
+
+  test("A2 mobile boundaries — only 7 through 15 digits are accepted", () => {
+    assert.equal(isValidMobileNumber("123456"), false);
+    assert.equal(isValidMobileNumber("1234567"), true);
+    assert.equal(isValidMobileNumber("912345678901234"), true);
+    assert.equal(isValidMobileNumber("9123456789012345"), false);
+  });
+
+  test("A2 password composition and confirmation rules are enforced", () => {
+    assert.equal(isStrongPassword("Password!abcde"), false);
+    assert.equal(isStrongPassword("Password1234"), false);
+
+    const matching = validateRegistration(registrationInput(PORTALS.INDIVIDUAL, {
+      password: "Password123!",
+      confirmPassword: "Password123!"
+    }));
+    const different = validateRegistration(registrationInput(PORTALS.INDIVIDUAL, {
+      password: "Password123!",
+      confirmPassword: "Password123?"
+    }));
+    assert.equal(matching.ok, true);
+    assert.equal(different.reason, "confirm_password");
+  });
+});
+
+
+// =============================================================================
+// A3 / SCRUM-84 — Sign in and sign out
+// =============================================================================
+
+describe("A3 / SCRUM-84 Sign in and sign out", () => {
+  const organiser = {
+    email: "imevent@gmail.com",
+    password: "qwerty12345!",
+    role: ROLES.ORGANISER
+  };
+  const attendee = {
+    email: "imattendee@gmail.com",
+    password: "qwerty12345!",
+    role: ROLES.ATTENDEE
+  };
+
+  test("TC-009 AC1 positive — valid credentials start an authenticated session", () => {
+    const result = signInAccount(organiser, {
+      email: organiser.email,
+      password: organiser.password,
+      portal: PORTALS.CORPORATE
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.signedIn, true);
+  });
+
+  test("TC-010 AC2 negative — invalid credentials return a generic error", () => {
+    const wrongPassword = signInAccount(organiser, {
+      email: organiser.email,
+      password: "qwerty123456!",
+      portal: PORTALS.CORPORATE
+    });
+    const unknownAccount = signInAccount(null, {
+      email: "unknown@test.com",
+      password: "qwerty123456!",
+      portal: PORTALS.CORPORATE
+    });
+
+    assert.equal(wrongPassword.error, GENERIC_LOGIN_ERROR);
+    assert.equal(unknownAccount.error, GENERIC_LOGIN_ERROR);
+    assert.equal(wrongPassword.signedIn, false);
+    assert.equal(unknownAccount.signedIn, false);
+  });
+
+  test("TC-011 AC3 security — signing out prevents browser Back from restoring protected content", () => {
+    const signedOut = signOutSession({ signedIn: true, destination: "#/event_organiser/my-events" });
+    const afterBack = protectedRoute(signedOut, "#/event_organiser/my-events");
+
+    assert.equal(signedOut.signedIn, false);
+    assert.equal(afterBack.protectedContent, false);
+    assert.equal(afterBack.destination, "#/sign-in");
+  });
+
+  test("TC-012 AC4 security — an unauthenticated protected request goes to sign-in", () => {
+    const result = protectedRoute(
+      { signedIn: false },
+      "#/event_organiser/my-events"
+    );
+
+    assert.equal(result.protectedContent, false);
+    assert.equal(result.destination, "#/sign-in");
+    assert.equal(result.requestedPath, "#/event_organiser/my-events");
+  });
+
+  test("TC-013 AC5 positive — successful sign-in returns to the requested protected page", () => {
+    const requestedPath = "#/event_organiser/notifications";
+    const result = signInAccount(organiser, {
+      email: organiser.email,
+      password: organiser.password,
+      portal: PORTALS.CORPORATE,
+      requestedPath
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.destination, requestedPath);
+  });
+
+  test("A3 wrong-portal negative — an organiser cannot use the attendee portal", () => {
+    const result = signInAccount(organiser, {
+      email: organiser.email,
+      password: organiser.password,
+      portal: PORTALS.INDIVIDUAL
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.signedIn, false);
+    assert.equal(result.error, WRONG_PORTAL_ERROR);
+  });
+
+  test("A3 wrong-portal negative — an attendee cannot use the corporate portal", () => {
+    const result = signInAccount(attendee, {
+      email: attendee.email,
+      password: attendee.password,
+      portal: PORTALS.CORPORATE
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.signedIn, false);
+    assert.equal(result.error, WRONG_PORTAL_ERROR);
+  });
+});
+
+
+// =============================================================================
+// B2 / SCRUM-93 — State the venue requirements for my event
+// =============================================================================
+
+describe("B2 / SCRUM-93 State the venue requirements for my event", () => {
+  test("TC-022 AC1 positive — location, layout and one facility are stored exactly as selected", () => {
+    const writes = buildRequirementWrites({
+      eventId: "EVT-1",
+      preferredLocation: "CENTRAL",
+      requiredLayout: "THEATRE",
+      facilitiesRequired: true,
+      facilities: ["AIR_CONDITIONING"]
+    });
+
+    assert.deepEqual(writes.event_venue_requirements, {
+      event_id: "EVT-1",
+      preferred_location: "CENTRAL",
+      required_layout: "THEATRE",
+      facilities_required: true,
+      accessibility_needed: false,
+      accessibility_notes: ""
+    });
+    assert.deepEqual(writes.event_facilities, [
+      { event_id: "EVT-1", facility_id: "AIR_CONDITIONING" }
+    ]);
+  });
+
+  test("TC-023 AC1 positive — multiple facility selections are all retained", () => {
+    const selected = [
+      "AIR_CONDITIONING",
+      "TABLES_AND_CHAIRS",
+      "TOILETS",
+      "WIFI",
+      "POWER_POINTS"
+    ];
+    const writes = buildRequirementWrites({
+      eventId: "EVT-2",
+      preferredLocation: "CENTRAL",
+      requiredLayout: "THEATRE",
+      facilitiesRequired: true,
+      facilities: selected
+    });
+
+    assert.deepEqual(
+      writes.event_facilities.map((row) => row.facility_id),
+      selected
+    );
+    assert.equal(writes.event_facilities.every((row) => row.event_id === "EVT-2"), true);
+  });
+
+  test("TC-024 AC3 positive — an incomplete venue draft saves and completed values carry into submission", () => {
+    const draft = buildRequirementWrites({
+      eventId: "EVT-3",
+      preferredLocation: "",
+      requiredLayout: "",
+      facilitiesRequired: true,
+      facilities: []
+    });
+
+    assert.equal(draft.event_venue_requirements.preferred_location, "");
+    assert.equal(draft.event_venue_requirements.required_layout, "");
+    assert.equal(draft.event_venue_requirements.facilities_required, true);
+    assert.deepEqual(draft.event_facilities, []);
+
+    const submitted = buildRequirementWrites({
+      eventId: "EVT-3",
+      preferredLocation: "CENTRAL",
+      requiredLayout: "THEATRE",
+      facilitiesRequired: true,
+      facilities: ["AIR_CONDITIONING"]
+    });
+
+    assert.equal(submitted.event_venue_requirements.event_id, draft.event_venue_requirements.event_id);
+    assert.equal(submitted.event_venue_requirements.preferred_location, "CENTRAL");
+    assert.equal(submitted.event_venue_requirements.required_layout, "THEATRE");
+    assert.deepEqual(submitted.event_facilities, [
+      { event_id: "EVT-3", facility_id: "AIR_CONDITIONING" }
+    ]);
+  });
+});
+
+
+// =============================================================================
+// B3 / SCRUM-94 — State the accessibility needs of my event
+// =============================================================================
+
+describe("B3 / SCRUM-94 State the accessibility needs of my event", () => {
+  test("TC-025 AC1 positive — one accessibility requirement and its free-text note are stored", () => {
+    const writes = buildRequirementWrites({
+      eventId: "EVT-4",
+      accessibilityRequired: true,
+      accessibility: ["WHEELCHAIR_ACCESS"],
+      accessibilityNotes: "Accessible seating needed"
+    });
+
+    assert.equal(writes.event_venue_requirements.accessibility_needed, true);
+    assert.equal(writes.event_venue_requirements.accessibility_notes, "Accessible seating needed");
+    assert.deepEqual(writes.event_accessibility, [
+      { event_id: "EVT-4", accessibility_id: "WHEELCHAIR_ACCESS" }
+    ]);
+  });
+
+  test("TC-026 AC2 positive — multiple accessibility requirements are accepted and retained", () => {
+    const selected = ["WHEELCHAIR_ACCESS", "HEARING_LOOP"];
+    const writes = buildRequirementWrites({
+      eventId: "EVT-5",
+      accessibilityRequired: true,
+      accessibility: selected
+    });
+
+    assert.deepEqual(
+      writes.event_accessibility.map((row) => row.accessibility_id),
+      selected
+    );
+    assert.equal(writes.event_accessibility.every((row) => row.event_id === "EVT-5"), true);
+  });
+});
+
+
+// =============================================================================
+// C4 — Request clarification or amendments from the organiser
+// =============================================================================
+
+describe("C4 Request clarification or amendments from the organiser", () => {
+  const reviewEvent = (changes = {}) => ({
+    event_id: "EVT-001",
+    organiser_id: "ORG-001",
+    coordinator_id: "USR-COORD-001",
+    status: STATUS.UNDER_REVIEW,
+    open_clarification_id: null,
+    ...changes
+  });
+
+  test("C4 AC1 positive — a non-empty clarification message creates the request", () => {
+    const result = requestClarification({
+      event: reviewEvent(),
+      userId: "USR-COORD-001",
+      message: " Please confirm expected attendance. ",
+      clarificationId: "CLR-001",
+      now: "2026-09-30T10:00:00Z"
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.event.open_clarification_id, "CLR-001");
+    assert.deepEqual(result.clarification, {
+      clarification_id: "CLR-001",
+      event_id: "EVT-001",
+      created_by: "USR-COORD-001",
+      message: "Please confirm expected attendance.",
+      status: "OPEN",
+      created_at: "2026-09-30T10:00:00Z",
+      responded_at: null
+    });
+  });
+
+  test("C4 AC1 negative — an empty clarification message is refused", () => {
+    const result = requestClarification({
+      event: reviewEvent(),
+      userId: "USR-COORD-001",
+      message: "   ",
+      clarificationId: "CLR-001"
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "empty");
+    assert.equal(result.event.open_clarification_id, null);
+  });
+
+  test("C4 AC2 negative — approve and reject remain unavailable while clarification is open", () => {
+    const awaitingOrganiser = reviewEvent({ open_clarification_id: "CLR-001" });
+
+    assert.equal(awaitingOrganiser.status, STATUS.UNDER_REVIEW);
+    assert.equal(canApproveEvent(awaitingOrganiser, "USR-COORD-001"), false);
+    assert.equal(canRejectEvent(awaitingOrganiser, "USR-COORD-001"), false);
+  });
+
+  test("C4 AC3-AC4 negative — only one request is open and the answered exchange remains in history", () => {
+    const first = requestClarification({
+      event: reviewEvent(),
+      userId: "USR-COORD-001",
+      message: "Please confirm expected attendance.",
+      clarificationId: "CLR-001",
+      now: "2026-09-30T10:00:00Z"
+    });
+    const duplicate = requestClarification({
+      event: first.event,
+      userId: "USR-COORD-001",
+      message: "A second open request",
+      clarificationId: "CLR-002"
+    });
+    const answered = submitClarificationResponse({
+      event: first.event,
+      clarification: first.clarification,
+      userId: "ORG-001",
+      message: "Attendance is 150.",
+      now: "2026-09-30T11:00:00Z"
+    });
+    const nextRound = requestClarification({
+      event: answered.event,
+      userId: "USR-COORD-001",
+      message: "Please also confirm the layout.",
+      clarificationId: "CLR-002",
+      now: "2026-09-30T12:00:00Z"
+    });
+    const retained = chronologicalExchange([first.clarification], answered.responses);
+
+    assert.equal(duplicate.ok, false);
+    assert.equal(duplicate.reason, "not_allowed");
+    assert.equal(answered.clarification.status, "ANSWERED");
+    assert.equal(nextRound.ok, true);
+    assert.equal(retained[0].message, "Please confirm expected attendance.");
+    assert.equal(retained[0].created_at, "2026-09-30T10:00:00Z");
+    assert.equal(retained[1].message, "Attendance is 150.");
+  });
+});
+
+
+// =============================================================================
+// C7 — Reject a request with a reason
+// =============================================================================
+
+describe("C7 Reject a request with a reason", () => {
+  const reviewEvent = (changes = {}) => ({
+    event_id: "EVT-001",
+    organiser_id: "ORG-001",
+    coordinator_id: "USR-COORD-001",
+    status: STATUS.UNDER_REVIEW,
+    open_clarification_id: null,
+    ...changes
+  });
+
+  test("C7 AC1 negative — rejection without a reason is blocked", () => {
+    const result = rejectEvent({
+      event: reviewEvent(),
+      userId: "USR-COORD-001",
+      reason: ""
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "empty");
+    assert.equal(result.event.status, STATUS.UNDER_REVIEW);
+  });
+
+  test("C7 AC2 positive — rejection records status, reason, coordinator and timestamp", () => {
+    const result = rejectEvent({
+      event: reviewEvent(),
+      userId: "USR-COORD-001",
+      reason: "No suitable venue can be secured.",
+      now: "2026-09-30T13:00:00Z"
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.event.status, STATUS.REJECTED);
+    assert.equal(result.history.description, "No suitable venue can be secured.");
+    assert.equal(result.history.actor_id, "USR-COORD-001");
+    assert.equal(result.history.created_at, "2026-09-30T13:00:00Z");
+    assert.equal(result.history.action_type, "EVENT_REJECTED");
+  });
+
+  test("C7 AC3 negative — a rejected event cannot be edited, resubmitted or rejected again", () => {
+    const rejected = reviewEvent({ status: STATUS.REJECTED });
+
+    assert.equal(canEditOrResubmit(rejected), false);
+    assert.equal(canRejectEvent(rejected, "USR-COORD-001"), false);
+  });
+
+  test("C7 AC4 business rule — an unfulfillable event is rejected instead of remaining under review", () => {
+    const noSuitableVenue = true;
+    const result = noSuitableVenue
+      ? rejectEvent({
+          event: reviewEvent(),
+          userId: "USR-COORD-001",
+          reason: "No suitable venue can be secured."
+        })
+      : { event: reviewEvent() };
+
+    assert.equal(result.ok, true);
+    assert.equal(result.event.status, STATUS.REJECTED);
+    assert.notEqual(result.event.status, STATUS.UNDER_REVIEW);
+  });
+});
+
+
+// =============================================================================
+// C8 — Understand the decision on my request
+// =============================================================================
+
+describe("C8 Understand the decision on my request", () => {
+  test("C8 AC1-AC2 positive — organiser sees decision metadata and assigned coordinator", () => {
+    const event = { event_id: "EVT-001", status: STATUS.APPROVED, coordinator_id: "USR-COORD-001" };
+    const history = [
+      {
+        event_id: "EVT-001",
+        actor_id: "USR-COORD-001",
+        action_type: "EVENT_APPROVED",
+        new_value: STATUS.APPROVED,
+        description: "All requirements can be fulfilled.",
+        created_at: "2026-09-30T14:00:00Z"
+      }
+    ];
+    const summary = decisionDetails(event, history, { id: "USR-COORD-001", name: "Sam" });
+
+    assert.deepEqual(summary, {
+      decision: STATUS.APPROVED,
+      reason: "All requirements can be fulfilled.",
+      decided_at: "2026-09-30T14:00:00Z",
+      decided_by: "USR-COORD-001",
+      coordinator_name: "Sam"
+    });
+  });
+
+  test("C8 AC1-AC2 positive — a rejection reason is shown from the latest decision record", () => {
+    const event = { event_id: "EVT-002", status: STATUS.REJECTED, coordinator_id: "USR-COORD-001" };
+    const summary = decisionDetails(event, [{
+      actor_id: "USR-COORD-001",
+      action_type: "EVENT_REJECTED",
+      new_value: STATUS.REJECTED,
+      description: "No suitable venue can be secured.",
+      created_at: "2026-09-30T15:00:00Z"
+    }], { name: "Sam" });
+
+    assert.equal(summary.decision, STATUS.REJECTED);
+    assert.equal(summary.reason, "No suitable venue can be secured.");
+    assert.equal(summary.decided_at, "2026-09-30T15:00:00Z");
+    assert.equal(summary.coordinator_name, "Sam");
+  });
+});
+
+
+// =============================================================================
+// C9 — Reassign an event to a different coordinator
+// =============================================================================
+
+describe("C9 Reassign an event to a different coordinator", () => {
+  const event = {
+    event_id: "EVT-001",
+    organiser_id: "ORG-001",
+    coordinator_id: "USR-COORD-001",
+    status: STATUS.UNDER_REVIEW,
+    assigned_at: "2026-09-29T09:00:00Z"
+  };
+  const assignments = [{
+    assignment_id: "EVT-001_USR-COORD-001",
+    event_id: "EVT-001",
+    coordinator_id: "USR-COORD-001",
+    assigned_at: "2026-09-29T09:00:00Z",
+    ended_at: null
+  }];
+  const target = { id: "USR-COORD-002", name: "Alex", active: true };
+
+  test("C9 AC1-AC2 positive — reassignment leaves one current coordinator and retains prior timestamps", () => {
+    const result = reassignEvent({
+      event,
+      assignments,
+      userId: "USR-COORD-001",
+      targetCoordinator: target,
+      now: "2026-09-30T16:00:00Z"
+    });
+    const current = result.assignments.filter((item) => item.ended_at == null);
+    const prior = result.assignments.find((item) => item.coordinator_id === "USR-COORD-001");
+
+    assert.equal(result.ok, true);
+    assert.equal(result.event.coordinator_id, "USR-COORD-002");
+    assert.equal(current.length, 1);
+    assert.equal(current[0].coordinator_id, "USR-COORD-002");
+    assert.equal(prior.assigned_at, "2026-09-29T09:00:00Z");
+    assert.equal(prior.ended_at, "2026-09-30T16:00:00Z");
+    assert.equal(result.history.old_value, "USR-COORD-001");
+    assert.equal(result.history.new_value, "USR-COORD-002");
+  });
+
+  test("C9 AC3 security — outgoing coordinator retains view access but loses edit access", () => {
+    const result = reassignEvent({
+      event,
+      assignments,
+      userId: "USR-COORD-001",
+      targetCoordinator: target
+    });
+    const access = assignmentAccess(result.event, result.assignments, "USR-COORD-001");
+
+    assert.equal(access.canView, true);
+    assert.equal(access.canEdit, false);
+  });
+
+  test("C9 AC5 security — a non-current coordinator cannot reassign the event", () => {
+    const result = reassignEvent({
+      event,
+      assignments,
+      userId: "USR-COORD-003",
+      targetCoordinator: target
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "not_allowed");
+    assert.equal(result.event.coordinator_id, "USR-COORD-001");
+  });
+});
+
+
+// =============================================================================
 // C5 / SCRUM-106 — Respond to a request for clarification
 // =============================================================================
 
@@ -321,7 +1318,7 @@ describe("C5 / SCRUM-106 Respond to a request for clarification", () => {
     });
 
     assert.equal(result.ok, true);
-    assert.equal(result.clarification.status, "CLOSED");
+    assert.equal(result.clarification.status, "ANSWERED");
     assert.equal(result.event.open_clarification_id, null);
     assert.equal(result.responses[0].responder_id, "u1");
     assert.equal(result.responses[0].created_at, SERVER_TIMESTAMP);
@@ -345,7 +1342,7 @@ describe("C5 / SCRUM-106 Respond to a request for clarification", () => {
   });
 
   test("TC-085 AC2 negative — there is nothing to respond to", () => {
-    const closed = openClarification({ status: "CLOSED" });
+    const closed = openClarification({ status: "ANSWERED" });
     const event = openEvent({ open_clarification_id: null });
 
     assert.equal(canRespondToClarification(event, closed, "u1"), false);
@@ -359,7 +1356,7 @@ describe("C5 / SCRUM-106 Respond to a request for clarification", () => {
 
     assert.equal(result.ok, false);
     assert.equal(result.responses.length, 0);
-    assert.equal(result.clarification.status, "CLOSED");
+    assert.equal(result.clarification.status, "ANSWERED");
   });
 
   test("TC-086 AC1 security — only the organiser the question was asked of may answer it", () => {

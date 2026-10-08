@@ -2,9 +2,9 @@
 
 Express service layer, on **:4000**. Started together with the frontend by `npm start` at the repo root.
 
-One service exists so far — `coordinatorAssignment` (C1 / SCRUM-102). Every other Firestore and Auth call is
-still made from the browser by components in `frontend/src/`, through `frontend/src/lib/firebase.js`; services
-move here as the stories that need them are picked up.
+Two services are mounted: `coordinatorAssignment` (C1 / SCRUM-102) and `venue` (E3). Catalogue reads remain
+in the browser through `frontend/src/lib/firebase.js`; the venue service authenticates staff and transactionally
+records unavailability after checking approved bookings.
 
 ```
 npm start              # from the repo root: runs this and the frontend together
@@ -13,11 +13,11 @@ npm run test:backend   # from the repo root — node's built-in test runner, no 
 curl localhost:4000/api/health
 ```
 
-`coordinatorAssignment` is the first service to use the Firebase **Admin** SDK (`firebase-admin`), not the
-client SDK the frontend uses — see `src/lib/firebaseAdmin.js`. Its tests run against a mocked Firestore, not a
-live project, so no credentials are needed to run them. To exercise it for real (starting the backend and
-actually submitting an event), point `GOOGLE_APPLICATION_CREDENTIALS` at a service-account key from Firebase
-console > Project settings > Service accounts — see `.env.example`. `backend/scripts/seedCoordinators.js` seeds
+Both `coordinatorAssignment` and `venue` use the Firebase **Admin** SDK (`firebase-admin`), not the client SDK
+the frontend uses — see `src/lib/firebaseAdmin.js`. Their tests run against mocked Firestore, so no credentials
+are needed to run them. To exercise either service against a live project, point `GOOGLE_APPLICATION_CREDENTIALS`
+at a service-account key from Firebase console > Project settings > Service accounts — see `.env.example`.
+`backend/scripts/seedCoordinators.js` seeds
 the `coordinators` and `assignment_cursor` documents it needs; read that file before running it, since it
 writes to whatever project your credentials point at.
 
@@ -53,3 +53,7 @@ write and `coordinatorAssignment` to expose only the rotation decision.
 
 `firestore.rules` stays at the repo root. Authorisation is enforced there regardless of what lives in this
 folder, because the browser can still reach Firestore directly.
+
+The venue service exposes `PUT /api/venues/unavailability`. It requires a Firebase ID token from a Venue
+Staff account assigned through `venue_staff/{venueId}` and saves staged additions and releases together,
+refusing additions that overlap an approved booking.

@@ -107,13 +107,11 @@ Acceptance Criteria:
 Story,C1,"C — Review, Approval and Coordinator Assignment",Have submitted events assigned to a coordinator automatically,"As an Event Organiser, I want my submitted event picked up by a named coordinator without anyone having to notice it so that my request does not sit unclaimed.
 
 Acceptance Criteria:
-1. Exactly one, on first submission. When an event is first submitted, exactly one Event Coordinator is assigned; an event is never assigned to two coordinators.
-2. Identity and timestamp recorded; status unchanged. The assigned coordinator's identity and the assignment timestamp (in SGT) are recorded on the event. Assignment does not change the event's status - it remains Submitted (there is no ""Assigned"" or ""Unassigned"" status).
-3. Circular rotation across all coordinators. Assignment follows circular rotation across all coordinators in ascending coordinator_seq order (1, 2, 3, ...), wrapping from the last back to the first; the rotation cursor is the last-assigned coordinator_seq.
-4. (Removed - this was the ""no active coordinator -> unassigned queue"" criterion. Dropped because coordinators are seeded and always available, so the case cannot arise. The number is kept as a placeholder so the AC5-AC7 references in the test cases stay stable. See ADR-0001.)
-5. No cap per coordinator. A coordinator can hold any number of events at once; there is no limit, and being busy never disqualifies a coordinator.
-6. System-assigned, not organiser-chosen (integrity). The organiser never chooses the coordinator: the create-event form has no coordinator field, and the client cannot set or change coordinator_id / assigned_at. Only the backend writes them, enforced in firestore.rules.
-7. Assigned once, then immutable. Assignment runs only when coordinator_id is empty (on first submission), and coordinator_id cannot be changed afterwards.",20
+1. On submission, exactly one Event Coordinator is assigned; an event is never assigned to two coordinators at once.
+2. The coordinator identity and the assignment timestamp are recorded on the event.
+3. Assignment uses round-robin across active coordinators.
+4. If no active coordinator exists, the event stays in the unassigned queue and is visible there rather than being lost.
+5. A coordinator can have more than one event assigned to them.",20
 Story,C2,"C — Review, Approval and Coordinator Assignment",See the events I am responsible for,"As an Event Coordinator, I want a list of the event requests assigned to me so that I know what I am accountable for.
 
 Acceptance Criteria:
@@ -139,16 +137,17 @@ Acceptance Criteria:
 1. While a clarification request is open, the Organiser can edit their request's fields and add a response message.
 2. Submitting the response closes the clarification request, clears the awaiting-organiser marker, and records the response and its timestamp.
 3. The full exchange is visible to both parties in chronological order.",8
-Story,C6,"C — Review, Approval and Coordinator Assignment",Approve a submitted request,"As an Event Coordinator, I want to approve a request I have reviewed so that it can proceed to planning.
+Story,C6,"C — Review, Approval and Coordinator Assignment",Approve a submitted request,"As an Event Coordinator, I want to confirm the details of an event once its venue and technical arrangements are in place, so that the Event Organiser and the technical team work from one agreed set of arrangements.
 
 Acceptance Criteria:
 1. Approve is offered only from Under Review.
-2. On approval the status becomes Approved and the decision, deciding coordinator and timestamp (SGT) are recorded.
-3. Only the coordinator assigned to the event may approve it.
-4. Approve is unavailable while a clarification request is open (see C4).
-5. The approval is recorded in the event's history.
-
-Note: the confirm gate (venue and technical arrangements must be in place before Confirmed) is owned by D3, not C6.",13
+2. On approval the status becomes Approved and the decision, deciding coordinator and timestamp are recorded.
+3. Cannot confirm an event unless its venue booking has been approved. (defines a mandatory arrangement)
+4. Cannot confirm an event unless the requested technical arrangements have been reserved. (the second mandatory arrangement)
+5. Where no technical support was requested for the event, has the technical condition treated as satisfied.
+6. On confirming, sees the event's status change to """"Confirmed"""".
+7. Has the Event Organiser and the technical team informed once the event is confirmed.
+8. Receives an error identifying what is still outstanding if they attempt to confirm while a mandatory arrangement is missing.""",13
 Story,C7,"C — Review, Approval and Coordinator Assignment",Reject a request with a reason,"As an Event Coordinator, I want to reject a request and state why so that the organiser understands the outcome instead of waiting indefinitely.
 
 Acceptance Criteria:
@@ -184,14 +183,12 @@ Acceptance Criteria:
 3. Saving requires an explicit acknowledgement of that warning; cancelling leaves the event untouched.
 4. The change is recorded with old and new values, actor and timestamp.
 5. No booking or reservation is altered by this story",5
-Story,D3,D — Event Status and Information Management,Confirm an event once arrangements are in place,"As an Event Coordinator, I want an event confirmed only when its arrangements are actually secured, so that the Event Organiser and the technical team work from one agreed set of arrangements.
+Story,D3,D — Event Status and Information Management,Confirm an event once arrangements are in place,"As an Event Organiser, I want my event confirmed only when its arrangements are actually secured so that I am never told it is confirmed when it is not.
 
 Acceptance Criteria:
 1. Confirm is offered only when the event has an approved venue booking AND an equipment request marked arranged by Technical Support.
-2. Where no technical support was requested for the event, the technical condition is treated as satisfied.
-3. If a mandatory arrangement is missing, Confirm is unavailable and the view names which arrangement is still outstanding.
-4. On confirmation the status becomes Confirmed and the confirmation timestamp (SGT) is recorded.
-5. On confirmation, the Event Organiser and the technical team are informed.",5
+2. If either is missing, Confirm is unavailable and the view names which arrangement is outstanding.
+3. On confirmation the status becomes Confirmed and the confirmation timestamp is recorded.",5
 Story,D4,D — Event Status and Information Management,Cancel an event,"As an Event Coordinator, I want to cancel an event so that venue, equipment and attendees are released when it will not go ahead.
 
 Acceptance Criteria:
@@ -511,3 +508,175 @@ Acceptance Criteria:
 2. Waitlisted attendees are notified when a place opens and they are invited to apply.
 3. Each notification names the event and states what changed.
 4. After they have viewed the notification, it gets marked as read and decrements the count.",3
+,,,,,
+Story,A6,"A — Access, Identity and Authorisation",Use ConnectSphere as an Event Coordinator Lead,"As an Event Coordinator Lead, I want to sign in and access only the oversight and coordinator-assignment functions of my role so that I can manage incoming event requests
+ 
+ Acceptance Criteria:
+ 1. A seeded Event Coordinator Lead account can sign in successfully; no public account-creation flow is provided for this role.
+ 2. The Event Coordinator Lead can access the unassigned event queue, coordinator assignment functions, reassignment functions, and coordinator oversight views.
+ 3. The Event Coordinator Lead can view all active events and coordinator assignments under their supervision.
+ 4. Functions not permitted for the Event Coordinator Lead are not shown in the role's navigation.
+ 5. Restricted functions are refused server-side even if the user attempts to access them directly.",3
+Story,A7,"A — Access, Identity and Authorisation",Use ConnectSphere as a Safety Officer,"As a Safety Officer, I want to sign in and access only operational safety review functions so that I can assess planned events functions.
+ 
+ Acceptance Criteria:
+ 1. A seeded Safety Officer account can sign in successfully; no public account-creation flow is provided for this role.
+ 2. The Safety Officer can access events that are awaiting an Operational Safety Check.
+ 3. The Safety Officer can access the information required for the safety review, including expected attendance, venue capacity and layout, emergency access, accessibility requirements, equipment placement, crowd movement, and known venue restrictions.
+ 4. The Safety Officer can record one of the supported safety outcomes: approve, reject, or request changes.
+ 5. Functions not permitted for the Safety Officer are not shown in the role's navigation.
+ 6. Restricted functions are refused server-side even if the user attempts to access them directly.",3
+Story,E9,"E — Venue Catalogue, Availability, Search and Suitability",Set a venue's setup and turnaround time,"As a member of Venue Staff, I want to record how long a venue needs before and after each event so that I always have time to prepare and reset the room.
+ 
+ Acceptance Criteria:
+ 1. Each venue holds a setup time and a turnaround time in minutes; both default to 0.
+ 2. Each value must be a whole number of 0 or more; any other value is refused with a validation message.
+ 3. Only Venue Staff can change the values; the change is recorded with the staff member, timestamp, previous value and new value.
+ 4. Both values are shown on the venue's detail view in the catalogue.",3
+Story,E10,"E — Venue Catalogue, Availability, Search and Suitability",Record a venue's safety information,"As a member of Venue Staff, I want to record a venue's emergency access and known restrictions so that the Safety Officer can judge whether an event is safe there.
+ 
+ Acceptance Criteria:
+ 1. Each venue can hold emergency access notes and known restrictions as free text fields.
+ 2. Only Venue Staff can edit these fields; changes are recorded with the staff member, timestamp, previous value and new value.
+ 3. The fields are shown on the venue detail view to users whose roles permit access to venue planning or safety information.",3
+Story,E11,"E — Venue Catalogue, Availability, Search and Suitability",Take a venue out of use even when events are booked there,"As a member of Venue Staff, I want to mark a venue unavailable for a period even when events are already booked there so that the system reflects that the venue cannot be used and the affected events can be moved.
+ 
+ Acceptance Criteria:
+ 1. An unavailability period holds venue, start date/time, end date/time, a reason (Maintenance, Equipment failure, Renovation, Safety concern, Other) and an optional note; Other requires a note.
+ 2. A period that overlaps approved bookings is accepted; before saving, Venue Staff see the list of affected bookings and must confirm. (Replaces E3 criterion 3.)
+ 3. Each affected booking is marked ""Venue unavailable - replacement needed"". The original event, the event's status and the original booking details are left unchanged and nothing is cancelled.
+ 4. The currently assigned Event Coordinator of each affected event is notified with the event, affected venue, unavailability period and reason.
+ 5. The venue appears blocked on the availability calendar for the unavailable period and is excluded from venue search results for requests whose required occupied period overlaps that unavailability.",8
+Story,F9,F — Venue Booking and Conflict Detection,Count setup and turnaround time when checking for clashes,"As a member of Venue Staff, I want a booking to occupy the venue for its setup and turnaround time as well as the event itself so that I am never given two events with no time to reset the room in between.
+ 
+ Acceptance Criteria:
+ 1. A booking occupies the venue from (start time - setup time) to (end time + turnaround time), using the venue's values at the time of the check. E.g. An event from 10:00 to 12:00 at a venue with 30 minutes setup and 45 minutes turnaround occupies the venue from 09:30 to 12:45.
+ 3. Two bookings for the same venue conflict when their occupied windows overlap by any amount; occupied windows that only touch do not conflict.
+ 4. The occupied window, not the event time, is used by venue search, the availability calendar and booking approval.
+ 5. The availability calendar shows setup and turnaround time distinctly from the event time.
+ 6. The conflict check is enforced server-side at the moment of approval.",8
+Story,F10,F — Venue Booking and Conflict Detection,See existing bookings that now clash,"As a member of Venue Staff, I want bookings that clash under the setup and turnaround rule to be pointed out to me so that I can resolve them before the event day instead of finding out on the day.
+ 
+ Acceptance Criteria:
+ 1. When a venue's setup or turnaround time is saved, every approved future booking at that venue is re-checked using the new occupied windows.
+ 2. Each pair of bookings that now overlaps is flagged as ""Clash - review required"", naming both events and the overlapping period.
+ 3. No flagged booking is cancelled, released or altered by the system.
+ 4. Relevant Venue Staff and the currently assigned Event Coordinators of both affected events are notified of each flagged clash.
+ 5. A flag clears automatically once the overlap no longer exists (for example, one booking is released or moved).
+ 6. Flagged bookings can be listed on their own from the Venue Staff booking view.",8
+Story,F11,F — Venue Booking and Conflict Detection,Find a replacement venue for an event that lost its venue,"As an Event Coordinator, I want to search for and request a replacement venue from a booking that can no longer go ahead so that the event can still take place without re-entering its details.
+ 
+ Acceptance Criteria:
+ 1. Events with a booking marked ""Venue unavailable - replacement needed"" are flagged in the coordinator's event list.
+ 2. From the affected booking, the coordinator can open venue search pre-filled with the event's date, times, attendance and requirements; the unavailable venue is excluded from results.
+ 3. A replacement request follows the normal booking flow (Pending, then approved or rejected by Venue Staff).
+ 4. The original event information is not changed by the search or the request.
+ 5. When the replacement booking is approved, the original booking is marked ""Replaced"" and kept in the event history with its reason and timestamp.
+ 6. If an event had already progressed beyond Planning (status: confirmed) when its venue becomes unavailable, it returns to Planning. It cannot proceed again until the replacement venue is approved and any required venue or safety review has been completed.",5
+Story,F12,F — Venue Booking and Conflict Detection,Book more than one venue for an event,"As an Event Coordinator, I want to book several venues for one event so that large events such as conferences can have a main hall and breakout rooms.
+ 
+ Acceptance Criteria:
+ 1. The coordinator can raise booking requests for more than one venue against the same event.
+ 2. Each booking has a label (for example ""Main programme"" or ""Breakout 1""), its own expected attendance and its own required layout.
+ 3. A booking's expected attendance must be a whole number greater than zero and no more than the event's expected attendance.
+ 4. A second active booking for the same venue at an overlapping time for the same event is refused.
+ 5. The event view lists every booking for the event with its label, venue, window and status.",3
+Story,F13,F — Venue Booking and Conflict Detection,Have each venue of an event checked on its own,"As an Event Coordinator, I want each venue of a multi-venue event checked separately so that one unsuitable or unavailable room is caught without blocking the others.
+ 
+ Acceptance Criteria:
+ 1. Suitability is assessed per booking, using that booking's own expected attendance and layout plus the event's facility and accessibility needs.
+ 2. Availability and conflicts are checked per booking against that venue's occupied windows, including setup and turnaround.
+ 3. A failing or rejected booking does not change the status of the event's other bookings.
+ 4. Every active venue booking must be approved before the event is considered venue-ready for the Operational Safety Check.",5
+Story,F14,F — Venue Booking and Conflict Detection,Release one venue without losing the others,"As an Event Coordinator, I want to drop one venue from an event while keeping the rest so that a change to one room does not undo the arrangements I already have.
+ 
+ Acceptance Criteria:
+ 1. The coordinator can release a single booking with a reason; the event's other bookings are unchanged.
+ 2. The released window becomes available immediately in venue search and on the availability calendar.
+ 3. The released booking is kept in the event history with its reason and timestamp.
+ 4. Cancelling the whole event still releases all of its bookings (as in D4).
+ 5. If a booking is released from a Confirmed event, the event returns to Planning and must satisfy the venue and safety requirements again before it can be reconfirmed.",3
+Story,F15,F — Venue Booking and Conflict Detection,Place a tentative hold on a venue,"As a member of Venue Staff, I want to hold a venue for 3 working days while a coordinator finalises an event so that the space is kept for them without being promised indefinitely.
+ 
+ Acceptance Criteria:
+ 1. A hold records venue, event, occupied window (including setup and turnaround), and an expiry date/time.
+ 2. The expiry is required, must be in the future, and must be before the booking's occupied window.
+ 3. While a hold is active, an overlapping booking request for the same venue is refused, naming the hold and its expiry.
+ 4. Holds appear on the availability calendar as ""Held"", distinct from free, booked and blocked.
+ 5. A hold does not count as an approved booking for confirming or sending an event for its safety check.
+ 6. The Event Coordinator is notified when a hold is placed, with its expiry date/time.
+ 7. Venue Staff can convert an active hold into an approved booking; the converted booking is no longer subject to expiry.",3
+Story,F16,F — Venue Booking and Conflict Detection,Have unconfirmed holds expire on time,"As an Event Coordinator, I want to be warned before my hold runs out and told when it has so that I know whether the venue is still kept for my event.
+ 
+ Acceptance Criteria:
+ 1. When the expiry date/time passes without the hold being converted (3 working days), the hold's status becomes Expired.
+ 2. From the expiry time onward, the window is treated as free by venue search, the calendar and booking approval, even if no user has opened the system since.
+ 3. An expired hold is never shown or counted as a booking; it remains in the event history.
+ 4. If a hold is created more than 24 hours before its expiry, the currently assigned Event Coordinator is notified approximately 24 hours before expiry.
+ 5. The currently assigned Event Coordinator is notified when the hold expires.",5
+Story,K1,K — Event Coordinator Lead and Assignment,See newly submitted events waiting for a coordinator,"As an Event Coordinator Lead, I want every newly submitted event to come to one unassigned queue so that I can decide who handles it. (Replaces automatic assignment in C1.)
+ 
+ Acceptance Criteria:
+ 1. A submitted event is not assigned to any coordinator automatically; it enters the unassigned queue.
+ 2. Only the Event Coordinator Lead can access the unassigned queue. Event Coordinators cannot view or open an unassigned event, including by directly entering its URL or ID.
+ 3. Each row shows event name, organiser, proposed date, expected attendance and time since submission; the oldest submission is shown first.
+ 4. An event leaves the queue as soon as it is assigned.",3
+Story,K2,K — Event Coordinator Lead and Assignment,Assign an event to a coordinator,"As an Event Coordinator Lead, I want to read an event's basic details and assign it to a suitable coordinator so that every request has one named person accountable for it.
+ 
+ Acceptance Criteria:
+ 1. From the queue the Lead can open a read-only summary of the event: name, purpose, proposed date and times, expected attendance and organiser.
+ 2. The Lead chooses from the active Event Coordinators; each option shows that coordinator's number of active events.
+ 3. After assignment, the event has exactly one current Event Coordinator. The assigned coordinator, assigning Lead and assignment timestamp are recorded in the event history.
+ 4. The assigned Event Coordinator and organiser are notified of the assignment.
+ 5. An event that is already assigned cannot be assigned again through the initial assignment action; reassignment must use the reassignment function.",3
+Story,K3,K — Event Coordinator Lead and Assignment,Reassign an event to another coordinator,"As an Event Coordinator Lead, I want to move an event to a different coordinator so that work continues when a coordinator is unavailable or overloaded. (Replaces C9 criterion 5: the Lead, not the coordinator in charge, reassigns.)
+ 
+ Acceptance Criteria:
+ 1. The Lead can reassign any event that is not Completed, Cancelled or Rejected.
+ 2. Reassigning to the coordinator who already holds the event is refused.
+ 3. After reassignment, exactly one Event Coordinator is assigned to the event. The previous assignment remains in the event history with its original assignment timestamp, reassignment timestamp and the Lead who performed the reassignment.
+ 4. Immediately after reassignment, the outgoing coordinator can no longer perform any coordinator action on the event.
+ 5. The outgoing coordinator, the incoming coordinator and the organiser are notified.",3
+Story,K4,K — Event Coordinator Lead and Assignment,Oversee all coordinators' assignments,"As an Event Coordinator Lead, I want to see every active event and who is handling it so that I can spot overloaded coordinators and stalled events.
+ 
+ Acceptance Criteria:
+ 1. The view lists every active event, where an active event is any event not in Completed, Cancelled or Rejected status, together with its current coordinator, status, proposed date and time since last activity.
+ 2. The list can be filtered by coordinator and by status.
+ 3. A summary shows the number of active events per coordinator.
+ 4. Event details cannot be edited from this oversight view; assignment and reassignment are performed only through the permitted assignment functions.",3
+Story,K5,K — Event Coordinator Lead and Assignment,Manage only the events assigned to me,"As an Event Coordinator, I want to be able to act only on events assigned to me so that two coordinators never work on the same event at cross purposes.
+ 
+ Acceptance Criteria:
+ 1. A coordinator's active event list contains only events currently assigned to them.
+ 2. Any coordinator action on an event not currently assigned to the signed-in coordinator, (including edit, approve, reject, request a booking, release a booking or send for safety check), is refused server-side.
+ 3. Attempting to open an unassigned event or an event assigned to another coordinator by URL or ID returns a not-authorised response and does not reveal event details.",3
+Story,L1,L — Operational Safety Check,Send an event for its safety check,"As an Event Coordinator, I want to send an event for its Operational Safety Check once its arrangements are in place so that it can be cleared to go ahead. (Replaces the Confirm action in D3.)
+ 
+ Acceptance Criteria:
+ 1. ""Send for safety check"" is available only when every active venue booking is approved and all requested technical arrangements are confirmed; if no technical arrangements were requested, this condition is treated as satisfied.
+ 2. If an arrangement is missing, the action is unavailable and the view names what is outstanding.
+ 3. On sending, the event's status becomes Safety Review and the Safety Officer is notified.
+ 4. An event cannot become Confirmed without an approved safety check made after its most recent return to Planning.",3
+Story,L2,L — Operational Safety Check,Review an event's operational safety,"As a Safety Officer, I want the events awaiting my check and the facts I need in one place so that I can assess each event's safety without chasing information.
+ 
+ Acceptance Criteria:
+ 1. The queue lists events in Safety Review, oldest first, showing event name, date, venue(s) and expected attendance.
+ 2. For each active venue booking, the review view shows expected attendance against venue capacity, required layout, emergency access notes and known venue restrictions.
+ 3. The review view also shows the event's accessibility requirements, reserved equipment, equipment placement information and crowd movement information.
+ 4. Previous safety check outcomes for the event, with their comments, are shown.",5
+Story,L3,L — Operational Safety Check,Record the outcome of a safety check,"As a Safety Officer, I want to approve an event, reject its safety arrangement or request changes so that only safe events proceed to preparation.
+ 
+ Acceptance Criteria:
+ 1. The Safety Officer chooses one outcome: Approve, Reject or Request changes.
+ 2. Reject and Request changes require a comment explaining the concern.
+ 3. The outcome, comment where applicable, Safety Officer and decision timestamp are recorded in the safety review and event history.
+ 4. On Approve the event's status becomes Confirmed, and the coordinator and organiser are notified.
+ 5. Outcomes can be recorded only on events in Safety Review.",3
+Story,L4,L — Operational Safety Check,Return an event to planning after a safety concern,"As an Event Coordinator, I want an event sent back with a clear statement of what must change so that I can fix the arrangements and resubmit it for the safety check.
+ 
+ Acceptance Criteria:
+ 1. On Reject or Request changes, the event's status returns to Planning and the the currently assigned Event coordinator is notified with the Safety Officer's comment.
+ 2. With Request changes, the Safety Officer marks which arrangements need review (venue, technical, or both); with Reject changes, all venue and technical arrangements are marked for review.
+ 3. Only the identified arrangements are flagged ""Review required"" and the responsible Venue Staff or Technical Support Staff are notified; unaffected arrangements retain their current approval status.
+ 4.The event cannot be sent for a new safety check until every arrangement marked ""Review required"" has been reviewed and returned to an acceptable state.
+ 5. The event must undergo and pass a new Operational Safety Check before it can become Confirmed.",5

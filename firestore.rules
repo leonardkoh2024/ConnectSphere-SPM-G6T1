@@ -105,11 +105,13 @@ service cloud.firestore {
 
     match /event_venue_requirements/{requirementId} {
       allow create: if ownsEvent(request.resource.data.event_id);
-      allow get, list, update, delete: if ownsEvent(resource.data.event_id);
+      allow get, list: if canReadEvent(resource.data.event_id);
+      allow update, delete: if ownsEvent(resource.data.event_id);
     }
     match /event_facilities/{facilityId} {
       allow create: if ownsEvent(request.resource.data.event_id);
-      allow get, list, update, delete: if ownsEvent(resource.data.event_id);
+      allow get, list: if canReadEvent(resource.data.event_id);
+      allow update, delete: if ownsEvent(resource.data.event_id);
     }
     match /event_equipment/{equipmentId} {
       allow create: if ownsEvent(request.resource.data.event_id);
@@ -117,7 +119,8 @@ service cloud.firestore {
     }
     match /event_accessibility/{accessibilityId} {
       allow create: if ownsEvent(request.resource.data.event_id);
-      allow get, list, update, delete: if ownsEvent(resource.data.event_id);
+      allow get, list: if canReadEvent(resource.data.event_id);
+      allow update, delete: if ownsEvent(resource.data.event_id);
     }
     match /event_history/{historyId} {
       allow create: if signedIn()
@@ -173,6 +176,78 @@ service cloud.firestore {
           || (ownsEvent(request.resource.data.event_id)
             && request.resource.data.user_id == get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.coordinator_id)
         );
+    }
+
+    // E2 / E5 — catalogue and search reads are Coordinator and Venue Staff only.
+    // Hiding the screen is not the boundary (A4 / TC-015).
+    match /venue_staff/{venueId} {
+      allow get, list: if hasRole('VENUE_STAFF')
+        && resource.data.user_id == request.auth.uid;
+    }
+    match /venues/{venueId} {
+      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
+      allow update: if hasRole('VENUE_STAFF')
+        && exists(/databases/$(database)/documents/venue_staff/$(venueId))
+        && get(/databases/$(database)/documents/venue_staff/$(venueId)).data.user_id == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'building', 'location', 'max_capacity', 'layouts', 'facilities',
+          'accessibility', 'operating_hours', 'special_space_availability'
+        ])
+        && request.resource.data.name is string
+        && request.resource.data.building is string
+        && request.resource.data.location is string
+        && request.resource.data.max_capacity is int
+        && request.resource.data.max_capacity > 0
+        && request.resource.data.layouts is list
+        && request.resource.data.layouts.size() > 0
+        && request.resource.data.facilities is list
+        && request.resource.data.accessibility is list
+        && request.resource.data.operating_hours is list
+        && request.resource.data.special_space_availability is string;
+    }
+    match /venue_layouts/{layoutId} {
+      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
+    }
+    match /venue_facilities/{facilityId} {
+      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
+    }
+    match /venue_accessibility/{accessibilityId} {
+      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
+    }
+    match /venue_operating_hours/{hoursId} {
+      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
+    }
+    match /venue_unavailability/{unavailabilityId} {
+      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
+    }
+    match /venue_bookings/{bookingId} {
+      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
+      // E8 — the suitability gate, enforced where it cannot be bypassed. A screen
+      // that merely disables its button does not stop a crafted request, so the
+      // capacity stop is re-checked against the venue record here, and a booking
+      // is refused unless it carries the acknowledgement Venue Staff will read.
+      // There is deliberately no update rule: an acknowledgement is a record of
+      // what the coordinator accepted at the time and is not rewritten later.
+      allow create: if hasRole('EVENT_COORDINATOR')
+        && request.resource.data.requested_by == request.auth.uid
+        && request.resource.data.status == 'PENDING'
+        && request.resource.data.venue_id is string
+        && request.resource.data.event_id is string
+        && request.resource.data.expected_attendance is int
+        && request.resource.data.expected_attendance > 0
+        && exists(/databases/$(database)/documents/venues/$(request.resource.data.venue_id))
+        && get(/databases/$(database)/documents/venues/$(request.resource.data.venue_id)).data.max_capacity >= request.resource.data.expected_attendance
+        && request.resource.data.suitability_acknowledgement.acknowledged is bool
+        && request.resource.data.suitability_acknowledgement.criteria is list;
+      // Withdrawing is the one change the raiser may make, and it may only ever
+      // move a pending request to withdrawn. The acknowledgement is pinned: it
+      // records what was accepted at the time and is never rewritten.
+      allow update: if hasRole('EVENT_COORDINATOR')
+        && resource.data.requested_by == request.auth.uid
+        && resource.data.status == 'PENDING'
+        && request.resource.data.status == 'WITHDRAWN'
+        && request.resource.data.suitability_acknowledgement == resource.data.suitability_acknowledgement
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'withdrawn_at']);
     }
   }
 }

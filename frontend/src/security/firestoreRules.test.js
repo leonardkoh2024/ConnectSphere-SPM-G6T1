@@ -156,3 +156,36 @@ describe('C4/C7/C9 workflow records are guarded for browser SDK access', () => {
     expect(block).toMatch(/request\.auth\.uid|hasRole\(|canReadEvent\(|currentCoordinator\(|ownsEvent\(/);
   });
 });
+
+describe('E2 TC-094 venue catalogue reads are role-gated', () => {
+  test.each(['venues', 'venue_layouts', 'venue_facilities', 'venue_accessibility', 'venue_operating_hours', 'venue_unavailability', 'venue_bookings'])('%s is readable only by coordinators and venue staff', (collection) => {
+    const block = matchBlock(collection);
+    expect(block).toContain("hasRole('EVENT_COORDINATOR')");
+    expect(block).toContain("hasRole('VENUE_STAFF')");
+    expect(block).not.toContain('EVENT_ORGANISER');
+    expect(block).not.toContain('ATTENDEE');
+    expect(block).not.toContain('TECHNICAL_SUPPORT_STAFF');
+  });
+});
+
+describe('E1 venue catalogue updates are assigned-staff only', () => {
+  test('updates preserve ownership and enforce valid capacity and supported layouts', () => {
+    const venues = matchBlock('venues');
+    const updateRule = venues.match(/allow update:\s*if([^;]*);/)[1];
+
+    expect(updateRule).toContain("hasRole('VENUE_STAFF')");
+    expect(updateRule).toContain('venue_staff/$(venueId)');
+    expect(updateRule).toContain('.data.user_id == request.auth.uid');
+    expect(updateRule).toContain('request.resource.data.max_capacity is int');
+    expect(updateRule).toContain('request.resource.data.max_capacity > 0');
+    expect(updateRule).toContain('request.resource.data.layouts.size() > 0');
+    expect(updateRule).not.toContain("hasRole('EVENT_COORDINATOR')");
+    expect(updateRule).not.toContain('venue_bookings');
+  });
+
+  test('assignment records are only readable by their assigned Venue Staff user', () => {
+    const assignments = matchBlock('venue_staff');
+    expect(assignments).toContain("hasRole('VENUE_STAFF')");
+    expect(assignments).toContain('resource.data.user_id == request.auth.uid');
+  });
+});

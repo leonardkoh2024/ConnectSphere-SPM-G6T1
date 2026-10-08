@@ -15,15 +15,21 @@ import {
   LuBuilding2,
   LuCalendarDays,
   LuCalendarPlus,
+  LuChevronDown,
   LuChevronLeft,
   LuChevronRight,
+  LuCircle,
   LuCircleCheck,
   LuCircleDot,
+  LuCircleX,
   LuClipboardList,
+  LuEye,
+  LuEyeOff,
   LuFileText,
   LuInbox,
   LuLogOut,
   LuPackage,
+  LuPlus,
   LuRefreshCw,
   LuSearch,
   LuTicket,
@@ -47,9 +53,15 @@ const GLYPHS = {
   bookmark: LuBookmark,
   ticket: LuTicket,
   "log-out": LuLogOut,
+  "chevron-down": LuChevronDown,
   "chevron-left": LuChevronLeft,
   "chevron-right": LuChevronRight,
-  close: LuX
+  close: LuX,
+  plus: LuPlus,
+  eye: LuEye,
+  "eye-off": LuEyeOff,
+  circle: LuCircle,
+  "circle-x": LuCircleX
 };
 
 export default function Icon({ name, className = "cs-icon" }) {

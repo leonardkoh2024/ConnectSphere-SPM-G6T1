@@ -15,6 +15,10 @@ import EventRequestForm from "../features/events/EventRequestForm";
 import EventList from "../features/events/EventList";
 import EventReviewScreen from "../features/events/EventReviewScreen";
 import DecisionSummary from "../features/events/components/DecisionSummary";
+import VenueCatalogue from "../features/venues/VenueCatalogue";
+import VenueAvailabilityCalendar from "../features/venues/VenueAvailability";
+import VenueBookings from "../features/venues/VenueBookings";
+import VenueSearch from "../features/venues/VenueSearch";
 import Icon from "./Icon";
 import Toasts from "./Toasts";
 
@@ -39,6 +43,17 @@ export default function Workspace({ user, role }) {
   const [activeScreen, setActiveScreen] = useState(initialScreen);
   const [currentHash, setCurrentHash] = useState(window.location.hash);
   const [selectedDraft, setSelectedDraft] = useState(null);
+  const [searchEvent, setSearchEvent] = useState(null);
+  const [bookingTarget, setBookingTarget] = useState({ event: null, venue: null });
+  const [venueCalendarOpen, setVenueCalendarOpen] = useState(false);
+  const [bookingFormOpen, setBookingFormOpen] = useState(false);
+  const [reviewEventId, setReviewEventId] = useState(null);
+  // Where "Back to …" goes. `cameFrom` is the screen that opened this one from
+  // inside a page (the sidebar clears it); `innerBack` is set by a screen while it
+  // shows a detail view of its own, and closes that view.
+  const [cameFrom, setCameFrom] = useState(null);
+  const [innerBack, setInnerBack] = useState(null);
+  const reportBack = useCallback((close) => setInnerBack(() => close || null), []);
   const requestedPath = currentHash;
   const pathLooksProtected = requestedPath.startsWith("#/") && requestedPath !== "#/sign-in";
   const requestedScreen = meta.screens.find((item) => screenHash(role, item.name) === requestedPath);
@@ -54,22 +69,72 @@ export default function Workspace({ user, role }) {
   useEffect(() => { localStorage.setItem("cs-nav-collapsed", navCollapsed ? "1" : "0"); }, [navCollapsed]);
 
   // Every screen opens with the same header, which is what `.cs-panel-head`
-  // sticks to the top of the scrolling panel.
-  const head = (title, lede, action, back) => <header className="cs-panel-head">{back}<div className="cs-panel-head-row"><h1>{title}</h1>{action}</div>{lede ? <p className="cs-lede">{lede}</p> : null}</header>;
+  // sticks to the top of the scrolling panel. The back button, when there is one,
+  // is always its first line — never somewhere inside the screen.
+  const head = (title, lede, action) => <header className="cs-panel-head">{forbidden ? null : backButton}<div className="cs-panel-head-row"><div className="cs-panel-title">{!forbidden && <span className="cs-panel-icon" aria-hidden="true"><Icon name={screen.icon} /></span>}<div><h1>{title}</h1>{lede ? <p className="cs-lede">{lede}</p> : null}</div></div>{action}</div></header>;
 
-  const backToMyEvents = (
-    <button type="button" className="cs-btn cs-btn-ghost cs-back" onClick={() => chooseScreen("My events")}>
-      <Icon name="chevron-left" />Back to my events
+  const chooseScreen = (name, extras = {}) => {
+    setCameFrom(extras.from && extras.from !== name ? extras.from : null);
+    setActiveScreen(name);
+    setCurrentHash(screenHash(role, name));
+    if (name !== "New event request") setSelectedDraft(null);
+    setVenueCalendarOpen(false);
+    setBookingFormOpen(name === "Venue bookings" && Boolean(extras.event || extras.venue));
+    setSearchEvent(name === "Venue catalogue" ? extras.event || null : null);
+    setBookingTarget(name === "Venue bookings" ? { event: extras.event || null, venue: extras.venue || null } : { event: null, venue: null });
+    setReviewEventId(name === "Assigned events" ? extras.eventId || null : null);
+    window.location.hash = screenHash(role, name);
+  };
+  // E4 — one availability calendar shared by every venue, opened from the top
+  // right of the Venue catalogue header. The catalogue swaps to it in place.
+  const viewCalendar = venueCalendarOpen ? null : (
+    <button type="button" className="cs-btn cs-btn-secondary" onClick={() => setVenueCalendarOpen(true)}>
+      <Icon name="calendar" />View calendar
     </button>
   );
+  // E8 — raising a booking starts from the page header, where the catalogue
+  // offers View calendar, so the two venue screens read the same way.
+  const newBooking = bookingFormOpen ? null : (
+    <button type="button" className="cs-btn cs-btn-primary" onClick={() => setBookingFormOpen(true)}>
+      <Icon name="plus" />New booking request
+    </button>
+  );
+  // Same placement for the organiser's own list: the action that starts a new
+  // request lives in the page header, not above the rows.
+  const newEventRequest = (
+    <button type="button" className="cs-btn cs-btn-primary" onClick={() => { setSelectedDraft(null); goTo("New event request"); }}>
+      <Icon name="plus" />Create new event request
+    </button>
+  );
+  const closeCalendar = () => setVenueCalendarOpen(false);
 
-  const chooseScreen = (name) => { setActiveScreen(name); setCurrentHash(screenHash(role, name)); if (name !== "New event request") setSelectedDraft(null); window.location.hash = screenHash(role, name); };
+  // Navigation from inside a page remembers where it started, so the next screen
+  // can offer the way back. The sidebar calls chooseScreen directly and does not.
+  const goTo = (name, extras = {}) => chooseScreen(name, { ...extras, from: screen.name });
+
+  // Innermost first: a detail view returns to its own list, the calendar to the
+  // catalogue, and only then does the screen return to the one that opened it.
+  // The organiser's request form always belongs to My events.
+  const back = innerBack ? { to: screen.name, onClick: innerBack }
+    : venueCalendarOpen ? { to: screen.name, onClick: closeCalendar }
+    : cameFrom ? { to: cameFrom, onClick: () => chooseScreen(cameFrom) }
+    : screen.name === "New event request" ? { to: "My events", onClick: () => chooseScreen("My events") }
+    : null;
+  const backButton = back && (
+    <button type="button" className="cs-btn cs-btn-ghost cs-back" onClick={back.onClick}>
+      <Icon name="chevron-left" />Back to {back.to.toLowerCase()}
+    </button>
+  );
   let contents;
   if (forbidden) contents = <>{head("Not authorised")}<p className="cs-error">You are not authorised to access this function.</p></>;
-  else if (role === ROLES.ORGANISER && screen.name === "New event request") contents = <>{head(selectedDraft ? "Event request" : screen.name, "Tell us what you need. Save an incomplete request as a draft, or submit it when the core details are ready.", null, backToMyEvents)}{selectedDraft && String(selectedDraft.status || "").toUpperCase() !== "DRAFT" && <DecisionSummary event={selectedDraft} onChanged={showToast} />}<EventRequestForm user={user} draft={selectedDraft} readOnly={Boolean(selectedDraft && selectedDraft.status && String(selectedDraft.status).toUpperCase() !== "DRAFT")} onSaved={(message, savedDraft) => { showToast(message); setSelectedDraft(savedDraft); if (!savedDraft) chooseScreen("My events"); }} /></>;
-  else if (role === ROLES.ORGANISER && screen.name === "My events") contents = <>{head("My events", "Only events created by your account are shown here. A draft can be picked up again from this list.")}<EventList user={user} role={role} onCreate={() => { setSelectedDraft(null); chooseScreen("New event request"); }} onEdit={(draft) => { setSelectedDraft(draft); chooseScreen("New event request"); }} onView={(event) => { setSelectedDraft(event); chooseScreen("New event request"); }} onDeleted={(message) => showToast(message)} /></>;
-  else if (role === ROLES.COORDINATOR && screen.name === "Review queue") contents = <>{head(screen.name, screen.blurb)}<EventReviewScreen queueOnly onNotice={showToast} /></>;
-  else if (role === ROLES.COORDINATOR && screen.name === "Assigned events") contents = <>{head(screen.name, screen.blurb)}<EventReviewScreen onNotice={showToast} /></>;
+  else if (role === ROLES.ORGANISER && screen.name === "New event request") contents = <>{head(selectedDraft ? "Event request" : screen.name, "Save a draft any time, or submit when ready.")}{selectedDraft && String(selectedDraft.status || "").toUpperCase() !== "DRAFT" && <DecisionSummary event={selectedDraft} onChanged={showToast} />}<EventRequestForm user={user} draft={selectedDraft} readOnly={Boolean(selectedDraft && selectedDraft.status && String(selectedDraft.status).toUpperCase() !== "DRAFT" && !(String(selectedDraft.status).toUpperCase() === "UNDER_REVIEW" && selectedDraft.open_clarification_id))} onSaved={(message, savedDraft) => { showToast(message); setSelectedDraft(savedDraft); if (!savedDraft) chooseScreen("My events"); }} /></>;
+  else if (role === ROLES.ORGANISER && screen.name === "My events") contents = <>{head("My events", "Your requests and drafts.", newEventRequest)}<EventList user={user} role={role} headerHosted onCreate={() => { setSelectedDraft(null); goTo("New event request"); }} onEdit={(draft) => { setSelectedDraft(draft); goTo("New event request"); }} onView={(event) => { setSelectedDraft(event); goTo("New event request"); }} onDeleted={(message) => showToast(message)} /></>;
+  else if (role === ROLES.COORDINATOR && screen.name === "Review queue") contents = <>{head(screen.name, screen.blurb)}<EventReviewScreen queueOnly onNotice={showToast} onBackChange={reportBack} onFindVenues={(event) => goTo("Venue catalogue", { event })} /></>;
+  else if (role === ROLES.COORDINATOR && screen.name === "Assigned events") contents = <>{head(screen.name, screen.blurb)}<EventReviewScreen onNotice={showToast} initialEventId={reviewEventId} onBackChange={reportBack} onFindVenues={(event) => goTo("Venue catalogue", { event })} /></>;
+  else if (role === ROLES.COORDINATOR && screen.name === "Venue catalogue") contents = <>{head(screen.name, searchEvent ? `Shortlist for ${searchEvent.name || searchEvent.reference_no}.` : screen.blurb, viewCalendar)}<VenueSearch event={searchEvent} onBookVenue={(event, venue) => goTo("Venue bookings", { event, venue })} showCalendar={venueCalendarOpen} /></>;
+  else if (role === ROLES.COORDINATOR && screen.name === "Venue bookings") contents = <>{head(screen.name, screen.blurb, newBooking)}<VenueBookings user={user} creating={bookingFormOpen} onCreatingChange={setBookingFormOpen} event={bookingTarget.event} venue={bookingTarget.venue} onBackChange={reportBack} onViewEvent={(eventId) => goTo("Assigned events", { eventId })} /></>;
+  else if (role === ROLES.VENUE_STAFF && screen.name === "Venue catalogue") contents = <>{head(screen.name, screen.blurb, viewCalendar)}<VenueCatalogue user={user} role={role} showCalendar={venueCalendarOpen} /></>;
+  else if (role === ROLES.VENUE_STAFF && screen.name === "Availability calendar") contents = <>{head(screen.name, screen.blurb)}<VenueAvailabilityCalendar user={user} role={role} /></>;
   else contents = <>{head(screen.name, screen.blurb)}<p className="cs-panel-note">This screen is ready to be connected to its workflow in a later increment.</p></>;
 
   return <div className={navCollapsed ? "cs-workspace cs-workspace-collapsed" : "cs-workspace"}><div className="cs-workspace-body"><nav className="cs-sidebar" aria-label="Your screens"><div className="cs-sidebar-head"><span className="cs-brand"><span className="cs-brand-mark" aria-hidden="true" /><span className="cs-sidebar-label">ConnectSphere</span></span><button type="button" className="cs-sidebar-toggle" aria-expanded={!navCollapsed} aria-label={navCollapsed ? "Expand navigation" : "Collapse navigation"} title={navCollapsed ? "Expand navigation" : "Collapse navigation"} onClick={() => setNavCollapsed((value) => !value)}><Icon name={navCollapsed ? "chevron-right" : "chevron-left"} /></button></div><div className="cs-sidebar-screens">{meta.screens.filter((item) => !item.hidden).map((item) => <button key={item.name} type="button" title={item.name} className={item.name === screen.name && !forbidden ? "cs-sidebar-item cs-sidebar-item-active" : "cs-sidebar-item"} onClick={() => chooseScreen(item.name)}><Icon name={item.icon} /><span className="cs-sidebar-label">{item.name}</span></button>)}</div><div className="cs-sidebar-user"><div className="cs-sidebar-user-row"><span className="cs-sidebar-avatar" aria-hidden="true">{(user.email || "?").charAt(0).toUpperCase()}</span><div className="cs-sidebar-label cs-sidebar-user-detail"><span className="cs-pill">{meta.label}</span><span className="cs-user-email" title={user.email}>{user.email}</span></div></div><button className="cs-btn cs-btn-ghost cs-sidebar-logout" type="button" title="Log out" aria-label="Log out" onClick={() => { window.location.hash = "#/sign-in"; signOut(auth); }}><Icon name="log-out" /><span className="cs-sidebar-label">Log out</span></button></div></nav><main className="cs-panel-scroll"><div className="cs-panel">{contents}</div></main></div><Toasts toasts={toasts} onDismiss={dismissToast} /></div>;

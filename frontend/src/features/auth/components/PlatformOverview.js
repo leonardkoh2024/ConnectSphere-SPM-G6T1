@@ -5,37 +5,44 @@
 import React from "react";
 import { ROLE_META } from "../../../domain/roles";
 import { PORTALS } from "../../../domain/portals";
+import Icon from "../../../app/Icon";
 
 const FEATURES = [
   {
+    icon: "draft",
     title: "Requests and drafts",
     body:
-      "Organisers submit complete event requests, or park an incomplete one as a draft and finish it later."
+      "Submit a request, or save a draft for later."
   },
   {
+    icon: "clipboard",
     title: "Review, approval and assignment",
     body:
-      "Coordinators request clarification, approve or reject, and pick up the events assigned to them."
+      "Coordinators clarify, approve or reject."
   },
   {
+    icon: "building",
     title: "Venue catalogue and availability",
     body:
-      "Capacity, facilities, accessibility and supported layouts, alongside a calendar of what is already booked."
+      "Capacity, facilities and layouts at a glance."
   },
   {
+    icon: "check",
     title: "Booking approval and conflict detection",
     body:
-      "Venue Staff decide on each request, and overlapping bookings are caught before a venue is double-booked."
+      "No venue is ever double-booked."
   },
   {
+    icon: "equipment",
     title: "Equipment and reservations",
     body:
-      "Technical Support Staff check what is genuinely free and reserve it against a specific event."
+      "Reserve only what is genuinely free."
   },
   {
+    icon: "bell",
     title: "Registration and notifications",
     body:
-      "Attendees register and withdraw, while everyone involved is told when something meaningful changes."
+      "Attendees sign up; everyone stays informed."
   }
 ];
 
@@ -43,31 +50,31 @@ const WORKFLOW = [
   {
     step: "01",
     title: "Request",
-    body: "An Event Organiser submits the event, or saves a draft to finish later."
+    body: "An organiser submits the event."
   },
   {
     step: "02",
     title: "Review",
     body:
-      "An Event Coordinator is assigned, asks for anything missing, then approves or rejects."
+      "A coordinator approves or rejects it."
   },
   {
     step: "03",
     title: "Venue",
     body:
-      "Suitable venues are shortlisted, requested, and approved or rejected by Venue Staff."
+      "Venue Staff confirm a venue."
   },
   {
     step: "04",
     title: "Equipment",
     body:
-      "Technical Support Staff confirm availability and reserve equipment for the event date and time."
+      "Technical Support reserve equipment."
   },
   {
     step: "05",
     title: "Attend",
     body:
-      "Registration opens, the event is confirmed, and later changes flow back through the same workflow."
+      "Registration opens and the event runs."
   }
 ];
 
@@ -75,15 +82,12 @@ function PlatformOverview() {
   return (
     <>
       <section className="cs-section" id="platform">
-        <h2>Everything the event workflow needs</h2>
-        <p className="cs-section-lede">
-          One connected workflow rather than a pile of spreadsheets and email
-          threads.
-        </p>
+        <h2>Everything an event needs</h2>
 
         <div className="cs-grid">
           {FEATURES.map((feature) => (
-            <article className="cs-card" key={feature.title}>
+            <article className="cs-card cs-card-feature" key={feature.title}>
+              <span className="cs-feature-icon" aria-hidden="true"><Icon name={feature.icon} /></span>
               <h3>{feature.title}</h3>
               <p>{feature.body}</p>
             </article>
@@ -92,11 +96,7 @@ function PlatformOverview() {
       </section>
 
       <section className="cs-section cs-section-alt" id="roles">
-        <h2>Signed in as you, not as everyone</h2>
-        <p className="cs-section-lede">
-          Your portal and work email set your role, and your role sets your
-          screens.
-        </p>
+        <h2>One login, the right screens</h2>
 
         <div className="cs-grid cs-grid-roles">
           {Object.entries(ROLE_META).map(([roleId, meta]) => (
@@ -130,10 +130,6 @@ function PlatformOverview() {
 
       <section className="cs-cta">
         <h2>Ready when your next event is</h2>
-        <p>
-          Pick your portal, log in, and pick up exactly where your role leaves
-          off.
-        </p>
         <a className="cs-btn cs-btn-light" href="#sign-in">
           Go to log in
         </a>

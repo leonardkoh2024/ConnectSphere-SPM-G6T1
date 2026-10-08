@@ -12,6 +12,7 @@ import { LAYOUTS, FACILITIES, ACCESSIBILITY_OPTIONS, PREFERRED_LOCATIONS, EQUIPM
 import { NO, UNANSWERED, YES, createReferenceNo, equipmentLinesWithContent, todayIso, validateEventRequest } from "../../domain/eventRequest";
 import ToggleList from "./components/ToggleList";
 import YesNo from "./components/YesNo";
+import Icon from "../../app/Icon";
 
 // A red star marks a field that has to be filled in before the request can be
 // submitted. A draft is never blocked by one.
@@ -70,7 +71,9 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
   const [issues, setIssues] = useState([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const isReadOnly = readOnly || (draft && String(draft.status || "").toUpperCase() !== "DRAFT");
+  const status = String(draft?.status || "").toUpperCase();
+  const isAmend = status === "UNDER_REVIEW" && Boolean(draft?.open_clarification_id);
+  const isReadOnly = readOnly || (draft && status && status !== "DRAFT" && !isAmend);
   const hasKnownPreferredLocation = PREFERRED_LOCATIONS.some(({ value }) => value === form.preferredLocation);
 
   const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
@@ -154,27 +157,16 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
   // request, it does not let them save an impossible one.
   const save = async (submit) => {
     if (isReadOnly) return;
-    const found = validateEventRequest(form, { mode: submit ? "submit" : "draft" });
+    const found = validateEventRequest(form, { mode: isAmend || !submit ? "draft" : "submit" });
     setIssues(found);
     if (found.length) return;
     setError("");
     setBusy(true);
     try {
-      // B9 AC5 — a request keeps the reference number it was first given, so the
-      // one an organiser was shown still finds their request after they submit it.
       const referenceNo = draft?.reference_no || createReferenceNo();
       const answeredAs = (answer) => (answer === YES ? true : answer === NO ? false : null);
       const needsRegistration = form.registrationRequired === YES;
-      const eventData = {
-        reference_no: referenceNo,
-        organiser_id: user.uid,
-        // C1 — the backend is the only writer of coordinator_id (firestore.rules
-        // enforces this); it is unconditionally null here because this form never
-        // sets it. Note for whoever opens editing back up after submission: the
-        // rules also require this field to round-trip unchanged on update, so
-        // once an event is assigned, any further updateDoc through this eventData
-        // shape must stop forcing it to null, or the whole write will be rejected.
-        coordinator_id: null,
+      const fieldData = {
         name: form.name.trim(),
         purpose: form.purpose.trim(),
         description: form.description.trim(),
@@ -182,9 +174,6 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
         start_time: form.startTime || null,
         end_time: form.endTime || null,
         expected_attendance: form.expectedAttendance ? Number(form.expectedAttendance) : null,
-        status: submit ? "SUBMITTED" : "DRAFT",
-        // A Yes/No question that has not been answered yet is stored as null, so a
-        // draft comes back with the question still open rather than silently No.
         equipment_required: answeredAs(form.equipmentRequired),
         registration_required: answeredAs(form.registrationRequired),
         registration_capacity: needsRegistration && form.registrationCapacity ? Number(form.registrationCapacity) : null,
@@ -192,10 +181,19 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
         registration_open_time: needsRegistration ? form.registrationOpenTime || null : null,
         registration_close_date: needsRegistration ? form.registrationCloseDate || null : null,
         registration_close_time: needsRegistration ? form.registrationCloseTime || null : null,
-        created_by: user.uid,
-        updated_at: serverTimestamp(),
-        ...(submit ? { submitted_at: serverTimestamp() } : {})
+        updated_at: serverTimestamp()
       };
+      const eventData = isAmend
+        ? fieldData
+        : {
+            reference_no: referenceNo,
+            organiser_id: user.uid,
+            coordinator_id: null,
+            ...fieldData,
+            status: submit ? "SUBMITTED" : "DRAFT",
+            created_by: user.uid,
+            ...(submit ? { submitted_at: serverTimestamp() } : {})
+          };
       let eventRef;
       if (draft) {
         eventRef = doc(db, "events", draft.id);
@@ -244,18 +242,13 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
       await addDoc(collection(db, "event_history"), {
         event_id: eventRef.id,
         actor_id: user.uid,
-        action_type: submit ? "EVENT_SUBMITTED" : "DRAFT_CREATED",
-        description: submit ? "Event request submitted by organiser." : "Event draft created by organiser.",
+        action_type: isAmend ? "CLARIFICATION_AMENDED" : submit ? "EVENT_SUBMITTED" : "DRAFT_CREATED",
+        description: isAmend
+          ? "Organiser amended the request while answering a clarification."
+          : submit ? "Event request submitted by organiser." : "Event draft created by organiser.",
         created_at: serverTimestamp()
       });
-      // C1 — hand the new submission to the backend for coordinator assignment.
-      // firestore.rules stops this form writing coordinator_id itself, so this is
-      // the only path an event gets one. Best-effort: the event is already
-      // correctly SUBMITTED regardless of whether this succeeds, and the
-      // assignment is safe to retry later since the backend only assigns once
-      // (guarded on coordinator_id being empty) — so a failure here is logged
-      // rather than surfaced as a failed submission.
-      if (submit) {
+      if (submit && !isAmend) {
         try {
           await fetch("/api/coordinator-assignment/assign", {
             method: "POST",
@@ -266,9 +259,11 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
           console.error("Could not assign a coordinator:", assignError);
         }
       }
+      if (isAmend) {
+        onSaved("Request details updated.", { ...draft, ...eventData, id: eventRef.id, status: draft.status, open_clarification_id: draft.open_clarification_id });
+        return;
+      }
       setForm(initialForm);
-      // B9 AC6 — the confirmation carries the reference number, which is the only
-      // thing the organiser can quote when they follow the request up.
       onSaved(
         submit
           ? `Event request ${referenceNo} submitted for coordinator review.`
@@ -287,9 +282,9 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
     // noValidate, so the browser's own "please fill out this field" bubble does
     // not fire first and hide the list B9 AC4 asks for. The required attributes
     // stay for assistive technology.
-    <form className="cs-event-form" noValidate onSubmit={(event) => { event.preventDefault(); save(true); }}>
-      {draft && <p className="cs-panel-note">{isReadOnly ? `Viewing request ${draft.reference_no}. This request is no longer editable.` : `Editing draft ${draft.reference_no}. Submit when you are ready for coordinator review.`}</p>}
-      {!isReadOnly && <p className="cs-form-legend"><Required /> Compulsory. A draft can be saved with anything still missing.</p>}
+    <form className="cs-event-form" noValidate onSubmit={(event) => { event.preventDefault(); save(isAmend ? false : true); }}>
+      {draft && <p className="cs-panel-note">{isReadOnly ? `Viewing request ${draft.reference_no}. This request is no longer editable.` : isAmend ? `A clarification is open on ${draft.reference_no}. You can amend these details and send your response below.` : `Editing draft ${draft.reference_no}. Submit when you are ready for coordinator review.`}</p>}
+      {!isReadOnly && !isAmend && <p className="cs-form-legend"><Required /> Compulsory. A draft can be saved with anything still missing.</p>}
       <section className="cs-form-section">
         <h2>Core details</h2>
         <div className="cs-form-grid">
@@ -352,7 +347,7 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
                 {form.equipmentLines.length > 1 && !isReadOnly && <button type="button" className="cs-btn cs-btn-ghost" onClick={() => removeEquipmentLine(line.id)}>Remove line</button>}
               </div>
             ))}
-            {!isReadOnly && <button type="button" className="cs-btn cs-btn-secondary" onClick={addEquipmentLine}>Add equipment line</button>}
+            {!isReadOnly && <button type="button" className="cs-btn cs-btn-secondary" onClick={addEquipmentLine}><Icon name="plus" />Add equipment line</button>}
           </div>
         )}
       </section>
@@ -411,7 +406,7 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
         </div>
       )}
       {error && <p className="cs-error" role="alert">{error}</p>}
-      {!isReadOnly && <div className="cs-form-actions"><button type="button" className="cs-btn cs-btn-ghost" disabled={busy} onClick={() => save(false)}>Save draft</button><button className="cs-btn cs-btn-primary" disabled={busy}>{busy ? "Saving…" : "Submit request"}</button></div>}
+      {!isReadOnly && <div className="cs-form-actions">{isAmend ? <button className="cs-btn cs-btn-primary" disabled={busy}>{busy ? "Saving…" : "Save changes"}</button> : <><button type="button" className="cs-btn cs-btn-ghost" disabled={busy} onClick={() => save(false)}>Save draft</button><button className="cs-btn cs-btn-primary" disabled={busy}>{busy ? "Saving…" : "Submit request"}</button></>}</div>}
     </form>
   );
 }

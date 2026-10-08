@@ -33,10 +33,13 @@ test('TC-060/061 requests clarification only after a non-empty message', async (
   await openRequest();
   await userEvent.click(screen.getByRole('button', { name: /request clarification/i }));
   await userEvent.click(screen.getByRole('button', { name: /send request/i }));
-  expect(screen.getByText(/clarification message is required/i)).toBeInTheDocument();
+  expect(screen.getByRole('alert')).toHaveTextContent('Clarification message is required.');
+  expect(screen.getByRole('textbox')).toHaveAttribute('aria-invalid', 'true');
   expect(reviewApi.clarify).not.toHaveBeenCalled();
 
   await userEvent.type(screen.getByRole('textbox'), 'Please confirm attendance.');
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(screen.getByRole('textbox')).toHaveAttribute('aria-invalid', 'false');
   await userEvent.click(screen.getByRole('button', { name: /send request/i }));
   await waitFor(() => expect(reviewApi.clarify).toHaveBeenCalledWith('e1', 'Please confirm attendance.'));
 });
@@ -61,8 +64,11 @@ test('TC-072/073 requires a rejection reason and sends the recorded reason', asy
   await openRequest();
   await userEvent.click(screen.getByRole('button', { name: /reject request/i }));
   await userEvent.click(screen.getByRole('button', { name: /reject event/i }));
-  expect(screen.getByText(/rejection reason is required/i)).toBeInTheDocument();
+  expect(screen.getByRole('alert')).toHaveTextContent('Rejection reason is required.');
+  expect(screen.getByRole('textbox')).toHaveAttribute('aria-invalid', 'true');
+  expect(reviewApi.reject).not.toHaveBeenCalled();
   await userEvent.type(screen.getByRole('textbox'), 'No suitable venue can be secured.');
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: /reject event/i }));
   await waitFor(() => expect(reviewApi.reject).toHaveBeenCalledWith('e1', 'No suitable venue can be secured.'));
 });

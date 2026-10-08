@@ -46,7 +46,7 @@ export const ROLE_META = {
         name: "My events",
         icon: "calendar",
         blurb:
-          "Every request you have created, drafts included. Follow each one through submitted, under review, approved, planning, confirmed, completed, cancelled or rejected."
+          "Your requests and drafts, and where each one stands."
       },
       {
         // Reached from the button on My events, not from the sidebar: it is a task
@@ -57,25 +57,25 @@ export const ROLE_META = {
         icon: "calendar-add",
         hidden: true,
         blurb:
-          "Capture the event name, purpose, proposed date and time, expected attendance, venue and equipment requirements, accessibility needs and registration needs."
+          "Tell us what your event needs."
       },
       {
         name: "Change requests",
         icon: "change",
         blurb:
-          "Ask for permitted changes after submission and see how the Event Coordinator processed them."
+          "Request changes to a submitted event."
       },
       {
         name: "Registrations",
         icon: "people",
         blurb:
-          "Review who has registered for the events you own, where registration is enabled."
+          "Who has registered for your events."
       },
       {
         name: "Notifications",
         icon: "bell",
         blurb:
-          "Clarification requests, approval and rejection decisions, coordinator assignment and booking outcomes."
+          "Decisions and updates on your events."
       }
     ]
   },
@@ -88,42 +88,42 @@ export const ROLE_META = {
         name: "Review queue",
         icon: "inbox",
         blurb:
-          "Work through submitted requests: ask the organiser for clarification or amendments, then approve or reject."
+          "Submitted requests waiting for your decision."
       },
       {
         name: "Assigned events",
         icon: "clipboard",
         blurb:
-          "The events where you are the main internal point of contact, including any reassigned to you."
+          "Events you coordinate."
       },
       {
-        name: "Venue search",
+        name: "Venue catalogue",
         icon: "search",
         blurb:
-          "Filter the venue catalogue by date, time, expected attendance, location, capacity, accessibility, layout and required facilities, with suitability flagged for you."
+          "Browse and filter every venue."
       },
       {
         name: "Venue bookings",
         icon: "building",
         blurb:
-          "Send booking requests to Venue Staff and track approvals, rejections and the reasons behind them."
+          "Request venues and track the replies."
       },
       {
         name: "Equipment requests",
         icon: "equipment",
         blurb:
-          "Record equipment types, quantities and technical requirements for Technical Support Staff to action."
+          "Request equipment for your events."
       },
       {
         name: "Registrations",
         icon: "people",
-        blurb: "Registration information for the events you coordinate."
+        blurb: "Registrations for your events."
       },
       {
         name: "Notifications",
         icon: "bell",
         blurb:
-          "New submissions, important event changes and venue or equipment decisions."
+          "Submissions, changes and decisions."
       }
     ]
   },
@@ -136,24 +136,24 @@ export const ROLE_META = {
         name: "Booking requests",
         icon: "inbox",
         blurb:
-          "Assess pending requests against the event timing and requirements, then approve or reject with a reason."
+          "Approve or reject venue requests."
       },
       {
         name: "Venue catalogue",
         icon: "building",
         blurb:
-          "Maintain location, capacity, facilities, accessibility, supported room layouts and operating information."
+          "Keep your venues up to date."
       },
       {
         name: "Availability calendar",
         icon: "calendar",
         blurb:
-          "See confirmed bookings and recorded unavailability so overlapping bookings are caught before they are accepted."
+          "Bookings and blocked dates by venue."
       },
       {
         name: "Notifications",
         icon: "bell",
-        blurb: "Incoming requests and changes that affect a confirmed booking."
+        blurb: "New requests and booking changes."
       }
     ]
   },
@@ -166,24 +166,24 @@ export const ROLE_META = {
         name: "Equipment queue",
         icon: "equipment",
         blurb:
-          "Review requested equipment and update the request as arrangements are made."
+          "Equipment requests to action."
       },
       {
         name: "Availability check",
         icon: "check",
         blurb:
-          "Confirm whether enough suitable equipment is free for the event date and time, excluding items already committed elsewhere."
+          "Check what equipment is free."
       },
       {
         name: "Reservations",
         icon: "bookmark",
         blurb:
-          "Reserve equipment against an event so the reserved quantity is no longer available to overlapping events."
+          "Reserve equipment for an event."
       },
       {
         name: "Notifications",
         icon: "bell",
-        blurb: "New equipment requests and event changes that affect a reservation."
+        blurb: "New requests and reservation changes."
       }
     ]
   },
@@ -196,18 +196,18 @@ export const ROLE_META = {
         name: "Browse events",
         icon: "search",
         blurb:
-          "Event information published for attendees, for events where registration is enabled."
+          "Events open for registration."
       },
       {
         name: "My registrations",
         icon: "ticket",
-        blurb: "Check your registration status or withdraw a registration."
+        blurb: "Your registrations."
       },
       {
         name: "Notifications",
         icon: "bell",
         blurb:
-          "Registration updates, confirmation, important changes and cancellations."
+          "Updates on events you registered for."
       }
     ]
   }

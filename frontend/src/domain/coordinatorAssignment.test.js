@@ -1,7 +1,7 @@
 // TC-073, TC-074, TC-075 — the rotation rule itself, in isolation from Firestore
 // and the backend transaction that calls it.
 
-import { pickNextCoordinator } from "./coordinatorAssignment";
+import { pickNextCoordinator } from "./coordinatorAssignment.mjs";
 
 const C1 = { id: "c1", coordinator_seq: 1 };
 const C2 = { id: "c2", coordinator_seq: 2 };
