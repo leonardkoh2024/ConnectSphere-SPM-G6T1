@@ -29,8 +29,12 @@ async function openRequest() {
   await screen.findByRole('button', { name: /back to events/i });
 }
 
+// The clarification exchange and its action are on their own tab.
+const openClarifications = () => userEvent.click(screen.getByRole('tab', { name: /^Clarifications/ }));
+
 test('TC-060/061 requests clarification only after a non-empty message', async () => {
   await openRequest();
+  await openClarifications();
   await userEvent.click(screen.getByRole('button', { name: /request clarification/i }));
   await userEvent.click(screen.getByRole('button', { name: /send request/i }));
   expect(screen.getByRole('alert')).toHaveTextContent('Clarification message is required.');
@@ -48,13 +52,16 @@ test('TC-062 hides clarification and rejection actions while awaiting the organi
   reviewApi.detail.mockResolvedValue(detail({ open_clarification_id: 'q1' }));
   await openRequest();
   expect(screen.getByText(/awaiting the organiser/i)).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /request clarification/i })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /reject request/i })).not.toBeInTheDocument();
+  await openClarifications();
+  expect(screen.getByText(/awaiting the organiser/i)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /request clarification/i })).not.toBeInTheDocument();
 });
 
 test('TC-063 retains the timestamped clarification exchange', async () => {
   reviewApi.detail.mockResolvedValue({ ...detail(), clarifications: [{ id: 'q1', message: 'Confirm attendance', created_at: '2026-09-23T10:00:00Z' }], responses: [{ id: 'a1', message: 'It is 150.', created_at: '2026-09-23T11:00:00Z' }] });
   await openRequest();
+  await openClarifications();
   const history = screen.getByRole('heading', { name: /clarification history/i }).parentElement;
   expect(within(history).getByText('Confirm attendance')).toBeInTheDocument();
   expect(within(history).getByText('It is 150.')).toBeInTheDocument();
@@ -132,4 +139,45 @@ test('TC-128 sorting by proposed date orders ascending, then descending on toggl
 
   await userEvent.click(screen.getByRole('button', { name: /sort by proposed date/i }));
   expect(rowNames()).toEqual(['Partner Summit', 'Careers Fair', 'Alumni Mixer']);
+});
+
+// The event detail page is split into tabs. TC-276 – TC-278 in docs/test-cases.md.
+describe('the coordinator event detail tabs', () => {
+  test('TC-276 the detail opens on the request, with the clarifications on a second tab', async () => {
+    reviewApi.detail.mockResolvedValue({ ...detail(), clarifications: [{ id: 'q1', message: 'Confirm attendance', created_at: '2026-09-23T10:00:00Z' }], responses: [] });
+    await openRequest();
+
+    expect(screen.getByRole('tab', { name: 'Event request' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: /^Clarifications/ })).toHaveTextContent('1');
+    expect(screen.getByText('Annual summit')).toBeVisible();
+    expect(screen.queryByRole('heading', { name: /clarification history/i })).not.toBeInTheDocument();
+
+    await openClarifications();
+    expect(screen.getByRole('heading', { name: /clarification history/i })).toBeVisible();
+    expect(screen.getByText('Annual summit')).not.toBeVisible();
+  });
+
+  test('TC-277 Request clarification is on the Clarifications tab; Reject and Reassign stay on the request', async () => {
+    await openRequest();
+
+    expect(screen.queryByRole('button', { name: /request clarification/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reject request/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reassign event/i })).toBeInTheDocument();
+
+    await openClarifications();
+    expect(screen.getByRole('button', { name: /request clarification/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reject request/i })).not.toBeInTheDocument();
+  });
+
+  test('TC-278 switching tab closes a half-written action form', async () => {
+    await openRequest();
+    await userEvent.click(screen.getByRole('button', { name: /reject request/i }));
+    expect(screen.getByRole('heading', { name: 'Reject request' })).toBeInTheDocument();
+
+    await openClarifications();
+    await userEvent.click(screen.getByRole('tab', { name: 'Event request' }));
+
+    expect(screen.queryByRole('heading', { name: 'Reject request' })).not.toBeInTheDocument();
+    expect(reviewApi.reject).not.toHaveBeenCalled();
+  });
 });

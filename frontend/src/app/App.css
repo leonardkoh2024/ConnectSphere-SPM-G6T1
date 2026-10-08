@@ -1671,6 +1671,62 @@ a.cs-btn-ghost:hover {
 .cs-review-heading h2 { margin: 0 0 4px; font-size: 22px; }
 .cs-review-heading p { margin: 0; color: var(--cs-muted); }
 
+/* The event detail page's tab bar: the request and its clarifications. An
+   underline marks the open tab, unlike the landing page's portal cards (.cs-tab),
+   because these are sections of one page rather than a choice of door. */
+.cs-detail-tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 24px;
+  border-bottom: 1px solid var(--cs-line);
+  overflow-x: auto;
+}
+
+.cs-detail-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin-bottom: -1px;
+  padding: 0 16px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--cs-muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.cs-detail-tab:hover { color: var(--cs-ink); }
+.cs-detail-tab:focus-visible { outline: 3px solid var(--cs-focus-ring); outline-offset: -3px; border-radius: var(--cs-radius-s); }
+
+.cs-detail-tab-active {
+  border-bottom-color: var(--cs-accent);
+  color: var(--cs-accent-active);
+}
+
+.cs-detail-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--cs-radius-round);
+  background: var(--cs-surface-alt);
+  color: var(--cs-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The organiser owes an answer: the count takes the accent, like the inbox badge. */
+.cs-detail-tab-count-attention { background: var(--cs-accent); color: var(--cs-on-accent); }
+
+.cs-detail-tabpanel > :first-child { margin-top: 24px; }
+
 .cs-exchange { display: grid; gap: 12px; margin-top: 24px; }
 .cs-exchange h3, .cs-action-box h3 { margin: 0; font-size: 16px; }
 .cs-exchange article { padding: 16px; border: 1px solid var(--cs-line); background: var(--cs-surface); border-radius: var(--cs-radius-l); }

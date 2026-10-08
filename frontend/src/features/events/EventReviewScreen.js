@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { statusTone } from "../../domain/events";
-import { canFindVenues, chronologicalClarifications } from "../../domain/eventReview";
+import { EVENT_TABS, canFindVenues, clarificationSummary } from "../../domain/eventReview";
 import { ALL_STATUSES, buildAssignedView, statusOptions } from "../../domain/assignedEvents";
 import { reviewApi } from "./reviewApi";
 import RecordLead from "../../components/RecordLead";
 import Icon from "../../app/Icon";
+import EventDetailTabs from "./components/EventDetailTabs";
+import ClarificationThread from "./components/ClarificationThread";
 
 const shownTime = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Not recorded";
 
@@ -18,6 +20,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState(EVENT_TABS.REQUEST);
   // C2 / SCRUM-103 — AC3 controls for the "Assigned events" list.
   const [statusFilter, setStatusFilter] = useState(ALL_STATUSES);
   const [sortDir, setSortDir] = useState("asc");
@@ -68,6 +71,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
         await loadList();
       }
       const data = await reviewApi.detail(eventId);
+      if (eventId !== selected) setTab(EVENT_TABS.REQUEST);
       setSelected(eventId); setDetail(data); setMode(""); setMessage(""); setTarget("");
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
@@ -93,32 +97,58 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     const canDecide = event.editable && event.status === "UNDER_REVIEW" && !hasOpen;
     const canReassign = event.editable && !["COMPLETED", "CANCELLED", "REJECTED"].includes(event.status);
     const showFindVenues = typeof onFindVenues === "function" && canFindVenues(event);
-    const exchange = chronologicalClarifications(detail.clarifications, detail.responses);
-    return <div className="cs-review-detail">
-      {!onBackChange && <button type="button" className="cs-btn cs-btn-ghost cs-back" onClick={closeDetail}><Icon name="chevron-left" />Back to events</button>}
-      {error && !mode && <p className="cs-error" role="alert">{error}</p>}
-      {!event.editable && <p className="cs-panel-note">This event was reassigned. You can view the assignment record, but only the current coordinator can make changes.</p>}
-      <div className="cs-review-heading"><div><h2>{event.name}</h2><p>{event.reference_no}</p></div><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div>
+    const summary = clarificationSummary(detail);
+    const startMode = (next) => { setMode(next); setMessage(""); setError(""); };
+    // One form at a time, shown on the tab its action belongs to: Request
+    // clarification on Clarifications, Reject and Reassign on the request.
+    const actionBox = mode && <section className="cs-form-section cs-action-box">
+      <h3>{mode === "clarify" ? "Request clarification" : mode === "reject" ? "Reject request" : "Reassign event"}</h3>
+      {mode === "reassign" ? <label className="cs-field"><span className="cs-field-name">New active coordinator</span><select value={target} onChange={(e) => setTarget(e.target.value)}><option value="">Choose a coordinator</option>{detail.coordinators.filter((item) => item.id !== event.coordinator_id).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
+        : <label className="cs-field"><span className="cs-field-name">{mode === "reject" ? "Reason" : "Message"}<span className="cs-required" aria-hidden="true">*</span></span><textarea rows="4" required value={message} aria-invalid={Boolean(error)} aria-describedby={error ? "cs-review-action-error" : undefined} onChange={(e) => { setMessage(e.target.value); if (error) setError(""); }} /></label>}
+      {error && <p id="cs-review-action-error" className="cs-error" role="alert">{error}</p>}
+      <div className="cs-form-actions"><button type="button" className="cs-btn cs-btn-ghost" onClick={() => { setMode(""); setError(""); }}>Cancel</button><button type="button" className={mode === "reject" ? "cs-btn cs-btn-ghost cs-record-danger" : "cs-btn cs-btn-primary"} disabled={busy} onClick={() => act(mode, mode === "clarify" ? "Clarification request sent." : mode === "reject" ? "Event request rejected." : "Event reassigned.")}>{busy ? "Saving…" : mode === "clarify" ? "Send request" : mode === "reject" ? "Reject event" : "Reassign"}</button></div>
+    </section>;
+
+    const requestTab = <>
       <dl className="cs-detail-grid">
         <div><dt>Event date</dt><dd>{event.event_date}</dd></div><div><dt>Time</dt><dd>{event.start_time}–{event.end_time}</dd></div>
         <div><dt>Expected attendance</dt><dd>{event.expected_attendance}</dd></div><div><dt>Assigned coordinator</dt><dd>{detail.coordinator?.name}</dd></div>
         <div className="cs-detail-wide"><dt>Purpose</dt><dd>{event.purpose}</dd></div><div className="cs-detail-wide"><dt>Description</dt><dd>{event.description}</dd></div>
         {event.decision_reason && <div className="cs-detail-wide"><dt>Decision reason</dt><dd>{event.decision_reason} · {shownTime(event.decided_at)}</dd></div>}
       </dl>
-      {exchange.length > 0 && <section className="cs-exchange"><h3>Clarification history</h3>{exchange.map((item) => <article key={`${item.kind}-${item.id}`}><strong>{item.kind === "QUESTION" ? "Coordinator" : "Organiser"}</strong><time>{shownTime(item.created_at)}</time><p>{item.message}</p></article>)}</section>}
-      {hasOpen && <p className="cs-attention">Awaiting the organiser. Clarify and Reject are unavailable until they respond.</p>}
       {(canDecide || canReassign || showFindVenues) && <div className="cs-review-actions">
         {showFindVenues && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => onFindVenues(event)}>Find venues</button>}
-        {canDecide && <><button className="cs-btn cs-btn-secondary" type="button" onClick={() => { setMode("clarify"); setMessage(""); setError(""); }}>Request clarification</button><button className="cs-btn cs-btn-ghost cs-record-danger" type="button" onClick={() => { setMode("reject"); setMessage(""); setError(""); }}>Reject request</button></>}
+        {canDecide && <button className="cs-btn cs-btn-ghost cs-record-danger" type="button" onClick={() => startMode("reject")}>Reject request</button>}
         {canReassign && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => { setMode("reassign"); setError(""); }}>Reassign event</button>}
       </div>}
-      {mode && <section className="cs-form-section cs-action-box">
-        <h3>{mode === "clarify" ? "Request clarification" : mode === "reject" ? "Reject request" : "Reassign event"}</h3>
-        {mode === "reassign" ? <label className="cs-field"><span className="cs-field-name">New active coordinator</span><select value={target} onChange={(e) => setTarget(e.target.value)}><option value="">Choose a coordinator</option>{detail.coordinators.filter((item) => item.id !== event.coordinator_id).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
-          : <label className="cs-field"><span className="cs-field-name">{mode === "reject" ? "Reason" : "Message"}<span className="cs-required" aria-hidden="true">*</span></span><textarea rows="4" required value={message} aria-invalid={Boolean(error)} aria-describedby={error ? "cs-review-action-error" : undefined} onChange={(e) => { setMessage(e.target.value); if (error) setError(""); }} /></label>}
-        {error && <p id="cs-review-action-error" className="cs-error" role="alert">{error}</p>}
-        <div className="cs-form-actions"><button type="button" className="cs-btn cs-btn-ghost" onClick={() => { setMode(""); setError(""); }}>Cancel</button><button type="button" className={mode === "reject" ? "cs-btn cs-btn-ghost cs-record-danger" : "cs-btn cs-btn-primary"} disabled={busy} onClick={() => act(mode, mode === "clarify" ? "Clarification request sent." : mode === "reject" ? "Event request rejected." : "Event reassigned.")}>{busy ? "Saving…" : mode === "clarify" ? "Send request" : mode === "reject" ? "Reject event" : "Reassign"}</button></div>
-      </section>}
+      {mode !== "clarify" && actionBox}
+    </>;
+
+    const clarificationsTab = <>
+      <ClarificationThread clarifications={detail.clarifications} responses={detail.responses} />
+      {canDecide && mode !== "clarify" && <div className="cs-review-actions"><button className="cs-btn cs-btn-secondary" type="button" onClick={() => startMode("clarify")}>Request clarification</button></div>}
+      {mode === "clarify" && actionBox}
+    </>;
+
+    // Switching tab drops a half-open form: it belongs to the tab it was opened on.
+    const changeTab = (next) => { setTab(next); setMode(""); setError(""); };
+
+    return <div className="cs-review-detail">
+      {!onBackChange && <button type="button" className="cs-btn cs-btn-ghost cs-back" onClick={closeDetail}><Icon name="chevron-left" />Back to events</button>}
+      {error && !mode && <p className="cs-error" role="alert">{error}</p>}
+      {!event.editable && <p className="cs-panel-note">This event was reassigned. You can view the assignment record, but only the current coordinator can make changes.</p>}
+      <div className="cs-review-heading"><div><h2>{event.name}</h2><p>{event.reference_no}</p></div><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div>
+      {hasOpen && <p className="cs-attention">Awaiting the organiser. Clarify and Reject are unavailable until they respond.</p>}
+      <EventDetailTabs
+        label="Event request sections"
+        idPrefix={`review-${event.id}`}
+        active={tab}
+        onChange={changeTab}
+        tabs={[
+          { id: EVENT_TABS.REQUEST, label: "Event request", content: requestTab },
+          { id: EVENT_TABS.CLARIFICATIONS, label: "Clarifications", count: summary.requests, content: clarificationsTab }
+        ]}
+      />
     </div>;
   }
 

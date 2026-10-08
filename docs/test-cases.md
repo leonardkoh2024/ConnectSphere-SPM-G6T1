@@ -561,3 +561,39 @@ Pre-condition for the functional cases: an Event Coordinator is signed in and th
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TC-262 | Notifications are private and only ever marked read | firestore.rules in force | 1. Read another user's notification<br>2. Change a notification's message, recipient or mark it unread<br>3. Delete a notification | All three are refused; the only permitted update sets is_read true with read_at, on the user's own notification | | Not Executed | AC2 + AC3 + AC4 - assert via `firestoreRules.test.js` |
 | TC-284 | A notification is only ever addressed to someone related to its event | firestore.rules in force | Attempt to create a notification for a user who is neither the event's organiser nor its coordinator, or from a user not related to the event | Refused; every create branch requires the writer to be related to the event and ties the recipient to its organiser_id or coordinator_id | | Not Executed | AC2 - assert via `firestoreRules.test.js` |
+
+---
+
+## UI — Event detail tabs: the request and its clarifications
+
+**Scope:** every event detail page is split into two tabs, **Event request** and **Clarifications**, under the event's heading. The organiser's page (`features/events/OrganiserEventDetail.js`) and the coordinator's review detail (`EventReviewScreen.js`) share the tab bar (`components/EventDetailTabs.js`) and the exchange (`components/ClarificationThread.js`). A draft has no tabs. The Clarifications tab counts the questions asked, and when the organiser owes an answer it is flagged and opens first. Request clarification moved to the Clarifications tab; Reject, Reassign and Find venues stay on the request. TC-060 – TC-063 now open the Clarifications tab before their steps, and TC-076 renders the decision from detail handed in by the page.
+
+**Unit test cases — `frontend/src/domain/eventReview.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-269 | The Clarifications tab counts questions and knows when an answer is owed | Details with two questions and one open; with none; and no detail | Call clarificationSummary(detail) | { requests: 2, awaitingOrganiser: true }; then 0 and false for the other two | | Not Executed | Tab badge |
+| TC-270 | Only an organiser who owes an answer starts on Clarifications | Open and answered clarifications; organiser and coordinator viewers | Call initialEventTab(detail, viewer) | Clarifications only for the organiser with an open question; Event request otherwise | | Not Executed | Default tab |
+
+**Functional test cases — `frontend/src/features/events/components/EventDetailTabs.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-271 | Tabs switch by click and keyboard, keeping the other panel mounted | Two tabs, a field typed into on the first | 1. Type into the field<br>2. Click Clarifications<br>3. Press ArrowRight, then End | The chosen tab is selected and its panel shown; focus follows the arrow keys; the typed value survives the switch | | Not Executed | Tab bar - ARIA tabs pattern |
+| TC-272 | The Clarifications tab shows its count and a reply-needed cue | Two clarifications, then one owed | Render the tab bar without and with attention | "Clarifications 2"; with attention the count takes the accent and the tab announces "reply needed" | | Not Executed | Tab bar - badge |
+
+**Functional test cases — `frontend/src/features/events/OrganiserEventDetail.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-273 | A draft is just the form | Organiser opens a draft | Render the event request page | No tabs; the editable form; no review detail is loaded | | Not Executed | Organiser page - draft |
+| TC-274 | A submitted request opens on its read-only request | Organiser opens a submitted request with no clarification | 1. Render the page<br>2. Open Clarifications | Event request tab selected, decision summary and read-only form shown; Clarifications says none has been requested | | Not Executed | Organiser page - C7 |
+| TC-275 | An owed answer opens Clarifications, and replying closes the amend window | Organiser opens a request Under Review with an open clarification | 1. Render the page<br>2. Type a response and send | Clarifications is selected with the question shown; the response is sent and confirmed; the form becomes read-only | | Not Executed | Organiser page - C5 |
+
+**Functional test cases — `frontend/src/features/events/EventReviewScreen.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-276 | The coordinator's detail opens on the request | Coordinator opens an event with one clarification | 1. Open the event<br>2. Open Clarifications | Event request selected with the details shown and "Clarifications 1"; the history appears only on its tab | | Not Executed | Coordinator page |
+| TC-277 | Each action is on the tab it belongs to | Coordinator opens an event Under Review | Look at each tab | Reject and Reassign on Event request; Request clarification on Clarifications | | Not Executed | Coordinator page - actions |
+| TC-278 | Switching tab closes a half-written action | Coordinator has opened the Reject form | Switch to Clarifications and back | The Reject form is gone and nothing was sent | | Not Executed | Coordinator page - actions |

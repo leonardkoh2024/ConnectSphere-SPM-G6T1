@@ -20,11 +20,10 @@ import useNotifications from '../features/notifications/useNotifications';
 
 jest.mock('../lib/firebase', () => ({ auth: {}, db: {} }));
 jest.mock('firebase/auth', () => ({ signOut: jest.fn() }));
-jest.mock('../features/events/EventRequestForm', () => ({ __esModule: true, default: () => null }));
+jest.mock('../features/events/OrganiserEventDetail', () => ({ __esModule: true, default: () => null }));
 jest.mock('../features/events/EventList', () => ({ __esModule: true, default: () => null }));
 // Reports the event it was asked to open, which is all View on a notification decides (J1).
 jest.mock('../features/events/EventReviewScreen', () => ({ __esModule: true, default: (props) => (props.initialEventId ? `review of ${props.initialEventId}` : null) }));
-jest.mock('../features/events/components/DecisionSummary', () => ({ __esModule: true, default: () => null }));
 // The venue screens report only whether they were asked for the shared calendar
 // (E4), which is the one thing the shell decides for them.
 jest.mock('../features/venues/VenueCatalogue', () => ({ __esModule: true, default: (props) => (props.showCalendar ? 'calendar open' : 'venue list') }));

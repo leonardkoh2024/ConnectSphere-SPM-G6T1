@@ -49,6 +49,21 @@ export const chronologicalClarifications = (clarifications = [], responses = [])
     ...responses.map((item) => ({ ...item, kind: "RESPONSE" }))
   ].sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
 
+// The event detail page is split into two tabs, the request and its
+// clarifications. The Clarifications tab counts the questions asked, and is
+// flagged when the organiser owes an answer — the one case where the viewer has
+// something to do there. The organiser lands on it in that case; everyone else
+// starts on the request.
+export const EVENT_TABS = { REQUEST: "request", CLARIFICATIONS: "clarifications" };
+
+export const clarificationSummary = (detail) => ({
+  requests: (detail?.clarifications || []).length,
+  awaitingOrganiser: Boolean(detail?.event?.open_clarification_id)
+});
+
+export const initialEventTab = (detail, { organiser = false } = {}) =>
+  organiser && clarificationSummary(detail).awaitingOrganiser ? EVENT_TABS.CLARIFICATIONS : EVENT_TABS.REQUEST;
+
 const SERVER_TIMESTAMP = "SERVER_TIMESTAMP";
 
 export const canAmendDuringClarification = (event) =>

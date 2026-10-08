@@ -8,7 +8,10 @@ import {
   canRequestClarification,
   canRespondToClarification,
   chronologicalClarifications,
+  clarificationSummary,
   cleanRequiredText,
+  EVENT_TABS,
+  initialEventTab,
   submitClarificationResponse
 } from './eventReview';
 
@@ -168,5 +171,26 @@ describe('C6 / SCRUM-107 approve a submitted request', () => {
     const result = approveEvent({ event: event({ status: 'APPROVED' }), userId: 'c1' });
     expect(result.ok).toBe(false);
     expect(result.event.status).toBe('APPROVED');
+  });
+});
+
+// The event detail page's two tabs. TC-269 – TC-270 in docs/test-cases.md.
+describe('event detail tabs', () => {
+  test('TC-269 the Clarifications tab counts the questions asked and knows when an answer is owed', () => {
+    expect(clarificationSummary({ event: { open_clarification_id: 'q2' }, clarifications: [{ id: 'q1' }, { id: 'q2' }] }))
+      .toEqual({ requests: 2, awaitingOrganiser: true });
+    expect(clarificationSummary({ event: { open_clarification_id: null }, clarifications: [] }))
+      .toEqual({ requests: 0, awaitingOrganiser: false });
+    expect(clarificationSummary(null)).toEqual({ requests: 0, awaitingOrganiser: false });
+  });
+
+  test('TC-270 only an organiser who owes an answer starts on Clarifications', () => {
+    const awaiting = { event: { open_clarification_id: 'q1' }, clarifications: [{ id: 'q1' }] };
+    const answered = { event: { open_clarification_id: null }, clarifications: [{ id: 'q1' }] };
+
+    expect(initialEventTab(awaiting, { organiser: true })).toBe(EVENT_TABS.CLARIFICATIONS);
+    expect(initialEventTab(answered, { organiser: true })).toBe(EVENT_TABS.REQUEST);
+    expect(initialEventTab(awaiting)).toBe(EVENT_TABS.REQUEST);
+    expect(initialEventTab(null, { organiser: true })).toBe(EVENT_TABS.REQUEST);
   });
 });
