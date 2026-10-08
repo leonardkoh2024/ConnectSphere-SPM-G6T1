@@ -17,7 +17,7 @@ Coordinator unavailability is out of scope (Session 1, Q16) — no active/inacti
 No account/staff management in Release 1 (Session 2) — coordinators are seeded.
 The Week 4 instructions describe assignment as "submitted events can be assigned to a coordinator… reassigned when responsibilities or availability change"; the reassignment half lives in C9, not C1.
 
-Note: the C1 acceptance criteria in docs/final-product-backlog.csv are stale (they still say "round-robin across active coordinators" and an "unassigned queue"). The finalised ACs are agreed but not yet committed to the repo (they land next sprint). Until then, docs/test-cases.md (TC-072–TC-080) is the authoritative C1 spec.
+Note: the C1 acceptance criteria in docs/Final Product Backlog.csv are stale (they still say "round-robin across active coordinators" and an "unassigned queue"). The finalised ACs are agreed but not yet committed to the repo (they land next sprint). Until then, docs/test-cases.md (TC-072–TC-080) is the authoritative C1 spec.
 
 Decision
 Circular rotation by coordinator_seq. Each coordinator carries an integer coordinator_seq (1, 2, 3, …). On assignment, pick the coordinator whose seq is the next one greater than the last-assigned seq; if none is greater, wrap to the lowest. All seeded coordinators participate.

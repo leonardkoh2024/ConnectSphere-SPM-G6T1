@@ -7,42 +7,71 @@ so traceability to a story ID matters more here than it would on a normal projec
 
 ## Source of truth, and what wins
 
-Requirements artefacts are in [`docs/`](docs/) — the Week 4 instructions (the 20 core features), the final
-backlog, and both customer Q&A sessions. `docs/README.md` indexes them. These are copies of originals that
-live outside the repo in `Project G6 T1/`; if you change one there, copy it across in the same PR. The Week 1
-briefing, the backlog working files (including the open-items table) and the ERDs stay in that folder only.
+Requirements artefacts are in [`docs/`](docs/) — the Week 4 instructions (the 20 core features), the Week 7
+customer changes, the final backlog, and both customer Q&A sessions. `docs/README.md` indexes them. These are
+copies of originals that live outside the repo in `Project G6 T1/`; if you change one there, copy it across in
+the same PR. The Week 1 briefing, the backlog working files (including the open-items table) and the ERDs
+stay in that folder only.
 
 Precedence when two artefacts disagree:
 
-1. **Later customer Q&A** beats earlier customer Q&A.
-2. **Week 4 Project Instructions** (the 20 core features) beat any Week 1/Week 2 artefact.
-3. **The backlog** (`docs/final-product-backlog.csv`) is an interpretation, not an authority — it was written
-   9 Sep 2026, *before* Q&A Session 2 that evening, so it is not yet reconciled with Session 2. Where it
-   conflicts with the rules below, the rules win.
+1. **Week 7 Customer Changes** (`docs/Week 7 Customer Changes.pdf`) beat everything earlier, including the
+   Week 4 instructions and both Q&A sessions. The customer expects no further changes for release 1.
+2. **Later customer Q&A** beats earlier customer Q&A.
+3. **Week 4 Project Instructions** (the 20 core features) beat any Week 1/Week 2 artefact.
+4. **The backlog** (`docs/Final Product Backlog.csv`) is an interpretation, not an authority. It was written
+   9 Sep 2026, *before* Q&A Session 2, and on 6 Oct 2026 gained 22 Week 7 stories (A6–A7, E9–E11, F9–F16,
+   K1–K5, L1–L4). The older stories were not edited: where a Week 7 story says it replaces part of an earlier
+   one (K1 → C1, K3 → C9 AC5, L1 → D3, E11 → E3 AC3), the Week 7 story wins. Where the backlog conflicts with
+   the rules below, the rules win.
 
 Only our own section's customer answers count. Other sections were given different answers.
 
 ## Domain rules that constrain code
 
-**Roles** — exactly five, no admin role exists: Event Organiser (external), Event Coordinator (internal),
-Venue Staff (internal), Technical Support Staff (internal), Attendee (external).
-In code the canonical list is `ROLES` / `ROLE_META` in `frontend/src/domain/roles.js`. Do not introduce a sixth role
-or a parallel string literal.
+**Roles** — exactly seven, no admin role exists: Event Organiser (external), Event Coordinator (internal),
+Event Coordinator Lead (internal), Venue Staff (internal), Technical Support Staff (internal),
+Safety Officer (internal), Attendee (external). The Lead and the Safety Officer were added by Week 7 changes
+5 and 6 (stories A6, A7); like every other role they are seeded, never self-registered.
+In code the canonical list is `ROLES` / `ROLE_META` in `frontend/src/domain/roles.js`, which still holds only the
+original five — add the two new roles there, and nowhere else. Do not introduce an eighth role or a parallel
+string literal.
 
-**Event status — exactly these nine**, from core feature F6:
+**Event status — exactly these ten**: the nine from core feature F6, plus **Safety Review**, which story L1
+adds between Planning and Confirmed for Week 7 change 6:
 
 ```
-Draft · Submitted · Under Review · Approved · Planning · Confirmed · Completed · Cancelled · Rejected
+Draft · Submitted · Under Review · Approved · Planning · Safety Review · Confirmed · Completed · Cancelled · Rejected
 ```
 
 There is no `Returned`. A request waiting on its organiser stays **Under Review** with an open clarification
-request against it.
+request against it. Booking states such as *Held*, *Expired*, *Replaced*, *Venue unavailable – replacement
+needed* and *Clash – review required* belong to a venue booking, not to the event.
 
 **Workflow invariants**
 
-- Coordinator assignment is automatic, exactly one coordinator per event; no limit on how many events a
-  coordinator holds. An event may later be reassigned (core feature 5 requires this).
-- A coordinator may only Confirm when **both** venue and technical arrangements are in place.
+- Coordinator assignment is **not** automatic (Week 7 change 5, K1). A submitted event enters an unassigned
+  queue that only the Event Coordinator Lead can see; the Lead assigns exactly one coordinator (K2) and is the
+  one who reassigns (K3). No limit on how many events a coordinator holds. A coordinator may act only on
+  events currently assigned to them, refused server-side otherwise (K5). ADR 0001 and the
+  `coordinatorAssignment` service implement the old automatic rotation and are superseded.
+- A coordinator cannot Confirm directly any more. Once **every** active venue booking is approved and all
+  requested technical arrangements are confirmed, they *send the event for its safety check* (L1, status →
+  Safety Review). The Safety Officer approves (→ Confirmed), rejects, or requests changes; the last two return
+  the event to Planning with the affected arrangements flagged for review (L3, L4). An event needs a passed
+  check made after its most recent return to Planning. In `firestore.rules` the Safety Officer can reach an
+  event only while it is in Safety Review. Each outcome is a write-once `safety_reviews` record, and the event
+  moves only together with a matching record (`last_safety_review_id`).
+- A booking occupies its venue from *start − setup time* to *end + turnaround time*, using that venue's
+  values (E9, F9). Windows that only touch do not conflict. When the values change, bookings that now clash
+  are flagged, never cancelled or moved (F10).
+- An event may book **several venues at once** (F12). Each booking is checked on its own for suitability,
+  availability and conflicts (F13); releasing one leaves the others untouched (F14).
+- Venue Staff may mark a venue unavailable even over approved bookings (E11). The event is never cancelled:
+  its bookings are flagged, its coordinator notified, and a Confirmed event goes back to Planning until a
+  replacement venue is approved (F11).
+- A tentative hold must carry an expiry; it lapses on time even if nobody opens the system, and an active or
+  expired hold never counts as an approved booking (F15, F16).
 - A *significant change* is a change to number of pax, venue, or duration — no numeric threshold.
   It notifies, then re-requests the affected arrangement. The system never auto-revokes an arrangement.
 - Venue contention is first-come-first-served. A Venue Staff rejection **cannot** be overridden.
@@ -54,12 +83,14 @@ request against it.
 - **No account creation, for any role.** All users — organisers, internal staff, attendees — are assumed to
   already have accounts. Seed them. (Session 2 reversed this; the repo's existing registration screens and
   backlog stories A1/A2 predate that answer — see Open questions.)
-- No multi-session or multi-day events. One event = one time window at one venue.
+- No multi-session or multi-day events. One event = one time window — though since Week 7 it may use
+  several venues during that window.
 - No deployment. Running locally plus an architecture diagram is what gets submitted.
 - No pricing, invoicing or payment.
 - No file attachments or document storage. (Firebase Storage is initialised in `frontend/src/lib/firebase.js` but is
   unusable on the free tier — do not build on it.)
-- No equipment transfer between venues, no spare-equipment inventory, no tentative-hold expiry.
+- No equipment transfer between venues, no spare-equipment inventory. (Tentative holds and their expiry
+  *are* in scope since Week 7.)
 - No Google Calendar / M365 integration, no change deadlines or penalties.
 
 **Equipment counts are in scope.** Session 1 said to assume equipment is always available; Session 2 reversed
@@ -151,14 +182,14 @@ on real problems.
 - Keep commits small and self-contained — direct-to-main means someone else pulls your work immediately,
   so a half-finished change on `main` blocks the whole team rather than sitting in a branch.
 - **Start every commit message with the backlog ID and the Jira ticket ID** —
-  `B4; SCRUM-95; state the equipment my event needs`. The backlog IDs are `A1`–`J7` (from
-  `docs/final-product-backlog.csv`); the Jira IDs are `SCRUM-nn`. Both, separated by semicolons, then the
+  `B4; SCRUM-95; state the equipment my event needs`. The backlog IDs are `A1`–`L4` (from
+  `docs/Final Product Backlog.csv`); the Jira IDs are `SCRUM-nn`. Both, separated by semicolons, then the
   summary. With no PRs, the commit message is the only record of story-to-code traceability, and that
   traceability is marked. People write these by hand, so small deviations in spacing or punctuation are fine —
   what must not be missing is either ID.
 - One story per commit where you can. If a commit genuinely covers several, list each `backlog; jira; summary`
   triple on its own line in the body rather than running them together in the subject.
-- Acceptance criteria in `docs/final-product-backlog.csv` are the definition of done. Read the story's criteria
+- Acceptance criteria in `docs/Final Product Backlog.csv` are the definition of done. Read the story's criteria
   before starting, and cover them in tests where the criterion is testable.
 - If the customer has not answered something, do not invent an answer in code — add it to the Session 3
   question list instead.
@@ -167,8 +198,11 @@ on real problems.
 
 - Registration screens are already built and merged, but Session 2 says release 1 needs no account creation.
   Decide: keep them as a convenience, or replace with seeded accounts. Backlog A1/A2 need rewording either way.
-- Setup/turnaround time between consecutive bookings at the same venue — blocks the availability calendar
-  and conflict detection.
+- Hold length: F15's summary says a hold lasts 3 working days and F16 AC1 repeats it, but F15 AC1–2 have
+  Venue Staff enter an expiry date/time. Decide whether 3 working days is a default, a fixed rule, or dropped.
+- ADR 0001 / `coordinatorAssignment` (automatic rotation) are superseded by K1. Decide whether to retire the
+  service and its `coordinators` / `assignment_cursor` collections or repurpose them for the Lead's queue,
+  and mark the ADR superseded.
 - Equipment data model: pooled quantity vs individually tracked units.
 - Who may edit an event after submission (Q9 and the Week 1 briefing disagree).
 - The Session 2 security question was left blank. Current assumption: role-correct access plus password

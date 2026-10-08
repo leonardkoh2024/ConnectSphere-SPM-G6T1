@@ -34,7 +34,7 @@ services write to the same collection. The epics in Jira are the natural boundar
 | ----------------------- | --------------------------------------------------------- | ---- |
 | `auth`                  | `users`                                                    | A    |
 | `event`                 | `events`, `event_history`, `event_venue_requirements`      | B–D  |
-| `coordinatorAssignment` | `coordinators`, `assignment_cursor`                        | C (C1 only) |
+| `coordinatorAssignment` | `coordinators`, `assignment_cursor`                        | C (C1 only) — superseded by K |
 | `venue`                 | venue catalogue, availability, bookings                    | E–F  |
 | `equipment`             | equipment counts, reservations                             | G    |
 | `registration`          | attendee registrations, waiting list                       | —    |
@@ -57,3 +57,9 @@ folder, because the browser can still reach Firestore directly.
 The venue service exposes `PUT /api/venues/unavailability`. It requires a Firebase ID token from a Venue
 Staff account assigned through `venue_staff/{venueId}` and saves staged additions and releases together,
 refusing additions that overlap an approved booking.
+
+**Week 7 changes affect both mounted services.** K1 replaces C1's automatic assignment with an unassigned
+queue that the Event Coordinator Lead assigns from, so `coordinatorAssignment`'s rotation (ADR 0001) is no
+longer the release 1 behaviour. E11 replaces E3 criterion 3, so the venue service's refusal of unavailability
+that overlaps an approved booking must become "list the affected bookings, confirm, and flag them". See
+`docs/README.md` for every story the Week 7 changes override.

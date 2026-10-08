@@ -3,11 +3,13 @@
 IS212 Software Project Management, AY2026/27 T1 — Group 6, Team 1.
 
 Release 1 of an event planning and venue booking system built for "ConnectSphere Event Services".
-Event organisers submit event requests; a coordinator is assigned automatically, reviews the request, arranges
-a venue and technical support, and confirms the event. Attendees register for events that are open to them.
+Event organisers submit event requests; the Event Coordinator Lead assigns each one to a coordinator, who
+reviews it and arranges one or more venues and technical support. A Safety Officer then runs an Operational
+Safety Check, and the event is confirmed only once it passes. Attendees register for events that are open to them.
 
-The system has five roles and no administrator: Event Organiser, Event Coordinator, Venue Staff,
-Technical Support Staff, Attendee.
+The system has seven roles and no administrator: Event Organiser, Event Coordinator, Event Coordinator Lead,
+Venue Staff, Technical Support Staff, Safety Officer, Attendee. The Lead and the Safety Officer arrived with the
+Week 7 customer changes and are not yet in the code.
 
 ## Getting started
 
@@ -72,7 +74,7 @@ backend/                 the service layer (:4000)
 .env.example             committed template, no values in it
 firestore.rules          server-side authorisation — part of every feature, not an afterthought
 firebase.json
-docs/                    requirements: Week 4 instructions, backlog, customer Q&A
+docs/                    requirements: Week 4 instructions, Week 7 changes, backlog, customer Q&A
 CLAUDE.md                the rules for changing this repo — read before you start
 ```
 
@@ -87,15 +89,17 @@ Navigation is hash-based, owned by `app/routes.js`; there is no router library.
 We commit directly to `main` — no feature branches, no PRs. Pull before you start and before you push, and
 keep commits small enough that a conflict is a minute's work rather than an evening's.
 
-Put the backlog story ID at the front of every commit message (`B6: save an incomplete request as a draft`) —
+Put the backlog story ID and the Jira ticket ID at the front of every commit message
+(`B6; SCRUM-nn; save an incomplete request as a draft`) —
 with no PRs in the history, the commit message is the only place story-to-code traceability is recorded, and
 it is marked.
 
-A story's acceptance criteria in `docs/final-product-backlog.csv` are its definition of done. Read them before
-starting, and check `docs/customer-qa-session2-answers.md` — the backlog predates the second customer Q&A and
-has not been reconciled with it.
+A story's acceptance criteria in `docs/Final Product Backlog.csv` are its definition of done. Read them before
+starting, and check `docs/Week 7 Customer Changes.pdf` and `docs/customer-qa-session2-answers.md` — the
+Week 7 stories (A6–A7, E9–E11, F9–F16, K, L) override parts of earlier ones, and the older stories were never
+reconciled with the second customer Q&A. `docs/README.md` lists which story replaces which.
 
-Scope rules, the nine event statuses, workflow invariants and the current open questions are in
+Scope rules, the event statuses, workflow invariants and the current open questions are in
 [`CLAUDE.md`](CLAUDE.md).
 
 ## Team
