@@ -8,6 +8,10 @@ service cloud.firestore {
     function currentCoordinator(eventId) { return signedIn() && get(/databases/$(database)/documents/events/$(eventId)).data.coordinator_id == request.auth.uid; }
     function previousCoordinator(eventId) { return signedIn() && exists(/databases/$(database)/documents/coordinator_assignments/$(eventId + '_' + request.auth.uid)); }
     function canReadEvent(eventId) { return ownsEvent(eventId) || currentCoordinator(eventId) || previousCoordinator(eventId); }
+    // A7 — a Safety Officer is related to an event only while it awaits its
+    // Operational Safety Check (L1). Once the check is recorded the event leaves
+    // Safety Review and drops out of their reach again.
+    function safetyReviewing(eventId) { return hasRole('SAFETY_OFFICER') && get(/databases/$(database)/documents/events/$(eventId)).data.status == 'SAFETY_REVIEW'; }
 
     match /users/{userId} {
       allow create: if signedIn() && userId == request.auth.uid
@@ -89,23 +93,45 @@ service cloud.firestore {
                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['open_clarification_id', 'updated_at']))));
       }
 
+      // A7 AC4 / L3 — the Safety Officer's only write to an event is the outcome
+      // of its check: Confirmed on approval, back to Planning on reject or
+      // request changes. The event must point at the safety_reviews record
+      // written in the same batch, and that record's outcome must match the
+      // move, so no event reaches Confirmed without an approved check (L1 AC4).
+      function safetyOutcomeUpdate() {
+        let review = getAfter(/databases/$(database)/documents/safety_reviews/$(request.resource.data.last_safety_review_id)).data;
+        return hasRole('SAFETY_OFFICER')
+          && resource.data.status == 'SAFETY_REVIEW'
+          && request.resource.data.last_safety_review_id is string
+          && review.event_id == eventId
+          && review.reviewer_id == request.auth.uid
+          && ((review.outcome == 'APPROVE' && request.resource.data.status == 'CONFIRMED')
+            || (review.outcome in ['REJECT', 'REQUEST_CHANGES'] && request.resource.data.status == 'PLANNING'))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'last_safety_review_id', 'updated_at']);
+      }
+
       allow create: if hasRole('EVENT_ORGANISER') && request.resource.data.organiser_id == request.auth.uid && request.resource.data.created_by == request.auth.uid && noClientCoordinatorWrite();
       allow get, list: if (hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid)
         || (hasRole('EVENT_COORDINATOR') && resource.data.get('coordinator_id', '') == request.auth.uid)
         || (hasRole('EVENT_COORDINATOR') && previousCoordinator(eventId))
         || (hasRole('VENUE_STAFF') && resource.data.get('venue_staff_id', '') == request.auth.uid)
-        || (hasRole('TECHNICAL_SUPPORT_STAFF') && resource.data.get('tech_support_id', '') == request.auth.uid);
+        || (hasRole('TECHNICAL_SUPPORT_STAFF') && resource.data.get('tech_support_id', '') == request.auth.uid)
+        // A7 AC2 — a list query must filter on status == 'SAFETY_REVIEW'.
+        || (hasRole('SAFETY_OFFICER') && resource.data.status == 'SAFETY_REVIEW');
       allow update: if (hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid && coordinatorUnchanged() && organiserMayEdit())
-        || coordinatorWorkflowUpdate();
+        || coordinatorWorkflowUpdate()
+        || safetyOutcomeUpdate();
       // B8 — only the owning organiser, and only while it is still a draft. Once a
       // request has been submitted it is part of a coordinator's queue, so it is
       // no longer the organiser's alone to remove.
       allow delete: if hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid && resource.data.status == 'DRAFT';
     }
 
+    // A7 AC3 — the Safety Officer reads the layout, accessibility and equipment
+    // facts of an event under review, never writes them.
     match /event_venue_requirements/{requirementId} {
       allow create: if ownsEvent(request.resource.data.event_id);
-      allow get, list: if canReadEvent(resource.data.event_id);
+      allow get, list: if canReadEvent(resource.data.event_id) || safetyReviewing(resource.data.event_id);
       allow update, delete: if ownsEvent(resource.data.event_id);
     }
     match /event_facilities/{facilityId} {
@@ -115,19 +141,21 @@ service cloud.firestore {
     }
     match /event_equipment/{equipmentId} {
       allow create: if ownsEvent(request.resource.data.event_id);
-      allow get, list, update, delete: if ownsEvent(resource.data.event_id);
+      allow get, list: if ownsEvent(resource.data.event_id) || safetyReviewing(resource.data.event_id);
+      allow update, delete: if ownsEvent(resource.data.event_id);
     }
     match /event_accessibility/{accessibilityId} {
       allow create: if ownsEvent(request.resource.data.event_id);
-      allow get, list: if canReadEvent(resource.data.event_id);
+      allow get, list: if canReadEvent(resource.data.event_id) || safetyReviewing(resource.data.event_id);
       allow update, delete: if ownsEvent(resource.data.event_id);
     }
     match /event_history/{historyId} {
       allow create: if signedIn()
         && request.resource.data.get('history_id', historyId) == historyId
         && request.resource.data.actor_id == request.auth.uid
-        && (ownsEvent(request.resource.data.event_id) || currentCoordinator(request.resource.data.event_id));
-      allow get, list: if canReadEvent(resource.data.event_id);
+        && (ownsEvent(request.resource.data.event_id) || currentCoordinator(request.resource.data.event_id)
+          || safetyReviewing(request.resource.data.event_id));
+      allow get, list: if canReadEvent(resource.data.event_id) || safetyReviewing(resource.data.event_id);
     }
 
     match /clarification_requests/{clarificationId} {
@@ -156,6 +184,20 @@ service cloud.firestore {
         && clarification().status == 'OPEN';
     }
 
+    // A7 AC4 / L3 — one record per check. Reject and Request changes need a
+    // comment. No update or delete: a recorded outcome is history (L2 AC4 shows
+    // earlier ones), and a fresh check after a return to Planning is a new record.
+    match /safety_reviews/{reviewId} {
+      allow get, list: if hasRole('SAFETY_OFFICER') || canReadEvent(resource.data.event_id);
+      allow create: if safetyReviewing(request.resource.data.event_id)
+        && request.resource.data.review_id == reviewId
+        && request.resource.data.reviewer_id == request.auth.uid
+        && request.resource.data.outcome in ['APPROVE', 'REJECT', 'REQUEST_CHANGES']
+        && (request.resource.data.outcome == 'APPROVE'
+          || (request.resource.data.comment is string && request.resource.data.comment.size() > 0))
+        && request.resource.data.decided_at is timestamp;
+    }
+
     match /coordinator_assignments/{assignmentId} {
       allow get, list: if signedIn()
         && (resource.data.coordinator_id == request.auth.uid || canReadEvent(resource.data.event_id));
@@ -175,17 +217,24 @@ service cloud.firestore {
               getAfter(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.coordinator_id])
           || (ownsEvent(request.resource.data.event_id)
             && request.resource.data.user_id == get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.coordinator_id)
+          // L3 AC4 / L4 AC1 — the outcome goes to the event's coordinator and organiser.
+          || (safetyReviewing(request.resource.data.event_id)
+            && request.resource.data.user_id in [
+              get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.organiser_id,
+              get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.coordinator_id])
         );
     }
 
     // E2 / E5 — catalogue and search reads are Coordinator and Venue Staff only.
-    // Hiding the screen is not the boundary (A4 / TC-015).
+    // Hiding the screen is not the boundary (A4 / TC-015). A7 AC3 / E10 AC3 add
+    // the Safety Officer, read-only, to venues, layouts and accessibility for
+    // capacity, layout, emergency access and known restrictions.
     match /venue_staff/{venueId} {
       allow get, list: if hasRole('VENUE_STAFF')
         && resource.data.user_id == request.auth.uid;
     }
     match /venues/{venueId} {
-      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
+      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF') || hasRole('SAFETY_OFFICER');
       allow update: if hasRole('VENUE_STAFF')
         && exists(/databases/$(database)/documents/venue_staff/$(venueId))
         && get(/databases/$(database)/documents/venue_staff/$(venueId)).data.user_id == request.auth.uid
@@ -206,13 +255,13 @@ service cloud.firestore {
         && request.resource.data.special_space_availability is string;
     }
     match /venue_layouts/{layoutId} {
-      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
+      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF') || hasRole('SAFETY_OFFICER');
     }
     match /venue_facilities/{facilityId} {
       allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
     }
     match /venue_accessibility/{accessibilityId} {
-      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
+      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF') || hasRole('SAFETY_OFFICER');
     }
     match /venue_operating_hours/{hoursId} {
       allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
@@ -221,7 +270,8 @@ service cloud.firestore {
       allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
     }
     match /venue_bookings/{bookingId} {
-      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
+      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF')
+        || safetyReviewing(resource.data.event_id);
       // E8 — the suitability gate, enforced where it cannot be bypassed. A screen
       // that merely disables its button does not stop a crafted request, so the
       // capacity stop is re-checked against the venue record here, and a booking
