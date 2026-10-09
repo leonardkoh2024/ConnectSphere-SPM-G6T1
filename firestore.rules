@@ -8,6 +8,11 @@ service cloud.firestore {
     function currentCoordinator(eventId) { return signedIn() && get(/databases/$(database)/documents/events/$(eventId)).data.coordinator_id == request.auth.uid; }
     function previousCoordinator(eventId) { return signedIn() && exists(/databases/$(database)/documents/coordinator_assignments/$(eventId + '_' + request.auth.uid)); }
     function canReadEvent(eventId) { return ownsEvent(eventId) || currentCoordinator(eventId) || previousCoordinator(eventId); }
+    function assignedVenueStaff(venueId) {
+      return hasRole('VENUE_STAFF')
+        && exists(/databases/$(database)/documents/venue_staff/$(venueId))
+        && get(/databases/$(database)/documents/venue_staff/$(venueId)).data.user_id == request.auth.uid;
+    }
     // A7 — a Safety Officer is related to an event only while it awaits its
     // Operational Safety Check (L1). Once the check is recorded the event leaves
     // Safety Review and drops out of their reach again.
@@ -154,7 +159,13 @@ service cloud.firestore {
         && request.resource.data.get('history_id', historyId) == historyId
         && request.resource.data.actor_id == request.auth.uid
         && (ownsEvent(request.resource.data.event_id) || currentCoordinator(request.resource.data.event_id)
-          || safetyReviewing(request.resource.data.event_id));
+          || safetyReviewing(request.resource.data.event_id)
+          || (request.resource.data.action_type == 'VENUE_BOOKING_APPROVED'
+            && request.resource.data.booking_id is string
+            && request.resource.data.venue_id is string
+            && assignedVenueStaff(request.resource.data.venue_id)
+            && getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data.event_id == request.resource.data.event_id
+            && getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data.status == 'APPROVED'));
       allow get, list: if canReadEvent(resource.data.event_id) || safetyReviewing(resource.data.event_id);
     }
 
@@ -242,24 +253,44 @@ service cloud.firestore {
     }
     match /venues/{venueId} {
       allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF') || hasRole('SAFETY_OFFICER');
-      allow update: if hasRole('VENUE_STAFF')
-        && exists(/databases/$(database)/documents/venue_staff/$(venueId))
-        && get(/databases/$(database)/documents/venue_staff/$(venueId)).data.user_id == request.auth.uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'name', 'building', 'location', 'max_capacity', 'layouts', 'facilities',
-          'accessibility', 'operating_hours', 'special_space_availability'
-        ])
-        && request.resource.data.name is string
-        && request.resource.data.building is string
-        && request.resource.data.location is string
-        && request.resource.data.max_capacity is int
-        && request.resource.data.max_capacity > 0
-        && request.resource.data.layouts is list
-        && request.resource.data.layouts.size() > 0
-        && request.resource.data.facilities is list
-        && request.resource.data.accessibility is list
-        && request.resource.data.operating_hours is list
-        && request.resource.data.special_space_availability is string;
+      allow update: if assignedVenueStaff(venueId)
+        && (
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name', 'building', 'location', 'max_capacity', 'layouts', 'facilities',
+            'accessibility', 'operating_hours', 'special_space_availability'
+          ])
+          && request.resource.data.name is string
+          && request.resource.data.building is string
+          && request.resource.data.location is string
+          && request.resource.data.max_capacity is int
+          && request.resource.data.max_capacity > 0
+          && request.resource.data.layouts is list
+          && request.resource.data.layouts.size() > 0
+          && request.resource.data.facilities is list
+          && request.resource.data.accessibility is list
+          && request.resource.data.operating_hours is list
+          && request.resource.data.special_space_availability is string)
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'setup_minutes', 'turnaround_minutes', 'emergency_access_notes', 'known_restrictions'
+          ])
+          && request.resource.data.setup_minutes is int
+          && request.resource.data.setup_minutes >= 0
+          && request.resource.data.turnaround_minutes is int
+          && request.resource.data.turnaround_minutes >= 0
+          && request.resource.data.emergency_access_notes is string
+          && request.resource.data.known_restrictions is string)
+        );
+    }
+    match /venue_change_history/{historyId} {
+      allow create: if request.resource.data.history_id == historyId
+        && request.resource.data.actor_id == request.auth.uid
+        && request.resource.data.venue_id is string
+        && request.resource.data.field_name in [
+          'setup_minutes', 'turnaround_minutes', 'emergency_access_notes', 'known_restrictions'
+        ]
+        && request.resource.data.created_at is timestamp
+        && assignedVenueStaff(request.resource.data.venue_id);
+      allow get, list: if assignedVenueStaff(resource.data.venue_id);
     }
     match /venue_layouts/{layoutId} {
       allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF') || hasRole('SAFETY_OFFICER');
@@ -277,16 +308,17 @@ service cloud.firestore {
       allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF');
     }
     match /venue_bookings/{bookingId} {
-      allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF')
+      allow get, list: if hasRole('EVENT_COORDINATOR') || assignedVenueStaff(resource.data.venue_id)
         || safetyReviewing(resource.data.event_id);
       // E8 — the suitability gate, enforced where it cannot be bypassed. A screen
       // that merely disables its button does not stop a crafted request, so the
       // capacity stop is re-checked against the venue record here, and a booking
       // is refused unless it carries the acknowledgement Venue Staff will read.
-      // There is deliberately no update rule: an acknowledgement is a record of
-      // what the coordinator accepted at the time and is not rewritten later.
       allow create: if hasRole('EVENT_COORDINATOR')
         && request.resource.data.requested_by == request.auth.uid
+        && exists(/databases/$(database)/documents/events/$(request.resource.data.event_id))
+        && get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.coordinator_id == request.auth.uid
+        && get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.status in ['APPROVED', 'PLANNING']
         && request.resource.data.status == 'PENDING'
         && request.resource.data.venue_id is string
         && request.resource.data.event_id is string
@@ -296,15 +328,36 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/venues/$(request.resource.data.venue_id)).data.max_capacity >= request.resource.data.expected_attendance
         && request.resource.data.suitability_acknowledgement.acknowledged is bool
         && request.resource.data.suitability_acknowledgement.criteria is list;
-      // Withdrawing is the one change the raiser may make, and it may only ever
-      // move a pending request to withdrawn. The acknowledgement is pinned: it
-      // records what was accepted at the time and is never rewritten.
-      allow update: if hasRole('EVENT_COORDINATOR')
-        && resource.data.requested_by == request.auth.uid
-        && resource.data.status == 'PENDING'
-        && request.resource.data.status == 'WITHDRAWN'
-        && request.resource.data.suitability_acknowledgement == resource.data.suitability_acknowledgement
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'withdrawn_at']);
+      allow update: if
+        (hasRole('EVENT_COORDINATOR')
+          && resource.data.requested_by == request.auth.uid
+          && resource.data.status == 'PENDING'
+          && request.resource.data.status == 'WITHDRAWN'
+          && request.resource.data.suitability_acknowledgement == resource.data.suitability_acknowledgement
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'withdrawn_at']))
+        || (assignedVenueStaff(resource.data.venue_id)
+          && resource.data.status == 'PENDING'
+          && request.resource.data.status == 'APPROVED'
+          && request.resource.data.assigned_staff_id == request.auth.uid
+          && request.resource.data.decided_by == request.auth.uid
+          && request.resource.data.decided_at is timestamp
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'assigned_staff_id', 'decided_by', 'decided_at', 'occupied_start', 'occupied_end'
+          ]))
+        || (assignedVenueStaff(resource.data.venue_id)
+          && resource.data.status == 'APPROVED'
+          && request.resource.data.status == 'APPROVED'
+          && request.resource.data.occupied_start is timestamp
+          && request.resource.data.occupied_end is timestamp
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['occupied_start', 'occupied_end']))
+        || (hasRole('EVENT_COORDINATOR')
+          && currentCoordinator(resource.data.event_id)
+          && get(/databases/$(database)/documents/events/$(resource.data.event_id)).data.status == 'CANCELLED'
+          && ((resource.data.status == 'APPROVED' && request.resource.data.status == 'RELEASED')
+            || (resource.data.status == 'PENDING' && request.resource.data.status == 'WITHDRAWN'))
+          && request.resource.data.released_at is timestamp
+          && request.resource.data.release_reason is string
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'released_at', 'release_reason']));
     }
   }
 }

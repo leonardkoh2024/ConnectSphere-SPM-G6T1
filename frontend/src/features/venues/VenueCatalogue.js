@@ -5,7 +5,7 @@ import { listCatalogue } from "../../domain/venueSearch";
 import ToggleList from "../events/components/ToggleList";
 import { VenueUnavailabilityManager } from "./VenueAvailability";
 import VenueCalendar from "./VenueCalendar";
-import { loadVenueSearchContext, saveVenueCatalogue, saveVenueUnavailability } from "./venuesApi";
+import { loadVenueSearchContext, saveVenueCatalogue, saveVenuePlanningDetails, saveVenueUnavailability } from "./venuesApi";
 import VenueDetail, { VenueRows } from "./VenueDetail";
 
 const WEEKDAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
@@ -28,6 +28,7 @@ export default function VenueCatalogue({ user, role, showCalendar = false, onClo
   const [saveError, setSaveError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [mineOnly, setMineOnly] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -49,7 +50,8 @@ export default function VenueCatalogue({ user, role, showCalendar = false, onClo
   const listed = listCatalogue(venues).map((row) => {
     const full = venues.find((item) => item.venue_id === row.venue_id);
     return { ...full, ...row, facilities: row.headline_facilities };
-  }).sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), undefined, { sensitivity: "base" }));
+  }).filter((venue) => !mineOnly || venue.is_assigned_to_user === true)
+    .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), undefined, { sensitivity: "base" }));
 
   const canEditVenue = (venue) => role === ROLES.VENUE_STAFF && venue.is_assigned_to_user === true;
   const canEditSelected = selected && canEditVenue(selected);
@@ -78,11 +80,36 @@ export default function VenueCatalogue({ user, role, showCalendar = false, onClo
       setSaveError("Select at least one supported room layout.");
       return;
     }
+    if (!Number.isInteger(Number(draft.setup_minutes)) || Number(draft.setup_minutes) < 0) {
+      setSaveError("Setup time must be a whole number of minutes at least zero.");
+      return;
+    }
+    if (!Number.isInteger(Number(draft.turnaround_minutes)) || Number(draft.turnaround_minutes) < 0) {
+      setSaveError("Turnaround time must be a whole number of minutes at least zero.");
+      return;
+    }
     setSaving(true);
     setSaveError("");
     try {
-      const saved = { ...draft, max_capacity: Number(draft.max_capacity) };
+      const saved = {
+        ...draft,
+        max_capacity: Number(draft.max_capacity),
+        setup_minutes: Number(draft.setup_minutes),
+        turnaround_minutes: Number(draft.turnaround_minutes),
+        emergency_access_notes: String(draft.emergency_access_notes || "").trim(),
+        known_restrictions: String(draft.known_restrictions || "").trim()
+      };
       await saveVenueCatalogue(saved);
+      await saveVenuePlanningDetails({
+        user,
+        venueId: saved.venue_id,
+        changes: {
+          setup_minutes: saved.setup_minutes,
+          turnaround_minutes: saved.turnaround_minutes,
+          emergency_access_notes: saved.emergency_access_notes,
+          known_restrictions: saved.known_restrictions
+        }
+      });
       setVenues((current) => current.map((venue) => venue.venue_id === saved.venue_id ? saved : venue));
       setSelected(saved);
       setDraft(null);
@@ -110,6 +137,8 @@ export default function VenueCatalogue({ user, role, showCalendar = false, onClo
         <label className="cs-field"><span className="cs-field-name">Building</span><input required value={draft.building || ""} onChange={(event) => updateDraft("building", event.target.value)} /></label>
         <label className="cs-field"><span className="cs-field-name">Location</span><select required value={draft.location || ""} onChange={(event) => updateDraft("location", event.target.value)}><option value="">Choose a location</option>{PREFERRED_LOCATIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label className="cs-field"><span className="cs-field-name">Maximum capacity</span><input required type="number" min="1" step="1" value={draft.max_capacity ?? ""} onChange={(event) => updateDraft("max_capacity", event.target.value === "" ? "" : Number(event.target.value))} /></label>
+        <label className="cs-field"><span className="cs-field-name">Setup time (minutes)</span><input required type="number" min="0" step="1" value={draft.setup_minutes ?? 0} onChange={(event) => updateDraft("setup_minutes", event.target.value)} /></label>
+        <label className="cs-field"><span className="cs-field-name">Turnaround time (minutes)</span><input required type="number" min="0" step="1" value={draft.turnaround_minutes ?? 0} onChange={(event) => updateDraft("turnaround_minutes", event.target.value)} /></label>
       </div>
       <ToggleList label="Supported room layouts" options={LAYOUTS} values={draft.layouts} onChange={(value) => updateDraft("layouts", value)} required />
       <ToggleList label="Facilities" options={FACILITIES} values={draft.facilities} onChange={(value) => updateDraft("facilities", value)} />
@@ -127,6 +156,8 @@ export default function VenueCatalogue({ user, role, showCalendar = false, onClo
         </div>
       </fieldset>
       <label className="cs-field"><span className="cs-field-name">Space availability for special requirements</span><textarea rows="3" value={draft.special_space_availability || ""} onChange={(event) => updateDraft("special_space_availability", event.target.value)} /></label>
+      <label className="cs-field"><span className="cs-field-name">Emergency access notes</span><textarea rows="3" value={draft.emergency_access_notes || ""} onChange={(event) => updateDraft("emergency_access_notes", event.target.value)} /></label>
+      <label className="cs-field"><span className="cs-field-name">Known restrictions</span><textarea rows="3" value={draft.known_restrictions || ""} onChange={(event) => updateDraft("known_restrictions", event.target.value)} /></label>
       <div className="cs-form-actions"><button type="button" className="cs-btn cs-btn-ghost" onClick={() => { setDraft(null); setSaveError(""); }}>Cancel</button><button type="submit" className="cs-btn cs-btn-primary" disabled={saving}>{saving ? "Saving…" : "Save venue"}</button></div>
     </form>
   );
@@ -139,13 +170,40 @@ export default function VenueCatalogue({ user, role, showCalendar = false, onClo
 
   return (
     <>
-      <p className="cs-result-count" aria-live="polite">{listed.length} venue{listed.length === 1 ? "" : "s"}</p>
+      <div className="cs-list-actions">
+        <p className="cs-result-count" aria-live="polite">{listed.length} venue{listed.length === 1 ? "" : "s"}</p>
+        {role === ROLES.VENUE_STAFF && (
+          <button
+            type="button"
+            className={`cs-btn ${mineOnly ? "cs-btn-primary" : "cs-btn-ghost"}`}
+            aria-pressed={mineOnly}
+            onClick={() => {
+              setMineOnly((current) => !current);
+              setSelected(null);
+              setDraft(null);
+              setSaveError("");
+            }}
+          >
+            My venues
+          </button>
+        )}
+      </div>
       <VenueRows
         venues={listed}
         selectedId={selected?.venue_id}
         canEdit={canEditVenue}
-        onSelect={(venue) => { setSelected(venue); setDraft(null); setSaveError(""); }}
-        onUpdate={(venue) => { setSelected(venue); setDraft(draftFrom(venue)); setSaveError(""); }}
+        onSelect={(venue) => {
+          const closing = selected?.venue_id === venue.venue_id && !draft;
+          setSelected(closing ? null : venue);
+          setDraft(null);
+          setSaveError("");
+        }}
+        onUpdate={(venue) => {
+          const closing = selected?.venue_id === venue.venue_id && draft?.venue_id === venue.venue_id;
+          setSelected(closing ? null : venue);
+          setDraft(closing ? null : draftFrom(venue));
+          setSaveError("");
+        }}
         renderSelected={(venue) => <>
           {draft?.venue_id === venue.venue_id ? venueEditor : <VenueDetail venue={venue} />}
           <VenueUnavailabilityManager

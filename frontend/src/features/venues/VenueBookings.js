@@ -10,6 +10,16 @@ const word = (value) => String(value || "").replaceAll("_", " ");
 const listOf = (items = []) => (items.length ? items.map(word).join(", ") : "None stated");
 const locationLabel = (value) =>
   PREFERRED_LOCATIONS.find((item) => item.value === value)?.label || word(value) || "No preference";
+const bookingDate = (booking) => booking.event_date
+  || (booking.start_datetime ? new Date(booking.start_datetime).toLocaleDateString() : "Date not set");
+const bookingWindow = (booking) => {
+  if (booking.start_time && booking.end_time) return `${booking.start_time}–${booking.end_time}`;
+  if (booking.start_datetime && booking.end_datetime) {
+    const options = { hour: "2-digit", minute: "2-digit" };
+    return `${new Date(booking.start_datetime).toLocaleTimeString([], options)}–${new Date(booking.end_datetime).toLocaleTimeString([], options)}`;
+  }
+  return "Not set";
+};
 
 // Judge every venue in the list, so the coordinator can tell a usable venue from
 // an unusable one before choosing it. Nothing is hidden or reordered: an
@@ -58,7 +68,7 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([reviewApi.list(), loadVenueCatalogue(), loadVenueBookings({ userId: user?.uid })])
+    Promise.all([reviewApi.list(), loadVenueCatalogue(), loadVenueBookings({ user })])
       .then(([eventList, catalogue, raised]) => {
         if (!mounted) return;
         setEvents(eventList.events || []);
@@ -68,7 +78,7 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
       .catch((loadError) => { if (mounted) setError(loadError.message || "Venue bookings could not be loaded."); })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
-  }, [user?.uid]);
+  }, [user]);
 
   // The list view carries no venue requirements — only the detail does — so the
   // chosen event is always re-read before it is judged against a venue.
@@ -87,8 +97,8 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
     setCreating(false);
     setEventId("");
     setVenueId("");
-    setBookings(await loadVenueBookings({ userId: user?.uid }));
-  }, [setCreating, user?.uid]);
+    setBookings(await loadVenueBookings({ user }));
+  }, [setCreating, user]);
 
   // Withdrawing keeps the record and only moves it out of the live statuses, so
   // the event and venue can be requested again without losing what was accepted.
@@ -97,14 +107,14 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
     setActionError("");
     try {
       await withdrawVenueBooking({ bookingId });
-      setBookings(await loadVenueBookings({ userId: user?.uid }));
+      setBookings(await loadVenueBookings({ user }));
       setConfirmWithdraw(null);
     } catch (withdrawError) {
       setActionError(withdrawError.message || "That request could not be withdrawn.");
     } finally {
       setWithdrawing(false);
     }
-  }, [user?.uid]);
+  }, [user]);
 
   // Inside the workspace the back button lives in the page header; the form only
   // says it is open and how to leave it.
@@ -123,6 +133,11 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
   // Bookings raised before the title was carried across fall back to the event.
   const bookingEventName = (booking) =>
     booking.event_name || events.find((item) => item.id === booking.event_id)?.name || "Untitled event";
+  // Older seeded/demo events may not carry status in the list projection. Keep
+  // those visible for compatibility; the transactional service still refuses
+  // anything other than APPROVED or PLANNING from the source event document.
+  const eligibleEvents = events.filter((item) => !item.status
+    || ["APPROVED", "PLANNING"].includes(String(item.status).toUpperCase()));
 
 
   // The requests this coordinator has raised, with a way to raise another —
@@ -150,8 +165,8 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
                     <p>{venueName(booking.venue_id)}</p>
                   </div>
                   <p className="cs-record-ref">
-                    {booking.event_date || "Date not set"}
-                    {booking.start_time && booking.end_time ? ` · ${booking.start_time}–${booking.end_time}` : ""}
+                    {bookingDate(booking)}
+                    {` · ${bookingWindow(booking)}`}
                   </p>
                   <div className="cs-record-modified">
                     <span className={`cs-pill cs-pill-${booking.status === "PENDING" ? "info" : "neutral"}`}>
@@ -173,12 +188,16 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
                       <dl className="cs-detail-grid">
                         <div><dt>Event</dt><dd>{bookingEventName(booking)}</dd></div>
                         <div><dt>Venue</dt><dd>{venueName(booking.venue_id)}</dd></div>
-                        <div><dt>Date</dt><dd>{booking.event_date || "Not set"}</dd></div>
-                        <div><dt>Time</dt><dd>{booking.start_time && booking.end_time ? `${booking.start_time}–${booking.end_time}` : "Not set"}</dd></div>
+                        <div><dt>Date</dt><dd>{bookingDate(booking)}</dd></div>
+                        <div><dt>Time</dt><dd>{bookingWindow(booking)}</dd></div>
                         <div><dt>Expected attendance</dt><dd>{booking.expected_attendance ?? "Not set"}</dd></div>
                         <div><dt>Venue capacity</dt><dd>{venueRecord ? venueRecord.max_capacity : "Unknown"}</dd></div>
                         <div><dt>Status</dt><dd>{word(booking.status)}</dd></div>
                         <div><dt>Requested</dt><dd>{booking.requested_at ? new Date(booking.requested_at).toLocaleString() : "Not recorded"}</dd></div>
+                        <div><dt>Decision time</dt><dd>{booking.decided_at ? new Date(booking.decided_at).toLocaleString() : "Not decided"}</dd></div>
+                        {booking.decision_reason && <div className="cs-detail-wide"><dt>Decision reason</dt><dd>{booking.decision_reason}</dd></div>}
+                        {booking.release_reason && <div className="cs-detail-wide"><dt>Release reason</dt><dd>{booking.release_reason}</dd></div>}
+                        {booking.replaced_by_booking_id && <div><dt>Replacement booking</dt><dd>{booking.replaced_by_booking_id}</dd></div>}
                       </dl>
                       <BookingAcknowledgementNotice acknowledgement={booking.suitability_acknowledgement} />
                       <div className="cs-form-actions">
@@ -233,7 +252,7 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
             <span className="cs-field-name">Event</span>
             <select value={eventId} onChange={(e) => setEventId(e.target.value)}>
               <option value="">Choose an event</option>
-              {events.map((item) => (
+              {eligibleEvents.map((item) => (
                 <option value={item.id} key={item.id}>{item.name || item.reference_no || item.id}</option>
               ))}
             </select>
@@ -314,7 +333,7 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
           event={chosenEvent}
           user={user}
           existingBooking={existingBookingFor(bookings, { eventId, venueId })}
-          onSubmitted={() => loadVenueBookings({ userId: user?.uid }).then(setBookings)}
+          onSubmitted={() => loadVenueBookings({ user }).then(setBookings)}
         />
       )}
     </div>

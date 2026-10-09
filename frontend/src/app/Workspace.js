@@ -17,6 +17,7 @@ import EventReviewScreen from "../features/events/EventReviewScreen";
 import VenueCatalogue from "../features/venues/VenueCatalogue";
 import VenueAvailabilityCalendar from "../features/venues/VenueAvailability";
 import VenueBookings from "../features/venues/VenueBookings";
+import VenueBookingQueue from "../features/venues/VenueBookingQueue";
 import VenueSearch from "../features/venues/VenueSearch";
 import NotificationInbox from "../features/notifications/NotificationInbox";
 import useNotifications from "../features/notifications/useNotifications";
@@ -148,6 +149,7 @@ export default function Workspace({ user, role }) {
   else if (role === ROLES.COORDINATOR && screen.name === "Assigned events") contents = <>{head(screen.name, screen.blurb)}<EventReviewScreen onNotice={showToast} initialEventId={reviewEventId} onBackChange={reportBack} onFindVenues={(event) => goTo("Venue catalogue", { event })} /></>;
   else if (role === ROLES.COORDINATOR && screen.name === "Venue catalogue") contents = <>{head(screen.name, searchEvent ? `Shortlist for ${searchEvent.name || searchEvent.reference_no}.` : screen.blurb, viewCalendar)}<VenueSearch event={searchEvent} onBookVenue={(event, venue) => goTo("Venue bookings", { event, venue })} showCalendar={venueCalendarOpen} /></>;
   else if (role === ROLES.COORDINATOR && screen.name === "Venue bookings") contents = <>{head(screen.name, screen.blurb, newBooking)}<VenueBookings user={user} creating={bookingFormOpen} onCreatingChange={setBookingFormOpen} event={bookingTarget.event} venue={bookingTarget.venue} onBackChange={reportBack} onViewEvent={(eventId) => goTo("Assigned events", { eventId })} /></>;
+  else if (role === ROLES.VENUE_STAFF && screen.name === "Booking requests") contents = <>{head(screen.name, screen.blurb)}<VenueBookingQueue user={user} onNotice={showToast} /></>;
   else if (role === ROLES.VENUE_STAFF && screen.name === "Venue catalogue") contents = <>{head(screen.name, screen.blurb, viewCalendar)}<VenueCatalogue user={user} role={role} showCalendar={venueCalendarOpen} /></>;
   else if (role === ROLES.VENUE_STAFF && screen.name === "Availability calendar") contents = <>{head(screen.name, screen.blurb)}<VenueAvailabilityCalendar user={user} role={role} /></>;
   else if (screen.name === "Notifications") contents = <>{head(screen.name, screen.blurb)}<NotificationInbox notifications={inbox.notifications} loading={inbox.loading} error={inbox.error} onOpen={inbox.markRead} onViewEvent={viewScreen ? viewEvent : undefined} /></>;

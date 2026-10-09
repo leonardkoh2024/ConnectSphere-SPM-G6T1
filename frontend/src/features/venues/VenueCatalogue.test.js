@@ -64,6 +64,8 @@ test('TC-091 selecting a venue shows layouts, accessibility and operating hours'
   expect(screen.getByText(/MONDAY 09:00–18:00/i)).toBeInTheDocument();
   const hallRow = [...document.querySelectorAll('.cs-record-title h2')].find((heading) => heading.textContent === 'Hall A').closest('.cs-record');
   expect(screen.getByLabelText(/venue record/i).closest('.cs-record')).toBe(hallRow);
+  await userEvent.click(within(hallRow).getByRole('button', { name: /close/i }));
+  expect(screen.queryByLabelText(/venue record/i)).not.toBeInTheDocument();
 });
 
 test('only the Venue Staff member assigned to a venue can edit it', async () => {
@@ -74,6 +76,34 @@ test('only the Venue Staff member assigned to a venue can edit it', async () => 
   expect(screen.getAllByRole('button', { name: /view venue/i })).toHaveLength(1);
   await userEvent.click(screen.getByRole('button', { name: /update venue/i }));
   expect(screen.getByRole('heading', { name: /edit venue/i })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: /close/i }));
+  expect(screen.queryByRole('heading', { name: /edit venue/i })).not.toBeInTheDocument();
+});
+
+test('Venue Staff can filter the catalogue to My venues and return to all venues', async () => {
+  assignedStaffId = 'staff-1';
+  render(<VenueCatalogue user={{ uid: 'staff-1' }} role={ROLES.VENUE_STAFF} />);
+
+  await screen.findByText('Hall A');
+  expect(screen.getByText('Annex')).toBeInTheDocument();
+  const myVenues = screen.getByRole('button', { name: /my venues/i });
+  expect(myVenues).toHaveAttribute('aria-pressed', 'false');
+
+  await userEvent.click(myVenues);
+  expect(myVenues).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByText('Hall A')).toBeInTheDocument();
+  expect(screen.queryByText('Annex')).not.toBeInTheDocument();
+  expect(screen.getByText(/1 venue/i)).toBeInTheDocument();
+
+  await userEvent.click(myVenues);
+  expect(screen.getByText('Annex')).toBeInTheDocument();
+  expect(screen.getByText(/2 venues/i)).toBeInTheDocument();
+});
+
+test('the My venues filter is not shown to coordinators', async () => {
+  render(<VenueCatalogue user={{ uid: 'coordinator-1' }} role={ROLES.EVENT_COORDINATOR} />);
+  await screen.findByText('Hall A');
+  expect(screen.queryByRole('button', { name: /my venues/i })).not.toBeInTheDocument();
 });
 
 test('venue edits require a positive whole capacity and at least one layout', async () => {

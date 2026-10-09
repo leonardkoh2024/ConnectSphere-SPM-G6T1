@@ -79,8 +79,8 @@ export function createSaveVenueUnavailability({ firestore, serverTimestamp }) {
         const conflict = bookingSnapshot.docs.find((bookingDoc) => {
           const booking = bookingDoc.data();
           if (String(booking.status || "").toUpperCase() !== "APPROVED") return false;
-          const bookingStart = asDate(booking.start_datetime);
-          const bookingEnd = asDate(booking.end_datetime);
+          const bookingStart = asDate(booking.occupied_start || booking.start_datetime);
+          const bookingEnd = asDate(booking.occupied_end || booking.end_datetime);
           return bookingStart && bookingEnd && addition.start < bookingEnd && bookingStart < addition.end;
         });
         if (conflict) throw new ApprovedBookingConflictError(bookingLabel(conflict.data(), conflict.id));

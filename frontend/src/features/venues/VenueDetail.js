@@ -16,6 +16,8 @@ export default function VenueDetail({ venue }) {
         <div><dt>Building</dt><dd>{venue.building || "Not set"}</dd></div>
         <div><dt>Location</dt><dd>{locationLabel(record.location)}</dd></div>
         <div><dt>Capacity</dt><dd>{record.max_capacity}</dd></div>
+        <div><dt>Setup time</dt><dd>{Number(venue.setup_minutes) || 0} minutes</dd></div>
+        <div><dt>Turnaround time</dt><dd>{Number(venue.turnaround_minutes) || 0} minutes</dd></div>
         <div className="cs-detail-wide"><dt>Headline facilities</dt><dd>{facilitiesLabel(record.headline_facilities)}</dd></div>
         <div className="cs-detail-wide"><dt>Layouts</dt><dd>{record.layouts.length ? record.layouts.map(word).join(", ") : "None listed"}</dd></div>
         <div className="cs-detail-wide"><dt>Accessibility</dt><dd>{record.accessibility.length ? record.accessibility.map(word).join(", ") : "None listed"}</dd></div>
@@ -27,6 +29,8 @@ export default function VenueDetail({ venue }) {
           ))}</span>
           : "None listed"}</dd></div>
         <div className="cs-detail-wide"><dt>Space availability for special requirements</dt><dd>{venue.special_space_availability || "None listed"}</dd></div>
+        <div className="cs-detail-wide"><dt>Emergency access notes</dt><dd>{venue.emergency_access_notes || "None recorded"}</dd></div>
+        <div className="cs-detail-wide"><dt>Known restrictions</dt><dd>{venue.known_restrictions || "None recorded"}</dd></div>
       </dl>
     </section>
   );
@@ -56,7 +60,7 @@ export function VenueRows({ venues, selectedId, onSelect, onUpdate = onSelect, c
               aria-pressed={selectedId === venue.venue_id}
               onClick={() => canEdit(venue) ? onUpdate(venue) : onSelect(venue)}
             >
-              {canEdit(venue) ? "Update venue" : "View venue"}
+              {selectedId === venue.venue_id ? "Close" : canEdit(venue) ? "Update venue" : "View venue"}
             </button>
             {renderActions && renderActions(venue)}
           </div>

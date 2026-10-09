@@ -1,0 +1,72 @@
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import VenueBookingQueue, { elapsed } from './VenueBookingQueue';
+import { approveVenueBooking, loadVenueBookingQueue } from './venuesApi';
+
+jest.mock('./venuesApi', () => ({
+  approveVenueBooking: jest.fn(),
+  loadVenueBookingQueue: jest.fn()
+}));
+
+const first = {
+  booking_id: 'BK-1', event_name: 'Later event', venue_name: 'Hall A', venue_id: 'VEN-1',
+  event_id: 'EVT-1', event_reference_no: 'EVT-2026-001', event_purpose: 'COMMUNITY_ENGAGEMENT',
+  event_description: 'A community programme with talks and facilitated activities.', registration_required: true,
+  start_datetime: '2026-11-21T02:00:00.000Z', end_datetime: '2026-11-21T04:00:00.000Z',
+  occupied_start: '2026-11-21T01:30:00.000Z', occupied_end: '2026-11-21T04:45:00.000Z',
+  submitted_at: '2026-10-02T00:00:00.000Z', expected_attendance: 100, requested_layout_id: 'THEATRE',
+  suitability_acknowledgement: { acknowledged: true, criteria: ['FACILITIES'] }
+};
+const second = {
+  ...first, booking_id: 'BK-2', event_name: 'Earlier event',
+  start_datetime: '2026-11-20T02:00:00.000Z', end_datetime: '2026-11-20T04:00:00.000Z',
+  submitted_at: '2026-10-01T00:00:00.000Z'
+};
+
+beforeEach(() => {
+  loadVenueBookingQueue.mockReset().mockResolvedValue([first, second]);
+  approveVenueBooking.mockReset().mockResolvedValue({ booking_id: 'BK-2', status: 'APPROVED' });
+});
+
+test('F3 shows only the supplied staff queue details and sorts by submission time or requested date', async () => {
+  render(<VenueBookingQueue user={{ uid: 'staff' }} />);
+  expect(await screen.findByText('Earlier event')).toBeInTheDocument();
+  let headings = screen.getAllByRole('heading', { level: 2 });
+  expect(headings.map((item) => item.textContent)).toEqual(['Earlier event', 'Later event']);
+  expect(screen.queryByText('100')).not.toBeInTheDocument();
+
+  const earlierRow = screen.getByText('Earlier event').closest('.cs-record');
+  await userEvent.click(within(earlierRow).getByRole('button', { name: /view request/i }));
+  expect(within(earlierRow).getByText('100')).toBeInTheDocument();
+  expect(within(earlierRow).getByText('THEATRE')).toBeInTheDocument();
+  expect(within(earlierRow).getByText(/community programme/i)).toBeInTheDocument();
+  expect(within(earlierRow).getByText(/facilities/i)).toBeInTheDocument();
+  await userEvent.click(within(earlierRow).getByRole('button', { name: /close/i }));
+  expect(within(earlierRow).queryByText('100')).not.toBeInTheDocument();
+
+  await userEvent.selectOptions(screen.getByLabelText(/sort by/i), 'requested_date');
+  headings = screen.getAllByRole('heading', { level: 2 });
+  expect(headings.map((item) => item.textContent)).toEqual(['Earlier event', 'Later event']);
+});
+
+test('F4 approval refreshes the queue and reports service-side conflict errors', async () => {
+  loadVenueBookingQueue.mockResolvedValueOnce([second]).mockResolvedValueOnce([]);
+  const notice = jest.fn();
+  render(<VenueBookingQueue user={{ uid: 'staff' }} onNotice={notice} />);
+  const row = (await screen.findByText('Earlier event')).closest('.cs-record');
+  await userEvent.click(within(row).getByRole('button', { name: 'Approve' }));
+  await waitFor(() => expect(notice).toHaveBeenCalledWith('Hall A booking approved.'));
+  expect(screen.getByText(/no pending requests/i)).toBeInTheDocument();
+
+  loadVenueBookingQueue.mockResolvedValue([second]);
+  approveVenueBooking.mockRejectedValue(new Error('An earlier submitted request must be decided first.'));
+  const { unmount } = render(<VenueBookingQueue user={{ uid: 'staff-2' }} />);
+  const buttons = await screen.findAllByRole('button', { name: 'Approve' });
+  await userEvent.click(buttons.at(-1));
+  expect(await screen.findByRole('alert')).toHaveTextContent(/earlier submitted request/i);
+  unmount();
+});
+
+test('elapsed provides the time since submission used in each queue entry', () => {
+  expect(elapsed('2026-10-09T01:00:00Z', new Date('2026-10-09T03:30:00Z').getTime())).toBe('2 hours ago');
+});

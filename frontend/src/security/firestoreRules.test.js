@@ -47,7 +47,7 @@ describe('TC-015 no request is left unguarded', () => {
 
     expect(conditions.length).toBeGreaterThan(0);
     conditions.forEach((condition) =>
-      expect(condition).toMatch(/request\.auth\.uid|hasRole\(|ownsEvent\(|currentCoordinator\(|canReadEvent\(|^false$/)
+      expect(condition).toMatch(/request\.auth\.uid|hasRole\(|ownsEvent\(|currentCoordinator\(|canReadEvent\(|assignedVenueStaff\(|^false$/)
     );
   });
 
@@ -161,7 +161,7 @@ describe('E2 TC-094 venue catalogue reads are role-gated', () => {
   test.each(['venues', 'venue_layouts', 'venue_facilities', 'venue_accessibility', 'venue_operating_hours', 'venue_unavailability', 'venue_bookings'])('%s is readable only by coordinators and venue staff', (collection) => {
     const block = matchBlock(collection);
     expect(block).toContain("hasRole('EVENT_COORDINATOR')");
-    expect(block).toContain("hasRole('VENUE_STAFF')");
+    expect(block).toMatch(/hasRole\('VENUE_STAFF'\)|assignedVenueStaff\(/);
     expect(block).not.toContain('EVENT_ORGANISER');
     expect(block).not.toContain('ATTENDEE');
     expect(block).not.toContain('TECHNICAL_SUPPORT_STAFF');
@@ -173,9 +173,11 @@ describe('E1 venue catalogue updates are assigned-staff only', () => {
     const venues = matchBlock('venues');
     const updateRule = venues.match(/allow update:\s*if([^;]*);/)[1];
 
-    expect(updateRule).toContain("hasRole('VENUE_STAFF')");
-    expect(updateRule).toContain('venue_staff/$(venueId)');
-    expect(updateRule).toContain('.data.user_id == request.auth.uid');
+    expect(updateRule).toContain('assignedVenueStaff(venueId)');
+    expect(RULES).toContain("function assignedVenueStaff(venueId)");
+    expect(RULES).toContain("hasRole('VENUE_STAFF')");
+    expect(RULES).toContain('venue_staff/$(venueId)');
+    expect(RULES).toContain('.data.user_id == request.auth.uid');
     expect(updateRule).toContain('request.resource.data.max_capacity is int');
     expect(updateRule).toContain('request.resource.data.max_capacity > 0');
     expect(updateRule).toContain('request.resource.data.layouts.size() > 0');
