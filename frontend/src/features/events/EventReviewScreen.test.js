@@ -181,3 +181,70 @@ describe('the coordinator event detail tabs', () => {
     expect(reviewApi.reject).not.toHaveBeenCalled();
   });
 });
+
+// C3 — the coordinator sees everything the organiser submitted in one place, so a
+// request can be understood fully before a decision. The review detail (Event
+// request tab) must show every requirement group and the submission metadata
+// (AC1, AC2); opening a Submitted request starts the review (AC3). SCRUM id to be
+// confirmed. TC-279 – TC-281 in docs/test-cases.md.
+describe('C3 the full event request in the review view', () => {
+  // A request submitted with every optional section filled in.
+  const fullDetail = () => ({
+    ...detail({
+      submitted_at: '2026-10-01T03:00:00Z',
+      preferred_location: 'CENTRAL',
+      required_layout: 'THEATRE',
+      facilities: ['WIFI', 'POWER_POINTS'],
+      accessibility: ['WHEELCHAIR_ACCESS', 'HEARING_LOOP'],
+      accessibility_notes: 'Two wheelchair users expected.',
+      equipment_required: 'YES',
+      equipment: [{ equipment_type: 'AUDIO', quantity: 2, notes: 'Handheld mics' }, { equipment_type: 'LIGHTING', quantity: 1 }],
+      registration_required: 'YES',
+      registration_capacity: 120,
+      registration_open_date: '2026-10-15',
+      registration_close_date: '2026-10-30'
+    }),
+    organiser: { id: 'u1', name: 'Nadia Organiser', email: 'nadia@smu.edu.sg', phone: '+65 9123 4567' }
+  });
+
+  test('TC-279 the request tab shows venue requirements, accessibility, equipment and registration needs', async () => {
+    reviewApi.detail.mockResolvedValue(fullDetail());
+    await openRequest();
+
+    // The four requirement groups the story names each get their own section.
+    expect(screen.getByRole('heading', { name: /venue requirements/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /accessibility/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /equipment/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /registration/i })).toBeInTheDocument();
+
+    // A representative value from each group reaches the screen.
+    expect(screen.getByText(/WIFI/)).toBeInTheDocument();                       // venue requirements
+    expect(screen.getByText('Two wheelchair users expected.')).toBeInTheDocument(); // accessibility
+    expect(screen.getByText(/AUDIO/)).toBeInTheDocument();                      // equipment
+    expect(screen.getByText(/120/)).toBeInTheDocument();                        // registration capacity
+  });
+
+  test('TC-280 the view shows the reference number, submission timestamp and the organiser contact', async () => {
+    reviewApi.detail.mockResolvedValue(fullDetail());
+    await openRequest();
+
+    expect(screen.getByText('EVT-001')).toBeInTheDocument();          // reference number
+    expect(screen.getByText(/submitted/i)).toBeInTheDocument();       // submission timestamp (field label)
+    expect(screen.getByText('Nadia Organiser')).toBeInTheDocument();  // organiser contact
+    expect(screen.getByText('nadia@smu.edu.sg')).toBeInTheDocument();
+    expect(screen.getByText(/9123 4567/)).toBeInTheDocument();
+  });
+
+  test('TC-281 opening a Submitted request starts the review (Submitted -> Under Review)', async () => {
+    const submitted = { ...baseEvent, id: 'e9', status: 'SUBMITTED', editable: true };
+    reviewApi.list.mockResolvedValue({ events: [submitted] });
+    reviewApi.detail.mockResolvedValue(detail({ id: 'e9', status: 'UNDER_REVIEW' }));
+
+    render(<EventReviewScreen />);
+    await userEvent.click(await screen.findByRole('button', { name: /view request/i }));
+    await screen.findByRole('button', { name: /back to events/i });
+
+    // The transition (and the record of who opened it) is reviewApi.openReview.
+    await waitFor(() => expect(reviewApi.openReview).toHaveBeenCalledWith('e9'));
+  });
+});
