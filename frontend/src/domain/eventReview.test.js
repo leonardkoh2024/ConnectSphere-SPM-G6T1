@@ -12,7 +12,11 @@ import {
   cleanRequiredText,
   EVENT_TABS,
   initialEventTab,
-  submitClarificationResponse
+  submitClarificationResponse,
+  buildRequestView,
+  contactDetails,
+  equipmentList,
+  registrationSummary
 } from './eventReview';
 
 const event = (changes = {}) => ({ coordinator_id: 'c1', status: 'UNDER_REVIEW', ...changes });
@@ -192,5 +196,92 @@ describe('event detail tabs', () => {
     expect(initialEventTab(answered, { organiser: true })).toBe(EVENT_TABS.REQUEST);
     expect(initialEventTab(awaiting)).toBe(EVENT_TABS.REQUEST);
     expect(initialEventTab(null, { organiser: true })).toBe(EVENT_TABS.REQUEST);
+  });
+});
+
+// C3 — the coordinator sees everything the organiser submitted in one place. These
+// pure helpers shape the submitted request for the review detail view: organiser
+// contact with fallbacks (AC2), the registration gate/window and equipment lines
+// (AC1), and buildRequestView that assembles the whole model (AC1 + AC2). SCRUM id
+// to be confirmed. C3-TC1 – C3-TC4 in docs/test-cases.md.
+describe('C3 see everything the organiser submitted', () => {
+  const fullDetail = () => ({
+    event: {
+      reference_no: 'EVT-001',
+      submitted_at: '2026-10-01T03:00:00Z',
+      preferred_location: 'CENTRAL',
+      required_layout: 'THEATRE',
+      facilities: ['WIFI', 'POWER_POINTS'],
+      accessibility: ['WHEELCHAIR_ACCESS', 'HEARING_LOOP'],
+      accessibility_notes: 'Two wheelchair users expected.',
+      equipment_required: 'YES',
+      equipment: [{ equipment_type: 'AUDIO', quantity: 2, notes: 'Handheld mics' }, { equipment_type: 'LIGHTING' }],
+      registration_required: 'YES',
+      registration_capacity: 120,
+      registration_open_date: '2026-10-15', registration_open_time: '09:00',
+      registration_close_date: '2026-10-30', registration_close_time: '17:00'
+    },
+    organiser: { name: 'Nadia Organiser', email: 'nadia@smu.edu.sg', phone: '+65 9123 4567' }
+  });
+
+  test('C3-TC1 AC2 contactDetails keeps full details and falls back gracefully', () => {
+    expect(contactDetails({ name: 'Nadia Organiser', email: 'nadia@smu.edu.sg', phone: '+65 9123 4567' }))
+      .toEqual({ name: 'Nadia Organiser', email: 'nadia@smu.edu.sg', phone: '+65 9123 4567' });
+    // No name → the email stands in; a contact_number is accepted as the phone.
+    expect(contactDetails({ email: 'nadia@smu.edu.sg' })).toEqual({ name: 'nadia@smu.edu.sg', email: 'nadia@smu.edu.sg', phone: null });
+    expect(contactDetails({ name: 'Nadia', contact_number: '+65 1111 2222' }).phone).toBe('+65 1111 2222');
+    // Nothing at all → a labelled placeholder, never blank.
+    expect(contactDetails({})).toEqual({ name: 'Unknown organiser', email: null, phone: null });
+    expect(contactDetails()).toEqual({ name: 'Unknown organiser', email: null, phone: null });
+  });
+
+  test('C3-TC2 AC1 registrationSummary is null unless registration was asked for', () => {
+    expect(registrationSummary({ registration_required: 'NO' })).toBeNull();
+    expect(registrationSummary({})).toBeNull();
+  });
+
+  test('C3-TC2 AC1 registrationSummary reports capacity and the open/close window', () => {
+    expect(registrationSummary(fullDetail().event)).toEqual({
+      capacity: 120, opens: '2026-10-15 09:00', closes: '2026-10-30 17:00'
+    });
+    // A date with no time shows the date alone; a missing side is null.
+    expect(registrationSummary({ registration_required: 'YES', registration_open_date: '2026-10-15' }))
+      .toEqual({ capacity: null, opens: '2026-10-15', closes: null });
+  });
+
+  test('C3-TC3 AC1 equipmentList formats each line with a default quantity of one', () => {
+    expect(equipmentList(fullDetail().event)).toEqual([
+      { label: 'AUDIO × 2', notes: 'Handheld mics' },
+      { label: 'LIGHTING × 1', notes: null }
+    ]);
+    expect(equipmentList({})).toEqual([]);
+    expect(equipmentList()).toEqual([]);
+  });
+
+  test('C3-TC4 AC1/AC2 buildRequestView gathers every section the story asks for', () => {
+    const view = buildRequestView(fullDetail());
+    expect(view.reference).toBe('EVT-001');
+    expect(view.submittedAt).toBe('2026-10-01T03:00:00Z');
+    expect(view.contact).toMatchObject({ name: 'Nadia Organiser', email: 'nadia@smu.edu.sg' });
+    expect(view.venue).toMatchObject({ preferredLocation: 'CENTRAL', layout: 'THEATRE' });
+    expect(view.venue.facilities).toEqual(['WIFI', 'POWER_POINTS']);
+    expect(view.accessibility.items).toEqual(['WHEELCHAIR_ACCESS', 'HEARING_LOOP']);
+    expect(view.accessibility.notes).toBe('Two wheelchair users expected.');
+    expect(view.equipment).toEqual([
+      { label: 'AUDIO × 2', notes: 'Handheld mics' },
+      { label: 'LIGHTING × 1', notes: null }
+    ]);
+    expect(view.registration).toEqual({ capacity: 120, opens: '2026-10-15 09:00', closes: '2026-10-30 17:00' });
+  });
+
+  test('C3-TC4 buildRequestView copes with a bare request and a missing organiser', () => {
+    const view = buildRequestView({ event: { reference_no: 'EVT-009' } });
+    expect(view.reference).toBe('EVT-009');
+    expect(view.submittedAt).toBeNull();
+    expect(view.contact).toEqual({ name: 'Unknown organiser', email: null, phone: null });
+    expect(view.venue.facilities).toEqual([]);
+    expect(view.accessibility.items).toEqual([]);
+    expect(view.equipment).toEqual([]);
+    expect(view.registration).toBeNull();
   });
 });
