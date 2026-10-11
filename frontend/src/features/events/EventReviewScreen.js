@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { statusTone } from "../../domain/events";
-import { EVENT_TABS, canFindVenues, clarificationSummary } from "../../domain/eventReview";
+import { EVENT_TABS, buildRequestView, canFindVenues, clarificationSummary } from "../../domain/eventReview";
 import { ALL_STATUSES, buildAssignedView, statusOptions } from "../../domain/assignedEvents";
 import { reviewApi } from "./reviewApi";
 import RecordLead from "../../components/RecordLead";
@@ -98,6 +98,8 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     const canReassign = event.editable && !["COMPLETED", "CANCELLED", "REJECTED"].includes(event.status);
     const showFindVenues = typeof onFindVenues === "function" && canFindVenues(event);
     const summary = clarificationSummary(detail);
+    // C3 — the full submitted request, shaped for display (AC1, AC2).
+    const request = buildRequestView(detail);
     const startMode = (next) => { setMode(next); setMessage(""); setError(""); };
     // One form at a time, shown on the tab its action belongs to: Request
     // clarification on Clarifications, Reject and Reassign on the request.
@@ -111,11 +113,48 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
 
     const requestTab = <>
       <dl className="cs-detail-grid">
-        <div><dt>Event date</dt><dd>{event.event_date}</dd></div><div><dt>Time</dt><dd>{event.start_time}–{event.end_time}</dd></div>
-        <div><dt>Expected attendance</dt><dd>{event.expected_attendance}</dd></div><div><dt>Assigned coordinator</dt><dd>{detail.coordinator?.name}</dd></div>
+        <div><dt>Submitted</dt><dd>{shownTime(event.submitted_at)}</dd></div><div><dt>Event date</dt><dd>{event.event_date}</dd></div>
+        <div><dt>Time</dt><dd>{event.start_time}–{event.end_time}</dd></div><div><dt>Expected attendance</dt><dd>{event.expected_attendance}</dd></div>
+        <div><dt>Assigned coordinator</dt><dd>{detail.coordinator?.name}</dd></div>
+        <div className="cs-detail-wide"><dt>Organiser</dt><dd className="cs-contact">
+          <span>{request.contact.name}</span>
+          {request.contact.email && <span>{request.contact.email}</span>}
+          {request.contact.phone && <span>{request.contact.phone}</span>}
+        </dd></div>
         <div className="cs-detail-wide"><dt>Purpose</dt><dd>{event.purpose}</dd></div><div className="cs-detail-wide"><dt>Description</dt><dd>{event.description}</dd></div>
         {event.decision_reason && <div className="cs-detail-wide"><dt>Decision reason</dt><dd>{event.decision_reason} · {shownTime(event.decided_at)}</dd></div>}
       </dl>
+      <section className="cs-request-section">
+        <h3>Venue requirements</h3>
+        <dl className="cs-detail-grid">
+          <div><dt>Preferred location</dt><dd>{request.venue.preferredLocation || "No preference"}</dd></div>
+          <div><dt>Layout</dt><dd>{request.venue.layout || "No preference"}</dd></div>
+        </dl>
+        {request.venue.facilities.length > 0
+          ? <ul className="cs-tag-list">{request.venue.facilities.map((item) => <li key={item}>{item}</li>)}</ul>
+          : <p className="cs-panel-note">No specific facilities requested.</p>}
+      </section>
+      <section className="cs-request-section">
+        <h3>Accessibility</h3>
+        {request.accessibility.items.length > 0
+          ? <ul className="cs-tag-list">{request.accessibility.items.map((item) => <li key={item}>{item}</li>)}</ul>
+          : <p className="cs-panel-note">No accessibility needs stated.</p>}
+        {request.accessibility.notes && <p>{request.accessibility.notes}</p>}
+      </section>
+      <section className="cs-request-section">
+        <h3>Equipment</h3>
+        {request.equipment.length > 0
+          ? <ul className="cs-tag-list">{request.equipment.map((item, index) => <li key={index}>{item.label}{item.notes ? ` — ${item.notes}` : ""}</li>)}</ul>
+          : <p className="cs-panel-note">No equipment requested.</p>}
+      </section>
+      {request.registration && <section className="cs-request-section">
+        <h3>Registration</h3>
+        <dl className="cs-detail-grid">
+          <div><dt>Capacity</dt><dd>{request.registration.capacity ?? "Not set"}</dd></div>
+          <div><dt>Opens</dt><dd>{request.registration.opens || "Not set"}</dd></div>
+          <div><dt>Closes</dt><dd>{request.registration.closes || "Not set"}</dd></div>
+        </dl>
+      </section>}
       {(canDecide || canReassign || showFindVenues) && <div className="cs-review-actions">
         {showFindVenues && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => onFindVenues(event)}>Find venues</button>}
         {canDecide && <button className="cs-btn cs-btn-ghost cs-record-danger" type="button" onClick={() => startMode("reject")}>Reject request</button>}

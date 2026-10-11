@@ -93,7 +93,7 @@ const detail = async (eventId) => {
   const eventSnapshot = await getDoc(doc(db, "events", eventId));
   if (!eventSnapshot.exists()) throw new Error("Event not found.");
   const event = record(eventSnapshot);
-  const [questions, assignments, history, coordinator, profile, requirement, facilities, accessibility] = await Promise.all([
+  const [questions, assignments, history, coordinator, profile, requirement, facilities, accessibility, equipment, organiserSnapshot] = await Promise.all([
     getDocs(query(collection(db, "clarification_requests"), where("event_id", "==", eventId))),
     getDocs(query(collection(db, "coordinator_assignments"), where("event_id", "==", eventId))),
     getDocs(query(collection(db, "event_history"), where("event_id", "==", eventId))),
@@ -102,7 +102,10 @@ const detail = async (eventId) => {
     // Without these the suitability gate (E7/E8) only ever sees capacity.
     getDoc(doc(db, "event_venue_requirements", eventId)),
     getDocs(query(collection(db, "event_facilities"), where("event_id", "==", eventId))),
-    getDocs(query(collection(db, "event_accessibility"), where("event_id", "==", eventId)))
+    getDocs(query(collection(db, "event_accessibility"), where("event_id", "==", eventId))),
+    // C3 — equipment lines (AC1) and the organiser's profile for contact details (AC2).
+    getDocs(query(collection(db, "event_equipment"), where("event_id", "==", eventId))),
+    event.organiser_id ? getDoc(doc(db, "users", event.organiser_id)) : Promise.resolve(null)
   ]);
   const [coordinators, responseSnapshots] = await Promise.all([
     profile.role === ROLES.COORDINATOR ? activeCoordinators() : Promise.resolve([]),
@@ -112,6 +115,11 @@ const detail = async (eventId) => {
   const historyRecords = history.docs.map(record).sort(byCreated);
   const decisions = historyRecords.filter((item) => ["EVENT_APPROVED", "EVENT_REJECTED"].includes(item.action_type));
   const decision = decisions.length ? decisions[decisions.length - 1] : null;
+  // C3 — the organiser's own contact details (AC2).
+  const organiserData = organiserSnapshot && organiserSnapshot.exists?.() ? organiserSnapshot.data() : null;
+  const organiser = organiserData
+    ? { id: event.organiser_id, name: organiserData.name || null, email: organiserData.email || null, phone: organiserData.phone || organiserData.contact_number || null }
+    : null;
   return {
     event: {
       ...event,
@@ -119,9 +127,11 @@ const detail = async (eventId) => {
       required_layout: requirement.data()?.required_layout || null,
       facilities: facilities.docs.map((item) => item.data().facility_id).filter(Boolean),
       accessibility: accessibility.docs.map((item) => item.data().accessibility_id).filter(Boolean),
+      // C3 — the equipment lines the organiser requested (AC1).
+      equipment: equipment.docs.map((item) => ({ equipment_type: item.data().equipment_type, quantity: item.data().quantity || 1, notes: item.data().notes || null })),
       editable: event.coordinator_id === user.uid, decision: decision?.new_value || null, decision_reason: decision?.description || null, decided_by: decision?.actor_id || null, decided_at: decision?.created_at || null
     },
-    coordinator, coordinators,
+    coordinator, coordinators, organiser,
     clarifications: questions.docs.map(record).sort(byCreated),
     responses: responseSnapshots.flatMap((snapshot) => snapshot.docs.map(record)).sort(byCreated),
     assignments: assignments.docs.map(record).sort(byCreated)

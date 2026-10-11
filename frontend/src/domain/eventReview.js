@@ -144,3 +144,54 @@ export const submitClarificationResponse = ({
     responses: [...responses, response]
   };
 };
+
+// C3 — the coordinator sees everything the organiser submitted in one place.
+// These pure helpers shape a reviewApi.detail() payload for the review view:
+// organiser contact with fallbacks (AC2), the registration gate/window and the
+// equipment lines (AC1), and buildRequestView that assembles the whole model so
+// the screen stays a thin render. The Firestore reads live in reviewApi.detail.
+export const contactDetails = (organiser = {}) => {
+  const source = organiser || {};
+  return {
+    name: source.name || source.email || "Unknown organiser",
+    email: source.email || null,
+    phone: source.phone || source.contact_number || null
+  };
+};
+
+const joinDateTime = (date, time) => (date ? (time ? `${date} ${time}` : date) : null);
+
+export const registrationSummary = (event = {}) => {
+  if (!event || event.registration_required !== "YES") return null;
+  return {
+    capacity: event.registration_capacity ?? null,
+    opens: joinDateTime(event.registration_open_date, event.registration_open_time),
+    closes: joinDateTime(event.registration_close_date, event.registration_close_time)
+  };
+};
+
+export const equipmentList = (event = {}) =>
+  ((event && event.equipment) || []).map((line) => ({
+    label: `${line.equipment_type} × ${line.quantity || 1}`,
+    notes: line.notes || null
+  }));
+
+export const buildRequestView = (detail = {}) => {
+  const event = (detail && detail.event) || {};
+  return {
+    reference: event.reference_no || null,
+    submittedAt: event.submitted_at || null,
+    contact: contactDetails(detail && detail.organiser),
+    venue: {
+      preferredLocation: event.preferred_location || null,
+      layout: event.required_layout || null,
+      facilities: event.facilities || []
+    },
+    accessibility: {
+      items: event.accessibility || [],
+      notes: event.accessibility_notes || null
+    },
+    equipment: equipmentList(event),
+    registration: registrationSummary(event)
+  };
+};
