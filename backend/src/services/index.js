@@ -1,9 +1,8 @@
 // The service registry.
 //
-// Each service owns one path prefix and one set of Firestore collections, and no
-// service reads or writes another's collections — that separation is the whole
-// point of the split, and it is what would let a service move into its own
-// process later without the others noticing.
+// Each service owns one path prefix and its Firestore collections. Cross-service
+// data is passed through explicit service contracts rather than raw collection
+// access, preserving the boundary if services later move into separate processes.
 //
 // To add one: create `services/<name>/index.js` exporting an Express router,
 // import it here, and add a row below. Nothing else needs to change.
@@ -22,11 +21,13 @@
 //   notification           /api/notifications             inbox items
 
 import coordinatorAssignmentService from "./coordinatorAssignment/index.js";
+import equipmentService from "./equipment/index.js";
 import venueService from "./venue/index.js";
 
 const SERVICES = [
   { name: "coordinatorAssignment", prefix: "/api/coordinator-assignment", router: coordinatorAssignmentService },
-  { name: "venue", prefix: "/api/venues", router: venueService }
+  { name: "venue", prefix: "/api/venues", router: venueService },
+  { name: "equipment", prefix: "/api/equipment", router: equipmentService }
 ];
 
 /** Mount every registered service onto the app. Called once at startup. */

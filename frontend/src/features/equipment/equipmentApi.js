@@ -7,6 +7,10 @@ import {
   validateEquipmentRequestLines
 } from "../../domain/equipmentRequests";
 import { ROLES } from "../../domain/roles";
+import {
+  calculateEquipmentAvailability,
+  equipmentWindowFromVenueBookings
+} from "../../domain/equipmentAvailability";
 
 const currentUser = () => {
   if (!auth.currentUser) throw new Error("Please sign in again.");
@@ -20,6 +24,46 @@ const profile = async (userId) => {
 };
 
 const requestRecord = (snapshot) => ({ id: snapshot.id, ...snapshot.data() });
+
+const approvedVenueBookings = async (eventId) => {
+  const bookings = await getDocs(query(
+    collection(db, "venue_bookings"),
+    where("event_id", "==", eventId),
+    where("status", "==", "APPROVED")
+  ));
+  return bookings.docs;
+};
+
+const equipmentEventWindow = async (eventId) => {
+  if (!eventId) throw new Error("Choose an event before checking or reserving equipment.");
+  const bookings = await approvedVenueBookings(eventId);
+  return {
+    docs: bookings,
+    ...equipmentWindowFromVenueBookings(bookings.map((item) => item.data()))
+  };
+};
+
+const availabilityRecords = async (equipmentType) => {
+  const [inventory, reservations, unavailability] = await Promise.all([
+    getDoc(doc(db, "equipment_inventory", equipmentType)),
+    getDocs(query(
+      collection(db, "equipment_reservations"),
+      where("equipment_type", "==", equipmentType)
+    )),
+    getDocs(query(
+      collection(db, "equipment_unavailability"),
+      where("equipment_type", "==", equipmentType)
+    ))
+  ]);
+  if (!inventory.exists()) {
+    throw new Error(`No held inventory is recorded for ${equipmentType.replaceAll("_", " ")}.`);
+  }
+  return {
+    inventory,
+    reservations: reservations.docs,
+    unavailability: unavailability.docs
+  };
+};
 
 export const listCoordinatorEquipmentEvents = async () => {
   const user = currentUser();
@@ -117,6 +161,97 @@ export const listPendingEquipmentRequests = async () => {
     collection(db, "equipment_requests"),
     where("status", "==", "PENDING")
   ));
-  return requests.docs.map(requestRecord)
-    .sort((left, right) => String(left.event_date || "").localeCompare(String(right.event_date || "")));
+  const items = await Promise.all(requests.docs.map(async (item) => {
+    const request = requestRecord(item);
+    const reservations = await getDocs(query(
+      collection(db, "equipment_reservations"),
+      where("event_id", "==", request.event_id)
+    ));
+    return { ...request, reservations: reservations.docs.map(requestRecord) };
+  }));
+  return items.sort((left, right) => String(left.event_date || "").localeCompare(String(right.event_date || "")));
+};
+
+export const checkEquipmentAvailability = async ({
+  equipmentType,
+  windowStart,
+  windowEnd,
+  requestedQuantity,
+  eventId = null
+}) => {
+  const user = currentUser();
+  const userProfile = await profile(user.uid);
+  if (userProfile.role !== ROLES.TECH_SUPPORT) {
+    throw new Error("Only Technical Support Staff can check equipment availability.");
+  }
+  if (!EQUIPMENT_TYPES.includes(equipmentType)) throw new Error("Choose a supported equipment type.");
+  const [records, eventWindow] = await Promise.all([
+    availabilityRecords(equipmentType),
+    eventId ? equipmentEventWindow(eventId) : Promise.resolve({ windowStart, windowEnd })
+  ]);
+  return calculateEquipmentAvailability({
+    equipmentType,
+    windowStart: eventWindow.windowStart,
+    windowEnd: eventWindow.windowEnd,
+    requestedQuantity,
+    eventId,
+    inventory: records.inventory.data(),
+    reservations: records.reservations.map((item) => item.data()),
+    unavailability: records.unavailability.map((item) => item.data())
+  });
+};
+
+export const reserveEquipmentForEvent = async ({ eventId, equipmentType, quantity }) => {
+  const user = currentUser();
+  const userProfile = await profile(user.uid);
+  if (userProfile.role !== ROLES.TECH_SUPPORT) {
+    throw new Error("Only Technical Support Staff can reserve equipment.");
+  }
+  if (!EQUIPMENT_TYPES.includes(equipmentType)) throw new Error("Choose a supported equipment type.");
+  const token = await user.getIdToken();
+  const response = await fetch("/api/equipment/reservations", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      event_id: eventId,
+      equipment_type: equipmentType,
+      quantity
+    })
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "The equipment reservation could not be saved.");
+  const reservation = result.reservation;
+  return {
+    id: reservation.id,
+    eventId: reservation.event_id,
+    equipmentType: reservation.equipment_type,
+    quantity: reservation.quantity,
+    windowStart: reservation.start_datetime,
+    windowEnd: reservation.end_datetime,
+    status: reservation.status
+  };
+};
+
+export const releaseEquipmentReservation = async ({ reservationId, reason = "No longer required" }) => {
+  const user = currentUser();
+  const userProfile = await profile(user.uid);
+  if (userProfile.role !== ROLES.TECH_SUPPORT) {
+    throw new Error("Only Technical Support Staff can release equipment reservations.");
+  }
+  if (!reservationId) throw new Error("Choose an equipment reservation to release.");
+  const token = await user.getIdToken();
+  const response = await fetch(`/api/equipment/reservations/${encodeURIComponent(reservationId)}/release`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ reason })
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "The equipment reservation could not be released.");
+  return result;
 };

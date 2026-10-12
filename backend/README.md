@@ -2,7 +2,7 @@
 
 Express service layer, on **:4000**. Started together with the frontend by `npm start` at the repo root.
 
-Two services are mounted: `coordinatorAssignment` (C1 / SCRUM-102) and `venue` (E3). Catalogue reads remain
+Three services are mounted: `coordinatorAssignment` (C1 / SCRUM-102), `venue` (E3) and `equipment` (G3). Catalogue reads remain
 in the browser through `frontend/src/lib/firebase.js`; the venue service authenticates staff and transactionally
 records unavailability after checking approved bookings.
 
@@ -58,7 +58,15 @@ The venue service exposes `PUT /api/venues/unavailability`. It requires a Fireba
 Staff account assigned through `venue_staff/{venueId}` and saves staged additions and releases together,
 refusing additions that overlap an approved booking.
 
-**Week 7 changes affect both mounted services.** K1 replaces C1's automatic assignment with an unassigned
+The equipment service exposes `POST /api/equipment/reservations` and
+`POST /api/equipment/reservations/{reservationId}/release`. Both require a Technical Support Staff Firebase ID
+token. Reservation creation checks the Pending equipment request, pooled inventory, overlapping reservations,
+unavailability and approved venue occupied windows in one Admin Firestore transaction. It obtains the venue
+window through the Venue service's approved-booking read contract rather than querying that collection itself.
+Browser clients have read access for availability checks, but reservation and inventory writes are denied by
+`firestore.rules`.
+
+**Week 7 changes affect the mounted services.** K1 replaces C1's automatic assignment with an unassigned
 queue that the Event Coordinator Lead assigns from, so `coordinatorAssignment`'s rotation (ADR 0001) is no
 longer the release 1 behaviour. E11 replaces E3 criterion 3, so the venue service's refusal of unavailability
 that overlaps an approved booking must become "list the affected bookings, confirm, and flag them". See

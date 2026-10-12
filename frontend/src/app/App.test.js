@@ -1,18 +1,20 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 import { ROLES } from '../domain/roles';
 import { isStaffEmail, isStrongPassword, isValidMobileNumber, passwordChecks, resolveRole } from '../domain/accounts';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { getDoc } from 'firebase/firestore';
 
 // Firebase is stubbed so the tests exercise our own routing and role logic
 // without touching a real project. onAuthStateChanged reports a signed-out user.
 jest.mock('../lib/firebase', () => ({ auth: {}, db: {} }));
 
 jest.mock('firebase/auth', () => ({
-  onAuthStateChanged: (_auth, callback) => {
+  onAuthStateChanged: jest.fn((_auth, callback) => {
     callback(null);
     return () => {};
-  },
+  }),
   signOut: jest.fn(),
   signInWithEmailAndPassword: jest.fn(),
   createUserWithEmailAndPassword: jest.fn()
@@ -24,6 +26,21 @@ jest.mock('firebase/firestore', () => ({
   setDoc: jest.fn(),
   serverTimestamp: jest.fn()
 }));
+
+jest.mock('./Workspace', () => ({
+  __esModule: true,
+  default: ({ role }) => require('react').createElement('p', null, `Workspace role: ${role}`)
+}));
+
+beforeEach(() => {
+  onAuthStateChanged.mockImplementation((_auth, callback) => {
+    callback(null);
+    return () => {};
+  });
+  getDoc.mockResolvedValue({ exists: () => false });
+  signInWithEmailAndPassword.mockReset();
+  signOut.mockReset();
+});
 
 describe('landing page', () => {
   test('a visitor who is not signed in lands on the log in chooser', () => {
@@ -123,6 +140,44 @@ describe('landing page', () => {
     );
 
     expect(screen.queryByText(/detected role/i)).not.toBeInTheDocument();
+  });
+
+  test('Technical Support staff can sign in with valid credentials through the corporate portal', async () => {
+    signInWithEmailAndPassword.mockResolvedValue({ user: { uid: 'tech-support-1' } });
+    getDoc.mockResolvedValue({
+      exists: () => true,
+      data: () => ({ role: ROLES.TECH_SUPPORT })
+    });
+    render(<App />);
+
+    await userEvent.click(screen.getByRole('tab', { name: /corporate/i }));
+    await userEvent.type(screen.getByLabelText(/^email$/i), 'tech.support@connectsphere.com');
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'ValidTestPassword1!');
+    await userEvent.click(screen.getByRole('button', { name: /log in to corporate account/i }));
+
+    await waitFor(() => expect(signInWithEmailAndPassword).toHaveBeenCalledWith(
+      expect.anything(),
+      'tech.support@connectsphere.com',
+      'ValidTestPassword1!'
+    ));
+    await waitFor(() => expect(getDoc).toHaveBeenCalled());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  test('an authenticated Technical Support profile is routed to its own workspace role', async () => {
+    onAuthStateChanged.mockImplementation((_auth, callback) => {
+      callback({ uid: 'tech-support-1' });
+      return () => {};
+    });
+    getDoc.mockResolvedValue({
+      exists: () => true,
+      data: () => ({ role: ROLES.TECH_SUPPORT })
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText(`Workspace role: ${ROLES.TECH_SUPPORT}`)).toBeInTheDocument();
   });
 });
 

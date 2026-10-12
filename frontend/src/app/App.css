@@ -613,6 +613,18 @@ a.cs-btn-ghost:hover {
   font-size: 14px;
 }
 
+.cs-equipment-availability {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.cs-equipment-availability .cs-request-line {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+}
+
 .cs-login-footnote,
 .cs-login-hint {
   margin: 12px 0 0;

@@ -42,6 +42,8 @@ they can be read next to the acceptance criteria and move into the service layer
 | C6 | SCRUM-TBD | Approve a submitted request | TC-112 – TC-117 |
 | C2 | SCRUM-103 | See the events I am responsible for | TC-118 – TC-128 |
 | G1 | SCRUM-TBD | Record the equipment an event needs | TC-285 – TC-289 |
+| G2 | SCRUM-TBD | Know whether enough equipment is free | TC-290 – TC-297 |
+| G3 | SCRUM-TBD | Reserve equipment for an event | TC-298 – TC-306 |
 
 Suites: `frontend/src/features/events/EventRequestForm.test.js` (TC-017 – TC-047, TC-064 – TC-070),
 `frontend/src/features/events/EventList.test.js` (TC-016, TC-058 – TC-063),
@@ -58,7 +60,17 @@ assertions),
 `frontend/src/app/Workspace.test.js` (TC-232) — E4,
 `frontend/src/domain/equipmentRequests.test.js` (TC-285, TC-286),
 `frontend/src/features/equipment/EquipmentRequestsScreen.test.js` (TC-285 – TC-288) and
-`frontend/src/security/firestoreRules.test.js` (TC-289) — G1.
+`frontend/src/security/firestoreRules.test.js` (TC-289) — G1;
+`frontend/src/domain/equipmentAvailability.test.js` (TC-290 – TC-294),
+`frontend/src/features/equipment/EquipmentRequestsScreen.test.js` (TC-295, TC-296) and
+`frontend/src/security/firestoreRules.test.js` (TC-297) — G2;
+`frontend/src/domain/equipmentAvailability.test.js` (TC-299, TC-302),
+`frontend/src/features/equipment/EquipmentRequestsScreen.test.js` (TC-298, TC-300, TC-301, TC-305),
+`frontend/src/features/equipment/equipmentApi.browser.test.js` (TC-301, TC-303, TC-305),
+`backend/src/services/equipment/reservations.test.js` (TC-300, TC-301, TC-303, TC-305),
+`backend/src/services/equipment/service.test.js` (TC-304) and
+`frontend/src/security/firestoreRules.test.js` (TC-304) — G3; TC-306 is in
+`frontend/src/domain/equipmentAvailability.test.js`.
 
 > **Gap, not an omission of E8:** stories E1–E6 (venue catalogue, availability, search and filters) are
 > implemented and tested — `domain/venueSearch.test.js`, `features/venues/VenueCatalogue.test.js`,
@@ -82,6 +94,54 @@ assertions),
 | TC-287 | The coordinator can manage requests for their active assigned events | Coordinator has an active assigned event | Open Equipment requests and choose the event | Its editor opens; an existing request can be amended | As expected | Pass | AC2 |
 | TC-288 | Submitting creates a Pending Technical Support queue item | Coordinator submits at least one valid line | Open the Technical Support equipment queue | The Pending request appears with its event window and requested lines | As expected | Pass | AC4 |
 | TC-289 | The assigned coordinator alone can create or amend the request; Technical Support can read only Pending items | firestore.rules in force | Inspect the event_equipment and equipment_requests rules | Assigned coordinator can prefill and submit; the queue is role/status gated; no client delete is allowed | As expected | Pass | AC2, AC4 — assert via `firestoreRules.test.js` |
+
+---
+
+## G2 / SCRUM-TBD — Know whether enough equipment is free
+
+> As a member of Technical Support Staff, I want to check availability for the event's window so that I do not
+> commit the same equipment twice.
+
+The first supported catalogue model is pooled quantity per equipment type. Each
+`equipment_inventory/{equipment_type}` document contains `total_quantity`; each overlapping
+`equipment_reservations` and `equipment_unavailability` record contains `equipment_type`, `quantity`,
+`start_datetime` and `end_datetime`. A reservation uses `status: RESERVED` while active. This is one of the
+two models explicitly allowed by G2 AC4.
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-290 | Free quantity subtracts concurrent reservations and unavailable stock from held inventory | 12 AUDIO held; 3 reserved and 2 unavailable overlap the same portion of the event window | Check availability for 4 AUDIO | 7 AUDIO are free; the result shows held, reserved and unavailable quantities at the most constrained time | As expected | Pass | AC1 |
+| TC-291 | A request above free stock states the numeric shortfall | 12 AUDIO held; 5 reserved overlap; request is for 8 | Check availability | 7 are free and shortfall is reported as 1 | As expected | Pass | AC2 |
+| TC-292 | Non-overlapping periods do not reduce availability | Reservation ends exactly at the event start; unavailability starts exactly at the event end | Check the event window | Both periods are excluded; windows that only touch do not overlap | As expected | Pass | AC1, AC3 |
+| TC-293 | Existing reservations for the event being checked are not counted against it | The event already has an overlapping reservation | Check availability for that event | Its own held quantity is not subtracted a second time | As expected | Pass | Prevent double-counting |
+| TC-294 | Invalid windows, quantities and missing inventory are reported | Missing or malformed availability input/data | Check availability | An actionable error is returned; the check does not report a successful availability result | As expected | Pass | AC1, AC4 |
+| TC-295 | Technical Support checks each requested line against the Pending event window | A Pending equipment request includes its event date and time | Open Availability check and check the event | Each requested line reports free stock and numeric shortfall using the event window | As expected | Pass | AC1, AC2 |
+| TC-296 | An incomplete event window is reported rather than guessed | A Pending request has no complete date/time window | Check availability | The missing event window is explicitly reported and no availability lookup is made | As expected | Pass | AC1 |
+| TC-297 | Technical Support reads stock and unavailable periods without changing stock values | firestore.rules in force | Inspect inventory and unavailability rules | Technical Support may read; unavailable periods are read-only and inventory writes can only advance the availability revision | As expected | Pass | AC1, AC3 — assert via `firestoreRules.test.js` |
+
+---
+
+## G3 / SCRUM-TBD — Reserve equipment for an event
+
+> As a Technical Support Staff member, I want to reserve equipment against a specific event, so that the same
+> item is not promised to two events at once.
+
+A reservation is made for one equipment-request line. Its required interval is the envelope of the event's
+approved venue booking occupied windows (`occupied_start` through `occupied_end`), including each venue's
+configured setup and turnaround. The reservation is a durable `equipment_reservations` record. Releasing it
+changes its status and records who released it and when; the record remains linked to its event.
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-298 | Technical Support enters a quantity and reserves equipment | Event has a Pending equipment request and an approved venue booking | Set the line quantity and reserve | The requested quantity is saved and a success confirmation is shown | As expected | Pass | AC1, AC6 |
+| TC-299 | Reservation window includes setup and teardown from approved venue bookings | Event has approved bookings with occupied windows | Resolve the equipment window | Earliest occupied start and latest occupied end are used, covering all event venue setup/turnaround | As expected | Pass | AC2, AC4 |
+| TC-300 | A quantity below one cannot be reserved | Event has a Pending equipment request | Enter zero, a negative, or a fractional quantity; reserve | The input is rejected and no reservation is written | As expected | Pass | AC3 |
+| TC-301 | Insufficient stock reports the shortfall and does not create a reservation | Overlapping use leaves fewer free units than requested | Reserve the requested quantity | The user is told the quantity available and the shortfall; no reservation is written | As expected | Pass | AC4, AC7 |
+| TC-302 | Future reservation succeeds when prior use ends before its required start | Existing reservation ends at the future occupied-window start | Check/reserve the future event | The touching/non-overlapping use does not reduce free quantity | As expected | Pass | AC5 |
+| TC-303 | Reservation persists its event, type, quantity, window and reserving actor | Requested quantity is available throughout the required period | Reserve equipment | A `RESERVED` record contains the equipment type, quantity, event id, required window and actor | As expected | Pass | AC8 |
+| TC-304 | Reservation writes are server-authorized and browser writes are denied | firestore.rules and the equipment service are in force | Inspect rules and submit without a Technical Support token | Only Technical Support can use the Admin transaction; direct browser writes are denied | As expected | Pass | AC4, AC8, AC9 — assert via backend service and `firestoreRules.test.js` |
+| TC-305 | The reservation stays linked to its event until released | An event has an active reservation | Reload its Pending request, then release the reservation | The active reservation remains visible with its event; release records the actor/time and makes the quantity available again | As expected | Pass | AC6, AC9 |
+| TC-306 | Non-concurrent reservations are not double-counted when checking the full interval | Two equal reservations occupy different parts of the event window and only touch | Check or reserve the event's equipment | The calculation uses the peak concurrent quantity; both portions leave the same genuinely free quantity | As expected | Pass | AC4, AC5 |
 
 ---
 

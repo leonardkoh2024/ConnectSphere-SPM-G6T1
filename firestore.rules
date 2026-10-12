@@ -352,6 +352,7 @@ service cloud.firestore {
     }
     match /venue_bookings/{bookingId} {
       allow get, list: if hasRole('EVENT_COORDINATOR') || assignedVenueStaff(resource.data.venue_id)
+        || (hasRole('TECHNICAL_SUPPORT_STAFF') && resource.data.status == 'APPROVED')
         || safetyReviewing(resource.data.event_id);
       // E8 — the suitability gate, enforced where it cannot be bypassed. A screen
       // that merely disables its button does not stop a crafted request, so the
@@ -402,10 +403,19 @@ service cloud.firestore {
           && request.resource.data.release_reason is string
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'released_at', 'release_reason']));
     }
-    // D2 — arrangement impact can be counted and named by the assigned
-    // coordinator. This story grants no write access to either collection.
+    // D2 limits coordinator reads to related events. G3 reservation writes go
+    // through the authenticated equipment service, not the browser SDK.
     match /equipment_reservations/{reservationId} {
-      allow get, list: if hasRole('EVENT_COORDINATOR') && currentCoordinator(resource.data.event_id);
+      allow get, list: if (hasRole('EVENT_COORDINATOR') && currentCoordinator(resource.data.event_id))
+        || hasRole('TECHNICAL_SUPPORT_STAFF');
+    }
+    // The Admin-backed G3 equipment service owns inventory revisions and
+    // reservations. The browser can read availability, but cannot write stock.
+    match /equipment_inventory/{equipmentType} {
+      allow get, list: if hasRole('TECHNICAL_SUPPORT_STAFF');
+    }
+    match /equipment_unavailability/{unavailabilityId} {
+      allow get, list: if hasRole('TECHNICAL_SUPPORT_STAFF');
     }
     match /equipment_requests/{eventId} {
       allow get: if hasRole('EVENT_COORDINATOR') && currentCoordinator(eventId);

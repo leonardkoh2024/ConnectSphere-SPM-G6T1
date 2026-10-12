@@ -154,8 +154,8 @@ describe('D2 significant event details require an acknowledged audit record', ()
     expect(matchBlock('event_history')).toContain('request.resource.data.warning_acknowledged == true');
   });
 
-  test.each(['equipment_reservations', 'registrations'])('%s is readable only by the current coordinator and cannot be written in D2', (collection) => {
-    const block = matchBlock(collection);
+  test('registrations are readable only by the current coordinator and cannot be written in D2', () => {
+    const block = matchBlock('registrations');
     expect(block).toContain("hasRole('EVENT_COORDINATOR') && currentCoordinator(resource.data.event_id)");
     expect(block).not.toMatch(/allow\s+(create|update|delete|write)/);
   });
@@ -178,6 +178,26 @@ describe('G1 equipment requests are editable by the assigned coordinator and que
     expect(requests).toContain("hasRole('TECHNICAL_SUPPORT_STAFF') && resource.data.status == 'PENDING'");
     expect(requests).toContain("'COMPLETED', 'CANCELLED', 'REJECTED'");
     expect(requests).not.toMatch(/allow\s+delete/);
+  });
+});
+
+describe('G2 equipment availability is visible to Technical Support', () => {
+  test('pooled inventory and unavailability records are readable only by Technical Support', () => {
+    const inventory = matchBlock('equipment_inventory');
+    expect(inventory).toContain("hasRole('TECHNICAL_SUPPORT_STAFF')");
+    expect(inventory).not.toMatch(/allow\s+(create|update|delete|write)/);
+    const unavailable = matchBlock('equipment_unavailability');
+    expect(unavailable).toContain("hasRole('TECHNICAL_SUPPORT_STAFF')");
+    expect(unavailable).not.toMatch(/allow\s+(create|update|delete|write)/);
+  });
+
+  test('reservation and inventory writes are denied to browser clients', () => {
+    const reservations = matchBlock('equipment_reservations');
+    expect(reservations).toContain("hasRole('TECHNICAL_SUPPORT_STAFF')");
+    expect(reservations).not.toMatch(/allow\s+(create|update|delete|write)/);
+    expect(matchBlock('equipment_inventory')).not.toMatch(/allow\s+(create|update|delete|write)/);
+    expect(matchBlock('venue_bookings')).toContain("hasRole('TECHNICAL_SUPPORT_STAFF') && resource.data.status == 'APPROVED'");
+    expect(matchBlock('equipment_requests')).toContain("hasRole('TECHNICAL_SUPPORT_STAFF') && resource.data.status == 'PENDING'");
   });
 });
 
@@ -204,13 +224,21 @@ describe('C4/C7/C9 workflow records are guarded for browser SDK access', () => {
 });
 
 describe('E2 TC-094 venue catalogue reads are role-gated', () => {
-  test.each(['venues', 'venue_layouts', 'venue_facilities', 'venue_accessibility', 'venue_operating_hours', 'venue_unavailability', 'venue_bookings'])('%s is readable only by coordinators and venue staff', (collection) => {
+  test.each(['venues', 'venue_layouts', 'venue_facilities', 'venue_accessibility', 'venue_operating_hours', 'venue_unavailability'])('%s is readable only by coordinators and venue staff', (collection) => {
     const block = matchBlock(collection);
     expect(block).toContain("hasRole('EVENT_COORDINATOR')");
     expect(block).toMatch(/hasRole\('VENUE_STAFF'\)|assignedVenueStaff\(/);
     expect(block).not.toContain('EVENT_ORGANISER');
     expect(block).not.toContain('ATTENDEE');
     expect(block).not.toContain('TECHNICAL_SUPPORT_STAFF');
+  });
+
+  test('venue bookings are readable by Technical Support only when approved for equipment window checks', () => {
+    const bookings = matchBlock('venue_bookings');
+    expect(bookings).toContain("hasRole('EVENT_COORDINATOR')");
+    expect(bookings).toContain("hasRole('TECHNICAL_SUPPORT_STAFF') && resource.data.status == 'APPROVED'");
+    expect(bookings).not.toContain('EVENT_ORGANISER');
+    expect(bookings).not.toContain('ATTENDEE');
   });
 });
 
