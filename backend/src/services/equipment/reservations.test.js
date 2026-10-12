@@ -17,7 +17,7 @@ const reservationRecord = (changes = {}) => ({
   ...changes
 });
 
-const fixture = ({ reservations = [], unavailable = [] } = {}) => {
+const fixture = ({ reservations = [], unavailable = [], withReservationRequest = false } = {}) => {
   const transaction = {
     created: [],
     updated: [],
@@ -27,14 +27,23 @@ const fixture = ({ reservations = [], unavailable = [] } = {}) => {
       if (reference.path === "equipment_requests/event-1") {
         return {
           exists: true,
-          data: () => ({ status: "PENDING", lines: [{ equipment_type: "AUDIO", quantity: 2 }] })
+          data: () => (withReservationRequest
+            ? { status: "ARRANGED", lines: [{ reservation_id: "reservation-1", fulfillment_status: "RESERVED" }] }
+            : { status: "PENDING", lines: [{ equipment_type: "AUDIO", quantity: 2 }] })
         };
       }
       if (reference.path === "equipment_inventory/AUDIO") {
         return { exists: true, data: () => ({ total_quantity: 8, availability_revision: 0 }) };
       }
       if (reference.path === "equipment_reservations/reservation-1") {
-        return { exists: true, data: () => reservationRecord() };
+        return {
+          exists: true,
+          data: () => reservationRecord({
+            event_id: "event-1",
+            reservation_id: "reservation-1",
+            line_index: 0
+          })
+        };
       }
       if (reference.collectionName === "equipment_reservations") {
         return { docs: reservations.map((data) => ({ data: () => data })) };
@@ -92,8 +101,14 @@ test("TC-303 creates an event-linked reservation for its buffered approved venue
   assert.equal(result.start_datetime.toISOString(), "2026-11-04T00:30:00.000Z");
   assert.equal(result.end_datetime.toISOString(), "2026-11-04T09:30:00.000Z");
   assert.equal(result.reserved_by, "tech-1");
-  assert.equal(transaction.created.length, 1);
-  assert.equal(transaction.updated[0].data.availability_revision, 1);
+  assert.equal(transaction.created.length, 2);
+  assert.equal(transaction.created[1].data.action, "LINE_RESERVED");
+  assert.equal(transaction.created[1].data.actor_id, "tech-1");
+  assert.equal(transaction.updated[0].reference.path, "equipment_requests/event-1");
+  assert.equal(transaction.updated[0].data.lines[0].fulfillment_status, "RESERVED");
+  assert.equal(transaction.updated[0].data.lines[0].reservation_id, "generated-reservation");
+  assert.equal(transaction.updated[1].data.availability_revision, 1);
+  assert.equal(transaction.updated[0].data.status, "ARRANGED");
 });
 
 test("TC-300 rejects quantities below one without writing a reservation", async () => {
@@ -118,7 +133,7 @@ test("TC-301 refuses and explains a reservation that exceeds free stock for its 
 });
 
 test("TC-305 release retains the reservation and advances the inventory revision", async () => {
-  const { service, transaction } = fixture();
+  const { service, transaction } = fixture({ withReservationRequest: true });
   const result = await service.release({
     reservationId: "reservation-1",
     reason: "Event no longer needs it",
@@ -126,10 +141,15 @@ test("TC-305 release retains the reservation and advances the inventory revision
   });
 
   assert.deepEqual(result, { reservationId: "reservation-1", status: "RELEASED" });
-  assert.equal(transaction.updated.length, 2);
+  assert.equal(transaction.created.length, 1);
+  assert.equal(transaction.created[0].data.action, "LINE_RESERVATION_RELEASED");
+  assert.equal(transaction.created[0].data.reason, "Event no longer needs it");
+  assert.equal(transaction.updated.length, 3);
   assert.equal(transaction.updated[0].reference.path, "equipment_reservations/reservation-1");
   assert.equal(transaction.updated[0].data.status, "RELEASED");
   assert.equal(transaction.updated[0].data.released_by, "tech-1");
   assert.equal(transaction.updated[0].data.release_reason, "Event no longer needs it");
-  assert.equal(transaction.updated[1].data.availability_revision, 1);
+  assert.equal(transaction.updated[1].reference.path, "equipment_requests/event-1");
+  assert.equal(transaction.updated[1].data.lines[0].fulfillment_status, "PENDING");
+  assert.equal(transaction.updated[2].data.availability_revision, 1);
 });

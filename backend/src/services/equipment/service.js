@@ -1,5 +1,6 @@
 import express from "express";
 
+import { createEquipmentRequestActions } from "./requests.js";
 import { createEquipmentReservations } from "./reservations.js";
 
 export const createEquipmentService = ({
@@ -14,6 +15,7 @@ export const createEquipmentService = ({
     serverTimestamp,
     getApprovedEventBookings
   });
+  const requestActions = createEquipmentRequestActions({ firestore, serverTimestamp });
 
   const authenticateTechnicalSupport = async (request, response) => {
     const token = request.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
@@ -51,6 +53,7 @@ export const createEquipmentService = ({
         eventId: request.body?.event_id,
         equipmentType: request.body?.equipment_type,
         quantity: request.body?.quantity,
+        lineIndex: request.body?.line_index,
         userId: user.uid
       });
       response.status(201).json({ reservation });
@@ -73,6 +76,56 @@ export const createEquipmentService = ({
     try {
       const result = await reservations.release({
         reservationId: request.params.reservationId,
+        reason: request.body?.reason,
+        userId: user.uid
+      });
+      response.json(result);
+    } catch (error) {
+      if (error.statusCode) response.status(error.statusCode).json({ error: error.message });
+      else next(error);
+    }
+  });
+
+  router.patch("/requests/:eventId/lines/:lineIndex", async (request, response, next) => {
+    let user;
+    try {
+      user = await authenticateTechnicalSupport(request, response);
+    } catch (error) {
+      next(error);
+      return;
+    }
+    if (!user) return;
+
+    try {
+      const result = await requestActions.amendLine({
+        eventId: request.params.eventId,
+        lineIndex: request.params.lineIndex,
+        equipmentType: request.body?.equipment_type,
+        quantity: request.body?.quantity,
+        note: request.body?.note,
+        userId: user.uid
+      });
+      response.json(result);
+    } catch (error) {
+      if (error.statusCode) response.status(error.statusCode).json({ error: error.message });
+      else next(error);
+    }
+  });
+
+  router.post("/requests/:eventId/lines/:lineIndex/unable-to-fulfill", async (request, response, next) => {
+    let user;
+    try {
+      user = await authenticateTechnicalSupport(request, response);
+    } catch (error) {
+      next(error);
+      return;
+    }
+    if (!user) return;
+
+    try {
+      const result = await requestActions.resolveLine({
+        eventId: request.params.eventId,
+        lineIndex: request.params.lineIndex,
         reason: request.body?.reason,
         userId: user.uid
       });

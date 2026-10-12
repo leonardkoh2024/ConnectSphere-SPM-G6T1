@@ -436,6 +436,8 @@ service cloud.firestore {
         && request.resource.data.updated_at is timestamp;
       allow update: if hasRole('EVENT_COORDINATOR')
         && currentCoordinator(eventId)
+        && resource.data.status == 'PENDING'
+        && resource.data.get('has_support_decisions', false) == false
         && resource.data.event_id == eventId
         && request.resource.data.request_id == resource.data.request_id
         && request.resource.data.event_id == resource.data.event_id
@@ -453,6 +455,10 @@ service cloud.firestore {
           'event_name', 'reference_no', 'event_date', 'start_time', 'end_time',
           'expected_attendance', 'coordinator_id', 'lines', 'updated_at'
         ]);
+    }
+    match /equipment_request_history/{historyId} {
+      allow get, list: if hasRole('EVENT_COORDINATOR')
+        && currentCoordinator(resource.data.event_id);
     }
     match /registrations/{registrationId} {
       allow get, list: if hasRole('EVENT_COORDINATOR') && currentCoordinator(resource.data.event_id);

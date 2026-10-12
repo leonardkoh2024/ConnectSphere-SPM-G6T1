@@ -17,7 +17,12 @@ jest.mock("../../lib/firebase", () => ({
   db: { name: "test-firestore" }
 }));
 
-import { releaseEquipmentReservation, reserveEquipmentForEvent } from "./equipmentApi";
+import {
+  amendEquipmentRequestLine,
+  markEquipmentLineUnableToFulfill,
+  releaseEquipmentReservation,
+  reserveEquipmentForEvent
+} from "./equipmentApi";
 
 const originalFetch = global.fetch;
 const snapshot = (data) => ({ exists: () => true, data: () => data });
@@ -96,4 +101,37 @@ test("TC-305 releasing a reservation uses the authenticated equipment service en
   });
   expect(options.headers["Content-Type"]).toBe("application/json");
   expect(options.headers.Authorization).toMatch(/^Bearer /);
+});
+
+test("TC-307 amendment calls the authenticated equipment service with the note and changed values", async () => {
+  mockFetch.mockResolvedValue({ ok: true, json: async () => ({ eventId: "event-1", lineIndex: 0 }) });
+  await expect(amendEquipmentRequestLine({
+    eventId: "event-1",
+    lineIndex: 0,
+    equipmentType: "VISUAL",
+    quantity: 3,
+    note: "Substitute visual equipment."
+  })).resolves.toMatchObject({ lineIndex: 0 });
+  expect(mockFetch).toHaveBeenCalledWith("/api/equipment/requests/event-1/lines/0", expect.any(Object));
+  const [, options] = mockFetch.mock.calls[0];
+  expect(JSON.parse(options.body)).toEqual({
+    equipment_type: "VISUAL",
+    quantity: 3,
+    note: "Substitute visual equipment."
+  });
+});
+
+test("TC-309 unable-to-fulfil resolution calls the authenticated service with its reason", async () => {
+  mockFetch.mockResolvedValue({ ok: true, json: async () => ({ status: "ARRANGED" }) });
+  await expect(markEquipmentLineUnableToFulfill({
+    eventId: "event-1",
+    lineIndex: 1,
+    reason: "No compatible unit is available."
+  })).resolves.toEqual({ status: "ARRANGED" });
+  expect(mockFetch).toHaveBeenCalledWith(
+    "/api/equipment/requests/event-1/lines/1/unable-to-fulfill",
+    expect.any(Object)
+  );
+  const [, options] = mockFetch.mock.calls[0];
+  expect(JSON.parse(options.body)).toEqual({ reason: "No compatible unit is available." });
 });

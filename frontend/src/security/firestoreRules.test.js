@@ -178,6 +178,14 @@ describe('G1 equipment requests are editable by the assigned coordinator and que
     expect(requests).toContain("hasRole('TECHNICAL_SUPPORT_STAFF') && resource.data.status == 'PENDING'");
     expect(requests).toContain("'COMPLETED', 'CANCELLED', 'REJECTED'");
     expect(requests).not.toMatch(/allow\s+delete/);
+    expect(requests).toContain("resource.data.get('has_support_decisions', false) == false");
+  });
+
+  test('equipment request decision history is readable only by the assigned coordinator', () => {
+    const history = matchBlock('equipment_request_history');
+    expect(history).toContain("hasRole('EVENT_COORDINATOR')");
+    expect(history).toContain('currentCoordinator(resource.data.event_id)');
+    expect(history).not.toMatch(/allow\s+(create|update|delete|write)/);
   });
 });
 

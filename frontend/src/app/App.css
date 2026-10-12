@@ -625,6 +625,24 @@ a.cs-btn-ghost:hover {
   gap: 12px;
 }
 
+.cs-equipment-lines {
+  display: grid;
+  gap: 8px;
+}
+
+.cs-equipment-lines-item {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.cs-equipment-line-fields {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+
+.cs-equipment-line-details p { margin: 0; }
+
 .cs-login-footnote,
 .cs-login-hint {
   margin: 12px 0 0;
@@ -1245,6 +1263,29 @@ a.cs-btn-ghost:hover {
 }
 
 .cs-equipment-line .cs-form-grid { width: 100%; }
+
+.cs-equipment-line-actions,
+.cs-equipment-resolve {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+
+.cs-equipment-resolve {
+  width: 100%;
+  padding-top: 16px;
+  border-top: 1px solid var(--cs-line);
+}
+
+.cs-equipment-coordinator-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.cs-equipment-coordinator-summary h3,
+.cs-equipment-coordinator-summary p {
+  margin: 0;
+}
 
 /* The Yes/No question a section opens with. */
 .cs-yesno {

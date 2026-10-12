@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { listPendingEquipmentRequests } from "./equipmentApi";
+import EquipmentRequestLines from "./EquipmentRequestLines";
 
 export default function EquipmentQueueScreen() {
   const [requests, setRequests] = useState([]);
@@ -25,10 +26,7 @@ export default function EquipmentQueueScreen() {
       <p className="cs-record-ref">{request.reference_no}</p>
       <div className="cs-record-status"><span className="cs-pill cs-pill-warning">Pending</span></div>
       <div className="cs-record-details">
-        {request.lines.map((line, index) => <p key={`${request.id}-${index}`}>
-          {line.equipment_type.replaceAll("_", " ")} · {line.quantity}
-          {line.technical_requirements ? ` · ${line.technical_requirements}` : ""}
-        </p>)}
+        <EquipmentRequestLines lines={request.lines} />
         <p>Expected attendance: {request.expected_attendance ?? "Not recorded"}</p>
       </div>
     </article>

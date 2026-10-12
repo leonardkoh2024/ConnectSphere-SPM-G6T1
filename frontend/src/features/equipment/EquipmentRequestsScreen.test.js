@@ -6,9 +6,11 @@ import EquipmentRequestEditor from "./EquipmentRequestEditor";
 import EquipmentAvailabilityScreen from "./EquipmentAvailabilityScreen";
 import {
   checkEquipmentAvailability,
+  amendEquipmentRequestLine,
   listCoordinatorEquipmentEvents,
   listPendingEquipmentRequests,
   loadCoordinatorEquipmentEditor,
+  markEquipmentLineUnableToFulfill,
   releaseEquipmentReservation,
   reserveEquipmentForEvent,
   submitEquipmentRequest
@@ -18,6 +20,8 @@ jest.mock("./equipmentApi", () => ({
   listCoordinatorEquipmentEvents: jest.fn(),
   listPendingEquipmentRequests: jest.fn(),
   checkEquipmentAvailability: jest.fn(),
+  amendEquipmentRequestLine: jest.fn(),
+  markEquipmentLineUnableToFulfill: jest.fn(),
   reserveEquipmentForEvent: jest.fn(),
   releaseEquipmentReservation: jest.fn(),
   loadCoordinatorEquipmentEditor: jest.fn(),
@@ -62,6 +66,8 @@ beforeEach(() => {
     status: "RESERVED"
   });
   releaseEquipmentReservation.mockResolvedValue({ reservationId: "reservation-1", status: "RELEASED" });
+  amendEquipmentRequestLine.mockResolvedValue({ ok: true });
+  markEquipmentLineUnableToFulfill.mockResolvedValue({ status: "PENDING" });
 });
 
 test("G1 coordinator can amend the prefilled organiser lines and submit them", async () => {
@@ -137,7 +143,8 @@ test("G1 submitted Pending requests appear in the Technical Support queue", asyn
 
   expect(await screen.findByRole("heading", { name: "Partner Summit" })).toBeInTheDocument();
   expect(screen.getByText("Pending")).toBeInTheDocument();
-  expect(screen.getByText(/audio · 2 · wireless microphones/i)).toBeInTheDocument();
+  expect(screen.getByText((_, element) => element.classList.contains("cs-equipment-lines-item")
+    && /audio · 2 · wireless microphones · requested/i.test(element.textContent))).toBeInTheDocument();
   expect(screen.getByText(/expected attendance: 120/i)).toBeInTheDocument();
   expect(listPendingEquipmentRequests).toHaveBeenCalledTimes(1);
 });
@@ -149,6 +156,10 @@ test("TC-295 Technical Support checks each requested equipment line for the even
   await userEvent.click(screen.getByRole("button", { name: /check availability/i }));
 
   expect(await screen.findByText(/shortfall 2/i)).toBeInTheDocument();
+  const details = screen.getByText((_, element) => element.classList.contains("cs-equipment-lines-item"));
+  expect(details).toHaveTextContent(/audio · 2 · wireless microphones · 3 free of 10/i);
+  const quantityInput = screen.getByLabelText("AUDIO quantity");
+  expect(details.compareDocumentPosition(quantityInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(checkEquipmentAvailability).toHaveBeenCalledWith({
     equipmentType: "AUDIO",
     requestedQuantity: 2,
@@ -191,7 +202,8 @@ test("TC-298 Technical Support can enter a quantity and receives confirmation wh
   expect(reserveEquipmentForEvent).toHaveBeenCalledWith({
     eventId: "event-1",
     equipmentType: "AUDIO",
-    quantity: 4
+    quantity: 4,
+    lineIndex: 0
   });
 });
 
@@ -240,4 +252,71 @@ test("TC-305 a reservation remains associated with its event until Technical Sup
   await userEvent.click(screen.getByRole("button", { name: /release reservation/i }));
   expect(await screen.findByText(/reservation released/i)).toBeInTheDocument();
   expect(releaseEquipmentReservation).toHaveBeenCalledWith({ reservationId: "reservation-1" });
+});
+
+test("TC-307 Technical Support can amend a type and quantity with a note", async () => {
+  render(<EquipmentAvailabilityScreen />);
+  await screen.findByRole("heading", { name: "Partner Summit" });
+  await userEvent.selectOptions(screen.getByLabelText("Substitute equipment type 1"), "VISUAL");
+  const quantity = screen.getByLabelText("AUDIO quantity");
+  await userEvent.clear(quantity);
+  await userEvent.type(quantity, "3");
+  await userEvent.type(screen.getByLabelText("Amendment note"), "Substitute visual equipment.");
+  await userEvent.click(screen.getByRole("button", { name: /save amendment/i }));
+
+  expect(await screen.findByText(/amendment saved and visible to the coordinator/i)).toBeInTheDocument();
+  expect(amendEquipmentRequestLine).toHaveBeenCalledWith({
+    eventId: "event-1",
+    lineIndex: 0,
+    equipmentType: "VISUAL",
+    quantity: 3,
+    note: "Substitute visual equipment."
+  });
+});
+
+test("TC-309 Technical Support cannot resolve a line without a reason", async () => {
+  render(<EquipmentAvailabilityScreen />);
+  await screen.findByRole("heading", { name: "Partner Summit" });
+  await userEvent.click(screen.getByRole("button", { name: /mark unable to fulfil/i }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(/reason is required/i);
+  expect(markEquipmentLineUnableToFulfill).not.toHaveBeenCalled();
+});
+
+test("TC-311 coordinator can see support amendment and decision history", async () => {
+  listCoordinatorEquipmentEvents.mockResolvedValue([{
+    ...event,
+    equipment_request: {
+      status: "ARRANGED",
+      has_support_decisions: true,
+      lines: [{
+        equipment_type: "VISUAL",
+        quantity: 3,
+        fulfillment_status: "RESOLVED",
+        resolution_reason: "No compatible projector was available."
+      }],
+      support_history: [{
+        id: "history-1",
+        action: "LINE_AMENDED",
+        line_index: 0,
+        actor_id: "tech-1",
+        created_at: new Date("2026-10-12T12:00:00.000Z"),
+        old_values: { equipment_type: "AUDIO", quantity: 2 },
+        new_values: { equipment_type: "VISUAL", quantity: 3 },
+        note: "Substitute visual equipment."
+      }, {
+        id: "history-2",
+        action: "LINE_UNABLE_TO_FULFILL",
+        line_index: 0,
+        actor_id: "tech-1",
+        created_at: new Date("2026-10-12T12:01:00.000Z"),
+        reason: "No compatible projector was available."
+      }]
+    }
+  }]);
+  render(<EquipmentRequestsScreen />);
+
+  expect(await screen.findByText(/Amended line 1: AUDIO 2 → VISUAL 3/i)).toBeInTheDocument();
+  expect(screen.getAllByText(/Unable to fulfil: No compatible projector was available/i)).toHaveLength(2);
+  expect(screen.getByRole("button", { name: /technical support is handling this request/i })).toBeDisabled();
 });

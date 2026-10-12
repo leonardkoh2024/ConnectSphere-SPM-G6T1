@@ -72,11 +72,24 @@ export const listCoordinatorEquipmentEvents = async () => {
   const events = await getDocs(query(collection(db, "events"), where("coordinator_id", "==", user.uid)));
   const activeEvents = events.docs.filter((item) => !terminalEquipmentEventStatuses.includes(item.data().status));
   const requests = await Promise.all(activeEvents.map((item) => getDoc(doc(db, "equipment_requests", item.id))));
-  return activeEvents.map((item, index) => ({
-    id: item.id,
-    ...item.data(),
-    equipment_request: requests[index].exists() ? requestRecord(requests[index]) : null
-  })).sort((left, right) => String(left.event_date || "").localeCompare(String(right.event_date || "")));
+  return Promise.all(activeEvents.map(async (item, index) => {
+    const equipmentRequest = requests[index].exists() ? requestRecord(requests[index]) : null;
+    const history = equipmentRequest
+      ? await getDocs(query(
+        collection(db, "equipment_request_history"),
+        where("event_id", "==", item.id)
+      ))
+      : { docs: [] };
+    return {
+      id: item.id,
+      ...item.data(),
+      equipment_request: equipmentRequest
+        ? { ...equipmentRequest, support_history: history.docs.map(requestRecord) }
+        : null
+    };
+  })).then((items) => items.sort((left, right) =>
+    String(left.event_date || "").localeCompare(String(right.event_date || ""))
+  ));
 };
 
 export const loadCoordinatorEquipmentEditor = async (eventId) => {
@@ -129,6 +142,10 @@ export const submitEquipmentRequest = async ({ eventId, lines }) => {
     if (event.coordinator_id !== user.uid) throw new Error("Only the assigned Event Coordinator can submit this request.");
     if (terminalEquipmentEventStatuses.includes(event.status)) {
       throw new Error("Equipment requests cannot be submitted for a completed, cancelled or rejected event.");
+    }
+    if (existingRequest.exists()
+      && (existingRequest.data().status !== "PENDING" || existingRequest.data().has_support_decisions === true)) {
+      throw new Error("This equipment request is already being handled by Technical Support and cannot be amended.");
     }
     const submittedAt = serverTimestamp();
     transaction.set(requestRef, {
@@ -201,7 +218,7 @@ export const checkEquipmentAvailability = async ({
   });
 };
 
-export const reserveEquipmentForEvent = async ({ eventId, equipmentType, quantity }) => {
+export const reserveEquipmentForEvent = async ({ eventId, equipmentType, quantity, lineIndex }) => {
   const user = currentUser();
   const userProfile = await profile(user.uid);
   if (userProfile.role !== ROLES.TECH_SUPPORT) {
@@ -218,7 +235,8 @@ export const reserveEquipmentForEvent = async ({ eventId, equipmentType, quantit
     body: JSON.stringify({
       event_id: eventId,
       equipment_type: equipmentType,
-      quantity
+      quantity,
+      line_index: lineIndex
     })
   });
   const result = await response.json();
@@ -235,6 +253,49 @@ export const reserveEquipmentForEvent = async ({ eventId, equipmentType, quantit
   };
 };
 
+const equipmentAction = async (user, path, method, body) => {
+  const token = await user.getIdToken();
+  const response = await fetch(path, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(body)
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "The equipment request could not be updated.");
+  return result;
+};
+
+export const amendEquipmentRequestLine = async ({ eventId, lineIndex, equipmentType, quantity, note }) => {
+  const user = currentUser();
+  const userProfile = await profile(user.uid);
+  if (userProfile.role !== ROLES.TECH_SUPPORT) {
+    throw new Error("Only Technical Support Staff can amend equipment requests.");
+  }
+  return equipmentAction(
+    user,
+    `/api/equipment/requests/${encodeURIComponent(eventId)}/lines/${lineIndex}`,
+    "PATCH",
+    { equipment_type: equipmentType, quantity, note }
+  );
+};
+
+export const markEquipmentLineUnableToFulfill = async ({ eventId, lineIndex, reason }) => {
+  const user = currentUser();
+  const userProfile = await profile(user.uid);
+  if (userProfile.role !== ROLES.TECH_SUPPORT) {
+    throw new Error("Only Technical Support Staff can resolve equipment requests.");
+  }
+  return equipmentAction(
+    user,
+    `/api/equipment/requests/${encodeURIComponent(eventId)}/lines/${lineIndex}/unable-to-fulfill`,
+    "POST",
+    { reason }
+  );
+};
+
 export const releaseEquipmentReservation = async ({ reservationId, reason = "No longer required" }) => {
   const user = currentUser();
   const userProfile = await profile(user.uid);
@@ -242,16 +303,10 @@ export const releaseEquipmentReservation = async ({ reservationId, reason = "No 
     throw new Error("Only Technical Support Staff can release equipment reservations.");
   }
   if (!reservationId) throw new Error("Choose an equipment reservation to release.");
-  const token = await user.getIdToken();
-  const response = await fetch(`/api/equipment/reservations/${encodeURIComponent(reservationId)}/release`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`
-    },
-    body: JSON.stringify({ reason })
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || "The equipment reservation could not be released.");
-  return result;
+  return equipmentAction(
+    user,
+    `/api/equipment/reservations/${encodeURIComponent(reservationId)}/release`,
+    "POST",
+    { reason }
+  );
 };

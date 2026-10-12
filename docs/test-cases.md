@@ -44,6 +44,7 @@ they can be read next to the acceptance criteria and move into the service layer
 | G1 | SCRUM-TBD | Record the equipment an event needs | TC-285 – TC-289 |
 | G2 | SCRUM-TBD | Know whether enough equipment is free | TC-290 – TC-297 |
 | G3 | SCRUM-TBD | Reserve equipment for an event | TC-298 – TC-306 |
+| G4 | SCRUM-TBD | Amend or refuse an equipment request | TC-307 – TC-312 |
 
 Suites: `frontend/src/features/events/EventRequestForm.test.js` (TC-017 – TC-047, TC-064 – TC-070),
 `frontend/src/features/events/EventList.test.js` (TC-016, TC-058 – TC-063),
@@ -71,6 +72,10 @@ assertions),
 `backend/src/services/equipment/service.test.js` (TC-304) and
 `frontend/src/security/firestoreRules.test.js` (TC-304) — G3; TC-306 is in
 `frontend/src/domain/equipmentAvailability.test.js`.
+`backend/src/services/equipment/requests.test.js` (TC-307 – TC-310, TC-312),
+`frontend/src/features/equipment/equipmentApi.browser.test.js` (TC-307, TC-309),
+`frontend/src/features/equipment/EquipmentRequestsScreen.test.js` (TC-307, TC-309, TC-311) and
+`frontend/src/security/firestoreRules.test.js` (TC-311) — G4.
 
 > **Gap, not an omission of E8:** stories E1–E6 (venue catalogue, availability, search and filters) are
 > implemented and tested — `domain/venueSearch.test.js`, `features/venues/VenueCatalogue.test.js`,
@@ -142,6 +147,27 @@ changes its status and records who released it and when; the record remains link
 | TC-304 | Reservation writes are server-authorized and browser writes are denied | firestore.rules and the equipment service are in force | Inspect rules and submit without a Technical Support token | Only Technical Support can use the Admin transaction; direct browser writes are denied | As expected | Pass | AC4, AC8, AC9 — assert via backend service and `firestoreRules.test.js` |
 | TC-305 | The reservation stays linked to its event until released | An event has an active reservation | Reload its Pending request, then release the reservation | The active reservation remains visible with its event; release records the actor/time and makes the quantity available again | As expected | Pass | AC6, AC9 |
 | TC-306 | Non-concurrent reservations are not double-counted when checking the full interval | Two equal reservations occupy different parts of the event window and only touch | Check or reserve the event's equipment | The calculation uses the peak concurrent quantity; both portions leave the same genuinely free quantity | As expected | Pass | AC4, AC5 |
+
+---
+
+## G4 / SCRUM-TBD — Amend or refuse an equipment request
+
+> As an Event Coordinator, I want to know what Technical Support can actually provide so that I am not
+> planning around equipment that will not arrive.
+
+Technical Support decisions are recorded per request line. An amended line carries its before/after values,
+note, actor and timestamp. An unable-to-fulfil decision resolves that line with a mandatory reason. The
+overall request becomes `ARRANGED` once every line is either `RESERVED` or `RESOLVED`; until then it remains
+`PENDING`. The coordinator sees the current lines and the audit history on their Equipment requests page.
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-307 | Technical Support changes a requested type or quantity with an explanatory note | Request is Pending and the line is not fulfilled | Change the equipment type or quantity and enter a note | The amended line and history record contain old/new values, note, actor and timestamp | As expected | Pass | AC1, AC3 |
+| TC-308 | An amendment without a note is rejected | Request is Pending | Submit an amendment with an empty note | The amendment is refused and neither request nor history is written | As expected | Pass | AC1 |
+| TC-309 | An unable-to-fulfil resolution requires a reason | Request is Pending and the line is not fulfilled | Submit without a reason, then provide a reason | Empty reason is rejected; decision records its reason, actor and timestamp | As expected | Pass | AC2, AC3 |
+| TC-310 | A multi-line request is arranged only when all lines are reserved or resolved | Request has three lines, only one is reserved | Resolve one line, then resolve the final open line | It remains Pending while any line is open; once all lines are settled it becomes Arranged | As expected | Pass | AC4 |
+| TC-311 | Coordinator sees Technical Support changes and decisions | Assigned coordinator has an equipment request with support history | Open Equipment requests | Current amended/resolved lines and their notes, reasons, actor and time are visible; editing is locked once Support has acted | As expected | Pass | AC3 |
+| TC-312 | Support cannot amend a line with an active reservation | Request line has an active reservation | Attempt to amend its equipment type or quantity | The amendment is rejected and neither request nor history is changed | As expected | Pass | Preserves the reservation; AC1, AC4 |
 
 ---
 

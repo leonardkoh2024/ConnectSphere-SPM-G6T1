@@ -7,6 +7,16 @@ export default function EquipmentAvailabilityScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const refreshRequests = async () => {
+    try {
+      const items = await listPendingEquipmentRequests();
+      setRequests(items);
+      setError("");
+    } catch (loadError) {
+      setError(loadError.message);
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
     listPendingEquipmentRequests()
@@ -31,7 +41,7 @@ export default function EquipmentAvailabilityScreen() {
       <div className="cs-record-details">{request.lines.map((line, index) => <p key={`${request.id}-${index}`}>
         {line.equipment_type.replaceAll("_", " ")} · requested {line.quantity}
       </p>)}</div>
-      <EquipmentAvailabilityPanel requests={[request]} />
+      <EquipmentAvailabilityPanel requests={[request]} onUpdated={refreshRequests} />
     </article>
   ))}</div>;
 }

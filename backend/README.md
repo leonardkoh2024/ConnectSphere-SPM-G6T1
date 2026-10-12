@@ -66,6 +66,12 @@ window through the Venue service's approved-booking read contract rather than qu
 Browser clients have read access for availability checks, but reservation and inventory writes are denied by
 `firestore.rules`.
 
+G4 adds `PATCH /api/equipment/requests/{eventId}/lines/{lineIndex}` for noted type/quantity amendments and
+`POST /api/equipment/requests/{eventId}/lines/{lineIndex}/unable-to-fulfill` for reasoned line resolution.
+Both write an `equipment_request_history` audit record with the actor and server timestamp. The coordinator
+can read that history only for currently assigned events; the request moves to `ARRANGED` only when every
+line is reserved or explicitly resolved.
+
 **Week 7 changes affect the mounted services.** K1 replaces C1's automatic assignment with an unassigned
 queue that the Event Coordinator Lead assigns from, so `coordinatorAssignment`'s rotation (ADR 0001) is no
 longer the release 1 behaviour. E11 replaces E3 criterion 3, so the venue service's refusal of unavailability
