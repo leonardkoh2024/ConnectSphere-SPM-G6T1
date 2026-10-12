@@ -181,7 +181,9 @@ service cloud.firestore {
     }
     match /event_equipment/{equipmentId} {
       allow create: if ownsEvent(request.resource.data.event_id);
-      allow get, list: if ownsEvent(resource.data.event_id) || safetyReviewing(resource.data.event_id);
+      allow get, list: if ownsEvent(resource.data.event_id)
+        || currentCoordinator(resource.data.event_id)
+        || safetyReviewing(resource.data.event_id);
       allow update, delete: if ownsEvent(resource.data.event_id);
     }
     match /event_accessibility/{accessibilityId} {
@@ -404,6 +406,43 @@ service cloud.firestore {
     // coordinator. This story grants no write access to either collection.
     match /equipment_reservations/{reservationId} {
       allow get, list: if hasRole('EVENT_COORDINATOR') && currentCoordinator(resource.data.event_id);
+    }
+    match /equipment_requests/{eventId} {
+      allow get: if hasRole('EVENT_COORDINATOR') && currentCoordinator(eventId);
+      allow list: if (hasRole('EVENT_COORDINATOR') && currentCoordinator(resource.data.event_id))
+        || (hasRole('TECHNICAL_SUPPORT_STAFF') && resource.data.status == 'PENDING');
+      allow create: if hasRole('EVENT_COORDINATOR')
+        && currentCoordinator(eventId)
+        && request.resource.data.request_id == eventId
+        && request.resource.data.event_id == eventId
+        && request.resource.data.coordinator_id == request.auth.uid
+        && !(get(/databases/$(database)/documents/events/$(eventId)).data.status in [
+          'COMPLETED', 'CANCELLED', 'REJECTED'
+        ])
+        && request.resource.data.status == 'PENDING'
+        && request.resource.data.lines is list
+        && request.resource.data.lines.size() > 0
+        && request.resource.data.submitted_at is timestamp
+        && request.resource.data.updated_at is timestamp;
+      allow update: if hasRole('EVENT_COORDINATOR')
+        && currentCoordinator(eventId)
+        && resource.data.event_id == eventId
+        && request.resource.data.request_id == resource.data.request_id
+        && request.resource.data.event_id == resource.data.event_id
+        && request.resource.data.coordinator_id == request.auth.uid
+        && !(get(/databases/$(database)/documents/events/$(eventId)).data.status in [
+          'COMPLETED', 'CANCELLED', 'REJECTED'
+        ])
+        && request.resource.data.status == 'PENDING'
+        && request.resource.data.lines is list
+        && request.resource.data.lines.size() > 0
+        && request.resource.data.submitted_at == resource.data.submitted_at
+        && request.resource.data.created_at == resource.data.created_at
+        && request.resource.data.updated_at is timestamp
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'event_name', 'reference_no', 'event_date', 'start_time', 'end_time',
+          'expected_attendance', 'coordinator_id', 'lines', 'updated_at'
+        ]);
     }
     match /registrations/{registrationId} {
       allow get, list: if hasRole('EVENT_COORDINATOR') && currentCoordinator(resource.data.event_id);

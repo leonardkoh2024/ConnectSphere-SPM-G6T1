@@ -28,6 +28,8 @@ jest.mock('../features/events/EventReviewScreen', () => ({ __esModule: true, def
 // (E4), which is the one thing the shell decides for them.
 jest.mock('../features/venues/VenueCatalogue', () => ({ __esModule: true, default: (props) => (props.showCalendar ? 'calendar open' : 'venue list') }));
 jest.mock('../features/venues/VenueSearch', () => ({ __esModule: true, default: (props) => (props.showCalendar ? 'calendar open' : 'venue list') }));
+jest.mock('../features/equipment/EquipmentRequestsScreen', () => ({ __esModule: true, default: () => 'equipment requests' }));
+jest.mock('../features/equipment/EquipmentQueueScreen', () => ({ __esModule: true, default: () => 'equipment queue' }));
 // J1 — the live inbox is stubbed so the badge can be driven by hand.
 jest.mock('../features/notifications/useNotifications', () => ({ __esModule: true, default: jest.fn() }));
 // The stub offers View only when the shell hands it somewhere to go.

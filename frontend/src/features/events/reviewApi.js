@@ -137,7 +137,11 @@ const detail = async (eventId) => {
       facilities: facilities.docs.map((item) => item.data().facility_id).filter(Boolean),
       accessibility: accessibility.docs.map((item) => item.data().accessibility_id).filter(Boolean),
       // C3 — the equipment lines the organiser requested (AC1).
-      equipment: equipment.docs.map((item) => ({ equipment_type: item.data().equipment_type, quantity: item.data().quantity || 1, notes: item.data().notes || null })),
+      equipment: equipment.docs.map((item) => ({
+        equipment_type: item.data().equipment_type,
+        quantity: item.data().quantity || 1,
+        notes: item.data().technical_note || item.data().notes || null
+      })),
       editable: event.coordinator_id === user.uid, decision: decision?.new_value || null, decision_reason: decision?.description || null, decided_by: decision?.actor_id || null, decided_at: decision?.created_at || null
     },
     coordinator, coordinators, organiser,

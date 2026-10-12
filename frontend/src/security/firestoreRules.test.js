@@ -161,6 +161,26 @@ describe('D2 significant event details require an acknowledged audit record', ()
   });
 });
 
+describe('G1 equipment requests are editable by the assigned coordinator and queued for Technical Support', () => {
+  test('the assigned coordinator can prefill the organiser equipment lines', () => {
+    const equipment = matchBlock('event_equipment');
+    expect(equipment).toContain('currentCoordinator(resource.data.event_id)');
+    expect(equipment).toContain('ownsEvent(resource.data.event_id)');
+  });
+
+  test('equipment_requests requires a non-empty pending request and is writable only by the assigned coordinator', () => {
+    const requests = matchBlock('equipment_requests');
+    expect(requests).toContain("hasRole('EVENT_COORDINATOR')");
+    expect(requests).toContain('currentCoordinator(eventId)');
+    expect(requests).toContain("request.resource.data.status == 'PENDING'");
+    expect(requests).toContain('request.resource.data.lines is list');
+    expect(requests).toContain('request.resource.data.lines.size() > 0');
+    expect(requests).toContain("hasRole('TECHNICAL_SUPPORT_STAFF') && resource.data.status == 'PENDING'");
+    expect(requests).toContain("'COMPLETED', 'CANCELLED', 'REJECTED'");
+    expect(requests).not.toMatch(/allow\s+delete/);
+  });
+});
+
 describe('C7 TC-074 rejected events are immutable to the organiser', () => {
   test('organiser updates are limited to drafts or the open clarification window', () => {
     const events = matchBlock('events');

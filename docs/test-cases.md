@@ -41,6 +41,7 @@ they can be read next to the acceptance criteria and move into the service layer
 | E7 | — | Know whether a venue actually suits the event | TC-112 – TC-116 |
 | C6 | SCRUM-TBD | Approve a submitted request | TC-112 – TC-117 |
 | C2 | SCRUM-103 | See the events I am responsible for | TC-118 – TC-128 |
+| G1 | SCRUM-TBD | Record the equipment an event needs | TC-285 – TC-289 |
 
 Suites: `frontend/src/features/events/EventRequestForm.test.js` (TC-017 – TC-047, TC-064 – TC-070),
 `frontend/src/features/events/EventList.test.js` (TC-016, TC-058 – TC-063),
@@ -54,7 +55,10 @@ assertions),
 `frontend/src/domain/venueCalendar.test.js` (TC-200 – TC-217, TC-233 – TC-243),
 `frontend/src/features/venues/VenueCalendar.test.js` (TC-218 – TC-228, TC-231), `VenueCatalogue.test.js` (TC-229),
 `VenueSearch.test.js` (TC-230), `features/venues/components/MultiSelectDropdown.test.js` (TC-244 – TC-249) and
-`frontend/src/app/Workspace.test.js` (TC-232) — E4.
+`frontend/src/app/Workspace.test.js` (TC-232) — E4,
+`frontend/src/domain/equipmentRequests.test.js` (TC-285, TC-286),
+`frontend/src/features/equipment/EquipmentRequestsScreen.test.js` (TC-285 – TC-288) and
+`frontend/src/security/firestoreRules.test.js` (TC-289) — G1.
 
 > **Gap, not an omission of E8:** stories E1–E6 (venue catalogue, availability, search and filters) are
 > implemented and tested — `domain/venueSearch.test.js`, `features/venues/VenueCatalogue.test.js`,
@@ -63,6 +67,21 @@ assertions),
 > never added to this document. Someone owning those stories should backfill them.
 `frontend/src/domain/venueSearch.test.js` (TC-112 – TC-114),
 `frontend/src/features/venues/VenueSuitabilityForm.test.js` (TC-115, TC-116).
+
+---
+
+## G1 / SCRUM-TBD — Record the equipment an event needs
+
+> As an Event Coordinator, I want to record the equipment required so that Technical Support knows what to
+> arrange.
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-285 | The coordinator starts from the organiser's equipment lines and can amend them | Assigned event has organiser equipment lines | Open its equipment request; change a technical requirement; submit | Original type and quantity prefill; amended line is submitted | As expected | Pass | AC1–AC2 |
+| TC-286 | Every submitted request has at least one line with valid type and quantity | Coordinator is editing an equipment request | Submit no lines, an unsupported/missing type, or a zero, negative or fractional quantity; then submit a valid line | Invalid requests are blocked with a useful error; valid request proceeds | As expected | Pass | AC1, AC3 |
+| TC-287 | The coordinator can manage requests for their active assigned events | Coordinator has an active assigned event | Open Equipment requests and choose the event | Its editor opens; an existing request can be amended | As expected | Pass | AC2 |
+| TC-288 | Submitting creates a Pending Technical Support queue item | Coordinator submits at least one valid line | Open the Technical Support equipment queue | The Pending request appears with its event window and requested lines | As expected | Pass | AC4 |
+| TC-289 | The assigned coordinator alone can create or amend the request; Technical Support can read only Pending items | firestore.rules in force | Inspect the event_equipment and equipment_requests rules | Assigned coordinator can prefill and submit; the queue is role/status gated; no client delete is allowed | As expected | Pass | AC2, AC4 — assert via `firestoreRules.test.js` |
 
 ---
 
