@@ -49,25 +49,37 @@ export default function EquipmentRequestsScreen({ onNotice }) {
           <p className="cs-record-ref">{event.reference_no}</p>
           <div className="cs-record-status"><span className="cs-pill cs-pill-info">{status === "PENDING" ? "Pending" : status}</span></div>
           {event.equipment_request && <div className="cs-record-details cs-equipment-coordinator-summary">
-            <h3>Technical Support update</h3>
-            <EquipmentRequestLines lines={event.equipment_request.lines} getStatus={(line) => <>
-              {line.fulfillment_status === "RESERVED"
-                ? "Reserved"
-                : line.fulfillment_status === "RESOLVED"
-                  ? `Unable to fulfil: ${line.resolution_reason}`
-                  : "Requested"}
-              {line.amendment_note && <><br />Support note: {line.amendment_note}</>}
-            </>} />
-            {supportHistory.map((item) => <p key={item.id}>
-              {item.action === "LINE_AMENDED"
-                ? `Amended line ${Number(item.line_index) + 1}: ${item.old_values?.equipment_type} ${item.old_values?.quantity} → ${item.new_values?.equipment_type} ${item.new_values?.quantity}. ${item.note}`
-                : item.action === "LINE_UNABLE_TO_FULFILL"
-                  ? `Line ${Number(item.line_index) + 1} unable to fulfil: ${item.reason}`
-                  : item.action === "LINE_RESERVED"
-                    ? `Reserved line ${Number(item.line_index) + 1}: ${item.quantity} ${item.equipment_type.replaceAll("_", " ")}.`
-                    : `Reservation released for line ${Number(item.line_index) + 1}: ${item.reason}`}
-              {" "}· {item.actor_id} · {item.created_at?.toDate?.()?.toLocaleString?.() || (item.created_at ? new Date(item.created_at).toLocaleString() : "Time not recorded")}
-            </p>)}
+            <details className="cs-equipment-disclosure">
+              <summary>Equipment request details</summary>
+              <EquipmentRequestLines lines={event.equipment_request.lines} />
+            </details>
+            {(event.equipment_request.has_support_decisions || supportHistory.length > 0)
+              && <details className="cs-equipment-disclosure">
+                <summary>Technical Support updates</summary>
+                <EquipmentRequestLines lines={event.equipment_request.lines} getStatus={(line) => <>
+                  {line.fulfillment_status === "RESERVED"
+                    ? "Reserved"
+                    : line.fulfillment_status === "RESOLVED"
+                      ? `Unable to fulfil: ${line.resolution_reason}`
+                      : "Requested"}
+                  {line.amendment_note && <><br />Support note: {line.amendment_note}</>}
+                </>} />
+                {supportHistory.map((item) => <p key={item.id}>
+                  {item.action === "LINE_AMENDED"
+                    ? `Amended line ${Number(item.line_index) + 1}: ${item.old_values?.equipment_type} ${item.old_values?.quantity} → ${item.new_values?.equipment_type} ${item.new_values?.quantity}. ${item.note}`
+                    : item.action === "LINE_UNABLE_TO_FULFILL"
+                      ? `Line ${Number(item.line_index) + 1} unable to fulfil: ${item.reason}`
+                      : item.action === "LINE_RESERVED"
+                        ? `Reserved line ${Number(item.line_index) + 1}: ${item.quantity} ${item.equipment_type.replaceAll("_", " ")}.`
+                        : `Reservation released for line ${Number(item.line_index) + 1}: ${item.reason}`}
+                  {" "}· {item.actor_id} · {item.created_at?.toDate?.()?.toLocaleString?.() || (item.created_at ? new Date(item.created_at).toLocaleString() : "Time not recorded")}
+                </p>)}
+              </details>}
+            {!event.equipment_request.has_support_decisions && supportHistory.length === 0
+              && <details className="cs-equipment-disclosure">
+                <summary>Technical Support updates</summary>
+                <p>No updates from Technical Support yet.</p>
+              </details>}
           </div>}
           <div className="cs-record-actions">
             <button type="button" className="cs-btn cs-btn-secondary cs-record-btn"

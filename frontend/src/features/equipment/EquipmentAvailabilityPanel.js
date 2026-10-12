@@ -192,17 +192,20 @@ export default function EquipmentAvailabilityPanel({ requests, onUpdated }) {
         {result?.loading ? "Checking availability…" : result ? "Refresh availability" : "Check availability"}
       </button>
       {result?.error && <p className="cs-error" role="alert">{result.error}</p>}
-      <EquipmentRequestLines lines={request.lines} getStatus={(line, index) => {
-        const availability = result?.lines?.[index];
-        if (!availability) return null;
-        return <>
-          {availability.freeQuantity} free of {availability.heldQuantity}
-          {" "}({availability.heldQuantity} held − {availability.reservedQuantity} reserved − {availability.unavailableQuantity} unavailable).
-          {availability.available
-            ? ` Requested ${availability.requestedQuantity}; no shortfall.`
-            : ` Requested ${availability.requestedQuantity}; shortfall ${availability.shortfall}.`}
-        </>;
-      }} />
+      <details className="cs-equipment-disclosure">
+        <summary>Request details</summary>
+        <EquipmentRequestLines lines={request.lines} getStatus={(line, index) => {
+          const availability = result?.lines?.[index];
+          if (!availability) return null;
+          return <>
+            {availability.freeQuantity} free of {availability.heldQuantity}
+            {" "}({availability.heldQuantity} held − {availability.reservedQuantity} reserved − {availability.unavailableQuantity} unavailable).
+            {availability.available
+              ? ` Requested ${availability.requestedQuantity}; no shortfall.`
+              : ` Requested ${availability.requestedQuantity}; shortfall ${availability.shortfall}.`}
+          </>;
+        }} />
+      </details>
       {request.lines.map((line, index) => {
         const key = lineKey(request, index);
         const localReservation = reservations[key];

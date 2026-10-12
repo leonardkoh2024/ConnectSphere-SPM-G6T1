@@ -53,13 +53,14 @@ export const createEquipmentRequestActions = ({ firestore, serverTimestamp }) =>
       });
       if (activeReservation) throw new EquipmentConflictError("A line with an active reservation cannot be amended.");
       const now = serverTimestamp();
+      const recordedAt = new Date();
       const amended = {
         ...previous,
         equipment_type: equipmentType,
         quantity: requested,
         amendment_note: note.trim(),
         amended_by: userId,
-        amended_at: now
+        amended_at: recordedAt
       };
       const updatedLines = lines.map((line, lineIndexValue) => lineIndexValue === index ? amended : line);
       transaction.update(requestRef, { lines: updatedLines, has_support_decisions: true, updated_at: now });
@@ -124,13 +125,14 @@ export const createEquipmentRequestActions = ({ firestore, serverTimestamp }) =>
       });
       if (activeReservation) throw new EquipmentConflictError("This line has an active reservation and cannot be resolved.");
       const now = serverTimestamp();
+      const recordedAt = new Date();
       const updatedLines = lines.map((line, lineIndexValue) => lineIndexValue === index ? {
         ...line,
         fulfillment_status: "RESOLVED",
         resolution: "UNABLE_TO_FULFILL",
         resolution_reason: reason.trim(),
         resolved_by: userId,
-        resolved_at: now
+        resolved_at: recordedAt
       } : line);
       const status = updatedLines.every(isFulfilled) ? "ARRANGED" : "PENDING";
       transaction.update(requestRef, {

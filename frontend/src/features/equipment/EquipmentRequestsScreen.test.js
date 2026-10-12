@@ -143,6 +143,10 @@ test("G1 submitted Pending requests appear in the Technical Support queue", asyn
 
   expect(await screen.findByRole("heading", { name: "Partner Summit" })).toBeInTheDocument();
   expect(screen.getByText("Pending")).toBeInTheDocument();
+  const requestDetails = screen.getByText("Request details").closest("details");
+  expect(requestDetails).not.toHaveAttribute("open");
+  await userEvent.click(screen.getByText("Request details"));
+  expect(requestDetails).toHaveAttribute("open");
   expect(screen.getByText((_, element) => element.classList.contains("cs-equipment-lines-item")
     && /audio · 2 · wireless microphones · requested/i.test(element.textContent))).toBeInTheDocument();
   expect(screen.getByText(/expected attendance: 120/i)).toBeInTheDocument();
@@ -155,6 +159,10 @@ test("TC-295 Technical Support checks each requested equipment line for the even
   await screen.findByRole("heading", { name: "Partner Summit" });
   await userEvent.click(screen.getByRole("button", { name: /check availability/i }));
 
+  const requestDetails = screen.getByText("Request details").closest("details");
+  expect(requestDetails).not.toHaveAttribute("open");
+  await userEvent.click(screen.getByText("Request details"));
+  expect(requestDetails).toHaveAttribute("open");
   expect(await screen.findByText(/shortfall 2/i)).toBeInTheDocument();
   const details = screen.getByText((_, element) => element.classList.contains("cs-equipment-lines-item"));
   expect(details).toHaveTextContent(/audio · 2 · wireless microphones · 3 free of 10/i);
@@ -316,6 +324,14 @@ test("TC-311 coordinator can see support amendment and decision history", async 
   }]);
   render(<EquipmentRequestsScreen />);
 
+  const requestDetails = await screen.findByText("Equipment request details");
+  expect(requestDetails.closest("details")).not.toHaveAttribute("open");
+  await userEvent.click(requestDetails);
+  expect(requestDetails.closest("details")).toHaveAttribute("open");
+  const supportUpdates = screen.getByText("Technical Support updates");
+  expect(supportUpdates.closest("details")).not.toHaveAttribute("open");
+  await userEvent.click(supportUpdates);
+  expect(supportUpdates.closest("details")).toHaveAttribute("open");
   expect(await screen.findByText(/Amended line 1: AUDIO 2 → VISUAL 3/i)).toBeInTheDocument();
   expect(screen.getAllByText(/Unable to fulfil: No compatible projector was available/i)).toHaveLength(2);
   expect(screen.getByRole("button", { name: /technical support is handling this request/i })).toBeDisabled();

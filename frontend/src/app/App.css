@@ -635,6 +635,28 @@ a.cs-btn-ghost:hover {
   overflow-wrap: anywhere;
 }
 
+.cs-equipment-disclosure {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--cs-line);
+  border-radius: var(--cs-radius-m);
+  background: var(--cs-surface);
+}
+
+.cs-equipment-disclosure > summary {
+  color: var(--cs-ink);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cs-equipment-disclosure[open] > summary {
+  margin-bottom: 12px;
+}
+
+.cs-equipment-disclosure > :not(summary) + :not(summary) {
+  margin-top: 8px;
+}
+
 .cs-equipment-line-fields {
   display: grid;
   gap: 12px;

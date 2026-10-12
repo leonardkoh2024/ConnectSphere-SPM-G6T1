@@ -106,6 +106,7 @@ test("TC-303 creates an event-linked reservation for its buffered approved venue
   assert.equal(transaction.created[1].data.actor_id, "tech-1");
   assert.equal(transaction.updated[0].reference.path, "equipment_requests/event-1");
   assert.equal(transaction.updated[0].data.lines[0].fulfillment_status, "RESERVED");
+  assert.ok(transaction.updated[0].data.lines[0].fulfilled_at instanceof Date);
   assert.equal(transaction.updated[0].data.lines[0].reservation_id, "generated-reservation");
   assert.equal(transaction.updated[1].data.availability_revision, 1);
   assert.equal(transaction.updated[0].data.status, "ARRANGED");

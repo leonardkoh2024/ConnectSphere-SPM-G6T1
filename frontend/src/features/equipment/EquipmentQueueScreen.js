@@ -26,8 +26,11 @@ export default function EquipmentQueueScreen() {
       <p className="cs-record-ref">{request.reference_no}</p>
       <div className="cs-record-status"><span className="cs-pill cs-pill-warning">Pending</span></div>
       <div className="cs-record-details">
-        <EquipmentRequestLines lines={request.lines} />
-        <p>Expected attendance: {request.expected_attendance ?? "Not recorded"}</p>
+        <details className="cs-equipment-disclosure">
+          <summary>Request details</summary>
+          <EquipmentRequestLines lines={request.lines} />
+          <p>Expected attendance: {request.expected_attendance ?? "Not recorded"}</p>
+        </details>
       </div>
     </article>
   ))}</div>;

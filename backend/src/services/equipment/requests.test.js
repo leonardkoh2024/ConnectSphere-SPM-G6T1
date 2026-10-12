@@ -69,6 +69,7 @@ test("TC-307 line amendment stores changed type and quantity with a mandatory au
   assert.equal(result.line.equipment_type, "VISUAL");
   assert.equal(result.line.quantity, 3);
   assert.equal(result.line.amended_by, "tech-1");
+  assert.ok(result.line.amended_at instanceof Date);
   assert.deepEqual(request.lines[0], result.line);
   assert.equal(transaction.created[0].data.action, "LINE_AMENDED");
   assert.equal(transaction.created[0].data.actor_id, "tech-1");
@@ -129,6 +130,7 @@ test("TC-309 line unable-to-fulfil decision requires a reason and records the ac
   assert.equal(result.line.fulfillment_status, "RESOLVED");
   assert.equal(result.line.resolution_reason, "No compatible unit is available.");
   assert.equal(result.line.resolved_by, "tech-1");
+  assert.ok(result.line.resolved_at instanceof Date);
   assert.equal(result.status, "ARRANGED");
   assert.equal(request.status, "ARRANGED");
   assert.equal(transaction.created[0].data.action, "LINE_UNABLE_TO_FULFILL");

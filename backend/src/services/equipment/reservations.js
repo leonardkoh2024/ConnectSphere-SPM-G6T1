@@ -94,6 +94,7 @@ export const createEquipmentReservations = ({ firestore, serverTimestamp, getApp
 
       const reservationRef = firestore.collection("equipment_reservations").doc();
       const now = serverTimestamp();
+      const recordedAt = new Date();
       const reservation = {
         reservation_id: reservationRef.id,
         event_id: eventId,
@@ -128,7 +129,7 @@ export const createEquipmentReservations = ({ firestore, serverTimestamp, getApp
           ...line,
           fulfillment_status: "RESERVED",
           reservation_id: reservationRef.id,
-          fulfilled_at: now,
+          fulfilled_at: recordedAt,
           fulfilled_by: userId
         }
         : line);
