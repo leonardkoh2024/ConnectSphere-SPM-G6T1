@@ -1,10 +1,11 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import EventReviewScreen from './EventReviewScreen';
 import { reviewApi } from './reviewApi';
 
 jest.mock('./reviewApi', () => ({ reviewApi: {
-  list: jest.fn(), detail: jest.fn(), openReview: jest.fn(), clarify: jest.fn(), reject: jest.fn(), reassign: jest.fn()
+  list: jest.fn(), detail: jest.fn(), openReview: jest.fn(), clarify: jest.fn(), reject: jest.fn(), reassign: jest.fn(),
+  significantChangeImpact: jest.fn(), saveSignificantChange: jest.fn()
 } }));
 
 const baseEvent = { id: 'e1', name: 'Partner Summit', reference_no: 'EVT-001', event_date: '2026-11-04', start_time: '09:00', end_time: '17:00', expected_attendance: 100, purpose: 'Partners', description: 'Annual summit', status: 'UNDER_REVIEW', coordinator_id: 'c1', editable: true };
@@ -21,6 +22,12 @@ beforeEach(() => {
   reviewApi.clarify.mockResolvedValue({ ok: true });
   reviewApi.reject.mockResolvedValue({ ok: true });
   reviewApi.reassign.mockResolvedValue({ ok: true });
+  reviewApi.significantChangeImpact.mockResolvedValue({
+    venueBookings: [{ id: 'b1', label: 'Main Hall', status: 'APPROVED' }],
+    equipmentReservations: [{ id: 'r1', label: 'Audio', status: 'RESERVED' }],
+    registrationsCount: 42
+  });
+  reviewApi.saveSignificantChange.mockResolvedValue({ ok: true });
 });
 
 async function openRequest() {
@@ -96,6 +103,62 @@ test('TC-078 an outgoing coordinator gets a read-only assignment view', async ()
   await openRequest();
   expect(screen.getByText(/reassigned.*view.*only the current coordinator/i)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /reassign event/i })).not.toBeInTheDocument();
+});
+
+test('D2 shows all existing arrangements and requires acknowledgement before saving', async () => {
+  const planningEvent = { ...baseEvent, status: 'PLANNING' };
+  let resolveImpact;
+  reviewApi.list.mockResolvedValue({ events: [planningEvent] });
+  reviewApi.detail.mockResolvedValue(detail(planningEvent));
+  reviewApi.significantChangeImpact.mockImplementation(() => new Promise((resolve) => { resolveImpact = resolve; }));
+  await openRequest();
+  await userEvent.click(screen.getByRole('button', { name: /edit significant details/i }));
+
+  await act(async () => {
+    resolveImpact({
+      venueBookings: [{ id: 'b1', label: 'Main Hall', status: 'APPROVED' }],
+      equipmentReservations: [{ id: 'r1', label: 'Audio', status: 'RESERVED' }],
+      registrationsCount: 42
+    });
+  });
+  await waitFor(() => expect(screen.queryByText(/checking existing arrangements/i)).not.toBeInTheDocument());
+  expect(screen.getByRole('button', { name: /save significant changes/i })).toBeDisabled();
+  await userEvent.clear(screen.getByLabelText(/expected attendance/i));
+  await userEvent.type(screen.getByLabelText(/expected attendance/i), '125');
+  const warning = await screen.findByRole('complementary', { name: 'Significant change impact' });
+  expect(within(warning).getByText(/main hall.*approved/i)).toBeInTheDocument();
+  expect(within(warning).getByText(/audio.*reserved/i)).toBeInTheDocument();
+  expect(within(warning).getByText(/attendee registrations: 42/i)).toBeInTheDocument();
+
+  const save = screen.getByRole('button', { name: /save significant changes/i });
+  expect(save).toBeDisabled();
+  await userEvent.click(screen.getByLabelText(/reviewed and acknowledge/i));
+  expect(save).toBeEnabled();
+  await userEvent.click(save);
+  await waitFor(() => expect(reviewApi.saveSignificantChange).toHaveBeenCalledWith(expect.objectContaining({
+    eventId: 'e1',
+    values: expect.objectContaining({ expected_attendance: 125 }),
+    acknowledged: true
+  })));
+});
+
+test('D2 cancelling a significant edit leaves the event unsaved', async () => {
+  const planningEvent = { ...baseEvent, status: 'PLANNING' };
+  let resolveImpact;
+  reviewApi.list.mockResolvedValue({ events: [planningEvent] });
+  reviewApi.detail.mockResolvedValue(detail(planningEvent));
+  reviewApi.significantChangeImpact.mockImplementation(() => new Promise((resolve) => { resolveImpact = resolve; }));
+  await openRequest();
+  await userEvent.click(screen.getByRole('button', { name: /edit significant details/i }));
+  await act(async () => {
+    resolveImpact({ venueBookings: [], equipmentReservations: [], registrationsCount: 0 });
+  });
+  await waitFor(() => expect(screen.queryByText(/checking existing arrangements/i)).not.toBeInTheDocument());
+  await userEvent.clear(screen.getByLabelText(/expected attendance/i));
+  await userEvent.type(screen.getByLabelText(/expected attendance/i), '125');
+  await userEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+  expect(reviewApi.saveSignificantChange).not.toHaveBeenCalled();
+  expect(screen.queryByRole('region', { name: /edit significant event details/i })).not.toBeInTheDocument();
 });
 
 // C2 / SCRUM-103 — the coordinator's "Assigned events" list. The list is scoped to

@@ -135,6 +135,32 @@ describe('TC-080 coordinator assignment fields remain protected', () => {
   });
 });
 
+describe('D2 significant event details require an acknowledged audit record', () => {
+  test('only the assigned coordinator can change the significant event fields in planning statuses', () => {
+    const events = matchBlock('events');
+
+    expect(events).toContain('coordinatorSignificantDetailsUpdate()');
+    expect(events).toContain('significantChangeHistory(eventId)');
+    expect(RULES).toContain("changedEvent.status in ['APPROVED', 'PLANNING', 'CONFIRMED']");
+    expect(events).toContain("'expected_attendance', 'event_date', 'start_time', 'end_time'");
+    expect(events).toContain("'last_significant_change_id', 'updated_at'");
+  });
+
+  test('event requirement edits are paired with an acknowledged history record', () => {
+    expect(matchBlock('event_venue_requirements')).toContain('significantChangeHistory(request.resource.data.event_id)');
+    expect(matchBlock('event_facilities')).toContain('significantChangeHistory(request.resource.data.event_id)');
+    expect(matchBlock('event_accessibility')).toContain('significantChangeHistory(request.resource.data.event_id)');
+    expect(matchBlock('event_history')).toContain("request.resource.data.action_type == 'SIGNIFICANT_EVENT_DETAILS_CHANGED'");
+    expect(matchBlock('event_history')).toContain('request.resource.data.warning_acknowledged == true');
+  });
+
+  test.each(['equipment_reservations', 'registrations'])('%s is readable only by the current coordinator and cannot be written in D2', (collection) => {
+    const block = matchBlock(collection);
+    expect(block).toContain("hasRole('EVENT_COORDINATOR') && currentCoordinator(resource.data.event_id)");
+    expect(block).not.toMatch(/allow\s+(create|update|delete|write)/);
+  });
+});
+
 describe('C7 TC-074 rejected events are immutable to the organiser', () => {
   test('organiser updates are limited to drafts or the open clarification window', () => {
     const events = matchBlock('events');

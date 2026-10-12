@@ -7,6 +7,8 @@ import RecordLead from "../../components/RecordLead";
 import Icon from "../../app/Icon";
 import EventDetailTabs from "./components/EventDetailTabs";
 import ClarificationThread from "./components/ClarificationThread";
+import SignificantChangeEditor from "./components/SignificantChangeEditor";
+import { editableEventStatuses } from "../../domain/significantEventChanges";
 
 const shownTime = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Not recorded";
 
@@ -96,6 +98,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     const hasOpen = Boolean(event.open_clarification_id);
     const canDecide = event.editable && event.status === "UNDER_REVIEW" && !hasOpen;
     const canReassign = event.editable && !["COMPLETED", "CANCELLED", "REJECTED"].includes(event.status);
+    const canEditSignificant = event.editable && editableEventStatuses.includes(event.status) && !hasOpen;
     const showFindVenues = typeof onFindVenues === "function" && canFindVenues(event);
     const summary = clarificationSummary(detail);
     // C3 — the full submitted request, shaped for display (AC1, AC2).
@@ -103,7 +106,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     const startMode = (next) => { setMode(next); setMessage(""); setError(""); };
     // One form at a time, shown on the tab its action belongs to: Request
     // clarification on Clarifications, Reject and Reassign on the request.
-    const actionBox = mode && <section className="cs-form-section cs-action-box">
+    const actionBox = mode && mode !== "significant" && <section className="cs-form-section cs-action-box">
       <h3>{mode === "clarify" ? "Request clarification" : mode === "reject" ? "Reject request" : "Reassign event"}</h3>
       {mode === "reassign" ? <label className="cs-field"><span className="cs-field-name">New active coordinator</span><select value={target} onChange={(e) => setTarget(e.target.value)}><option value="">Choose a coordinator</option>{detail.coordinators.filter((item) => item.id !== event.coordinator_id).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
         : <label className="cs-field"><span className="cs-field-name">{mode === "reject" ? "Reason" : "Message"}<span className="cs-required" aria-hidden="true">*</span></span><textarea rows="4" required value={message} aria-invalid={Boolean(error)} aria-describedby={error ? "cs-review-action-error" : undefined} onChange={(e) => { setMessage(e.target.value); if (error) setError(""); }} /></label>}
@@ -155,12 +158,22 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
           <div><dt>Closes</dt><dd>{request.registration.closes || "Not set"}</dd></div>
         </dl>
       </section>}
-      {(canDecide || canReassign || showFindVenues) && <div className="cs-review-actions">
+      {mode !== "significant" && (canDecide || canReassign || showFindVenues || canEditSignificant) && <div className="cs-review-actions">
         {showFindVenues && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => onFindVenues(event)}>Find venues</button>}
         {canDecide && <button className="cs-btn cs-btn-ghost cs-record-danger" type="button" onClick={() => startMode("reject")}>Reject request</button>}
         {canReassign && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => { setMode("reassign"); setError(""); }}>Reassign event</button>}
+        {canEditSignificant && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => startMode("significant")}>Edit significant details</button>}
       </div>}
       {mode !== "clarify" && actionBox}
+      {mode === "significant" && <SignificantChangeEditor
+        event={event}
+        onCancel={() => { setMode(""); setError(""); }}
+        onSaved={async () => {
+          await loadList();
+          await loadDetail(selected, false);
+          onNotice?.("Significant event changes saved.");
+        }}
+      />}
     </>;
 
     const clarificationsTab = <>

@@ -7,6 +7,12 @@ import { auth, db } from "../../lib/firebase";
 import { EVENT_STATUS, canApproveEvent, canOpenReview, canRejectEvent, canReassignEvent, canRequestClarification, canRespondToClarification, cleanRequiredText } from "../../domain/eventReview";
 import { clarificationRecord, clarificationResponseRecord, coordinatorAssignmentRecord, eventHistoryRecord, notificationRecord } from "../../domain/eventReviewRecords";
 import { ROLES } from "../../domain/roles";
+import {
+  editableEventStatuses,
+  significantEventChanges,
+  significantEventValues,
+  validateSignificantEventValues
+} from "../../domain/significantEventChanges";
 
 const requireUser = () => {
   if (!auth.currentUser) throw new Error("Please sign in again.");
@@ -125,6 +131,9 @@ const detail = async (eventId) => {
       ...event,
       preferred_location: requirement.data()?.preferred_location || null,
       required_layout: requirement.data()?.required_layout || null,
+      facilities_required: requirement.data()?.facilities_required ?? null,
+      accessibility_needed: requirement.data()?.accessibility_needed ?? null,
+      accessibility_notes: requirement.data()?.accessibility_notes || "",
       facilities: facilities.docs.map((item) => item.data().facility_id).filter(Boolean),
       accessibility: accessibility.docs.map((item) => item.data().accessibility_id).filter(Boolean),
       // C3 — the equipment lines the organiser requested (AC1).
@@ -136,6 +145,166 @@ const detail = async (eventId) => {
     responses: responseSnapshots.flatMap((snapshot) => snapshot.docs.map(record)).sort(byCreated),
     assignments: assignments.docs.map(record).sort(byCreated)
   };
+};
+
+const significantChangeImpact = async (eventId) => {
+  const user = requireUser();
+  const [eventSnapshot, profile] = await Promise.all([
+    getDoc(doc(db, "events", eventId)),
+    profileFor(user.uid)
+  ]);
+  if (!eventSnapshot.exists()
+    || profile.role !== ROLES.COORDINATOR
+    || eventSnapshot.data().coordinator_id !== user.uid
+    || !editableEventStatuses.includes(eventSnapshot.data().status)) {
+    throw new Error("Only the current coordinator may review the impact of a significant change to this event.");
+  }
+  const [bookings, reservations, registrations] = await Promise.all([
+    getDocs(query(collection(db, "venue_bookings"), where("event_id", "==", eventId))),
+    getDocs(query(collection(db, "equipment_reservations"), where("event_id", "==", eventId))),
+    getDocs(query(collection(db, "registrations"), where("event_id", "==", eventId)))
+  ]);
+  const venueIds = [...new Set(bookings.docs.map((item) => item.data().venue_id).filter(Boolean))];
+  const venues = await Promise.all(venueIds.map((venueId) => getDoc(doc(db, "venues", venueId))));
+  const venueNames = new Map(venues.filter((item) => item.exists()).map((item) => [item.id, item.data().name]));
+  return {
+    venueBookings: bookings.docs.map((item) => {
+      const booking = item.data();
+      return {
+        id: item.id,
+        label: booking.booking_label || booking.venue_name || venueNames.get(booking.venue_id)
+          || `Venue booking ${booking.booking_id || item.id}`,
+        status: booking.status || "Status not recorded"
+      };
+    }),
+    equipmentReservations: reservations.docs.map((item) => {
+      const reservation = item.data();
+      return {
+        id: item.id,
+        label: reservation.equipment_name || reservation.equipment_type || reservation.item_name
+          || `Equipment reservation ${reservation.reservation_id || item.id}`,
+        status: reservation.status || "Status not recorded"
+      };
+    }),
+    registrationsCount: registrations.size
+  };
+};
+
+const saveSignificantChange = async ({ eventId, before, values, impact, acknowledged }) => {
+  const user = requireUser();
+  if (acknowledged !== true) throw new Error("Acknowledge the impact warning before saving.");
+  const currentImpact = await significantChangeImpact(eventId);
+  if (JSON.stringify(currentImpact) !== JSON.stringify(impact)) {
+    throw new Error("The existing arrangements changed while you were editing. Reopen the editor and review the updated warning before saving.");
+  }
+  const cleaned = {
+    ...values,
+    expected_attendance: Number(values.expected_attendance),
+    preferred_location: String(values.preferred_location || ""),
+    required_layout: String(values.required_layout || ""),
+    facilities: [...new Set(values.facilities || [])].sort(),
+    accessibility: [...new Set(values.accessibility || [])].sort(),
+    facilities_required: Boolean(values.facilities_required),
+    accessibility_needed: Boolean(values.accessibility_needed),
+    accessibility_notes: String(values.accessibility_notes || "").trim()
+  };
+  const validationError = validateSignificantEventValues(cleaned);
+  if (validationError) throw new Error(validationError);
+
+  const eventRef = doc(db, "events", eventId);
+  const requirementRef = doc(db, "event_venue_requirements", eventId);
+  const [existingFacilities, existingAccessibility] = await Promise.all([
+    getDocs(query(collection(db, "event_facilities"), where("event_id", "==", eventId))),
+    getDocs(query(collection(db, "event_accessibility"), where("event_id", "==", eventId)))
+  ]);
+  const historyRef = doc(collection(db, "event_history"));
+  await runTransaction(db, async (tx) => {
+    const snapshots = await Promise.all([
+      tx.get(eventRef),
+      tx.get(requirementRef),
+      ...existingFacilities.docs.map((item) => tx.get(item.ref)),
+      ...existingAccessibility.docs.map((item) => tx.get(item.ref))
+    ]);
+    const [eventSnapshot, requirementSnapshot] = snapshots;
+    const facilitiesSnapshot = snapshots.slice(2, 2 + existingFacilities.docs.length);
+    const accessibilitySnapshot = snapshots.slice(2 + existingFacilities.docs.length);
+    const facilityRows = facilitiesSnapshot.filter((item) => item.exists());
+    const accessibilityRows = accessibilitySnapshot.filter((item) => item.exists());
+    if (!eventSnapshot.exists()) throw new Error("Event not found.");
+    const event = eventSnapshot.data();
+    if (event.coordinator_id !== user.uid || !editableEventStatuses.includes(event.status)) {
+      throw new Error("Only the current coordinator may edit significant event details in this status.");
+    }
+    if (event.open_clarification_id) throw new Error("Significant event details cannot be edited while a clarification is open.");
+
+    const current = significantEventValues({
+      ...event,
+      ...requirementSnapshot.data(),
+      facilities: facilityRows.map((item) => item.data().facility_id).filter(Boolean),
+      accessibility: accessibilityRows.map((item) => item.data().accessibility_id).filter(Boolean)
+    });
+    if (JSON.stringify(current) !== JSON.stringify(significantEventValues(before))) {
+      throw new Error("The event changed while you were editing it. Reload the event and review the warning again.");
+    }
+    const changes = significantEventChanges(current, cleaned);
+    if (!Object.keys(changes).length) throw new Error("There are no significant changes to save.");
+
+    const changedAt = serverTimestamp();
+    tx.update(eventRef, {
+      expected_attendance: cleaned.expected_attendance,
+      event_date: cleaned.event_date,
+      start_time: cleaned.start_time,
+      end_time: cleaned.end_time,
+      last_significant_change_id: historyRef.id,
+      updated_at: changedAt
+    });
+    tx.set(requirementRef, {
+      ...(requirementSnapshot.exists() ? requirementSnapshot.data() : {}),
+      event_id: eventId,
+      preferred_location: cleaned.preferred_location || null,
+      required_layout: cleaned.required_layout || null,
+      facilities_required: cleaned.facilities_required,
+      accessibility_needed: cleaned.accessibility_needed,
+      accessibility_notes: cleaned.accessibility_needed ? cleaned.accessibility_notes : ""
+    });
+
+    const facilityIds = new Set(cleaned.facilities_required ? cleaned.facilities : []);
+    facilityRows.forEach((item) => {
+      if (!facilityIds.has(item.data().facility_id)) tx.delete(item.ref);
+      else facilityIds.delete(item.data().facility_id);
+    });
+    facilityIds.forEach((facilityId) => {
+      const facilityRef = doc(db, "event_facilities", `${eventId}_${facilityId}`);
+      tx.set(facilityRef, { event_id: eventId, facility_id: facilityId });
+    });
+
+    const accessibilityIds = new Set(cleaned.accessibility_needed ? cleaned.accessibility : []);
+    accessibilityRows.forEach((item) => {
+      if (!accessibilityIds.has(item.data().accessibility_id)) tx.delete(item.ref);
+      else accessibilityIds.delete(item.data().accessibility_id);
+    });
+    accessibilityIds.forEach((accessibilityId) => {
+      const accessibilityRef = doc(db, "event_accessibility", `${eventId}_${accessibilityId}`);
+      tx.set(accessibilityRef, { event_id: eventId, accessibility_id: accessibilityId });
+    });
+
+    tx.set(historyRef, {
+      ...eventHistoryRecord({
+        historyId: historyRef.id,
+        eventId,
+        actorId: user.uid,
+        actionType: "SIGNIFICANT_EVENT_DETAILS_CHANGED",
+        fieldName: "significant_event_details",
+        oldValue: Object.fromEntries(Object.entries(changes).map(([field, valuesForField]) => [field, valuesForField.old_value])),
+        newValue: Object.fromEntries(Object.entries(changes).map(([field, valuesForField]) => [field, valuesForField.new_value])),
+        description: "Coordinator acknowledged the impact warning before changing significant event details.",
+        createdAt: changedAt
+      }),
+      warning_acknowledged: true,
+      affected_arrangements: currentImpact
+    });
+  });
+  return { ok: true };
 };
 
 const openReview = async (eventId) => {
@@ -262,4 +431,7 @@ const approve = async (eventId) => {
   return { ok: true };
 };
 
-export const reviewApi = { list, detail, openReview, clarify, reject, reassign, respond, approve };
+export const reviewApi = {
+  list, detail, openReview, clarify, reject, reassign, respond, approve,
+  significantChangeImpact, saveSignificantChange
+};
