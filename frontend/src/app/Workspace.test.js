@@ -24,6 +24,7 @@ jest.mock('../features/events/OrganiserEventDetail', () => ({ __esModule: true, 
 jest.mock('../features/events/EventList', () => ({ __esModule: true, default: () => null }));
 // Reports the event it was asked to open, which is all View on a notification decides (J1).
 jest.mock('../features/events/EventReviewScreen', () => ({ __esModule: true, default: (props) => (props.initialEventId ? `review of ${props.initialEventId}` : null) }));
+jest.mock('../features/events/LeadAssignmentScreen', () => ({ __esModule: true, default: () => null }));
 // The venue screens report only whether they were asked for the shared calendar
 // (E4), which is the one thing the shell decides for them.
 jest.mock('../features/venues/VenueCatalogue', () => ({ __esModule: true, default: (props) => (props.showCalendar ? 'calendar open' : 'venue list') }));
@@ -265,5 +266,32 @@ describe('J1 viewing an event from a notification', () => {
 
     expect(screen.queryByRole('button', { name: 'View event' })).not.toBeInTheDocument();
     expect(screen.getByText('inbox')).toBeInTheDocument();
+  });
+});
+
+describe('A6 the Event Coordinator Lead navigation', () => {
+  const LEAD_SCREENS = ['Unassigned queue', 'Oversight'];
+
+  test('A6-TC5 AC4 the Lead sees exactly its oversight and assignment screens', () => {
+    const { container } = render(<Workspace user={USER} role={ROLES.COORDINATOR_LEAD} />);
+
+    expect(sidebarScreens(container)).toEqual(LEAD_SCREENS);
+  });
+
+  test("A6-TC6 AC4 the Lead sees none of a coordinator's own working screens", () => {
+    const { container } = render(<Workspace user={USER} role={ROLES.COORDINATOR_LEAD} />);
+    const nav = within(container.querySelector('.cs-sidebar-screens'));
+
+    ['Review queue', 'Assigned events', 'Venue catalogue', 'Venue bookings', 'Equipment requests', 'Registrations', 'Notifications']
+      .forEach((name) => expect(nav.queryByText(name)).not.toBeInTheDocument());
+  });
+
+  test('A6-TC7 AC4 the Lead asking for a coordinator screen is refused, not shown it', () => {
+    window.location.hash = screenHash(ROLES.COORDINATOR, 'Review queue');
+
+    const { container } = render(<Workspace user={USER} role={ROLES.COORDINATOR_LEAD} />);
+
+    expect(screen.getByRole('heading', { name: /not authorised/i })).toBeInTheDocument();
+    expect(sidebarScreens(container)).toEqual(LEAD_SCREENS);
   });
 });

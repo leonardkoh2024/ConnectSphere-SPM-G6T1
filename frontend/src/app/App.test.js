@@ -209,6 +209,18 @@ describe('resolveRole', () => {
       ROLES.VENUE_STAFF
     );
   });
+
+  // A6 AC1 — the Event Coordinator Lead is appointed, not created from a mailbox
+  // name, so there is no public sign-up that lands anyone in the Lead role. Even an
+  // email that advertises "lead" resolves to an ordinary staff role.
+  test('A6-TC8 AC1 the Coordinator Lead cannot be self-provisioned from a work email', () => {
+    expect(resolveRole('coordinator.lead@connectsphere.com', 'corporate')).toBe(
+      ROLES.COORDINATOR
+    );
+    expect(resolveRole('team.lead@connectsphere.com', 'corporate')).toBe(
+      ROLES.ORGANISER
+    );
+  });
 });
 
 describe('isStaffEmail', () => {

@@ -16,8 +16,13 @@ import {
   buildRequestView,
   contactDetails,
   equipmentList,
-  registrationSummary
+  registrationSummary,
+  canAssignCoordinator,
+  canLeadReassign,
+  supervisesAllEvents,
+  coordinatorWorkload
 } from './eventReview';
+import { ROLES } from './roles';
 
 const event = (changes = {}) => ({ coordinator_id: 'c1', status: 'UNDER_REVIEW', ...changes });
 
@@ -283,5 +288,68 @@ describe('C3 see everything the organiser submitted', () => {
     expect(view.accessibility.items).toEqual([]);
     expect(view.equipment).toEqual([]);
     expect(view.registration).toBeNull();
+  });
+});
+
+describe('A6 Event Coordinator Lead oversight and assignment', () => {
+  const LEAD = ROLES.COORDINATOR_LEAD;
+  const target = { id: 'c2', name: 'Alex Coordinator', active: true };
+
+  test('A6-TC1 AC3 only the Lead supervises all events', () => {
+    expect(supervisesAllEvents(LEAD)).toBe(true);
+    expect(supervisesAllEvents(ROLES.COORDINATOR)).toBe(false);
+    expect(supervisesAllEvents(ROLES.ORGANISER)).toBe(false);
+    expect(supervisesAllEvents(undefined)).toBe(false);
+  });
+
+  test('A6-TC2 AC2 the Lead assigns a coordinator to an unassigned event', () => {
+    const unassigned = event({ coordinator_id: null, status: 'SUBMITTED' });
+    expect(canAssignCoordinator(unassigned, LEAD, target)).toBe(true);
+    // Only the Lead may assign.
+    expect(canAssignCoordinator(unassigned, ROLES.COORDINATOR, target)).toBe(false);
+    // An already-assigned event is a reassignment, not an assignment.
+    expect(canAssignCoordinator(event({ coordinator_id: 'c1' }), LEAD, target)).toBe(false);
+    // A terminal event cannot be assigned.
+    expect(canAssignCoordinator(event({ coordinator_id: null, status: 'CANCELLED' }), LEAD, target)).toBe(false);
+    // The target must be an active coordinator.
+    expect(canAssignCoordinator(unassigned, LEAD, { id: 'c2', active: false })).toBe(false);
+    expect(canAssignCoordinator(unassigned, LEAD, { name: 'no id' })).toBe(false);
+  });
+
+  test('A6-TC3 AC2 the Lead reassigns any assigned event to a different active coordinator', () => {
+    const assigned = event({ coordinator_id: 'c1', status: 'UNDER_REVIEW' });
+    expect(canLeadReassign(assigned, LEAD, target)).toBe(true);
+    // A coordinator is not a Lead — the existing coordinator-only reassign still governs them.
+    expect(canLeadReassign(assigned, ROLES.COORDINATOR, target)).toBe(false);
+    // Cannot reassign to the coordinator who already holds it.
+    expect(canLeadReassign(assigned, LEAD, { id: 'c1', active: true })).toBe(false);
+    // An unassigned event is an assignment, not a reassignment.
+    expect(canLeadReassign(event({ coordinator_id: null }), LEAD, target)).toBe(false);
+    // Terminal events cannot be reassigned.
+    expect(canLeadReassign(event({ status: 'REJECTED' }), LEAD, target)).toBe(false);
+    // The target must be active.
+    expect(canLeadReassign(assigned, LEAD, { id: 'c2', active: false })).toBe(false);
+  });
+
+  test('A6-TC4 AC3 coordinatorWorkload counts active events per coordinator, least-loaded first', () => {
+    const coordinators = [
+      { id: 'c1', name: 'Sam' },
+      { id: 'c2', name: 'Alex' },
+      { id: 'c3', name: 'Priya' }
+    ];
+    const events = [
+      event({ coordinator_id: 'c1', status: 'UNDER_REVIEW' }),
+      event({ coordinator_id: 'c1', status: 'APPROVED' }),
+      event({ coordinator_id: 'c2', status: 'UNDER_REVIEW' }),
+      event({ coordinator_id: 'c1', status: 'CANCELLED' }), // terminal → not counted
+      event({ coordinator_id: null, status: 'SUBMITTED' })  // unassigned → not counted
+    ];
+    expect(coordinatorWorkload(events, coordinators)).toEqual([
+      { id: 'c3', name: 'Priya', activeEvents: 0 },
+      { id: 'c2', name: 'Alex', activeEvents: 1 },
+      { id: 'c1', name: 'Sam', activeEvents: 2 }
+    ]);
+    expect(coordinatorWorkload([], coordinators).every((item) => item.activeEvents === 0)).toBe(true);
+    expect(coordinatorWorkload()).toEqual([]);
   });
 });

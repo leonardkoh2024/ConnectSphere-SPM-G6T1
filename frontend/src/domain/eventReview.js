@@ -1,6 +1,8 @@
 // Pure workflow rules for C4, C7 and C9. The UI and browser Firestore adapter
 // share these checks; firestore.rules remains the authoritative boundary.
 
+import { ROLES } from "./roles";
+
 export const EVENT_STATUS = {
   SUBMITTED: "SUBMITTED",
   UNDER_REVIEW: "UNDER_REVIEW",
@@ -36,12 +38,66 @@ const TERMINAL = new Set([EVENT_STATUS.COMPLETED, EVENT_STATUS.CANCELLED, EVENT_
 // completed, cancelled or rejected event has nothing left to book.
 export const canFindVenues = (event) => Boolean(event) && !TERMINAL.has(event.status);
 
+// Shared "this event is finished" check, so screens filter on the same terminal
+// set the guards use rather than keeping their own copy of the statuses.
+export const isTerminal = (event) => TERMINAL.has(event?.status);
+
 export const canReassignEvent = (event, userId, targetCoordinator) =>
   isCurrentCoordinator(event, userId) &&
   !TERMINAL.has(event.status) &&
   Boolean(targetCoordinator?.active !== false) &&
   Boolean(targetCoordinator?.id) &&
   targetCoordinator.id !== userId;
+
+// A6 / Week 7 change #5 — the Event Coordinator Lead. The Lead oversees every
+// event (AC3) and is the only role that assigns a coordinator to a new event or
+// reassigns an existing one (AC2). The coordinator-only canReassignEvent above is
+// deliberately left as it is: it still governs a coordinator handing on their own
+// event. These are pure guards; firestore.rules remains the authoritative
+// server-side boundary (AC5).
+export const isLead = (role) => role === ROLES.COORDINATOR_LEAD;
+
+// AC3 — only the Lead sees the whole event collection rather than a single
+// assignment; every other role stays scoped to the events that carry its id.
+export const supervisesAllEvents = (role) => isLead(role);
+
+// AC2 (assign) — the Lead gives an unassigned, non-terminal event to an active
+// coordinator. An event that already has a coordinator is a reassignment, not an
+// assignment, so it is refused here and handled by canLeadReassign instead.
+export const canAssignCoordinator = (event, role, targetCoordinator) =>
+  isLead(role) &&
+  Boolean(event) &&
+  !event.coordinator_id &&
+  !TERMINAL.has(event.status) &&
+  targetCoordinator?.active !== false &&
+  Boolean(targetCoordinator?.id);
+
+// AC2 (reassign) — the Lead moves an already-assigned, non-terminal event to a
+// different active coordinator. Unlike canReassignEvent this is keyed on the Lead
+// role rather than on holding the event, and it still refuses handing the event
+// back to the coordinator who already has it.
+export const canLeadReassign = (event, role, targetCoordinator) =>
+  isLead(role) &&
+  Boolean(event?.coordinator_id) &&
+  !TERMINAL.has(event.status) &&
+  targetCoordinator?.active !== false &&
+  Boolean(targetCoordinator?.id) &&
+  targetCoordinator.id !== event.coordinator_id;
+
+// AC3 — the oversight view's workload column: how many live events each
+// coordinator is carrying, least-loaded first so the Lead can see at a glance who
+// has room before (re)assigning. Terminal and unassigned events are not a current
+// load, so they do not count.
+export const coordinatorWorkload = (events = [], coordinators = []) =>
+  (coordinators || [])
+    .map((coordinator) => ({
+      id: coordinator.id,
+      name: coordinator.name,
+      activeEvents: (events || []).filter(
+        (item) => item.coordinator_id === coordinator.id && !TERMINAL.has(item.status)
+      ).length
+    }))
+    .sort((a, b) => a.activeEvents - b.activeEvents);
 
 export const chronologicalClarifications = (clarifications = [], responses = []) =>
   [

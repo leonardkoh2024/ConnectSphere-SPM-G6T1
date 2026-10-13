@@ -1,13 +1,16 @@
-// The five ConnectSphere roles and everything the app needs to know about each one.
+// The ConnectSphere roles and everything the app needs to know about each one.
 //
-// Core feature F1 fixes this list at exactly five roles — there is no admin role.
-// This module is the canonical definition; never re-declare a role as a string
-// literal elsewhere. It holds no React and no Firebase, so it can move into
-// `backend/` unchanged when the service layer is built.
+// Core feature F1 originally fixed this list at five roles with no admin role;
+// Week 7 customer change #5 adds a sixth — the Event Coordinator Lead — who
+// oversees the coordinators and assigns events to them. This module is the
+// canonical definition; never re-declare a role as a string literal elsewhere.
+// It holds no React and no Firebase, so it can move into `backend/` unchanged
+// when the service layer is built.
 
 export const ROLES = {
   ORGANISER: "EVENT_ORGANISER",
   COORDINATOR: "EVENT_COORDINATOR",
+  COORDINATOR_LEAD: "EVENT_COORDINATOR_LEAD",
   VENUE_STAFF: "VENUE_STAFF",
   TECH_SUPPORT: "TECHNICAL_SUPPORT_STAFF",
   ATTENDEE: "ATTENDEE"
@@ -22,9 +25,14 @@ export const ROLES = {
 //
 // Attendees are related to an event through their own `registrations` document
 // rather than a field on the event, so they have no scope field here.
+//
+// The Event Coordinator Lead oversees every event rather than a single
+// assignment (Week 7 change #5), so it has no scope field either — its screens
+// read the whole collection, not just the events that carry its id.
 export const EVENT_SCOPE_FIELD = {
   [ROLES.ORGANISER]: "organiser_id",
   [ROLES.COORDINATOR]: "coordinator_id",
+  [ROLES.COORDINATOR_LEAD]: null,
   [ROLES.VENUE_STAFF]: "venue_staff_id",
   [ROLES.TECH_SUPPORT]: "tech_support_id",
   [ROLES.ATTENDEE]: null
@@ -124,6 +132,29 @@ export const ROLE_META = {
         icon: "bell",
         blurb:
           "Submissions, changes and decisions."
+      }
+    ]
+  },
+  // Week 7 change #5. The Lead oversees the coordinators rather than running
+  // events themselves, so it has only the two screens its role calls for:
+  // nothing a coordinator uses to do the day-to-day work on an event.
+  [ROLES.COORDINATOR_LEAD]: {
+    label: "Event Coordinator Lead",
+    portal: "corporate",
+    summary:
+      "Oversees every event and assigns coordinators to the ones that need one.",
+    screens: [
+      {
+        name: "Unassigned queue",
+        icon: "inbox",
+        blurb:
+          "Events with no coordinator yet — assign one from here."
+      },
+      {
+        name: "Oversight",
+        icon: "clipboard",
+        blurb:
+          "Every event, who is coordinating it, and how loaded each coordinator is — reassign from here."
       }
     ]
   },
