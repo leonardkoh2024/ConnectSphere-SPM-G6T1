@@ -20,7 +20,8 @@ import {
   canAssignCoordinator,
   canLeadReassign,
   supervisesAllEvents,
-  coordinatorWorkload
+  coordinatorWorkload,
+  unassignedQueue
 } from './eventReview';
 import { ROLES } from './roles';
 
@@ -351,5 +352,39 @@ describe('A6 Event Coordinator Lead oversight and assignment', () => {
     ]);
     expect(coordinatorWorkload([], coordinators).every((item) => item.activeEvents === 0)).toBe(true);
     expect(coordinatorWorkload()).toEqual([]);
+  });
+});
+
+describe('K1 SCRUM-182 the unassigned queue', () => {
+  const waiting = (id, submitted_at, extra = {}) => ({ id, coordinator_id: null, status: 'SUBMITTED', submitted_at, ...extra });
+
+  test('K1-TC1 AC3 waiting events are listed oldest submission first', () => {
+    const events = [
+      waiting('e-new', '2026-03-10T09:00:00Z'),
+      waiting('e-old', '2026-03-01T09:00:00Z'),
+      waiting('e-mid', '2026-03-05T09:00:00Z')
+    ];
+    expect(unassignedQueue(events).map((e) => e.id)).toEqual(['e-old', 'e-mid', 'e-new']);
+  });
+
+  test('K1-TC2 AC4 an event leaves the queue as soon as it has a coordinator', () => {
+    const events = [
+      waiting('e1', '2026-03-01T09:00:00Z'),
+      waiting('e2', '2026-03-02T09:00:00Z', { coordinator_id: 'c1' })
+    ];
+    expect(unassignedQueue(events).map((e) => e.id)).toEqual(['e1']);
+  });
+
+  test('K1-TC3 AC3 a terminal event is not a waiting event', () => {
+    const events = [
+      waiting('e1', '2026-03-01T09:00:00Z'),
+      waiting('e2', '2026-03-02T09:00:00Z', { status: 'CANCELLED' })
+    ];
+    expect(unassignedQueue(events).map((e) => e.id)).toEqual(['e1']);
+  });
+
+  test('K1-TC4 no events means an empty queue', () => {
+    expect(unassignedQueue()).toEqual([]);
+    expect(unassignedQueue([])).toEqual([]);
   });
 });

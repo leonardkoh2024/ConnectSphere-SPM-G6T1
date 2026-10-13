@@ -324,6 +324,22 @@ describe('B9 a complete request is submitted (TC-030, TC-031)', () => {
       null
     );
   });
+
+  test('K1-TC7 SCRUM-182 AC1 a submitted event is not auto-assigned a coordinator', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    const onSaved = jest.fn();
+    render(<EventRequestForm user={USER} onSaved={onSaved} />);
+
+    fillValidRequest();
+    await submit();
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    // Written with no coordinator, and nothing calls the old auto-assign endpoint —
+    // the event waits in the Lead's unassigned queue instead.
+    expect(eventWrite().coordinator_id).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
 });
 
 describe('B9 an incomplete request is not submitted (TC-032, TC-033)', () => {
