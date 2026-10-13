@@ -42,9 +42,13 @@ service cloud.firestore {
       // directory. Only active coordinator profiles are exposed to other signed-
       // in users; list access remains coordinator-only and therefore requires a
       // role/is_active constrained query.
+      // A6 — the Lead reads any profile so its board can name each event's
+      // organiser and coordinator; others still see only themselves and active
+      // coordinators.
       allow get: if signedIn() && (userId == request.auth.uid
+        || hasRole('EVENT_COORDINATOR_LEAD')
         || (resource.data.role == 'EVENT_COORDINATOR' && resource.data.is_active == true));
-      allow list: if hasRole('EVENT_COORDINATOR')
+      allow list: if (hasRole('EVENT_COORDINATOR') || hasRole('EVENT_COORDINATOR_LEAD'))
         && resource.data.role == 'EVENT_COORDINATOR'
         && resource.data.is_active == true;
       allow update: if signedIn() && userId == request.auth.uid
@@ -97,6 +101,24 @@ service cloud.firestore {
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coordinator_id', 'assigned_at', 'updated_at']))
           );
       }
+
+      // A6 / Week 7 change #5 — the Event Coordinator Lead assigns and reassigns.
+      // One clause covers both: the only coordinator change the Lead may make is
+      // to a DIFFERENT active coordinator on a non-terminal event, touching only
+      // the coordinator fields. New coordinator != old covers "assign" (old
+      // absent) and "reassign" (old set) alike, and refuses handing an event back
+      // to the coordinator who already holds it. The client guards
+      // (canAssignCoordinator / canLeadReassign) mirror this; this is the boundary.
+      function leadAssignmentUpdate() {
+        return hasRole('EVENT_COORDINATOR_LEAD')
+          && !(resource.data.status in ['COMPLETED', 'CANCELLED', 'REJECTED'])
+          && request.resource.data.coordinator_id is string
+          && request.resource.data.coordinator_id != resource.data.get('coordinator_id', null)
+          && get(/databases/$(database)/documents/users/$(request.resource.data.coordinator_id)).data.role == 'EVENT_COORDINATOR'
+          && get(/databases/$(database)/documents/users/$(request.resource.data.coordinator_id)).data.is_active == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coordinator_id', 'assigned_at', 'updated_at']);
+      }
+
       // D2 — significant edits are limited to the current coordinator during
       // planning, and must be committed with the acknowledged impact record.
       function coordinatorSignificantDetailsUpdate() {
@@ -151,12 +173,15 @@ service cloud.firestore {
       allow get, list: if (hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid)
         || (hasRole('EVENT_COORDINATOR') && resource.data.get('coordinator_id', '') == request.auth.uid)
         || (hasRole('EVENT_COORDINATOR') && previousCoordinator(eventId))
+        // A6 — the Event Coordinator Lead oversees every event (AC3).
+        || hasRole('EVENT_COORDINATOR_LEAD')
         || (hasRole('VENUE_STAFF') && resource.data.get('venue_staff_id', '') == request.auth.uid)
         || (hasRole('TECHNICAL_SUPPORT_STAFF') && resource.data.get('tech_support_id', '') == request.auth.uid)
         // A7 AC2 — a list query must filter on status == 'SAFETY_REVIEW'.
         || (hasRole('SAFETY_OFFICER') && resource.data.status == 'SAFETY_REVIEW');
       allow update: if (hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid && coordinatorUnchanged() && organiserMayEdit())
         || coordinatorWorkflowUpdate()
+        || leadAssignmentUpdate()
         || coordinatorSignificantDetailsUpdate()
         || safetyOutcomeUpdate();
       // B8 — only the owning organiser, and only while it is still a draft. Once a
@@ -198,6 +223,9 @@ service cloud.firestore {
         && request.resource.data.actor_id == request.auth.uid
         && (ownsEvent(request.resource.data.event_id) || currentCoordinator(request.resource.data.event_id)
           || safetyReviewing(request.resource.data.event_id)
+          // A6 — the Lead records the (re)assignment it just made.
+          || (hasRole('EVENT_COORDINATOR_LEAD')
+            && request.resource.data.action_type in ['COORDINATOR_ASSIGNED', 'COORDINATOR_REASSIGNED'])
           || (request.resource.data.action_type == 'SIGNIFICANT_EVENT_DETAILS_CHANGED'
             && currentCoordinator(request.resource.data.event_id)
             && request.resource.data.warning_acknowledged == true
@@ -255,9 +283,14 @@ service cloud.firestore {
     match /coordinator_assignments/{assignmentId} {
       allow get, list: if signedIn()
         && (resource.data.coordinator_id == request.auth.uid || canReadEvent(resource.data.event_id));
-      allow create, update: if hasRole('EVENT_COORDINATOR')
-        && currentCoordinator(request.resource.data.event_id)
-        && assignmentId == request.resource.data.event_id + '_' + request.resource.data.coordinator_id;
+      allow create, update: if (hasRole('EVENT_COORDINATOR')
+          && currentCoordinator(request.resource.data.event_id)
+          && assignmentId == request.resource.data.event_id + '_' + request.resource.data.coordinator_id)
+        // A6 — the Lead writes the assignment record when it (re)assigns an event.
+        // The id still has to match event_id + '_' + coordinator_id, so a record
+        // can only name the coordinator it is actually for.
+        || (hasRole('EVENT_COORDINATOR_LEAD')
+          && assignmentId == request.resource.data.event_id + '_' + request.resource.data.coordinator_id);
     }
 
     match /notifications/{notificationId} {
@@ -283,6 +316,15 @@ service cloud.firestore {
             && request.resource.data.user_id in [
               get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.organiser_id,
               get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.coordinator_id])
+          // A6 — on (re)assignment the Lead notifies the new coordinator (the
+          // event's coordinator after the write), the previous coordinator (before
+          // the write) and the organiser. get() with a default keeps a freshly
+          // assigned event, which had no coordinator_id, from erroring the clause.
+          || (hasRole('EVENT_COORDINATOR_LEAD')
+            && request.resource.data.user_id in [
+              getAfter(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.get('coordinator_id', ''),
+              get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.get('coordinator_id', ''),
+              get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.get('organiser_id', '')])
         );
     }
 

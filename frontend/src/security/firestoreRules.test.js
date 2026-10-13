@@ -312,12 +312,47 @@ describe('TC-284 notifications are only ever addressed to people related to the 
   });
 
   test("every branch ties the recipient to the event's organiser or coordinator", () => {
-    // The coordinator, organiser and safety-officer branches, in that order.
+    // The coordinator, organiser, safety-officer and (A6) Lead branches, in order.
     const branches = create().split(/\|\| \(/);
-    expect(branches).toHaveLength(3);
+    expect(branches).toHaveLength(4);
     branches.forEach((branch) => {
       expect(branch).toMatch(/request\.resource\.data\.user_id (==|in)/);
       expect(branch).toMatch(/organiser_id|coordinator_id/);
     });
+  });
+});
+
+// A6 / Week 7 change #5 AC5 — the Event Coordinator Lead's server boundary. The
+// Lead oversees every event and is the only client role that may assign or
+// reassign a coordinator. As with the rules above this asserts the policy text,
+// so loosening it breaks the build; behavioural proof is a Rules Playground
+// screenshot in the evidence pack, since this repo runs no emulator.
+describe('A6 the Event Coordinator Lead assignment boundary', () => {
+  const events = () => matchBlock('events');
+
+  test('the Lead may read every event', () => {
+    expect(eventsGetList()).toContain("hasRole('EVENT_COORDINATOR_LEAD')");
+  });
+
+  test('event updates admit the Lead assignment path', () => {
+    const updateRule = events().match(/allow update:\s*if([^;]*);/)[1];
+    expect(updateRule).toContain('leadAssignmentUpdate()');
+  });
+
+  test('the Lead may only move a non-terminal event to a different active coordinator', () => {
+    const lead = events().slice(
+      events().indexOf('function leadAssignmentUpdate()'),
+      events().indexOf('function coordinatorSignificantDetailsUpdate()')
+    );
+    expect(lead).toContain("hasRole('EVENT_COORDINATOR_LEAD')");
+    expect(lead).toContain("!(resource.data.status in ['COMPLETED', 'CANCELLED', 'REJECTED'])");
+    expect(lead).toContain("request.resource.data.coordinator_id != resource.data.get('coordinator_id', null)");
+    expect(lead).toContain("data.role == 'EVENT_COORDINATOR'");
+    expect(lead).toContain('data.is_active == true');
+    expect(lead).toContain("hasOnly(['coordinator_id', 'assigned_at', 'updated_at'])");
+  });
+
+  test('the active-coordinator directory is also listable by the Lead', () => {
+    expect(matchBlock('users')).toContain("hasRole('EVENT_COORDINATOR_LEAD')");
   });
 });
