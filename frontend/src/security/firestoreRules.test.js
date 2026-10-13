@@ -356,3 +356,17 @@ describe('A6 the Event Coordinator Lead assignment boundary', () => {
     expect(matchBlock('users')).toContain("hasRole('EVENT_COORDINATOR_LEAD')");
   });
 });
+
+// K1 / SCRUM-182 AC2 — only the Lead reaches an unassigned event. A coordinator
+// may read an event only when it carries their own id, so an event with no
+// coordinator is out of reach even by direct id/URL; the Lead reads them all.
+describe('K1 SCRUM-182 unassigned events are the Lead\'s alone', () => {
+  test('K1-TC5 AC2 a coordinator reaches an event only via its coordinator_id, so unassigned ones are unreachable', () => {
+    const readRule = eventsGetList();
+    expect(readRule).toContain("hasRole('EVENT_COORDINATOR') && resource.data.get('coordinator_id', '') == request.auth.uid");
+  });
+
+  test('K1-TC6 AC2 the Lead may read every event, assigned or not', () => {
+    expect(eventsGetList()).toContain("hasRole('EVENT_COORDINATOR_LEAD')");
+  });
+});

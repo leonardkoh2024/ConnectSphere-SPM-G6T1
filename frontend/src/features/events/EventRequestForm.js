@@ -248,17 +248,10 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
           : submit ? "Event request submitted by organiser." : "Event draft created by organiser.",
         created_at: serverTimestamp()
       });
-      if (submit && !isAmend) {
-        try {
-          await fetch("/api/coordinator-assignment/assign", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ eventId: eventRef.id })
-          });
-        } catch (assignError) {
-          console.error("Could not assign a coordinator:", assignError);
-        }
-      }
+      // K1 / SCRUM-182 AC1 — a submitted event is NOT auto-assigned a coordinator.
+      // It is written with coordinator_id: null above and now waits in the Event
+      // Coordinator Lead's unassigned queue, where the Lead assigns it (A6). The old
+      // auto-assign call to /api/coordinator-assignment (C1) is deliberately removed.
       if (isAmend) {
         onSaved("Request details updated.", { ...draft, ...eventData, id: eventRef.id, status: draft.status, open_clarification_id: draft.open_clarification_id });
         return;

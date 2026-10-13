@@ -99,6 +99,14 @@ export const coordinatorWorkload = (events = [], coordinators = []) =>
     }))
     .sort((a, b) => a.activeEvents - b.activeEvents);
 
+// K1 / SCRUM-182 — the Lead's unassigned queue: submitted events still waiting for
+// a coordinator, oldest submission first (AC3). An event leaves the moment it has a
+// coordinator (AC4), and terminal events are not waiting for anyone.
+export const unassignedQueue = (events = []) =>
+  (events || [])
+    .filter((event) => !event.coordinator_id && !isTerminal(event))
+    .sort((a, b) => String(a.submitted_at || "").localeCompare(String(b.submitted_at || "")));
+
 export const chronologicalClarifications = (clarifications = [], responses = []) =>
   [
     ...clarifications.map((item) => ({ ...item, kind: "QUESTION" })),

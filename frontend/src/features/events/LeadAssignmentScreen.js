@@ -11,7 +11,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { statusTone } from "../../domain/events";
 import { ROLES } from "../../domain/roles";
-import { canAssignCoordinator, canLeadReassign, coordinatorWorkload, isTerminal } from "../../domain/eventReview";
+import { canAssignCoordinator, canLeadReassign, coordinatorWorkload, isTerminal, unassignedQueue } from "../../domain/eventReview";
 import { reviewApi } from "./reviewApi";
 import RecordLead from "../../components/RecordLead";
 
@@ -40,7 +40,9 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
 
   const coordinatorById = useMemo(() => new Map(coordinators.map((item) => [item.id, item])), [coordinators]);
   const workload = useMemo(() => coordinatorWorkload(events, coordinators), [events, coordinators]);
-  const queue = useMemo(() => events.filter((event) => !event.coordinator_id && !isTerminal(event)), [events]);
+  // K1 / SCRUM-182 — waiting events, oldest submission first (AC3), leaving the
+  // moment they are assigned (AC4). The ordering/filtering is the pure helper.
+  const queue = useMemo(() => unassignedQueue(events), [events]);
 
   const pick = (eventId, coordinatorId) => setChoice((current) => ({ ...current, [eventId]: coordinatorId }));
 
@@ -91,6 +93,19 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
     </div>
   </div>;
 
+  // K1 / SCRUM-182 AC3 — "time since submission" as a plain relative label.
+  const sinceSubmission = (iso) => {
+    if (!iso) return "just now";
+    const ms = Date.now() - new Date(iso).getTime();
+    if (!(ms > 0)) return "just now";
+    const mins = Math.floor(ms / 60000);
+    if (mins < 60) return `${mins || 1} min ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs} hr${hrs === 1 ? "" : "s"} ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days} day${days === 1 ? "" : "s"} ago`;
+  };
+
   if (loading) return <p className="cs-panel-note">Loading events…</p>;
 
   if (view === "queue") {
@@ -103,6 +118,7 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
         {eventHeader(event)}
         <p className="cs-record-ref">{event.reference_no}</p>
         <div className="cs-record-status"><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div>
+        <div className="cs-record-modified"><p className="cs-record-saved">{event.expected_attendance != null ? `Expected ${event.expected_attendance}` : "Attendance not set"} · Submitted {sinceSubmission(event.submitted_at)}</p></div>
         {picker(event, "assign")}
       </article>)}</div>
     </>;
