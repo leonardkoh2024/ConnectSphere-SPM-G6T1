@@ -1,8 +1,9 @@
 // The ConnectSphere roles and everything the app needs to know about each one.
 //
 // Core feature F1 originally fixed this list at five roles with no admin role;
-// Week 7 customer change #5 adds a sixth — the Event Coordinator Lead — who
-// oversees the coordinators and assigns events to them. This module is the
+// Week 7 customer changes add the Event Coordinator Lead and Safety Officer.
+// The Lead assigns events; the Safety Officer receives a narrow read-only
+// safety view. This module is the
 // canonical definition; never re-declare a role as a string literal elsewhere.
 // It holds no React and no Firebase, so it can move into `backend/` unchanged
 // when the service layer is built.
@@ -12,6 +13,7 @@ export const ROLES = {
   COORDINATOR: "EVENT_COORDINATOR",
   COORDINATOR_LEAD: "EVENT_COORDINATOR_LEAD",
   VENUE_STAFF: "VENUE_STAFF",
+  SAFETY_OFFICER: "SAFETY_OFFICER",
   TECH_SUPPORT: "TECHNICAL_SUPPORT_STAFF",
   ATTENDEE: "ATTENDEE"
 };
@@ -34,6 +36,7 @@ export const EVENT_SCOPE_FIELD = {
   [ROLES.COORDINATOR]: "coordinator_id",
   [ROLES.COORDINATOR_LEAD]: null,
   [ROLES.VENUE_STAFF]: "venue_staff_id",
+  [ROLES.SAFETY_OFFICER]: null,
   [ROLES.TECH_SUPPORT]: "tech_support_id",
   [ROLES.ATTENDEE]: null
 };
@@ -185,6 +188,23 @@ export const ROLE_META = {
         name: "Notifications",
         icon: "bell",
         blurb: "New requests and booking changes."
+      }
+    ]
+  },
+  [ROLES.SAFETY_OFFICER]: {
+    label: "Safety Officer",
+    portal: "corporate",
+    summary: "Reviews event and venue safety information.",
+    screens: [
+      {
+        name: "Venue safety information",
+        icon: "building",
+        blurb: "Emergency access and known restrictions for every venue."
+      },
+      {
+        name: "Notifications",
+        icon: "bell",
+        blurb: "Safety review and event updates."
       }
     ]
   },

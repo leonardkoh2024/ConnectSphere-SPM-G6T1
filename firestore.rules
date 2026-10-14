@@ -159,14 +159,49 @@ service cloud.firestore {
       // move, so no event reaches Confirmed without an approved check (L1 AC4).
       function safetyOutcomeUpdate() {
         let review = getAfter(/databases/$(database)/documents/safety_reviews/$(request.resource.data.last_safety_review_id)).data;
+        let approvedBookingId = request.resource.data.get('approved_venue_booking_id', '');
+        let approvedBooking = getAfter(/databases/$(database)/documents/venue_bookings/$(approvedBookingId)).data;
         return hasRole('SAFETY_OFFICER')
           && resource.data.status == 'SAFETY_REVIEW'
           && request.resource.data.last_safety_review_id is string
           && review.event_id == eventId
           && review.reviewer_id == request.auth.uid
-          && ((review.outcome == 'APPROVE' && request.resource.data.status == 'CONFIRMED')
+          && ((review.outcome == 'APPROVE'
+              && request.resource.data.status == 'CONFIRMED'
+              && approvedBookingId is string
+              && approvedBookingId.size() > 0
+              && approvedBooking.event_id == eventId
+              && approvedBooking.status == 'APPROVED')
             || (review.outcome in ['REJECT', 'REQUEST_CHANGES'] && request.resource.data.status == 'PLANNING'))
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'last_safety_review_id', 'updated_at']);
+      }
+
+      // F4/F7 — Venue Staff may only link the event to the booking they approve
+      // in the same atomic transaction. No event workflow field may be changed.
+      function venueBookingApprovalLinkUpdate() {
+        let bookingId = request.resource.data.get('approved_venue_booking_id', '');
+        let booking = getAfter(/databases/$(database)/documents/venue_bookings/$(bookingId)).data;
+        return bookingId is string
+          && bookingId.size() > 0
+          && booking.event_id == eventId
+          && booking.status == 'APPROVED'
+          && booking.decided_by == request.auth.uid
+          && assignedVenueStaff(booking.venue_id)
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.updated_at is timestamp
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['approved_venue_booking_id', 'updated_at']);
+      }
+
+      // F8 cleanup after D4 has already committed cancellation. This narrowly
+      // clears the released booking link and cannot change status or event data.
+      function coordinatorVenueReleaseLinkUpdate() {
+        return hasRole('EVENT_COORDINATOR')
+          && resource.data.coordinator_id == request.auth.uid
+          && resource.data.status == 'CANCELLED'
+          && request.resource.data.status == 'CANCELLED'
+          && request.resource.data.get('approved_venue_booking_id', null) == null
+          && request.resource.data.updated_at is timestamp
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['approved_venue_booking_id', 'updated_at']);
       }
 
       allow create: if hasRole('EVENT_ORGANISER') && request.resource.data.organiser_id == request.auth.uid && request.resource.data.created_by == request.auth.uid && noClientCoordinatorWrite();
@@ -183,7 +218,9 @@ service cloud.firestore {
         || coordinatorWorkflowUpdate()
         || leadAssignmentUpdate()
         || coordinatorSignificantDetailsUpdate()
-        || safetyOutcomeUpdate();
+        || safetyOutcomeUpdate()
+        || venueBookingApprovalLinkUpdate()
+        || coordinatorVenueReleaseLinkUpdate();
       // B8 — only the owning organiser, and only while it is still a draft. Once a
       // request has been submitted it is part of a coordinator's queue, so it is
       // no longer the organiser's alone to remove.
@@ -410,6 +447,9 @@ service cloud.firestore {
         && request.resource.data.event_id is string
         && request.resource.data.expected_attendance is int
         && request.resource.data.expected_attendance > 0
+        && request.resource.data.layout_snapshot is string
+        && request.resource.data.layout_snapshot.size() > 0
+        && request.resource.data.required_facilities_snapshot is list
         && exists(/databases/$(database)/documents/venues/$(request.resource.data.venue_id))
         && get(/databases/$(database)/documents/venues/$(request.resource.data.venue_id)).data.max_capacity >= request.resource.data.expected_attendance
         && request.resource.data.suitability_acknowledgement.acknowledged is bool

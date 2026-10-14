@@ -12,7 +12,7 @@ const baseEvent = { id: 'e1', name: 'Partner Summit', reference_no: 'EVT-001', e
 const detail = (changes = {}) => ({
   event: { ...baseEvent, ...changes }, coordinator: { id: 'c1', name: 'Sam Coordinator' },
   coordinators: [{ id: 'c1', name: 'Sam Coordinator' }, { id: 'c2', name: 'Alex Coordinator' }],
-  clarifications: [], responses: [], assignments: []
+  clarifications: [], responses: [], assignments: [], venueBookings: []
 });
 
 beforeEach(() => {
@@ -130,6 +130,33 @@ test.each(['APPROVED', 'PLANNING'])('F1 enables Find venues while an assigned ev
   expect(button).toBeEnabled();
   await userEvent.click(button);
   expect(onFindVenues).toHaveBeenCalledWith(expect.objectContaining({ id: 'e1', status }));
+});
+
+test('F7 shows each venue booking with its complete decision information inside the event view', async () => {
+  const reason = 'The loading bay is unavailable throughout the requested setup window.';
+  reviewApi.detail.mockResolvedValue({
+    ...detail({ status: 'PLANNING' }),
+    venueBookings: [
+      {
+        booking_id: 'VB-APPROVED', venue_name: 'Harbour Hall', status: 'APPROVED',
+        start_datetime: '2026-11-04T09:00:00.000Z', end_datetime: '2026-11-04T17:00:00.000Z',
+        decided_at: '2026-10-14T09:30:00.000Z', decision_reason: null
+      },
+      {
+        booking_id: 'VB-REJECTED', venue_name: 'Garden Pavilion', status: 'REJECTED',
+        start_datetime: '2026-11-04T09:00:00.000Z', end_datetime: '2026-11-04T17:00:00.000Z',
+        decided_at: '2026-10-14T10:00:00.000Z', decision_reason: reason
+      }
+    ]
+  });
+
+  await openRequest();
+
+  const section = screen.getByRole('region', { name: /venue booking status/i });
+  expect(within(section).getByText('Harbour Hall')).toBeInTheDocument();
+  expect(within(section).getByText('Garden Pavilion')).toBeInTheDocument();
+  expect(within(section).getByText(reason)).toBeInTheDocument();
+  expect(within(section).getAllByText(/2026|nov/i).length).toBeGreaterThan(0);
 });
 
 test('D2 shows all existing arrangements and requires acknowledgement before saving', async () => {

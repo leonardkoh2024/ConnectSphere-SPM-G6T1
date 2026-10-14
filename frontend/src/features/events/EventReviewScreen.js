@@ -138,6 +138,27 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
           ? <ul className="cs-tag-list">{request.venue.facilities.map((item) => <li key={item}>{item}</li>)}</ul>
           : <p className="cs-panel-note">No specific facilities requested.</p>}
       </section>
+      <section className="cs-request-section" aria-label="Venue booking status">
+        <h3>Venue bookings</h3>
+        {(detail.venueBookings || []).length ? (
+          <div className="cs-record-list">
+            {detail.venueBookings.map((booking) => (
+              <article className="cs-record" key={booking.booking_id}>
+                <div className="cs-record-title"><h4>{booking.venue_name}</h4></div>
+                <p className="cs-record-ref">{shownTime(booking.start_datetime)}–{shownTime(booking.end_datetime)}</p>
+                <div className="cs-record-modified">
+                  <span className={`cs-pill cs-pill-${statusTone(booking.status)}`}>{booking.status}</span>
+                </div>
+                <dl className="cs-detail-grid cs-record-expanded">
+                  <div><dt>Decision time</dt><dd>{booking.decided_at ? shownTime(booking.decided_at) : "Not decided"}</dd></div>
+                  {booking.decision_reason && <div className="cs-detail-wide"><dt>Decision reason</dt><dd>{booking.decision_reason}</dd></div>}
+                  {booking.release_reason && <div className="cs-detail-wide"><dt>Release reason</dt><dd>{booking.release_reason}</dd></div>}
+                </dl>
+              </article>
+            ))}
+          </div>
+        ) : <p className="cs-panel-note">No venue booking requests have been raised for this event.</p>}
+      </section>
       <section className="cs-request-section">
         <h3>Accessibility</h3>
         {request.accessibility.items.length > 0

@@ -161,6 +161,29 @@ describe('D2 significant event details require an acknowledged audit record', ()
   });
 });
 
+describe('F1/F7 venue booking snapshots and confirmation boundary', () => {
+  test('new booking requests carry layout and facility snapshots', () => {
+    const bookings = matchBlock('venue_bookings');
+    expect(bookings).toContain('request.resource.data.layout_snapshot is string');
+    expect(bookings).toContain('request.resource.data.required_facilities_snapshot is list');
+  });
+
+  test('booking approval may only link the event to the booking approved in the same transaction', () => {
+    const events = matchBlock('events');
+    expect(events).toContain('venueBookingApprovalLinkUpdate()');
+    expect(events).toContain("booking.status == 'APPROVED'");
+    expect(events).toContain('booking.event_id == eventId');
+    expect(events).toContain('assignedVenueStaff(booking.venue_id)');
+  });
+
+  test('Confirmed requires the linked booking to belong to the event and remain Approved', () => {
+    const events = matchBlock('events');
+    expect(events).toContain("request.resource.data.status == 'CONFIRMED'");
+    expect(events).toContain('approvedBooking.event_id == eventId');
+    expect(events).toContain("approvedBooking.status == 'APPROVED'");
+  });
+});
+
 describe('G1 equipment requests are editable by the assigned coordinator and queued for Technical Support', () => {
   test('the assigned coordinator can prefill the organiser equipment lines', () => {
     const equipment = matchBlock('event_equipment');
