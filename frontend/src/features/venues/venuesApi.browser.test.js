@@ -49,6 +49,10 @@ describe('venue booking browser SDK persistence', () => {
 
   test('creates a pending request in a Firestore transaction without requesting an Admin token', async () => {
     const user = { uid: 'coordinator-1', getIdToken: jest.fn() };
+    mockGetDocs.mockImplementation((reference) => {
+      if (reference.path === 'venue_staff') return Promise.resolve({ docs: [{ data: () => ({ venue_id: 'venue-1', user_id: 'staff-1' }) }] });
+      return Promise.resolve({ docs: [] });
+    });
 
     await expect(requestVenueBooking({
       user,
@@ -60,7 +64,7 @@ describe('venue booking browser SDK persistence', () => {
     })).resolves.toEqual({ booking_id: 'booking-auto', status: 'PENDING' });
 
     expect(user.getIdToken).not.toHaveBeenCalled();
-    expect(mockTransactionSet).toHaveBeenCalledTimes(1);
+    expect(mockTransactionSet).toHaveBeenCalledTimes(2);
     expect(mockTransactionSet.mock.calls[0][1]).toMatchObject({
       booking_id: 'booking-auto',
       event_id: 'event-1',
@@ -71,6 +75,13 @@ describe('venue booking browser SDK persistence', () => {
       requested_layout_id: 'THEATRE',
       layout_snapshot: 'THEATRE',
       required_facilities_snapshot: ['WIFI', 'POWER_POINTS']
+    });
+    expect(mockTransactionSet.mock.calls[1][1]).toMatchObject({
+      type: 'VENUE_BOOKING_REQUESTED',
+      event_id: 'event-1',
+      user_id: 'staff-1',
+      venue_id: 'venue-1',
+      message: expect.stringContaining('venue booking request')
     });
     expect(mockTransactionSet.mock.calls[0][1].occupied_start.toISOString()).toBe('2026-11-10T01:30:00.000Z');
     expect(mockTransactionSet.mock.calls[0][1].occupied_end.toISOString()).toBe('2026-11-10T04:15:00.000Z');

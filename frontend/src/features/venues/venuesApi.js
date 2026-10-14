@@ -13,6 +13,7 @@ import {
   where
 } from "firebase/firestore";
 import { db } from "../../lib/firebase";
+import { notificationRecord } from "../../domain/eventReviewRecords";
 import { ROLES } from "../../domain/roles";
 
 const asIso = (value) => value?.toDate?.().toISOString?.() || value || null;
@@ -145,9 +146,10 @@ export const saveVenuePlanningDetails = async ({ user, venueId, changes = {} }) 
   }
 
   const venueRef = doc(db, "venues", venueId);
-  const [assignmentSnapshot, bookingSnapshot] = await Promise.all([
+  const [assignmentSnapshot, bookingSnapshot, venueStaffSnapshot] = await Promise.all([
     getDocs(query(collection(db, "venue_staff"), where("venue_id", "==", venueId), where("user_id", "==", userId))),
-    getDocs(query(collection(db, "venue_bookings"), where("venue_id", "==", venueId)))
+    getDocs(query(collection(db, "venue_bookings"), where("venue_id", "==", venueId))),
+    getDocs(query(collection(db, "venue_staff"), where("venue_id", "==", venueId)))
   ]);
   if (!assignmentSnapshot.docs.length) throw new Error("You are not assigned to manage this venue.");
 
@@ -187,6 +189,30 @@ export const saveVenuePlanningDetails = async ({ user, venueId, changes = {} }) 
         old_value: current[field] ?? (field.endsWith("_minutes") ? 0 : ""),
         new_value: value,
         created_at: serverTimestamp()
+      });
+    });
+    const relatedEvents = [...new Set(
+      bookingSnapshot.docs
+        .filter((item) => item.data().status && ["PENDING", "APPROVED"].includes(String(item.data().status || "").toUpperCase()))
+        .map((item) => item.data().event_id)
+        .filter(Boolean)
+    )];
+    const venueStaffUsers = [...new Set(venueStaffSnapshot.docs.map((item) => item.data().user_id).filter(Boolean))];
+    const changedAt = serverTimestamp();
+    relatedEvents.forEach((eventId) => {
+      venueStaffUsers.forEach((recipient) => {
+        const notificationRef = doc(collection(db, "notifications"));
+        transaction.set(notificationRef, {
+          ...notificationRecord({
+            notificationId: notificationRef.id,
+            userId: recipient,
+            eventId,
+            type: "VENUE_DETAILS_UPDATED",
+            message: `${current.name || venueId}: venue details changed for a related event.`,
+            createdAt: changedAt
+          }),
+          venue_id: venueId
+        });
       });
     });
     return { venue_id: venueId, ...current, ...update };
@@ -271,7 +297,10 @@ export const requestVenueBooking = async ({
   const facilitySnapshot = [...new Set(required_facilities.map((item) => String(item || "").trim()).filter(Boolean))];
   const eventRef = doc(db, "events", event_id);
   const venueRef = doc(db, "venues", venue_id);
-  const existingSnapshot = await getDocs(query(collection(db, "venue_bookings"), where("event_id", "==", event_id)));
+  const [existingSnapshot, venueStaffSnapshot] = await Promise.all([
+    getDocs(query(collection(db, "venue_bookings"), where("event_id", "==", event_id))),
+    getDocs(query(collection(db, "venue_staff"), where("venue_id", "==", venue_id)))
+  ]);
   return runTransaction(db, async (transaction) => {
     const [eventSnapshot, venueSnapshot, ...existing] = await Promise.all([
       transaction.get(eventRef),
@@ -333,6 +362,23 @@ export const requestVenueBooking = async ({
       safety_review_required: Boolean(event.safety_review_required),
       suitability_acknowledgement: acknowledgement || { acknowledged: false, criteria: [] },
       requested_by: userId
+    });
+    const changedAt = serverTimestamp();
+    venueStaffSnapshot.docs.forEach((item) => {
+      const recipient = item.data().user_id;
+      if (!recipient) return;
+      const notificationRef = doc(collection(db, "notifications"));
+      transaction.set(notificationRef, {
+        ...notificationRecord({
+          notificationId: notificationRef.id,
+          userId: recipient,
+          eventId: event_id,
+          type: "VENUE_BOOKING_REQUESTED",
+          message: `${event.name || event.reference_no || event_id}: a venue booking request was raised for ${venue.name || venue_id}.`,
+          createdAt: changedAt
+        }),
+        venue_id: venue_id
+      });
     });
     return { booking_id: bookingRef.id, status: "PENDING" };
   });

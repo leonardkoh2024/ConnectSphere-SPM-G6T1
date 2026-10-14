@@ -362,6 +362,11 @@ service cloud.firestore {
               getAfter(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.get('coordinator_id', ''),
               get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.get('coordinator_id', ''),
               get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.get('organiser_id', '')])
+          // Venue Staff are notified for the venue they manage when a booking
+          // request opens or the venue details change for a related event.
+          || (request.resource.data.get('venue_id', null) is string
+            && exists(/databases/$(database)/documents/venue_staff/$(request.resource.data.venue_id))
+            && get(/databases/$(database)/documents/venue_staff/$(request.resource.data.venue_id)).data.user_id == request.resource.data.user_id)
         );
     }
 

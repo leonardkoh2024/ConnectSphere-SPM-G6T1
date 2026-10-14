@@ -11,7 +11,14 @@ export const NOTIFICATION_TYPE_LABEL = {
   CLARIFICATION_REQUESTED: "Clarification requested",
   CLARIFICATION_RESPONDED: "Clarification answered",
   EVENT_REJECTED: "Request rejected",
-  COORDINATOR_REASSIGNED: "Coordinator reassigned"
+  COORDINATOR_REASSIGNED: "Coordinator reassigned",
+  VENUE_BOOKING_REQUESTED: "Booking request raised",
+  VENUE_BOOKING_REQUEST: "Booking request raised",
+  VENUE_BOOKING_RAISED: "Booking request raised",
+  VENUE_DETAILS_UPDATED: "Venue details updated",
+  VENUE_DETAILS_CHANGED: "Venue details updated",
+  VENUE_CHANGED: "Venue details updated",
+  VENUE_CHANGE: "Venue details updated"
 };
 
 export const notificationTypeLabel = (type) => NOTIFICATION_TYPE_LABEL[type] || "Update";

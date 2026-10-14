@@ -39,6 +39,8 @@ describe('J1 inbox rules', () => {
   test('TC-254 each stored type has words, and an unknown one still reads as an update', () => {
     expect(notificationTypeLabel('EVENT_REJECTED')).toBe('Request rejected');
     expect(notificationTypeLabel('CLARIFICATION_REQUESTED')).toBe('Clarification requested');
+    expect(notificationTypeLabel('VENUE_BOOKING_REQUESTED')).toBe('Booking request raised');
+    expect(notificationTypeLabel('VENUE_DETAILS_UPDATED')).toBe('Venue details updated');
     expect(notificationTypeLabel('SOMETHING_NEW')).toBe('Update');
   });
 });
