@@ -21,7 +21,10 @@ import {
   canLeadReassign,
   supervisesAllEvents,
   coordinatorWorkload,
-  unassignedQueue
+  unassignedQueue,
+  assignEvent,
+  assignmentSummary,
+  coordinatorChoiceLabel
 } from './eventReview';
 import { ROLES } from './roles';
 
@@ -386,5 +389,71 @@ describe('K1 SCRUM-182 the unassigned queue', () => {
   test('K1-TC4 no events means an empty queue', () => {
     expect(unassignedQueue()).toEqual([]);
     expect(unassignedQueue([])).toEqual([]);
+  });
+});
+
+describe('K2 SCRUM-183 assign an event to a coordinator', () => {
+  const organiser = { name: 'Nadia Organiser', email: 'nadia@connectsphere.com' };
+  const unassigned = {
+    id: 'EVT-1', coordinator_id: null, status: 'SUBMITTED', organiser_id: 'org-1',
+    name: 'Gala', purpose: 'Fundraiser', event_date: '2026-05-01',
+    start_time: '18:00', end_time: '21:00', expected_attendance: 120
+  };
+  const target = { id: 'c2', name: 'Alex', active: true };
+  const LEAD = ROLES.COORDINATOR_LEAD;
+
+  test('K2-TC1 AC1 the read-only summary carries the event basics and the organiser', () => {
+    const summary = assignmentSummary(unassigned, organiser);
+    expect(summary).toMatchObject({
+      name: 'Gala', purpose: 'Fundraiser', eventDate: '2026-05-01',
+      startTime: '18:00', endTime: '21:00', expectedAttendance: 120
+    });
+    expect(summary.organiser.name).toBe('Nadia Organiser');
+  });
+
+  test('K2-TC2 AC2 each coordinator choice shows its number of active events', () => {
+    expect(coordinatorChoiceLabel({ name: 'Alex', activeEvents: 3 })).toBe('Alex (3 active)');
+    expect(coordinatorChoiceLabel({ name: 'Priya', activeEvents: 0 })).toBe('Priya (0 active)');
+  });
+
+  test('K2-TC3 AC3 assignment sets exactly one coordinator and records coordinator, Lead and timestamp', () => {
+    const result = assignEvent({ event: unassigned, role: LEAD, leadId: 'lead-1', target, now: 'T1' });
+    expect(result.ok).toBe(true);
+    expect(result.event.coordinator_id).toBe('c2');
+    expect(result.event.assigned_at).toBe('T1');
+    expect(result.history).toMatchObject({
+      actionType: 'COORDINATOR_ASSIGNED', newValue: 'c2', actorId: 'lead-1', createdAt: 'T1'
+    });
+  });
+
+  test('K2-TC4 AC4 both the assigned coordinator and the organiser are notified', () => {
+    const result = assignEvent({ event: unassigned, role: LEAD, leadId: 'lead-1', target, now: 'T1' });
+    const recipients = result.notifications.map((item) => item.userId);
+    expect(recipients).toContain('c2');
+    expect(recipients).toContain('org-1');
+  });
+
+  test('K2-TC5 AC5 an already-assigned event cannot be assigned again, and only the Lead may assign', () => {
+    const assigned = { ...unassigned, coordinator_id: 'c1', status: 'UNDER_REVIEW' };
+    expect(assignEvent({ event: assigned, role: LEAD, leadId: 'lead-1', target, now: 'T1' }).ok).toBe(false);
+    expect(assignEvent({ event: unassigned, role: ROLES.COORDINATOR, leadId: 'lead-1', target, now: 'T1' }).ok).toBe(false);
+  });
+
+  test('K2-TC6 AC3 boundary no coordinator chosen is refused and sets nothing', () => {
+    const result = assignEvent({ event: unassigned, role: LEAD, leadId: 'lead-1', target: null, now: 'T1' });
+    expect(result.ok).toBe(false);
+    expect(result.event).toBeUndefined();
+  });
+
+  test('K2-TC7 AC5 boundary a terminal event cannot be assigned even with no coordinator yet', () => {
+    const cancelled = { ...unassigned, status: 'CANCELLED' };
+    const rejected = { ...unassigned, status: 'REJECTED' };
+    expect(assignEvent({ event: cancelled, role: LEAD, leadId: 'lead-1', target, now: 'T1' }).ok).toBe(false);
+    expect(assignEvent({ event: rejected, role: LEAD, leadId: 'lead-1', target, now: 'T1' }).ok).toBe(false);
+  });
+
+  test('K2-TC8 AC2 boundary an inactive coordinator cannot be assigned', () => {
+    const inactive = { id: 'c9', name: 'Bo', active: false };
+    expect(assignEvent({ event: unassigned, role: LEAD, leadId: 'lead-1', target: inactive, now: 'T1' }).ok).toBe(false);
   });
 });
