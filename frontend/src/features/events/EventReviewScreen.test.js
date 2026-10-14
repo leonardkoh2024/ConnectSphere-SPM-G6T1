@@ -30,8 +30,8 @@ beforeEach(() => {
   reviewApi.saveSignificantChange.mockResolvedValue({ ok: true });
 });
 
-async function openRequest() {
-  render(<EventReviewScreen />);
+async function openRequest(props = {}) {
+  render(<EventReviewScreen {...props} />);
   await userEvent.click(await screen.findByRole('button', { name: /view request/i }));
   await screen.findByRole('button', { name: /back to events/i });
 }
@@ -103,6 +103,33 @@ test('TC-078 an outgoing coordinator gets a read-only assignment view', async ()
   await openRequest();
   expect(screen.getByText(/reassigned.*view.*only the current coordinator/i)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /reassign event/i })).not.toBeInTheDocument();
+});
+
+test.each(['SUBMITTED', 'UNDER_REVIEW', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'REJECTED', 'SAFETY_REVIEW'])(
+  'F1 disables Find venues while an assigned event is %s',
+  async (status) => {
+    reviewApi.detail.mockResolvedValue(detail({ status }));
+    const onFindVenues = jest.fn();
+    await openRequest({ onFindVenues });
+
+    const button = screen.getByRole('button', { name: /find venues/i });
+    expect(button).toBeDisabled();
+    expect(button).toHaveClass('cs-find-venues');
+    expect(screen.getByText(/only for events with approved or planning status/i)).toBeInTheDocument();
+    await userEvent.click(button);
+    expect(onFindVenues).not.toHaveBeenCalled();
+  }
+);
+
+test.each(['APPROVED', 'PLANNING'])('F1 enables Find venues while an assigned event is %s', async (status) => {
+  reviewApi.detail.mockResolvedValue(detail({ status }));
+  const onFindVenues = jest.fn();
+  await openRequest({ onFindVenues });
+
+  const button = screen.getByRole('button', { name: /find venues/i });
+  expect(button).toBeEnabled();
+  await userEvent.click(button);
+  expect(onFindVenues).toHaveBeenCalledWith(expect.objectContaining({ id: 'e1', status }));
 });
 
 test('D2 shows all existing arrangements and requires acknowledgement before saving', async () => {

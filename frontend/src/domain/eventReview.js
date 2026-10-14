@@ -7,6 +7,7 @@ export const EVENT_STATUS = {
   SUBMITTED: "SUBMITTED",
   UNDER_REVIEW: "UNDER_REVIEW",
   APPROVED: "APPROVED",
+  PLANNING: "PLANNING",
   REJECTED: "REJECTED",
   COMPLETED: "COMPLETED",
   CANCELLED: "CANCELLED"
@@ -34,9 +35,10 @@ export const canApproveEvent = canRequestClarification;
 
 const TERMINAL = new Set([EVENT_STATUS.COMPLETED, EVENT_STATUS.CANCELLED, EVENT_STATUS.REJECTED]);
 
-// E8 — a venue is only worth seeking while the event can still happen. A
-// completed, cancelled or rejected event has nothing left to book.
-export const canFindVenues = (event) => Boolean(event) && !TERMINAL.has(event.status);
+// F1: venue requests begin only after approval and remain available in Planning.
+const VENUE_REQUESTABLE = new Set([EVENT_STATUS.APPROVED, EVENT_STATUS.PLANNING]);
+export const canFindVenues = (event) => Boolean(event)
+  && VENUE_REQUESTABLE.has(String(event.status || "").toUpperCase());
 
 // Shared "this event is finished" check, so screens filter on the same terminal
 // set the guards use rather than keeping their own copy of the statuses.

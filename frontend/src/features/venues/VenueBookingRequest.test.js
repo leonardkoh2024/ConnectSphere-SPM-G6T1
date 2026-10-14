@@ -373,6 +373,7 @@ const event = (fields) => ({
   start_time: '09:00',
   end_time: '17:00',
   expected_attendance: 150,
+  status: 'APPROVED',
   required_layout: 'THEATRE',
   facilities: ['WIFI'],
   accessibility: [],
@@ -570,7 +571,7 @@ describe('E8 / SCRUM-124 functional — the booking screen is where an unsuitabl
     loadVenueCatalogue.mockResolvedValue([hallA, tooSmall]);
     loadVenueBookings.mockResolvedValue([]);
     withdrawVenueBooking.mockResolvedValue({ status: 'WITHDRAWN' });
-    reviewApi.list.mockResolvedValue({ events: [{ id: 'EVT-1', name: 'Annual Conference' }] });
+    reviewApi.list.mockResolvedValue({ events: [{ id: 'EVT-1', name: 'Annual Conference', status: 'APPROVED' }] });
     reviewApi.detail.mockResolvedValue({ event: event() });
   });
 
@@ -896,11 +897,11 @@ describe('E8 / SCRUM-124 unit — the same venue is not requested twice for one 
 });
 
 describe('E8 / SCRUM-124 unit — a finished event has nothing left to book', () => {
-  test.each(['COMPLETED', 'CANCELLED', 'REJECTED'])('TC-158 %s events offer no venue search', (status) => {
+  test.each(['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'REJECTED', 'SAFETY_REVIEW'])('%s events offer no venue search', (status) => {
     expect(canFindVenues({ status })).toBe(false);
   });
 
-  test.each(['SUBMITTED', 'UNDER_REVIEW', 'APPROVED'])('TC-159 %s events still do', (status) => {
+  test.each(['APPROVED', 'PLANNING'])('%s events can request a venue', (status) => {
     expect(canFindVenues({ status })).toBe(true);
   });
 });
