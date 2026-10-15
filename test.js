@@ -23,6 +23,10 @@
  * F8 / SCRUM-132  Release a venue when it is no longer needed
  * E9 / SCRUM-171  Set a venue's setup and turnaround time
  * E10 / SCRUM-172 Record a venue's safety information
+ * F2 / SCRUM-126  Assign a submitted booking to venue staff
+ * F6 / SCRUM-130  Never double-book a venue
+ * E11 / SCRUM-173 Take a venue out of use even when events are booked
+ * F9 / SCRUM-174  Count setup and turnaround time in clash checks
  *
  * Run from the repo root (no extra install — Node's built-in runner):
  *   node --test test.js
@@ -31,7 +35,7 @@
  * the screens must call; when those land, move the helpers into
  * frontend/src/domain/ and keep these assertions.
  *
- * Last Updated: 2026-09-30
+ * Last Updated: 2026-10-15
  * ================================================================
  */
 
@@ -865,6 +869,150 @@ function saveVenuePlanning({ venue: current, role, staffId, assignedVenueIds = [
 
 function canViewVenueSafety(role) {
   return [ROLES.VENUE_STAFF, ROLES.COORDINATOR, ROLES.SAFETY_OFFICER].includes(role);
+}
+
+const UNAVAILABILITY_REASONS = ["Maintenance", "Equipment failure", "Renovation", "Safety concern", "Other"];
+const REPLACEMENT_NEEDED = "Venue unavailable - replacement needed";
+
+function activeVenueStaff(staff = []) {
+  return staff
+    .filter((person) => person.active !== false && person.role === ROLES.VENUE_STAFF)
+    .sort((left, right) => String(left.staff_id).localeCompare(String(right.staff_id)));
+}
+
+function nextVenueStaff(staff, priorAssignments = []) {
+  const active = activeVenueStaff(staff);
+  if (!active.length) return null;
+  const last = [...priorAssignments].reverse().find((staffId) => active.some((person) => person.staff_id === staffId));
+  if (!last) return active[0];
+  const index = active.findIndex((person) => person.staff_id === last);
+  return active[(index + 1) % active.length];
+}
+
+function assignVenueStaff({ booking, staff = [], priorAssignments = [], now = SERVER_TIMESTAMP }) {
+  if (!booking) return { ok: false, reason: "required" };
+  if (booking.assigned_staff_id) {
+    return { ok: false, reason: "already_assigned", booking, queue: null };
+  }
+  const chosen = nextVenueStaff(staff, priorAssignments);
+  if (!chosen) {
+    return {
+      ok: true,
+      booking: { ...booking, assigned_staff_id: null, assigned_at: null },
+      queue: "unassigned"
+    };
+  }
+  return {
+    ok: true,
+    booking: {
+      ...booking,
+      assigned_staff_id: chosen.staff_id,
+      assigned_at: now
+    },
+    queue: null
+  };
+}
+
+function unassignedBookingQueue(bookings = []) {
+  return bookings.filter((booking) => !booking.assigned_staff_id && asUpper(booking.status) === BOOKING_STATUS.PENDING);
+}
+
+function sameCalendarDate(left, right) {
+  return String(left || "").slice(0, 10) === String(right || "").slice(0, 10);
+}
+
+function approvedConflicts(booking, bookings, venueRecord) {
+  const requested = occupiedBookingWindow(booking, venueRecord);
+  return bookings.filter((other) => other.booking_id !== booking.booking_id
+    && other.venue_id === booking.venue_id
+    && asUpper(other.status) === BOOKING_STATUS.APPROVED
+    && sameCalendarDate(other.start_datetime, booking.start_datetime)
+    && windowsOverlap(requested, occupiedBookingWindow(other, venueRecord)));
+}
+
+function unavailabilityConflicts(booking, unavailability, venueRecord) {
+  const requested = occupiedBookingWindow(booking, venueRecord);
+  return unavailability.filter((period) => period.venue_id === booking.venue_id
+    && windowsOverlap(requested, { start: instant(period.start_datetime), end: instant(period.end_datetime) }));
+}
+
+function calendarSegments(booking, venueRecord) {
+  const eventStart = instant(booking.start_datetime);
+  const eventEnd = instant(booking.end_datetime);
+  const occupied = occupiedBookingWindow(booking, venueRecord);
+  return [
+    { kind: "setup", start: occupied.start, end: eventStart },
+    { kind: "event", start: eventStart, end: eventEnd },
+    { kind: "turnaround", start: eventEnd, end: occupied.end }
+  ].filter((segment) => segment.end > segment.start);
+}
+
+function affectedApprovedBookings({ venueId, start, end, bookings = [] }) {
+  const window = { start: instant(start), end: instant(end) };
+  return bookings.filter((booking) => booking.venue_id === venueId
+    && asUpper(booking.status) === BOOKING_STATUS.APPROVED
+    && windowsOverlap(window, {
+      start: instant(booking.occupied_start || booking.start_datetime),
+      end: instant(booking.occupied_end || booking.end_datetime)
+    }));
+}
+
+function recordVenueUnavailability({
+  venueId,
+  start,
+  end,
+  reason,
+  note = "",
+  bookings = [],
+  events = [],
+  confirmed = false,
+  staffId,
+  now = SERVER_TIMESTAMP
+}) {
+  if (!UNAVAILABILITY_REASONS.includes(reason)) return { ok: false, reason: "reason" };
+  if (reason === "Other" && !String(note || "").trim()) return { ok: false, reason: "note_required" };
+  if (!validInstant(start) || !validInstant(end) || instant(end) <= instant(start)) {
+    return { ok: false, reason: "time_range" };
+  }
+  const affected = affectedApprovedBookings({ venueId, start, end, bookings });
+  if (affected.length && !confirmed) {
+    return { ok: false, reason: "confirmation_required", affected };
+  }
+  const markedIds = new Set(affected.map((booking) => booking.booking_id));
+  return {
+    ok: true,
+    period: {
+      venue_id: venueId,
+      start_datetime: start,
+      end_datetime: end,
+      reason,
+      note: String(note || "").trim(),
+      created_by: staffId,
+      created_at: now
+    },
+    bookings: bookings.map((booking) => markedIds.has(booking.booking_id)
+      ? { ...booking, replacement_status: REPLACEMENT_NEEDED }
+      : booking),
+    events: events.map((event) => ({ ...event })),
+    notifications: affected.map((booking) => {
+      const event = events.find((item) => item.event_id === booking.event_id);
+      return {
+        user_id: event?.coordinator_id || null,
+        event_id: booking.event_id,
+        venue_id: venueId,
+        start_datetime: start,
+        end_datetime: end,
+        reason,
+        type: "VENUE_UNAVAILABLE"
+      };
+    })
+  };
+}
+
+function searchBlockedByUnavailability({ venueId, start, end, unavailability = [] }) {
+  const requested = { start: instant(start), end: instant(end) };
+  return unavailability.some((period) => period.venue_id === venueId
+    && windowsOverlap(requested, { start: instant(period.start_datetime), end: instant(period.end_datetime) }));
 }
 
 
@@ -2858,5 +3006,418 @@ describe("F8 / SCRUM-132 Release a venue when it is no longer needed", () => {
   test("AC1 negative — a completed cancellation leaves no active Approved or Pending booking", () => {
     const result = release([booking("A", BOOKING_STATUS.APPROVED), booking("P", BOOKING_STATUS.PENDING)]);
     assert.equal(result.bookings.some((row) => ACTIVE_BOOKING_STATUSES.has(row.status)), false);
+  });
+});
+
+
+// =============================================================================
+// F2 / SCRUM-126 — Have submitted event bookings assigned to a venue staff automatically
+// =============================================================================
+
+describe("F2 / SCRUM-126 Have submitted event bookings assigned to a venue staff automatically", () => {
+  const now = "2026-10-15T09:00:00.000Z";
+  const staff = (id, active = true) => ({ staff_id: id, role: ROLES.VENUE_STAFF, active });
+  const pending = (id) => ({ booking_id: id, status: BOOKING_STATUS.PENDING, assigned_staff_id: null });
+  const assign = (booking, people, prior = []) => assignVenueStaff({
+    booking, staff: people, priorAssignments: prior, now
+  });
+
+  test("AC1 positive — submission assigns exactly one venue staff member", () => {
+    const result = assign(pending("VB-001"), [staff("STAFF-A"), staff("STAFF-B")]);
+    assert.equal(result.ok, true);
+    assert.equal(result.booking.assigned_staff_id, "STAFF-A");
+    assert.equal(typeof result.booking.assigned_staff_id, "string");
+  });
+
+  test("AC1 negative — a booking that already has a staff member is not assigned a second one", () => {
+    const first = assign(pending("VB-001"), [staff("STAFF-A"), staff("STAFF-B")]);
+    const second = assign(first.booking, [staff("STAFF-A"), staff("STAFF-B")], ["STAFF-A"]);
+    assert.equal(second.ok, false);
+    assert.equal(second.reason, "already_assigned");
+    assert.equal(second.booking.assigned_staff_id, "STAFF-A");
+  });
+
+  test("AC2 positive — the assigned staff identity and timestamp are stored on the booking", () => {
+    const result = assign(pending("VB-001"), [staff("STAFF-A")]);
+    assert.equal(result.booking.assigned_staff_id, "STAFF-A");
+    assert.equal(result.booking.assigned_at, now);
+  });
+
+  test("AC3 positive — assignment rotates across active venue staff", () => {
+    const people = [staff("STAFF-B"), staff("STAFF-A")];
+    const first = assign(pending("VB-001"), people);
+    const second = assign(pending("VB-002"), people, [first.booking.assigned_staff_id]);
+    const third = assign(pending("VB-003"), people, [first.booking.assigned_staff_id, second.booking.assigned_staff_id]);
+    assert.deepEqual(
+      [first.booking.assigned_staff_id, second.booking.assigned_staff_id, third.booking.assigned_staff_id],
+      ["STAFF-A", "STAFF-B", "STAFF-A"]
+    );
+  });
+
+  test("AC3 negative — inactive venue staff are left out of the rotation", () => {
+    const result = assign(pending("VB-001"), [staff("STAFF-A", false), staff("STAFF-B")]);
+    assert.equal(result.booking.assigned_staff_id, "STAFF-B");
+  });
+
+  test("AC4 positive — one venue staff member can hold more than one booking", () => {
+    const people = [staff("STAFF-A")];
+    const first = assign(pending("VB-001"), people);
+    const second = assign(pending("VB-002"), people, [first.booking.assigned_staff_id]);
+    assert.equal(first.booking.assigned_staff_id, "STAFF-A");
+    assert.equal(second.booking.assigned_staff_id, "STAFF-A");
+  });
+
+  test("AC5 positive — with no active venue staff the booking stays in the unassigned queue", () => {
+    const booking = pending("VB-001");
+    const result = assign(booking, [staff("STAFF-A", false)]);
+    assert.equal(result.queue, "unassigned");
+    assert.equal(result.booking.assigned_staff_id, null);
+    assert.deepEqual(unassignedBookingQueue([result.booking]).map((row) => row.booking_id), ["VB-001"]);
+  });
+
+  test("AC5 negative — an assigned booking does not appear in the unassigned queue", () => {
+    const result = assign(pending("VB-001"), [staff("STAFF-A")]);
+    assert.deepEqual(unassignedBookingQueue([result.booking]), []);
+  });
+});
+
+
+// =============================================================================
+// F6 / SCRUM-130 — Never double-book a venue
+// =============================================================================
+
+describe("F6 / SCRUM-130 Never double-book a venue", () => {
+  const hall = venueWithPlanningDefaults({ venue_id: "VEN-001", setup_minutes: 0, turnaround_minutes: 0 });
+  const booking = (id, fields = {}) => ({
+    booking_id: id,
+    booking_label: `Booking ${id}`,
+    event_id: `EVT-${id}`,
+    venue_id: "VEN-001",
+    start_datetime: "2026-11-20T10:00:00.000Z",
+    end_datetime: "2026-11-20T12:00:00.000Z",
+    submitted_at: "2026-10-15T09:00:00.000Z",
+    status: BOOKING_STATUS.PENDING,
+    ...fields
+  });
+  const approve = (target, all, overrides = {}) => approveBooking({
+    booking: target,
+    bookings: all,
+    venue: hall,
+    staffId: "USR-VENUE-001",
+    assignedVenueIds: ["VEN-001"],
+    now: "2026-10-15T11:00:00.000Z",
+    ...overrides
+  });
+
+  test("AC1 positive — any overlap on the same date is a conflict", () => {
+    const existing = booking("VB-001", { status: BOOKING_STATUS.APPROVED, end_datetime: "2026-11-20T12:00:00.000Z" });
+    const incoming = booking("VB-002", { start_datetime: "2026-11-20T11:59:00.000Z", end_datetime: "2026-11-20T13:00:00.000Z" });
+    assert.equal(approvedConflicts(incoming, [existing, incoming], hall).length, 1);
+    assert.equal(approve(incoming, [existing, incoming]).reason, "approved_conflict");
+  });
+
+  test("AC1 negative — the same clock times on a different date do not conflict", () => {
+    const existing = booking("VB-001", { status: BOOKING_STATUS.APPROVED });
+    const incoming = booking("VB-002", {
+      start_datetime: "2026-11-21T10:00:00.000Z",
+      end_datetime: "2026-11-21T12:00:00.000Z"
+    });
+    assert.deepEqual(approvedConflicts(incoming, [existing, incoming], hall), []);
+    assert.equal(approve(incoming, [existing, incoming]).ok, true);
+  });
+
+  test("AC1 negative — a different venue at the same time is not a double booking", () => {
+    const existing = booking("VB-001", { status: BOOKING_STATUS.APPROVED, venue_id: "VEN-002" });
+    const incoming = booking("VB-002");
+    assert.deepEqual(approvedConflicts(incoming, [existing, incoming], hall), []);
+  });
+
+  test("AC2 positive — windows that only touch are approved", () => {
+    const existing = booking("VB-001", { status: BOOKING_STATUS.APPROVED, end_datetime: "2026-11-20T12:00:00.000Z" });
+    const incoming = booking("VB-002", { start_datetime: "2026-11-20T12:00:00.000Z", end_datetime: "2026-11-20T14:00:00.000Z" });
+    assert.deepEqual(approvedConflicts(incoming, [existing, incoming], hall), []);
+    assert.equal(approve(incoming, [existing, incoming]).ok, true);
+  });
+
+  test("AC3 positive — an approved booking blocks that window in search and on the calendar", () => {
+    const approved = approve(booking("VB-001"), [booking("VB-001")]).booking;
+    assert.equal(venueWindowAvailable({
+      venueId: "VEN-001",
+      start: approved.occupied_start,
+      end: approved.occupied_end,
+      bookings: [approved]
+    }), false);
+    assert.equal(venueWindowAvailable({
+      venueId: "VEN-001",
+      start: "2026-11-20T12:00:00.000Z",
+      end: "2026-11-20T14:00:00.000Z",
+      bookings: [approved]
+    }), true);
+  });
+
+  test("AC4 positive — a maintenance block conflicts with an overlapping request", () => {
+    const incoming = booking("VB-001");
+    const blocks = unavailabilityConflicts(incoming, [{
+      venue_id: "VEN-001",
+      start_datetime: "2026-11-20T11:00:00.000Z",
+      end_datetime: "2026-11-20T15:00:00.000Z",
+      reason: "Maintenance"
+    }], hall);
+    assert.equal(blocks[0].reason, "Maintenance");
+    const result = approve(incoming, [incoming], { unavailability: blocks });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "unavailable");
+  });
+
+  test("AC5 positive — approval itself refuses the clash, with no separate override", () => {
+    const existing = booking("VB-001", { status: BOOKING_STATUS.APPROVED });
+    const incoming = booking("VB-002", { start_datetime: "2026-11-20T11:00:00.000Z", end_datetime: "2026-11-20T13:00:00.000Z" });
+    const result = approve(incoming, [existing, incoming]);
+    assert.equal(result.ok, false);
+    assert.equal(result.booking, undefined);
+    assert.equal(existing.status, BOOKING_STATUS.APPROVED);
+  });
+});
+
+
+// =============================================================================
+// F9 / SCRUM-174 — Count setup and turnaround time when checking for clashes
+// =============================================================================
+
+describe("F9 / SCRUM-174 Count setup and turnaround time when checking for clashes", () => {
+  const hall = venueWithPlanningDefaults({ venue_id: "VEN-001", setup_minutes: 30, turnaround_minutes: 45 });
+  const booking = (id, fields = {}) => ({
+    booking_id: id,
+    booking_label: `Booking ${id}`,
+    event_id: `EVT-${id}`,
+    venue_id: "VEN-001",
+    start_datetime: "2026-11-20T10:00:00.000Z",
+    end_datetime: "2026-11-20T12:00:00.000Z",
+    submitted_at: "2026-10-15T09:00:00.000Z",
+    status: BOOKING_STATUS.APPROVED,
+    ...fields
+  });
+
+  test("AC1 positive — 10:00–12:00 with 30 minutes setup and 45 minutes turnaround occupies 09:30–12:45", () => {
+    const window = occupiedBookingWindow(booking("VB-001"), hall);
+    assert.equal(new Date(window.start).toISOString(), "2026-11-20T09:30:00.000Z");
+    assert.equal(new Date(window.end).toISOString(), "2026-11-20T12:45:00.000Z");
+  });
+
+  test("AC1 positive — the check uses the venue times supplied at that moment", () => {
+    const revised = { ...hall, setup_minutes: 0, turnaround_minutes: 15 };
+    const window = occupiedBookingWindow(booking("VB-001"), revised);
+    assert.equal(new Date(window.start).toISOString(), "2026-11-20T10:00:00.000Z");
+    assert.equal(new Date(window.end).toISOString(), "2026-11-20T12:15:00.000Z");
+  });
+
+  test("AC3 positive — occupied windows that overlap conflict, and windows that only touch do not", () => {
+    const first = booking("VB-001");
+    const overlapping = booking("VB-002", { status: BOOKING_STATUS.PENDING, start_datetime: "2026-11-20T12:30:00.000Z", end_datetime: "2026-11-20T14:00:00.000Z" });
+    const touching = booking("VB-003", { status: BOOKING_STATUS.PENDING, start_datetime: "2026-11-20T13:15:00.000Z", end_datetime: "2026-11-20T15:00:00.000Z" });
+    assert.equal(approvedConflicts(overlapping, [first, overlapping], hall).length, 1);
+    assert.deepEqual(approvedConflicts(touching, [first, touching], hall), []);
+  });
+
+  test("AC3 negative — event times that do not overlap still clash when setup and turnaround do", () => {
+    const first = booking("VB-001");
+    const later = booking("VB-002", {
+      status: BOOKING_STATUS.PENDING,
+      start_datetime: "2026-11-20T12:15:00.000Z",
+      end_datetime: "2026-11-20T13:15:00.000Z"
+    });
+    assert.equal(timesOverlap("12:15", "13:15", "10:00", "12:00"), false);
+    assert.equal(approvedConflicts(later, [first, later], hall).length, 1);
+  });
+
+  test("AC4 positive — search and approval use the occupied window rather than the event clock times", () => {
+    const approved = {
+      ...booking("VB-001"),
+      occupied_start: "2026-11-20T09:30:00.000Z",
+      occupied_end: "2026-11-20T12:45:00.000Z"
+    };
+    assert.equal(venueWindowAvailable({
+      venueId: "VEN-001",
+      start: "2026-11-20T12:15:00.000Z",
+      end: "2026-11-20T12:40:00.000Z",
+      bookings: [approved]
+    }), false);
+    const incoming = booking("VB-002", {
+      status: BOOKING_STATUS.PENDING,
+      start_datetime: "2026-11-20T12:30:00.000Z",
+      end_datetime: "2026-11-20T14:00:00.000Z"
+    });
+    const result = approveBooking({
+      booking: incoming,
+      bookings: [approved, incoming],
+      venue: hall,
+      staffId: "USR-VENUE-001",
+      assignedVenueIds: ["VEN-001"]
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "approved_conflict");
+  });
+
+  test("AC5 positive — the calendar shows setup, the event, and turnaround as separate segments", () => {
+    const segments = calendarSegments(booking("VB-001"), hall);
+    assert.deepEqual(segments.map((segment) => segment.kind), ["setup", "event", "turnaround"]);
+    assert.equal(new Date(segments[0].start).toISOString(), "2026-11-20T09:30:00.000Z");
+    assert.equal(new Date(segments[0].end).toISOString(), "2026-11-20T10:00:00.000Z");
+    assert.equal(new Date(segments[2].start).toISOString(), "2026-11-20T12:00:00.000Z");
+    assert.equal(new Date(segments[2].end).toISOString(), "2026-11-20T12:45:00.000Z");
+  });
+
+  test("AC6 positive — the clash is refused at approval time", () => {
+    const existing = booking("VB-001");
+    const incoming = booking("VB-002", {
+      status: BOOKING_STATUS.PENDING,
+      start_datetime: "2026-11-20T12:30:00.000Z",
+      end_datetime: "2026-11-20T14:00:00.000Z"
+    });
+    const result = approveBooking({
+      booking: incoming,
+      bookings: [existing, incoming],
+      venue: hall,
+      staffId: "USR-VENUE-001",
+      assignedVenueIds: ["VEN-001"],
+      now: "2026-10-15T11:00:00.000Z"
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "approved_conflict");
+    assert.equal(existing.status, BOOKING_STATUS.APPROVED);
+  });
+});
+
+
+// =============================================================================
+// E11 / SCRUM-173 — Take a venue out of use even when events are booked there
+// =============================================================================
+
+describe("E11 / SCRUM-173 Take a venue out of use even when events are booked there", () => {
+  const now = "2026-10-15T09:30:00.000Z";
+  const start = "2026-11-20T09:00:00.000Z";
+  const end = "2026-11-20T13:00:00.000Z";
+  const event = {
+    event_id: "EVT-001",
+    status: STATUS.PLANNING,
+    coordinator_id: "USR-COORD-001",
+    name: "Partner Summit"
+  };
+  const approved = {
+    booking_id: "VB-001",
+    event_id: "EVT-001",
+    venue_id: "VEN-001",
+    status: BOOKING_STATUS.APPROVED,
+    start_datetime: "2026-11-20T10:00:00.000Z",
+    end_datetime: "2026-11-20T12:00:00.000Z",
+    occupied_start: "2026-11-20T09:30:00.000Z",
+    occupied_end: "2026-11-20T12:45:00.000Z"
+  };
+  const record = (overrides = {}) => recordVenueUnavailability({
+    venueId: "VEN-001",
+    start,
+    end,
+    reason: "Maintenance",
+    bookings: [approved],
+    events: [event],
+    confirmed: true,
+    staffId: "USR-VENUE-001",
+    now,
+    ...overrides
+  });
+
+  test("AC1 positive — the period stores venue, window, reason and optional note", () => {
+    const result = record({ note: "Lift inspection" });
+    assert.equal(result.ok, true);
+    assert.equal(result.period.venue_id, "VEN-001");
+    assert.equal(result.period.start_datetime, start);
+    assert.equal(result.period.end_datetime, end);
+    assert.equal(result.period.reason, "Maintenance");
+    assert.equal(result.period.note, "Lift inspection");
+  });
+
+  testEach(UNAVAILABILITY_REASONS.filter((reason) => reason !== "Other"))(
+    "AC1 positive — %s is an accepted reason without a note",
+    (reason) => {
+      assert.equal(record({ reason, note: "" }).ok, true);
+    }
+  );
+
+  test("AC1 negative — Other without a note is refused", () => {
+    const result = record({ reason: "Other", note: "   " });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "note_required");
+  });
+
+  test("AC1 negative — a reason outside the allowed list is refused", () => {
+    assert.equal(record({ reason: "Holiday" }).reason, "reason");
+  });
+
+  test("AC1 negative — a period that ends before it starts is refused", () => {
+    assert.equal(record({ start: end, end: start }).reason, "time_range");
+  });
+
+  test("AC2 positive — overlapping approved bookings are listed and must be confirmed before saving", () => {
+    const preview = record({ confirmed: false });
+    assert.equal(preview.ok, false);
+    assert.equal(preview.reason, "confirmation_required");
+    assert.deepEqual(preview.affected.map((row) => row.booking_id), ["VB-001"]);
+    assert.equal(record({ confirmed: true }).ok, true);
+  });
+
+  test("AC2 positive — a period with no approved overlap saves without confirmation", () => {
+    const result = record({
+      confirmed: false,
+      bookings: [{ ...approved, start_datetime: "2026-11-21T10:00:00.000Z", end_datetime: "2026-11-21T12:00:00.000Z", occupied_start: "2026-11-21T09:30:00.000Z", occupied_end: "2026-11-21T12:45:00.000Z" }]
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.notifications.length, 0);
+  });
+
+  test("AC3 positive — affected bookings are marked for replacement and the event and booking details stay as they were", () => {
+    const result = record();
+    const saved = result.bookings[0];
+    assert.equal(saved.replacement_status, "Venue unavailable - replacement needed");
+    assert.equal(saved.status, BOOKING_STATUS.APPROVED);
+    assert.equal(saved.start_datetime, approved.start_datetime);
+    assert.equal(saved.end_datetime, approved.end_datetime);
+    assert.equal(result.events[0].status, STATUS.PLANNING);
+    assert.equal(result.events[0].event_id, event.event_id);
+  });
+
+  test("AC3 negative — a pending request on the same window is not marked or cancelled", () => {
+    const pending = { ...approved, booking_id: "VB-002", status: BOOKING_STATUS.PENDING };
+    const result = record({ bookings: [pending], confirmed: false });
+    assert.equal(result.ok, true);
+    assert.equal(result.bookings[0].status, BOOKING_STATUS.PENDING);
+    assert.equal(result.bookings[0].replacement_status, undefined);
+  });
+
+  test("AC4 positive — the assigned coordinator is notified with the event, venue, period and reason", () => {
+    const notice = record().notifications[0];
+    assert.equal(notice.user_id, "USR-COORD-001");
+    assert.equal(notice.event_id, "EVT-001");
+    assert.equal(notice.venue_id, "VEN-001");
+    assert.equal(notice.start_datetime, start);
+    assert.equal(notice.end_datetime, end);
+    assert.equal(notice.reason, "Maintenance");
+  });
+
+  test("AC5 positive — the period blocks the calendar and excludes overlapping venue search", () => {
+    const period = record().period;
+    assert.equal(period.venue_id, "VEN-001");
+    assert.equal(period.start_datetime, start);
+    assert.equal(searchBlockedByUnavailability({
+      venueId: "VEN-001",
+      start: "2026-11-20T10:00:00.000Z",
+      end: "2026-11-20T11:00:00.000Z",
+      unavailability: [period]
+    }), true);
+    assert.equal(searchBlockedByUnavailability({
+      venueId: "VEN-001",
+      start: "2026-11-20T13:00:00.000Z",
+      end: "2026-11-20T15:00:00.000Z",
+      unavailability: [period]
+    }), false);
   });
 });
