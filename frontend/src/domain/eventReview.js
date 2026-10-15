@@ -86,6 +86,51 @@ export const canLeadReassign = (event, role, targetCoordinator) =>
   Boolean(targetCoordinator?.id) &&
   targetCoordinator.id !== event.coordinator_id;
 
+// K2 / SCRUM-183 — assigning an unassigned event to a coordinator. Three pure
+// helpers back the Lead's assignment screen and the Firestore adapter.
+// AC1 — the read-only summary the Lead sees before assigning: the event basics
+// plus the organiser, and nothing the screen does not already show read-only.
+export const assignmentSummary = (event, organiser) => ({
+  name: event?.name,
+  purpose: event?.purpose,
+  eventDate: event?.event_date,
+  startTime: event?.start_time,
+  endTime: event?.end_time,
+  expectedAttendance: event?.expected_attendance,
+  organiser: organiser || null
+});
+
+// AC2 — each coordinator option carries its current active-event count so the
+// Lead can balance load while choosing; the count comes from coordinatorWorkload.
+export const coordinatorChoiceLabel = (coordinator) =>
+  `${coordinator?.name} (${coordinator?.activeEvents || 0} active)`;
+
+// AC3/AC4/AC5 — the single assignment outcome. It reuses canAssignCoordinator so
+// an already-assigned, terminal, inactive-target or no-coordinator-chosen case is
+// refused in exactly one place (AC5); records the coordinator, the acting Lead and
+// the time (AC3); and names the two people to notify — the new coordinator and the
+// organiser (AC4). Pure: the adapter turns `event`, `history` and `notifications`
+// into Firestore writes, and firestore.rules stays the authoritative boundary.
+export const assignEvent = ({ event, role, leadId, target, now }) => {
+  if (!canAssignCoordinator(event, role, target)) return { ok: false };
+  return {
+    ok: true,
+    event: { ...event, coordinator_id: target.id, assigned_at: now },
+    history: {
+      actionType: "COORDINATOR_ASSIGNED",
+      fieldName: "coordinator_id",
+      oldValue: null,
+      newValue: target.id,
+      actorId: leadId,
+      createdAt: now
+    },
+    notifications: [
+      { userId: target.id, type: "COORDINATOR_ASSIGNED" },
+      { userId: event.organiser_id, type: "COORDINATOR_ASSIGNED" }
+    ]
+  };
+};
+
 // AC3 — the oversight view's workload column: how many live events each
 // coordinator is carrying, least-loaded first so the Lead can see at a glance who
 // has room before (re)assigning. Terminal and unassigned events are not a current

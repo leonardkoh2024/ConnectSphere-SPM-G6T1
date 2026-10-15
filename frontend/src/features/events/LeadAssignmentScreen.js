@@ -11,7 +11,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { statusTone } from "../../domain/events";
 import { ROLES } from "../../domain/roles";
-import { canAssignCoordinator, canLeadReassign, coordinatorWorkload, isTerminal, unassignedQueue } from "../../domain/eventReview";
+import { assignmentSummary, canAssignCoordinator, canLeadReassign, coordinatorChoiceLabel, coordinatorWorkload, isTerminal, unassignedQueue } from "../../domain/eventReview";
 import { reviewApi } from "./reviewApi";
 import RecordLead from "../../components/RecordLead";
 
@@ -29,6 +29,8 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
   // Oversight is shown one lens at a time — by event or by coordinator — so the
   // screen stays a single clean list rather than everything stacked at once.
   const [lens, setLens] = useState("event");
+  // K2 / SCRUM-183 AC1 — which queued events have their read-only summary open.
+  const [open, setOpen] = useState({});
 
   const load = async () => {
     const data = await reviewApi.leadBoard();
@@ -40,11 +42,14 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
 
   const coordinatorById = useMemo(() => new Map(coordinators.map((item) => [item.id, item])), [coordinators]);
   const workload = useMemo(() => coordinatorWorkload(events, coordinators), [events, coordinators]);
+  // K2 / SCRUM-183 AC2 — active-event count per coordinator, for the option labels.
+  const workloadById = useMemo(() => new Map(workload.map((item) => [item.id, item.activeEvents])), [workload]);
   // K1 / SCRUM-182 — waiting events, oldest submission first (AC3), leaving the
   // moment they are assigned (AC4). The ordering/filtering is the pure helper.
   const queue = useMemo(() => unassignedQueue(events), [events]);
 
   const pick = (eventId, coordinatorId) => setChoice((current) => ({ ...current, [eventId]: coordinatorId }));
+  const toggle = (eventId) => setOpen((current) => ({ ...current, [eventId]: !current[eventId] }));
 
   const run = async (event, kind) => {
     const coordinatorId = choice[event.id] || "";
@@ -76,7 +81,7 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
         <span className="cs-field-name">{kind === "assign" ? "Assign to" : "Reassign to"}</span>
         <select value={chosen} disabled={busyId === event.id} onChange={(e) => pick(event.id, e.target.value)}>
           <option value="">Choose a coordinator</option>
-          {options.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
+          {options.map((item) => <option value={item.id} key={item.id}>{coordinatorChoiceLabel({ name: item.name, activeEvents: workloadById.get(item.id) || 0 })}</option>)}
         </select>
       </label>
       <button type="button" className="cs-btn cs-btn-primary cs-record-btn" disabled={!allowed || busyId === event.id} onClick={() => run(event, kind)}>
@@ -106,6 +111,24 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
     return `${days} day${days === 1 ? "" : "s"} ago`;
   };
 
+  // K2 / SCRUM-183 AC1 — a read-only event summary opened per queued event, so the
+  // Lead can check the basics (purpose, time, attendance, organiser) before
+  // choosing a coordinator. assignmentSummary is the pure shape it renders.
+  const details = (event) => {
+    const summary = assignmentSummary(event, { name: event.organiser_name, email: event.organiser_email });
+    return <>
+      <button type="button" className="cs-btn cs-btn-ghost cs-record-btn" aria-expanded={Boolean(open[event.id])} onClick={() => toggle(event.id)}>
+        {open[event.id] ? "Hide details" : "View details"}
+      </button>
+      {open[event.id] && <dl className="cs-record-summary">
+        <div><dt>Purpose</dt><dd>{summary.purpose || "—"}</dd></div>
+        <div><dt>Time</dt><dd>{(summary.startTime || "—") + " – " + (summary.endTime || "—")}</dd></div>
+        <div><dt>Expected attendance</dt><dd>{summary.expectedAttendance != null ? summary.expectedAttendance : "—"}</dd></div>
+        <div><dt>Organiser</dt><dd>{summary.organiser?.name || "—"}</dd></div>
+      </dl>}
+    </>;
+  };
+
   if (loading) return <p className="cs-panel-note">Loading events…</p>;
 
   if (view === "queue") {
@@ -119,6 +142,7 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
         <p className="cs-record-ref">{event.reference_no}</p>
         <div className="cs-record-status"><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div>
         <div className="cs-record-modified"><p className="cs-record-saved">{event.expected_attendance != null ? `Expected ${event.expected_attendance}` : "Attendance not set"} · Submitted {sinceSubmission(event.submitted_at)}</p></div>
+        {details(event)}
         {picker(event, "assign")}
       </article>)}</div>
     </>;

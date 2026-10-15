@@ -4,7 +4,7 @@
 
 import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
 import { auth, db } from "../../lib/firebase";
-import { EVENT_STATUS, canApproveEvent, canAssignCoordinator, canLeadReassign, canOpenReview, canRejectEvent, canReassignEvent, canRequestClarification, canRespondToClarification, cleanRequiredText, supervisesAllEvents } from "../../domain/eventReview";
+import { EVENT_STATUS, canApproveEvent, assignEvent, canLeadReassign, canOpenReview, canRejectEvent, canReassignEvent, canRequestClarification, canRespondToClarification, cleanRequiredText, supervisesAllEvents } from "../../domain/eventReview";
 import { clarificationRecord, clarificationResponseRecord, coordinatorAssignmentRecord, eventHistoryRecord, notificationRecord } from "../../domain/eventReviewRecords";
 import { ROLES } from "../../domain/roles";
 import {
@@ -507,7 +507,8 @@ const assign = async (eventId, coordinatorId) => {
   const actorRef = doc(db, "users", user.uid);
   const nextRef = doc(db, "coordinator_assignments", `${eventId}_${coordinatorId}`);
   const historyRef = doc(collection(db, "event_history"));
-  const notificationRef = doc(collection(db, "notifications"));
+  // K2 AC4 — the new coordinator and the organiser are both notified, so two refs.
+  const notificationRefs = [doc(collection(db, "notifications")), doc(collection(db, "notifications"))];
   await runTransaction(db, async (tx) => {
     const [eventSnapshot, targetSnapshot, actorSnapshot] = await Promise.all([tx.get(eventRef), tx.get(targetRef), tx.get(actorRef)]);
     if (!eventSnapshot.exists() || !targetSnapshot.exists()) throw new Error("Event or coordinator not found.");
@@ -515,12 +516,25 @@ const assign = async (eventId, coordinatorId) => {
     const actorRole = actorSnapshot.exists() ? actorSnapshot.data().role : null;
     const targetData = targetSnapshot.data();
     const target = targetData.role === ROLES.COORDINATOR ? { id: targetSnapshot.id, ...targetData, active: targetData.is_active !== false } : null;
-    if (!canAssignCoordinator(event, actorRole, target)) throw new Error("This event cannot be assigned to that coordinator.");
     const changedAt = serverTimestamp();
+    // K2 — one pure decision (AC5 guard, AC3 record, AC4 recipients) so the rule
+    // for who may assign and who is notified lives in exactly one place.
+    const outcome = assignEvent({ event, role: actorRole, leadId: user.uid, target, now: changedAt });
+    if (!outcome.ok) throw new Error("This event cannot be assigned to that coordinator.");
+    const describedTo = target.name || targetData.email || coordinatorId;
     tx.update(eventRef, { coordinator_id: coordinatorId, assigned_at: changedAt, updated_at: changedAt });
     tx.set(nextRef, coordinatorAssignmentRecord({ assignmentId: nextRef.id, eventId, coordinatorId, assignedAt: changedAt }));
-    tx.set(historyRef, eventHistoryRecord({ historyId: historyRef.id, eventId, actorId: user.uid, actionType: "COORDINATOR_ASSIGNED", fieldName: "coordinator_id", oldValue: null, newValue: coordinatorId, description: `Event assigned to ${target.name || targetData.email || coordinatorId}.`, createdAt: changedAt }));
-    tx.set(notificationRef, notificationRecord({ notificationId: notificationRef.id, userId: coordinatorId, eventId, type: "COORDINATOR_ASSIGNED", message: `${event.name || event.reference_no} was assigned to you.`, createdAt: changedAt }));
+    tx.set(historyRef, eventHistoryRecord({ historyId: historyRef.id, eventId, actorId: outcome.history.actorId, actionType: outcome.history.actionType, fieldName: outcome.history.fieldName, oldValue: outcome.history.oldValue, newValue: outcome.history.newValue, description: `Event assigned to ${describedTo}.`, createdAt: changedAt }));
+    outcome.notifications.forEach((recipient, index) => tx.set(notificationRefs[index], notificationRecord({
+      notificationId: notificationRefs[index].id,
+      userId: recipient.userId,
+      eventId,
+      type: "COORDINATOR_ASSIGNED",
+      message: recipient.userId === coordinatorId
+        ? `${event.name || event.reference_no} was assigned to you.`
+        : `${event.name || event.reference_no} was assigned to ${describedTo}.`,
+      createdAt: changedAt
+    })));
   });
   return { ok: true };
 };
