@@ -18,7 +18,11 @@ export const NOTIFICATION_TYPE_LABEL = {
   VENUE_DETAILS_UPDATED: "Venue details updated",
   VENUE_DETAILS_CHANGED: "Venue details updated",
   VENUE_CHANGED: "Venue details updated",
-  VENUE_CHANGE: "Venue details updated"
+  VENUE_CHANGE: "Venue details updated",
+  VENUE_BOOKING_APPROVED: "Venue booking approved",
+  VENUE_BOOKING_REJECTED: "Venue booking rejected",
+  EQUIPMENT_ARRANGED: "Equipment arranged",
+  EQUIPMENT_UNABLE_TO_FULFIL: "Equipment unavailable"
 };
 
 export const notificationTypeLabel = (type) => NOTIFICATION_TYPE_LABEL[type] || "Update";
@@ -59,3 +63,26 @@ export const EVENT_VIEW_SCREEN = {
 };
 
 export const eventViewScreen = (role) => EVENT_VIEW_SCREEN[role] || null;
+
+// J6 / SCRUM-155 — the outcome of a coordinator's own booking or equipment
+// request. Each is written in the same transaction as the decision it reports,
+// so the coordinator never has to poll Venue bookings and Equipment requests.
+export const VENUE_BOOKING_OUTCOMES = ["VENUE_BOOKING_APPROVED", "VENUE_BOOKING_REJECTED"];
+export const EQUIPMENT_OUTCOMES = ["EQUIPMENT_ARRANGED", "EQUIPMENT_UNABLE_TO_FULFIL"];
+
+// AC1 — approved or rejected, and on rejection the reason. F5 (reject a booking)
+// is not built yet; it is to call this with `approved: false` and its reason.
+export const venueBookingOutcomeMessage = ({ eventName, venueName, approved, reason }) => {
+  const subject = `${eventName || "Your event"}: the booking for ${venueName || "the venue"}`;
+  if (approved) return `${subject} was approved.`;
+  const why = String(reason || "").trim();
+  return `${subject} was rejected.${why ? ` Reason: ${why}` : ""}`;
+};
+
+// AC2 / AC4 — View on an outcome opens that booking or that equipment request,
+// where its date, time and quantities can be checked, rather than the event.
+export const notificationViewScreen = (role, notification = {}) => {
+  if (role === ROLES.COORDINATOR && VENUE_BOOKING_OUTCOMES.includes(notification.type) && notification.booking_id) return "Venue bookings";
+  if (role === ROLES.COORDINATOR && EQUIPMENT_OUTCOMES.includes(notification.type)) return "Equipment requests";
+  return eventViewScreen(role);
+};

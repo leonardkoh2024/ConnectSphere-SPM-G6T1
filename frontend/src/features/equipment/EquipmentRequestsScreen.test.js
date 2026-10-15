@@ -336,3 +336,85 @@ test("TC-311 coordinator can see support amendment and decision history", async 
   expect(screen.getAllByText(/Unable to fulfil: No compatible projector was available/i)).toHaveLength(2);
   expect(screen.getByRole("button", { name: /technical support is handling this request/i })).toBeDisabled();
 });
+
+// J6 / SCRUM-155 AC4 — TC-323, TC-341, TC-342, TC-345 in docs/test-cases.md.
+test("TC-323 arriving from an outcome notification opens that event's request and updates", async () => {
+  listCoordinatorEquipmentEvents.mockResolvedValue([{
+    ...event,
+    equipment_request: {
+      status: "ARRANGED",
+      has_support_decisions: true,
+      lines: [{ equipment_type: "AUDIO", quantity: 2, fulfillment_status: "RESERVED" }],
+      support_history: []
+    }
+  }]);
+  render(<EquipmentRequestsScreen focusEventId="event-1" />);
+
+  expect(await screen.findByText("2026-11-04 · 09:00–17:00")).toBeInTheDocument();
+  const disclosures = screen.getAllByRole("group");
+  expect(disclosures).toHaveLength(2);
+  disclosures.forEach((item) => expect(item).toHaveAttribute("open"));
+  // The quantity reserved, in the request details and in Technical Support's update.
+  disclosures.forEach((item) => expect(item).toHaveTextContent(/AUDIO · 2 · None specified · /));
+  expect(disclosures[1]).toHaveTextContent("Reserved");
+});
+
+const arrangedRequest = {
+  status: "ARRANGED",
+  has_support_decisions: true,
+  lines: [{ equipment_type: "AUDIO", quantity: 2, fulfillment_status: "RESERVED" }],
+  support_history: []
+};
+const spyOnScroll = () => {
+  const scrolled = [];
+  const original = Element.prototype.scrollIntoView;
+  Element.prototype.scrollIntoView = function scrollIntoView() { scrolled.push(this.id); };
+  // jsdom has no scrollIntoView, so restoring means removing it again.
+  return {
+    scrolled,
+    restore: () => {
+      if (original) Element.prototype.scrollIntoView = original;
+      else delete Element.prototype.scrollIntoView;
+    }
+  };
+};
+
+test("TC-341 only the named event's request opens; the others stay closed", async () => {
+  listCoordinatorEquipmentEvents.mockResolvedValue([
+    { ...event, equipment_request: arrangedRequest },
+    { ...event, id: "event-2", name: "Board Offsite", equipment_request: arrangedRequest }
+  ]);
+  const { container } = render(<EquipmentRequestsScreen focusEventId="event-2" />);
+  await screen.findByText("Board Offsite");
+
+  const openState = (id) => [...container.querySelectorAll(`#equipment-request-${id} details`)].map((item) => item.open);
+  expect(openState("event-1")).toEqual([false, false]);
+  expect(openState("event-2")).toEqual([true, true]);
+});
+
+test("TC-342 without a named event nothing opens or scrolls, and an event with no times shows its date alone", async () => {
+  const spy = spyOnScroll();
+  try {
+    listCoordinatorEquipmentEvents.mockResolvedValue([
+      { ...event, start_time: "", end_time: "", equipment_request: arrangedRequest }
+    ]);
+    const { container } = render(<EquipmentRequestsScreen />);
+    expect(await screen.findByText("2026-11-04")).toBeInTheDocument();
+    expect([...container.querySelectorAll("details")].map((item) => item.open)).toEqual([false, false]);
+    expect(spy.scrolled).toEqual([]);
+  } finally {
+    spy.restore();
+  }
+});
+
+test("TC-345 the named event is scrolled into view once the list has loaded", async () => {
+  const spy = spyOnScroll();
+  try {
+    listCoordinatorEquipmentEvents.mockResolvedValue([{ ...event, equipment_request: arrangedRequest }]);
+    render(<EquipmentRequestsScreen focusEventId="event-1" />);
+    await screen.findByText("Partner Summit");
+    expect(spy.scrolled).toEqual(["equipment-request-event-1"]);
+  } finally {
+    spy.restore();
+  }
+});

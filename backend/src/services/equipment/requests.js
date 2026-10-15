@@ -4,6 +4,7 @@ import {
   EquipmentValidationError,
   assertEquipmentType
 } from "./availability.js";
+import { arrangedMessage, eventNameOf, notifyCoordinator, unableMessage } from "./outcomeNotifications.js";
 
 const isFulfilled = (line) => ["RESERVED", "RESOLVED"].includes(line.fulfillment_status);
 
@@ -98,13 +99,15 @@ export const createEquipmentRequestActions = ({ firestore, serverTimestamp }) =>
     }
     const requestRef = firestore.collection("equipment_requests").doc(eventId);
     const historyRef = firestore.collection("equipment_request_history").doc();
+    const eventRef = firestore.collection("events").doc(eventId);
     const reservationsQuery = firestore.collection("equipment_reservations")
       .where("event_id", "==", eventId);
 
     return firestore.runTransaction(async (transaction) => {
-      const [requestSnapshot, reservationsSnapshot] = await Promise.all([
+      const [requestSnapshot, reservationsSnapshot, eventSnapshot] = await Promise.all([
         transaction.get(requestRef),
-        transaction.get(reservationsQuery)
+        transaction.get(reservationsQuery),
+        transaction.get(eventRef)
       ]);
       if (!requestSnapshot.exists) throw new EquipmentNotFoundError("Equipment request not found.");
       const request = requestSnapshot.data();
@@ -152,6 +155,22 @@ export const createEquipmentRequestActions = ({ firestore, serverTimestamp }) =>
         equipment_type: previous.equipment_type,
         quantity: Number(previous.quantity)
       });
+      // J6 AC3 — the line's refusal, and the request's arrival at Arranged if
+      // this was the last open line, each reach the coordinator.
+      const eventName = eventNameOf(eventSnapshot);
+      notifyCoordinator({
+        firestore, transaction, eventSnapshot, eventId, createdAt: now,
+        type: "EQUIPMENT_UNABLE_TO_FULFIL",
+        message: unableMessage({ eventName, line: previous, reason }),
+        extra: { equipment_line_index: index }
+      });
+      if (status === "ARRANGED") {
+        notifyCoordinator({
+          firestore, transaction, eventSnapshot, eventId, createdAt: now,
+          type: "EQUIPMENT_ARRANGED",
+          message: arrangedMessage({ eventName, lines: updatedLines })
+        });
+      }
       return { eventId, lineIndex: index, line: updatedLines[index], status };
     });
   };

@@ -3,7 +3,9 @@ import EquipmentRequestEditor from "./EquipmentRequestEditor";
 import EquipmentRequestLines from "./EquipmentRequestLines";
 import { listCoordinatorEquipmentEvents } from "./equipmentApi";
 
-export default function EquipmentRequestsScreen({ onNotice }) {
+// J6 AC4 — `focusEventId`, from an equipment outcome notification, opens that
+// event's request and its Technical Support updates, scrolled into view.
+export default function EquipmentRequestsScreen({ onNotice, focusEventId = null }) {
   const [events, setEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -17,6 +19,11 @@ export default function EquipmentRequestsScreen({ onNotice }) {
   useEffect(() => {
     loadEvents().catch((loadError) => setError(loadError.message)).finally(() => setLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (loading || !focusEventId) return;
+    document.getElementById(`equipment-request-${focusEventId}`)?.scrollIntoView?.({ block: "start" });
+  }, [loading, focusEventId]);
 
   const submitted = async () => {
     await loadEvents();
@@ -44,17 +51,19 @@ export default function EquipmentRequestsScreen({ onNotice }) {
             const rightTime = right.created_at?.toDate?.()?.getTime?.() || new Date(right.created_at || 0).getTime();
             return rightTime - leftTime;
           });
-        return <article className="cs-record" key={event.id}>
-          <div className="cs-record-title"><div><h2>{event.name || "Untitled event"}</h2><p>{event.event_date || "Date not set"}</p></div></div>
+        const focused = event.id === focusEventId;
+        const timeWindow = event.start_time && event.end_time ? ` · ${event.start_time}–${event.end_time}` : "";
+        return <article className="cs-record" key={event.id} id={`equipment-request-${event.id}`}>
+          <div className="cs-record-title"><div><h2>{event.name || "Untitled event"}</h2><p>{event.event_date || "Date not set"}{timeWindow}</p></div></div>
           <p className="cs-record-ref">{event.reference_no}</p>
           <div className="cs-record-status"><span className="cs-pill cs-pill-info">{status === "PENDING" ? "Pending" : status}</span></div>
           {event.equipment_request && <div className="cs-record-details cs-equipment-coordinator-summary">
-            <details className="cs-equipment-disclosure">
+            <details className="cs-equipment-disclosure" open={focused || undefined}>
               <summary>Equipment request details</summary>
               <EquipmentRequestLines lines={event.equipment_request.lines} />
             </details>
             {(event.equipment_request.has_support_decisions || supportHistory.length > 0)
-              && <details className="cs-equipment-disclosure">
+              && <details className="cs-equipment-disclosure" open={focused || undefined}>
                 <summary>Technical Support updates</summary>
                 <EquipmentRequestLines lines={event.equipment_request.lines} getStatus={(line) => <>
                   {line.fulfillment_status === "RESERVED"

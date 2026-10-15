@@ -6,6 +6,7 @@ import {
   equipmentWindowFromVenueBookings,
   assertEquipmentType
 } from "./availability.js";
+import { arrangedMessage, eventNameOf, notifyCoordinator } from "./outcomeNotifications.js";
 
 const revisionOf = (inventory) => {
   const revision = inventory.availability_revision == null ? 0 : Number(inventory.availability_revision);
@@ -32,14 +33,16 @@ export const createEquipmentReservations = ({ firestore, serverTimestamp, getApp
       .where("equipment_type", "==", equipmentType);
     const unavailableQuery = firestore.collection("equipment_unavailability")
       .where("equipment_type", "==", equipmentType);
+    const eventRef = firestore.collection("events").doc(eventId);
     return firestore.runTransaction(async (transaction) => {
-      const [requestSnapshot, inventorySnapshot, reservationSnapshot, unavailableSnapshot, bookings] =
+      const [requestSnapshot, inventorySnapshot, reservationSnapshot, unavailableSnapshot, bookings, eventSnapshot] =
         await Promise.all([
           transaction.get(requestRef),
           transaction.get(inventoryRef),
           transaction.get(reservationQuery),
           transaction.get(unavailableQuery),
-          getApprovedEventBookings({ firestore, transaction, eventId })
+          getApprovedEventBookings({ firestore, transaction, eventId }),
+          transaction.get(eventRef)
         ]);
       if (!requestSnapshot.exists || requestSnapshot.data().status !== "PENDING") {
         throw new EquipmentConflictError("This event no longer has a Pending equipment request.");
@@ -133,14 +136,23 @@ export const createEquipmentReservations = ({ firestore, serverTimestamp, getApp
           fulfilled_by: userId
         }
         : line);
+      const requestStatus = updatedLines.every((line) => ["RESERVED", "RESOLVED"].includes(line.fulfillment_status))
+        ? "ARRANGED"
+        : "PENDING";
       transaction.update(requestRef, {
         lines: updatedLines,
-        status: updatedLines.every((line) => ["RESERVED", "RESOLVED"].includes(line.fulfillment_status))
-          ? "ARRANGED"
-          : "PENDING",
+        status: requestStatus,
         has_support_decisions: true,
         updated_at: now
       });
+      // J6 AC3 — reserving the last open line arranges the request.
+      if (requestStatus === "ARRANGED") {
+        notifyCoordinator({
+          firestore, transaction, eventSnapshot, eventId, createdAt: now,
+          type: "EQUIPMENT_ARRANGED",
+          message: arrangedMessage({ eventName: eventNameOf(eventSnapshot), lines: updatedLines })
+        });
+      }
       transaction.update(inventoryRef, {
         availability_revision: revision + 1,
         updated_at: now

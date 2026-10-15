@@ -334,14 +334,66 @@ describe('TC-284 notifications are only ever addressed to people related to the 
     expect(create()).toContain('ownsEvent(request.resource.data.event_id)');
   });
 
+  // J6 split the rule in two: a venue booking outcome takes the decider's clause
+  // and nothing else; every other notification takes the clauses below.
+  const VENUE_OUTCOMES = "['VENUE_BOOKING_APPROVED', 'VENUE_BOOKING_REJECTED']";
+  const ORDINARY = `!(request.resource.data.get('type', '') in ${VENUE_OUTCOMES}) && (`;
+  const DECIDED = `(request.resource.data.get('type', '') in ${VENUE_OUTCOMES}`;
+  const ordinary = () => {
+    const at = create().indexOf(ORDINARY);
+    expect(at).toBeGreaterThan(-1);
+    return create().slice(at + ORDINARY.length);
+  };
+  const decided = () => {
+    const at = create().indexOf(DECIDED);
+    expect(at).toBeGreaterThan(-1);
+    return create().slice(at, create().indexOf('|| (!(', at));
+  };
+
   test("every branch ties the recipient to the event's organiser or coordinator", () => {
-    // The coordinator, organiser, safety-officer and (A6) Lead branches, in order.
-    const branches = create().split(/\|\| \(/);
-    expect(branches).toHaveLength(4);
-    branches.forEach((branch) => {
+    // The coordinator, organiser, safety-officer and (A6) Lead branches, in order,
+    // then (J4) Venue Staff for their own venue.
+    const branches = ordinary().split(/\|\| \(/);
+    expect(branches).toHaveLength(5);
+    branches.slice(0, 4).forEach((branch) => {
       expect(branch).toMatch(/request\.resource\.data\.user_id (==|in)/);
       expect(branch).toMatch(/organiser_id|coordinator_id/);
     });
+    expect(branches[4]).toMatch(/venue_staff\/.*\.data\.user_id == request\.resource\.data\.user_id/);
+  });
+
+  // J6 / SCRUM-155 AC1 — TC-313. A booking's outcome goes only to the coordinator
+  // who raised it, only from the Venue Staff member who decided it, only for the
+  // event and venue booked, and only in the same commit as the decision.
+  test('TC-313 a booking outcome is told only by its decider, to its raiser, with the decision', () => {
+    const notice = matchBlock('notifications').match(/function venueBookingOutcomeNotice\(booking\) \{ return (.*?); \}/);
+    expect(notice).not.toBeNull();
+    [
+      'booking.event_id == request.resource.data.event_id',
+      'booking.venue_id == request.resource.data.venue_id',
+      'booking.requested_by == request.resource.data.user_id',
+      'booking.decided_by == request.auth.uid',
+      'booking.decided_at == request.time',
+      'request.resource.data.created_at == request.time',
+      "(request.resource.data.type == 'VENUE_BOOKING_APPROVED' && booking.status == 'APPROVED')",
+      "(request.resource.data.type == 'VENUE_BOOKING_REJECTED' && booking.status == 'REJECTED')",
+      'assignedVenueStaff(booking.venue_id)'
+    ].forEach((clause) => expect(notice[1]).toContain(clause));
+    expect(decided()).toContain("request.resource.data.get('booking_id', null) is string");
+    expect(decided()).toContain('venueBookingOutcomeNotice( getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data)');
+  });
+
+  // TC-344. Nobody else can send a booking outcome: the ordinary clauses are
+  // closed to those types. Equipment outcomes are refused to every browser; the
+  // equipment service writes them with the Admin SDK, which these rules do not bind.
+  test('TC-344 outcome types cannot be sent through any other clause, nor equipment outcomes from a browser', () => {
+    const refuseEquipment = "!(request.resource.data.get('type', '') in ['EQUIPMENT_ARRANGED', 'EQUIPMENT_UNABLE_TO_FULFIL'])";
+    expect(create().indexOf(refuseEquipment)).toBeGreaterThan(-1);
+    // A conjunct of the whole rule: it comes before the clauses open.
+    expect(create().indexOf(refuseEquipment)).toBeLessThan(create().indexOf(DECIDED));
+    expect(create().indexOf(DECIDED)).toBeLessThan(create().indexOf(ORDINARY));
+    expect(ordinary()).not.toContain('VENUE_BOOKING_');
+    expect(RULES.match(/EQUIPMENT_ARRANGED|EQUIPMENT_UNABLE_TO_FULFIL/g)).toHaveLength(2);
   });
 });
 

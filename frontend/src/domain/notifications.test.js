@@ -1,7 +1,7 @@
 // J1 / SCRUM-150 — the inbox's ordering, counting and labelling rules.
 // TC-250 – TC-254 and TC-263 in docs/test-cases.md.
 
-import { badgeText, eventLabel, eventViewScreen, newestFirst, notificationTypeLabel, unreadCount } from './notifications';
+import { badgeText, eventLabel, eventViewScreen, newestFirst, notificationTypeLabel, notificationViewScreen, unreadCount, venueBookingOutcomeMessage } from './notifications';
 import { ROLES } from './roles';
 
 describe('J1 inbox rules', () => {
@@ -53,5 +53,35 @@ describe('J1 where View on a notification goes', () => {
     expect(eventViewScreen(ROLES.TECH_SUPPORT)).toBeNull();
     expect(eventViewScreen(ROLES.ATTENDEE)).toBeNull();
     expect(eventViewScreen('NOT_A_ROLE')).toBeNull();
+  });
+});
+
+// J6 / SCRUM-155 — TC-318 – TC-320 in docs/test-cases.md.
+describe('J6 outcome notifications', () => {
+  test('TC-318 a booking outcome says approved, or rejected with its reason', () => {
+    expect(venueBookingOutcomeMessage({ eventName: 'Q4 Partner Summit', venueName: 'Harbour Hall', approved: true }))
+      .toBe('Q4 Partner Summit: the booking for Harbour Hall was approved.');
+    expect(venueBookingOutcomeMessage({ eventName: 'Q4 Partner Summit', venueName: 'Harbour Hall', approved: false, reason: ' Closed for repairs ' }))
+      .toBe('Q4 Partner Summit: the booking for Harbour Hall was rejected. Reason: Closed for repairs');
+    expect(venueBookingOutcomeMessage({ approved: false })).toBe('Your event: the booking for the venue was rejected.');
+  });
+
+  test('TC-319 each outcome type has words', () => {
+    expect(notificationTypeLabel('VENUE_BOOKING_APPROVED')).toBe('Venue booking approved');
+    expect(notificationTypeLabel('VENUE_BOOKING_REJECTED')).toBe('Venue booking rejected');
+    expect(notificationTypeLabel('EQUIPMENT_ARRANGED')).toBe('Equipment arranged');
+    expect(notificationTypeLabel('EQUIPMENT_UNABLE_TO_FULFIL')).toBe('Equipment unavailable');
+  });
+
+  test("TC-320 a coordinator's outcome opens the booking or equipment request, anything else the event", () => {
+    expect(notificationViewScreen(ROLES.COORDINATOR, { type: 'VENUE_BOOKING_APPROVED', booking_id: 'VB-1' })).toBe('Venue bookings');
+    expect(notificationViewScreen(ROLES.COORDINATOR, { type: 'VENUE_BOOKING_REJECTED', booking_id: 'VB-1' })).toBe('Venue bookings');
+    expect(notificationViewScreen(ROLES.COORDINATOR, { type: 'VENUE_BOOKING_APPROVED' })).toBe('Assigned events');
+    expect(notificationViewScreen(ROLES.COORDINATOR, { type: 'EQUIPMENT_ARRANGED' })).toBe('Equipment requests');
+    expect(notificationViewScreen(ROLES.COORDINATOR, { type: 'EQUIPMENT_UNABLE_TO_FULFIL' })).toBe('Equipment requests');
+    expect(notificationViewScreen(ROLES.COORDINATOR, { type: 'EVENT_REJECTED' })).toBe('Assigned events');
+    expect(notificationViewScreen(ROLES.COORDINATOR)).toBe('Assigned events');
+    expect(notificationViewScreen(ROLES.ORGANISER, { type: 'EQUIPMENT_ARRANGED' })).toBe('New event request');
+    expect(notificationViewScreen(ROLES.VENUE_STAFF, { type: 'VENUE_BOOKING_APPROVED', booking_id: 'VB-1' })).toBeNull();
   });
 });

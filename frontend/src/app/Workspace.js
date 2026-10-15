@@ -26,7 +26,7 @@ import EquipmentQueueScreen from "../features/equipment/EquipmentQueueScreen";
 import EquipmentAvailabilityScreen from "../features/equipment/EquipmentAvailabilityScreen";
 import NotificationInbox from "../features/notifications/NotificationInbox";
 import useNotifications from "../features/notifications/useNotifications";
-import { badgeText, eventViewScreen } from "../domain/notifications";
+import { badgeText, eventViewScreen, notificationViewScreen } from "../domain/notifications";
 import Icon from "./Icon";
 import Toasts from "./Toasts";
 
@@ -56,6 +56,8 @@ export default function Workspace({ user, role }) {
   const [activeScreen, setActiveScreen] = useState(initialScreen);
   const [currentHash, setCurrentHash] = useState(window.location.hash);
   const [selectedDraft, setSelectedDraft] = useState(null);
+  const [focusBookingId, setFocusBookingId] = useState(null);
+  const [focusEquipmentEventId, setFocusEquipmentEventId] = useState(null);
   const [searchEvent, setSearchEvent] = useState(null);
   const [bookingTarget, setBookingTarget] = useState({ event: null, venue: null });
   const [venueCalendarOpen, setVenueCalendarOpen] = useState(false);
@@ -96,6 +98,8 @@ export default function Workspace({ user, role }) {
     setSearchEvent(name === "Venue catalogue" ? extras.event || null : null);
     setBookingTarget(name === "Venue bookings" ? { event: extras.event || null, venue: extras.venue || null } : { event: null, venue: null });
     setReviewEventId(name === "Assigned events" ? extras.eventId || null : null);
+    setFocusBookingId(name === "Venue bookings" ? extras.bookingId || null : null);
+    setFocusEquipmentEventId(name === "Equipment requests" ? extras.eventId || null : null);
     window.location.hash = screenHash(role, name);
   };
   // E4 — one availability calendar shared by every venue, opened from the top
@@ -124,9 +128,11 @@ export default function Workspace({ user, role }) {
   // J1 — View on a notification. The organiser's request page takes the event
   // record itself, as My events hands it over; the coordinator's review screen
   // loads the event by id.
-  const viewEvent = (event) => {
-    if (viewScreen === "New event request") setSelectedDraft(event);
-    goTo(viewScreen, { eventId: event.id });
+  // J6 AC2/AC4 — a booking or equipment outcome opens that record instead.
+  const viewEvent = (event, notification) => {
+    const target = notificationViewScreen(role, notification);
+    if (target === "New event request") setSelectedDraft(event);
+    goTo(target, { eventId: event.id, bookingId: notification?.booking_id });
   };
 
   // Navigation from inside a page remembers where it started, so the next screen
@@ -153,8 +159,8 @@ export default function Workspace({ user, role }) {
   else if (role === ROLES.COORDINATOR && screen.name === "Review queue") contents = <>{head(screen.name, screen.blurb)}<EventReviewScreen queueOnly onNotice={showToast} onBackChange={reportBack} onFindVenues={(event) => goTo("Venue catalogue", { event })} /></>;
   else if (role === ROLES.COORDINATOR && screen.name === "Assigned events") contents = <>{head(screen.name, screen.blurb)}<EventReviewScreen onNotice={showToast} initialEventId={reviewEventId} onBackChange={reportBack} onFindVenues={(event) => goTo("Venue catalogue", { event })} /></>;
   else if (role === ROLES.COORDINATOR && screen.name === "Venue catalogue") contents = <>{head(screen.name, searchEvent ? `Shortlist for ${searchEvent.name || searchEvent.reference_no}.` : screen.blurb, viewCalendar)}<VenueSearch event={searchEvent} onBookVenue={(event, venue) => goTo("Venue bookings", { event, venue })} showCalendar={venueCalendarOpen} /></>;
-  else if (role === ROLES.COORDINATOR && screen.name === "Venue bookings") contents = <>{head(screen.name, screen.blurb, newBooking)}<VenueBookings user={user} creating={bookingFormOpen} onCreatingChange={setBookingFormOpen} event={bookingTarget.event} venue={bookingTarget.venue} onBackChange={reportBack} onViewEvent={(eventId) => goTo("Assigned events", { eventId })} /></>;
-  else if (role === ROLES.COORDINATOR && screen.name === "Equipment requests") contents = <>{head(screen.name, screen.blurb)}<EquipmentRequestsScreen onNotice={showToast} /></>;
+  else if (role === ROLES.COORDINATOR && screen.name === "Venue bookings") contents = <>{head(screen.name, screen.blurb, newBooking)}<VenueBookings user={user} creating={bookingFormOpen} onCreatingChange={setBookingFormOpen} event={bookingTarget.event} venue={bookingTarget.venue} onBackChange={reportBack} focusBookingId={focusBookingId} onViewEvent={(eventId) => goTo("Assigned events", { eventId })} /></>;
+  else if (role === ROLES.COORDINATOR && screen.name === "Equipment requests") contents = <>{head(screen.name, screen.blurb)}<EquipmentRequestsScreen onNotice={showToast} focusEventId={focusEquipmentEventId} /></>;
   else if (role === ROLES.TECH_SUPPORT && screen.name === "Equipment queue") contents = <>{head(screen.name, screen.blurb)}<EquipmentQueueScreen /></>;
   else if (role === ROLES.TECH_SUPPORT && screen.name === "Availability check") contents = <>{head(screen.name, screen.blurb)}<EquipmentAvailabilityScreen /></>;
   else if (role === ROLES.VENUE_STAFF && screen.name === "Booking requests") contents = <>{head(screen.name, screen.blurb)}<VenueBookingQueue user={user} onNotice={showToast} /></>;

@@ -90,7 +90,7 @@ describe('viewing the related event from the inbox', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'View Q4 Partner Summit (EVT-100234)' }));
 
-    expect(onViewEvent).toHaveBeenCalledWith(EVENT);
+    expect(onViewEvent).toHaveBeenCalledWith(EVENT, unread);
     expect(onOpen).toHaveBeenCalledWith('n1');
   });
 
@@ -102,5 +102,43 @@ describe('viewing the related event from the inbox', () => {
     rerender(<NotificationInbox notifications={[unread]} loading={false} error="" onOpen={jest.fn()} />);
     await screen.findByText('Q4 Partner Summit (EVT-100234)');
     expect(screen.queryByRole('button', { name: /^View/ })).not.toBeInTheDocument();
+  });
+});
+
+// J6 / SCRUM-155 — TC-338 in docs/test-cases.md. Outcomes arrive in the same
+// inbox, read in words, and View hands over the outcome so the workspace can
+// open that booking or equipment request (AC2, AC4).
+describe('J6 booking and equipment outcomes in the inbox', () => {
+  const approved = {
+    id: 'n3', user_id: 'u1', event_id: 'e1', type: 'VENUE_BOOKING_APPROVED', booking_id: 'VB-1', venue_id: 'VEN-1',
+    message: 'Q4 Partner Summit: the booking for Harbour Hall was approved.',
+    is_read: false, created_at: '2026-10-15T09:30:00.000Z', read_at: null
+  };
+  const unable = {
+    id: 'n4', user_id: 'u1', event_id: 'e1', type: 'EQUIPMENT_UNABLE_TO_FULFIL', equipment_line_index: 1,
+    message: 'Q4 Partner Summit: Technical Support cannot fulfil 1 × visual. Reason: Projector under repair.',
+    is_read: true, created_at: '2026-10-15T08:30:00.000Z', read_at: '2026-10-15T08:40:00.000Z'
+  };
+
+  test('TC-338 each outcome reads in words, and View hands over that outcome', async () => {
+    const onOpen = jest.fn();
+    const onViewEvent = jest.fn();
+    render(<NotificationInbox notifications={[approved, unable]} loading={false} error="" onOpen={onOpen} onViewEvent={onViewEvent} />);
+
+    const [first, second] = rows();
+    expect(within(first).getByText('Venue booking approved')).toBeInTheDocument();
+    expect(within(first).getByText(approved.message)).toBeInTheDocument();
+    expect(within(second).getByText('Equipment unavailable')).toBeInTheDocument();
+    expect(within(second).getByText(/Reason: Projector under repair\./)).toBeInTheDocument();
+
+    const views = await screen.findAllByRole('button', { name: 'View Q4 Partner Summit (EVT-100234)' });
+    await userEvent.click(views[0]);
+    expect(onViewEvent).toHaveBeenLastCalledWith(EVENT, approved);
+    expect(onOpen).toHaveBeenCalledWith('n3');
+
+    await userEvent.click(views[1]);
+    expect(onViewEvent).toHaveBeenLastCalledWith(EVENT, unable);
+    // Already read: viewing it again does not mark it a second time.
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 });

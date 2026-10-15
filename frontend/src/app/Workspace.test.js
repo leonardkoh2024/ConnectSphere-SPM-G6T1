@@ -30,16 +30,25 @@ jest.mock('../features/events/LeadAssignmentScreen', () => ({ __esModule: true, 
 jest.mock('../features/venues/VenueCatalogue', () => ({ __esModule: true, default: (props) => (props.showCalendar ? 'calendar open' : 'venue list') }));
 jest.mock('../features/venues/VenueSearch', () => ({ __esModule: true, default: (props) => (props.showCalendar ? 'calendar open' : 'venue list') }));
 jest.mock('../features/venues/VenueSafetyInformation', () => ({ __esModule: true, default: () => 'venue safety information' }));
-jest.mock('../features/equipment/EquipmentRequestsScreen', () => ({ __esModule: true, default: () => 'equipment requests' }));
+// J6 — the coordinator's booking and equipment screens report which record they were asked to open.
+jest.mock('../features/equipment/EquipmentRequestsScreen', () => ({ __esModule: true, default: (props) => (props.focusEventId ? `equipment request of ${props.focusEventId}` : 'equipment requests') }));
+jest.mock('../features/venues/VenueBookings', () => ({ __esModule: true, default: (props) => (props.focusBookingId ? `booking ${props.focusBookingId}` : 'venue bookings') }));
 jest.mock('../features/equipment/EquipmentQueueScreen', () => ({ __esModule: true, default: () => 'equipment queue' }));
 // J1 — the live inbox is stubbed so the badge can be driven by hand.
 jest.mock('../features/notifications/useNotifications', () => ({ __esModule: true, default: jest.fn() }));
 // The stub offers View only when the shell hands it somewhere to go.
 jest.mock('../features/notifications/NotificationInbox', () => ({
   __esModule: true,
-  default: (props) => (props.onViewEvent
-    ? require('react').createElement('button', { type: 'button', onClick: () => props.onViewEvent({ id: 'e1', name: 'Q4 Partner Summit', status: 'REJECTED' }) }, 'View event')
-    : 'inbox')
+  default: (props) => {
+    if (!props.onViewEvent) return 'inbox';
+    const { createElement, Fragment } = require('react');
+    const event = { id: 'e1', name: 'Q4 Partner Summit', status: 'REJECTED' };
+    const view = (label, notification) => createElement('button', { type: 'button', onClick: () => props.onViewEvent(event, notification) }, label);
+    return createElement(Fragment, null,
+      view('View event', { type: 'EVENT_REJECTED', event_id: 'e1' }),
+      view('View booking outcome', { type: 'VENUE_BOOKING_APPROVED', event_id: 'e1', booking_id: 'VB-1' }),
+      view('View equipment outcome', { type: 'EQUIPMENT_UNABLE_TO_FULFIL', event_id: 'e1' }));
+  }
 }));
 
 const USER = { uid: 'u1', email: 'nadia.organiser@connectsphere.com' };
@@ -268,6 +277,49 @@ describe('J1 viewing an event from a notification', () => {
 
     expect(screen.queryByRole('button', { name: 'View event' })).not.toBeInTheDocument();
     expect(screen.getByText('inbox')).toBeInTheDocument();
+  });
+});
+
+// J6 / SCRUM-155 AC2/AC4 — TC-321, TC-322, TC-343 in docs/test-cases.md.
+describe("J6 viewing a booking or equipment outcome from a notification", () => {
+  beforeEach(() => {
+    window.location.hash = screenHash(ROLES.COORDINATOR, 'Notifications');
+    render(<Workspace user={USER} role={ROLES.COORDINATOR} />);
+  });
+
+  test('TC-321 a booking outcome opens that booking under Venue bookings', async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'View booking outcome' }));
+
+    expect(window.location.hash).toBe(screenHash(ROLES.COORDINATOR, 'Venue bookings'));
+    expect(screen.getByText('booking VB-1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Back to notifications' })).toBeInTheDocument();
+  });
+
+  test("TC-322 an equipment outcome opens that event's equipment request", async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'View equipment outcome' }));
+
+    expect(window.location.hash).toBe(screenHash(ROLES.COORDINATOR, 'Equipment requests'));
+    expect(screen.getByText('equipment request of e1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Back to notifications' })).toBeInTheDocument();
+  });
+
+  test('TC-343 the focus lasts only for that visit: back, then the sidebar, opens the plain list', async () => {
+    const sidebar = (name) => within(document.querySelector('.cs-sidebar-screens')).getByRole('button', { name });
+
+    await userEvent.click(screen.getByRole('button', { name: 'View booking outcome' }));
+    expect(screen.getByText('booking VB-1')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Back to notifications' }));
+    expect(window.location.hash).toBe(screenHash(ROLES.COORDINATOR, 'Notifications'));
+    await userEvent.click(sidebar('Venue bookings'));
+    expect(screen.getByText('venue bookings')).toBeInTheDocument();
+
+    await userEvent.click(sidebar('Notifications'));
+    await userEvent.click(screen.getByRole('button', { name: 'View equipment outcome' }));
+    expect(screen.getByText('equipment request of e1')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Back to notifications' }));
+    expect(window.location.hash).toBe(screenHash(ROLES.COORDINATOR, 'Notifications'));
+    await userEvent.click(sidebar('Equipment requests'));
+    expect(screen.getByText('equipment requests')).toBeInTheDocument();
   });
 });
 
