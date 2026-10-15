@@ -62,6 +62,10 @@ test('TC-091 selecting a venue shows layouts, accessibility and operating hours'
   expect(screen.getByText(/THEATRE/i)).toBeInTheDocument();
   expect(screen.getByText(/WHEELCHAIR ACCESS/i)).toBeInTheDocument();
   expect(screen.getByText(/MONDAY 09:00–18:00/i)).toBeInTheDocument();
+  // E9 AC1 — legacy documents remain compatible while new venue records and
+  // seed data persist these same zero defaults explicitly.
+  expect(screen.getByText(/setup time/i).closest('div')).toHaveTextContent('0 minutes');
+  expect(screen.getByText(/turnaround time/i).closest('div')).toHaveTextContent('0 minutes');
   const hallRow = [...document.querySelectorAll('.cs-record-title h2')].find((heading) => heading.textContent === 'Hall A').closest('.cs-record');
   expect(screen.getByLabelText(/venue record/i).closest('.cs-record')).toBe(hallRow);
   await userEvent.click(within(hallRow).getByRole('button', { name: /close/i }));

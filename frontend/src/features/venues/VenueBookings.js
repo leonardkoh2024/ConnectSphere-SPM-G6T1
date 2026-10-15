@@ -133,11 +133,8 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
   // Bookings raised before the title was carried across fall back to the event.
   const bookingEventName = (booking) =>
     booking.event_name || events.find((item) => item.id === booking.event_id)?.name || "Untitled event";
-  // Older seeded/demo events may not carry status in the list projection. Keep
-  // those visible for compatibility; the transactional service still refuses
-  // anything other than APPROVED or PLANNING from the source event document.
-  const eligibleEvents = events.filter((item) => !item.status
-    || ["APPROVED", "PLANNING"].includes(String(item.status).toUpperCase()));
+  const eligibleEvents = events.filter((item) =>
+    ["APPROVED", "PLANNING"].includes(String(item.status || "").toUpperCase()));
 
 
   // The requests this coordinator has raised, with a way to raise another —

@@ -99,7 +99,8 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     const canDecide = event.editable && event.status === "UNDER_REVIEW" && !hasOpen;
     const canReassign = event.editable && !["COMPLETED", "CANCELLED", "REJECTED"].includes(event.status);
     const canEditSignificant = event.editable && editableEventStatuses.includes(event.status) && !hasOpen;
-    const showFindVenues = typeof onFindVenues === "function" && canFindVenues(event);
+    const showFindVenues = typeof onFindVenues === "function";
+    const canRequestVenue = showFindVenues && event.editable && canFindVenues(event);
     const summary = clarificationSummary(detail);
     // C3 — the full submitted request, shaped for display (AC1, AC2).
     const request = buildRequestView(detail);
@@ -137,6 +138,27 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
           ? <ul className="cs-tag-list">{request.venue.facilities.map((item) => <li key={item}>{item}</li>)}</ul>
           : <p className="cs-panel-note">No specific facilities requested.</p>}
       </section>
+      <section className="cs-request-section" aria-label="Venue booking status">
+        <h3>Venue bookings</h3>
+        {(detail.venueBookings || []).length ? (
+          <div className="cs-record-list">
+            {detail.venueBookings.map((booking) => (
+              <article className="cs-record" key={booking.booking_id}>
+                <div className="cs-record-title"><h4>{booking.venue_name}</h4></div>
+                <p className="cs-record-ref">{shownTime(booking.start_datetime)}–{shownTime(booking.end_datetime)}</p>
+                <div className="cs-record-modified">
+                  <span className={`cs-pill cs-pill-${statusTone(booking.status)}`}>{booking.status}</span>
+                </div>
+                <dl className="cs-detail-grid cs-record-expanded">
+                  <div><dt>Decision time</dt><dd>{booking.decided_at ? shownTime(booking.decided_at) : "Not decided"}</dd></div>
+                  {booking.decision_reason && <div className="cs-detail-wide"><dt>Decision reason</dt><dd>{booking.decision_reason}</dd></div>}
+                  {booking.release_reason && <div className="cs-detail-wide"><dt>Release reason</dt><dd>{booking.release_reason}</dd></div>}
+                </dl>
+              </article>
+            ))}
+          </div>
+        ) : <p className="cs-panel-note">No venue booking requests have been raised for this event.</p>}
+      </section>
       <section className="cs-request-section">
         <h3>Accessibility</h3>
         {request.accessibility.items.length > 0
@@ -159,11 +181,22 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
         </dl>
       </section>}
       {mode !== "significant" && (canDecide || canReassign || showFindVenues || canEditSignificant) && <div className="cs-review-actions">
-        {showFindVenues && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => onFindVenues(event)}>Find venues</button>}
+        {showFindVenues && <button
+          className="cs-btn cs-btn-secondary cs-find-venues"
+          type="button"
+          disabled={!canRequestVenue}
+          aria-describedby={!canRequestVenue ? "cs-find-venues-reason" : undefined}
+          onClick={() => { if (canRequestVenue) onFindVenues(event); }}
+        >Find venues</button>}
         {canDecide && <button className="cs-btn cs-btn-ghost cs-record-danger" type="button" onClick={() => startMode("reject")}>Reject request</button>}
         {canReassign && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => { setMode("reassign"); setError(""); }}>Reassign event</button>}
         {canEditSignificant && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => startMode("significant")}>Edit significant details</button>}
       </div>}
+      {mode !== "significant" && showFindVenues && !canRequestVenue && (
+        <p id="cs-find-venues-reason" className="cs-panel-note">
+          Venue requests are available only for events with Approved or Planning status.
+        </p>
+      )}
       {mode !== "clarify" && actionBox}
       {mode === "significant" && <SignificantChangeEditor
         event={event}

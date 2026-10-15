@@ -29,6 +29,7 @@ jest.mock('../features/events/LeadAssignmentScreen', () => ({ __esModule: true, 
 // (E4), which is the one thing the shell decides for them.
 jest.mock('../features/venues/VenueCatalogue', () => ({ __esModule: true, default: (props) => (props.showCalendar ? 'calendar open' : 'venue list') }));
 jest.mock('../features/venues/VenueSearch', () => ({ __esModule: true, default: (props) => (props.showCalendar ? 'calendar open' : 'venue list') }));
+jest.mock('../features/venues/VenueSafetyInformation', () => ({ __esModule: true, default: () => 'venue safety information' }));
 jest.mock('../features/equipment/EquipmentRequestsScreen', () => ({ __esModule: true, default: () => 'equipment requests' }));
 jest.mock('../features/equipment/EquipmentQueueScreen', () => ({ __esModule: true, default: () => 'equipment queue' }));
 // J1 — the live inbox is stubbed so the badge can be driven by hand.
@@ -49,6 +50,7 @@ const PERMITTED_SCREENS = {
   [ROLES.ORGANISER]: ['My events', 'Change requests', 'Registrations', 'Notifications'],
   [ROLES.COORDINATOR]: ['Review queue', 'Assigned events', 'Venue catalogue', 'Venue bookings', 'Equipment requests', 'Registrations', 'Notifications'],
   [ROLES.VENUE_STAFF]: ['Booking requests', 'Venue catalogue', 'Availability calendar', 'Notifications'],
+  [ROLES.SAFETY_OFFICER]: ['Venue safety information', 'Notifications'],
   [ROLES.TECH_SUPPORT]: ['Equipment queue', 'Availability check', 'Reservations', 'Notifications'],
   [ROLES.ATTENDEE]: ['Browse events', 'My registrations', 'Notifications']
 };

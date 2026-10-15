@@ -99,11 +99,15 @@ const detail = async (eventId) => {
   const eventSnapshot = await getDoc(doc(db, "events", eventId));
   if (!eventSnapshot.exists()) throw new Error("Event not found.");
   const event = record(eventSnapshot);
-  const [questions, assignments, history, coordinator, profile, requirement, facilities, accessibility, equipment, organiserSnapshot] = await Promise.all([
+  // Organisers also use this shared detail loader. Resolve the profile before
+  // starting role-specific reads so their existing event view never attempts a
+  // venue_bookings query that Firestore correctly reserves for internal staff.
+  const profile = await profileFor(user.uid);
+  const [questions, assignments, history, coordinator, requirement, facilities, accessibility, equipment, organiserSnapshot, venueBookings] = await Promise.all([
     getDocs(query(collection(db, "clarification_requests"), where("event_id", "==", eventId))),
     getDocs(query(collection(db, "coordinator_assignments"), where("event_id", "==", eventId))),
     getDocs(query(collection(db, "event_history"), where("event_id", "==", eventId))),
-    coordinatorFor(event.coordinator_id), profileFor(user.uid),
+    coordinatorFor(event.coordinator_id),
     // B2/B3 — the venue requirements the coordinator matches a venue against.
     // Without these the suitability gate (E7/E8) only ever sees capacity.
     getDoc(doc(db, "event_venue_requirements", eventId)),
@@ -111,12 +115,20 @@ const detail = async (eventId) => {
     getDocs(query(collection(db, "event_accessibility"), where("event_id", "==", eventId))),
     // C3 — equipment lines (AC1) and the organiser's profile for contact details (AC2).
     getDocs(query(collection(db, "event_equipment"), where("event_id", "==", eventId))),
-    event.organiser_id ? getDoc(doc(db, "users", event.organiser_id)) : Promise.resolve(null)
+    event.organiser_id ? getDoc(doc(db, "users", event.organiser_id)) : Promise.resolve(null),
+    // F7 — keep booking decisions with the event they belong to. Historical
+    // Released/Replaced rows are deliberately retained for audit visibility.
+    profile.role === ROLES.COORDINATOR
+      ? getDocs(query(collection(db, "venue_bookings"), where("event_id", "==", eventId)))
+      : Promise.resolve({ docs: [] })
   ]);
-  const [coordinators, responseSnapshots] = await Promise.all([
+  const venueIds = [...new Set(venueBookings.docs.map((item) => item.data().venue_id).filter(Boolean))];
+  const [coordinators, responseSnapshots, venueSnapshots] = await Promise.all([
     profile.role === ROLES.COORDINATOR ? activeCoordinators() : Promise.resolve([]),
-    Promise.all(questions.docs.map((question) => getDocs(query(collection(db, "clarification_responses"), where("clarification_id", "==", question.id)))))
+    Promise.all(questions.docs.map((question) => getDocs(query(collection(db, "clarification_responses"), where("clarification_id", "==", question.id))))),
+    Promise.all(venueIds.map((venueId) => getDoc(doc(db, "venues", venueId))))
   ]);
+  const venueNames = new Map(venueSnapshots.filter((item) => item.exists()).map((item) => [item.id, item.data().name]));
   const byCreated = (a, b) => String(a.created_at || "").localeCompare(String(b.created_at || ""));
   const historyRecords = history.docs.map(record).sort(byCreated);
   const decisions = historyRecords.filter((item) => ["EVENT_APPROVED", "EVENT_REJECTED"].includes(item.action_type));
@@ -147,7 +159,23 @@ const detail = async (eventId) => {
     coordinator, coordinators, organiser,
     clarifications: questions.docs.map(record).sort(byCreated),
     responses: responseSnapshots.flatMap((snapshot) => snapshot.docs.map(record)).sort(byCreated),
-    assignments: assignments.docs.map(record).sort(byCreated)
+    assignments: assignments.docs.map(record).sort(byCreated),
+    venueBookings: venueBookings.docs.map((item) => {
+      const booking = item.data();
+      return {
+        booking_id: booking.booking_id || item.id,
+        venue_id: booking.venue_id,
+        venue_name: venueNames.get(booking.venue_id) || booking.venue_name || booking.venue_id,
+        start_datetime: asIso(booking.start_datetime),
+        end_datetime: asIso(booking.end_datetime),
+        status: booking.status || "Status not recorded",
+        decision_reason: booking.decision_reason || null,
+        decided_at: asIso(booking.decided_at),
+        released_at: asIso(booking.released_at),
+        release_reason: booking.release_reason || null,
+        required_facilities_snapshot: booking.required_facilities_snapshot || []
+      };
+    }).sort((left, right) => String(left.start_datetime || "").localeCompare(String(right.start_datetime || "")))
   };
 };
 

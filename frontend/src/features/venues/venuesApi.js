@@ -13,6 +13,7 @@ import {
   where
 } from "firebase/firestore";
 import { db } from "../../lib/firebase";
+import { notificationRecord } from "../../domain/eventReviewRecords";
 import { ROLES } from "../../domain/roles";
 
 const asIso = (value) => value?.toDate?.().toISOString?.() || value || null;
@@ -97,6 +98,25 @@ export const loadVenueCatalogue = async ({ userId, role } = {}) => {
   }, assignedVenueIds);
 };
 
+// E10 is intentionally a narrower read than the planning catalogue. Safety
+// Officers may read venue safety fields, but do not need facilities, operating
+// hours or staff assignments and have no permission to edit any venue record.
+export const loadVenueSafetyCatalogue = async () => {
+  const venues = await getDocs(collection(db, "venues"));
+  return venues.docs.map((item) => {
+    const data = item.data();
+    return {
+      venue_id: data.venue_id || item.id,
+      name: data.name || item.id,
+      building: data.building || "",
+      location: data.location || "",
+      max_capacity: Number(data.max_capacity) || 0,
+      emergency_access_notes: data.emergency_access_notes || "",
+      known_restrictions: data.known_restrictions || ""
+    };
+  }).sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }));
+};
+
 export const saveVenueCatalogue = (venue) => updateDoc(doc(db, "venues", venue.venue_id), {
     name: venue.name.trim(),
     building: venue.building.trim(),
@@ -126,9 +146,10 @@ export const saveVenuePlanningDetails = async ({ user, venueId, changes = {} }) 
   }
 
   const venueRef = doc(db, "venues", venueId);
-  const [assignmentSnapshot, bookingSnapshot] = await Promise.all([
+  const [assignmentSnapshot, bookingSnapshot, venueStaffSnapshot] = await Promise.all([
     getDocs(query(collection(db, "venue_staff"), where("venue_id", "==", venueId), where("user_id", "==", userId))),
-    getDocs(query(collection(db, "venue_bookings"), where("venue_id", "==", venueId)))
+    getDocs(query(collection(db, "venue_bookings"), where("venue_id", "==", venueId))),
+    getDocs(query(collection(db, "venue_staff"), where("venue_id", "==", venueId)))
   ]);
   if (!assignmentSnapshot.docs.length) throw new Error("You are not assigned to manage this venue.");
 
@@ -168,6 +189,30 @@ export const saveVenuePlanningDetails = async ({ user, venueId, changes = {} }) 
         old_value: current[field] ?? (field.endsWith("_minutes") ? 0 : ""),
         new_value: value,
         created_at: serverTimestamp()
+      });
+    });
+    const relatedEvents = [...new Set(
+      bookingSnapshot.docs
+        .filter((item) => item.data().status && ["PENDING", "APPROVED"].includes(String(item.data().status || "").toUpperCase()))
+        .map((item) => item.data().event_id)
+        .filter(Boolean)
+    )];
+    const venueStaffUsers = [...new Set(venueStaffSnapshot.docs.map((item) => item.data().user_id).filter(Boolean))];
+    const changedAt = serverTimestamp();
+    relatedEvents.forEach((eventId) => {
+      venueStaffUsers.forEach((recipient) => {
+        const notificationRef = doc(collection(db, "notifications"));
+        transaction.set(notificationRef, {
+          ...notificationRecord({
+            notificationId: notificationRef.id,
+            userId: recipient,
+            eventId,
+            type: "VENUE_DETAILS_UPDATED",
+            message: `${current.name || venueId}: venue details changed for a related event.`,
+            createdAt: changedAt
+          }),
+          venue_id: venueId
+        });
       });
     });
     return { venue_id: venueId, ...current, ...update };
@@ -241,13 +286,21 @@ export const requestVenueBooking = async ({
   venue_id,
   event_id,
   required_layout,
+  required_facilities,
   acknowledgement
 }) => {
   const userId = requiredUser(user);
   if (!event_id || !venue_id) throw new Error("An event and venue are required.");
+  const layoutSnapshot = String(required_layout || "").trim();
+  if (!layoutSnapshot) throw new Error("A required layout must be recorded.");
+  if (!Array.isArray(required_facilities)) throw new Error("Facility requirements must be recorded.");
+  const facilitySnapshot = [...new Set(required_facilities.map((item) => String(item || "").trim()).filter(Boolean))];
   const eventRef = doc(db, "events", event_id);
   const venueRef = doc(db, "venues", venue_id);
-  const existingSnapshot = await getDocs(query(collection(db, "venue_bookings"), where("event_id", "==", event_id)));
+  const [existingSnapshot, venueStaffSnapshot] = await Promise.all([
+    getDocs(query(collection(db, "venue_bookings"), where("event_id", "==", event_id))),
+    getDocs(query(collection(db, "venue_staff"), where("venue_id", "==", venue_id)))
+  ]);
   return runTransaction(db, async (transaction) => {
     const [eventSnapshot, venueSnapshot, ...existing] = await Promise.all([
       transaction.get(eventRef),
@@ -293,8 +346,9 @@ export const requestVenueBooking = async ({
       expected_attendance: attendance,
       status: "PENDING",
       decision_reason: null,
-      requested_layout_id: required_layout || event.required_layout || null,
-      layout_snapshot: required_layout || event.required_layout || null,
+      requested_layout_id: layoutSnapshot,
+      layout_snapshot: layoutSnapshot,
+      required_facilities_snapshot: facilitySnapshot,
       booking_label: `${event.name || event.reference_no || event_id} — ${venue.name || venue_id}`,
       submitted_at: serverTimestamp(),
       decided_at: null,
@@ -308,6 +362,23 @@ export const requestVenueBooking = async ({
       safety_review_required: Boolean(event.safety_review_required),
       suitability_acknowledgement: acknowledgement || { acknowledged: false, criteria: [] },
       requested_by: userId
+    });
+    const changedAt = serverTimestamp();
+    venueStaffSnapshot.docs.forEach((item) => {
+      const recipient = item.data().user_id;
+      if (!recipient) return;
+      const notificationRef = doc(collection(db, "notifications"));
+      transaction.set(notificationRef, {
+        ...notificationRecord({
+          notificationId: notificationRef.id,
+          userId: recipient,
+          eventId: event_id,
+          type: "VENUE_BOOKING_REQUESTED",
+          message: `${event.name || event.reference_no || event_id}: a venue booking request was raised for ${venue.name || venue_id}.`,
+          createdAt: changedAt
+        }),
+        venue_id: venue_id
+      });
     });
     return { booking_id: bookingRef.id, status: "PENDING" };
   });
@@ -437,6 +508,13 @@ export const approveVenueBooking = async ({ user, bookingId }) => {
       occupied_start: occupied.start,
       occupied_end: occupied.end
     });
+    // F7 AC3 — keep a verifiable link on the event. The rules validate this
+    // against the booking written in the same transaction before Confirmed is
+    // ever allowed; existing event readers safely ignore the additional field.
+    transaction.update(doc(db, "events", booking.event_id), {
+      approved_venue_booking_id: bookingId,
+      updated_at: decidedAt
+    });
     const historyRef = doc(collection(db, "event_history"));
     transaction.set(historyRef, {
       history_id: historyRef.id,
@@ -472,12 +550,14 @@ export const releaseCancelledEventBookings = async ({ user, eventId, reason = "E
       throw new Error("Venue bookings can be released automatically only after the event is Cancelled.");
     }
     const changed = [];
+    let approvedLinkReleased = false;
     bookingSnapshots.filter((item) => item.exists()).forEach((item) => {
       const booking = item.data();
       const status = booking.status === "APPROVED" ? "RELEASED" : booking.status === "PENDING" ? "WITHDRAWN" : null;
       if (!status) return;
       const now = serverTimestamp();
       transaction.update(item.ref, { status, released_at: now, release_reason: reason });
+      if (item.id === event.approved_venue_booking_id && status === "RELEASED") approvedLinkReleased = true;
       const historyRef = doc(collection(db, "event_history"));
       transaction.set(historyRef, {
         history_id: historyRef.id,
@@ -492,6 +572,9 @@ export const releaseCancelledEventBookings = async ({ user, eventId, reason = "E
       });
       changed.push({ booking_id: item.id, status });
     });
+    if (approvedLinkReleased) {
+      transaction.update(eventRef, { approved_venue_booking_id: null, updated_at: serverTimestamp() });
+    }
     return changed;
   });
 };

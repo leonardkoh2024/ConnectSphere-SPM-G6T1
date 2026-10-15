@@ -1390,6 +1390,14 @@ a.cs-btn-ghost:hover {
 
 .cs-btn-secondary:hover { background: var(--cs-surface-hover); }
 
+.cs-find-venues:disabled {
+  border-color: var(--cs-line);
+  background: var(--cs-surface-alt);
+  color: var(--cs-disabled-ink);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
 /* Same 20px the questions use, so the buttons are not a special case. The form
    itself is a grid with that gap, so this only needs to not add to it. */
 .cs-form-actions { display: flex; justify-content: flex-end; gap: 12px; margin: 0; }
