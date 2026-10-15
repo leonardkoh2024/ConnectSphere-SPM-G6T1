@@ -45,8 +45,12 @@ service cloud.firestore {
       // A6 — the Lead reads any profile so its board can name each event's
       // organiser and coordinator; others still see only themselves and active
       // coordinators.
+      // C2 AC2 — a coordinator reads organiser profiles, so their event lists
+      // and event details can name each event's organiser. Attendee and other
+      // staff profiles stay closed to them.
       allow get: if signedIn() && (userId == request.auth.uid
         || hasRole('EVENT_COORDINATOR_LEAD')
+        || (hasRole('EVENT_COORDINATOR') && resource.data.role == 'EVENT_ORGANISER')
         || (resource.data.role == 'EVENT_COORDINATOR' && resource.data.is_active == true));
       allow list: if (hasRole('EVENT_COORDINATOR') || hasRole('EVENT_COORDINATOR_LEAD'))
         && resource.data.role == 'EVENT_COORDINATOR'

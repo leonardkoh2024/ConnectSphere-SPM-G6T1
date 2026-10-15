@@ -41,7 +41,7 @@ they can be read next to the acceptance criteria and move into the service layer
 | J6 | SCRUM-155 | Be told the outcome of my booking and equipment requests (AC1: approval only — rejection awaits F5) | TC-313 – TC-346 |
 | E7 | — | Know whether a venue actually suits the event | TC-112 – TC-116 |
 | C6 | SCRUM-TBD | Approve a submitted request | TC-112 – TC-117 |
-| C2 | SCRUM-103 | See the events I am responsible for | TC-118 – TC-128 |
+| C2 | SCRUM-103 | See the events I am responsible for | TC-118 – TC-128, TC-347 |
 | G1 | SCRUM-TBD | Record the equipment an event needs | TC-285 – TC-289 |
 | G2 | SCRUM-TBD | Know whether enough equipment is free | TC-290 – TC-297 |
 | G3 | SCRUM-TBD | Reserve equipment for an event | TC-298 – TC-306 |
@@ -600,6 +600,12 @@ Pre-condition for the functional cases: an Event Coordinator is signed in and th
 | TC-126 | Each assigned row renders the five columns | One event assigned to the coordinator | Render the assigned list | The row shows event name, organiser, proposed date, status and a "Last activity: ..." label | | Not Executed | AC2 - rendered columns |
 | TC-127 | The status filter narrows the list | Three assigned events across SUBMITTED and APPROVED | 1. Render the list<br>2. Choose "SUBMITTED" in the "Filter by status" control | Only the SUBMITTED event remains visible | | Not Executed | AC3 - filter |
 | TC-128 | Sorting by proposed date reorders the rows | Three assigned events with different proposed dates | 1. Render (ascending by default)<br>2. Activate "Sort by proposed date" | Rows ascending by date first, then descending after the toggle | | Not Executed | AC3 - sort |
+
+**Security test cases — `frontend/src/security/firestoreRules.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-347 | A coordinator may read organiser profiles, and no other role's | firestore.rules in force | Inspect the `users` get rule | The coordinator clause is limited to `role == 'EVENT_ORGANISER'`; attendee and other staff profiles are not opened | As expected | Pass | AC2 — the organiser column and event details read `users/{organiser_id}`. Found 15 Oct 2026: the Review queue failed with "Missing or insufficient permissions." once the committed rules were deployed |
 
 ---
 

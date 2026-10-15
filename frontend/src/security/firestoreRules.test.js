@@ -64,6 +64,15 @@ describe('TC-015 no request is left unguarded', () => {
     expect(users).toContain("resource.data.role == 'EVENT_COORDINATOR'");
     expect(users).toContain('resource.data.is_active == true');
   });
+
+  // C2 / SCRUM-103 AC2 — TC-347. The coordinator's lists name each organiser, so
+  // a coordinator may read organiser profiles, and only those.
+  test('TC-347 a coordinator may read organiser profiles and no other role', () => {
+    const get = matchBlock('users').match(/allow get: if ([\s\S]*?);/)[1];
+    expect(get).toContain("(hasRole('EVENT_COORDINATOR') && resource.data.role == 'EVENT_ORGANISER')");
+    expect(get.match(/hasRole\('EVENT_COORDINATOR'\)/g)).toHaveLength(1);
+    expect(get).not.toMatch(/ATTENDEE|VENUE_STAFF|TECHNICAL_SUPPORT_STAFF|SAFETY_OFFICER/);
+  });
 });
 
 describe('TC-016 events are readable only by the roles related to them', () => {
