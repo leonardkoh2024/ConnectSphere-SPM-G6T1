@@ -32,7 +32,8 @@ import {
   timeSinceLastActivity,
   oversightRows,
   oversightCoordinators,
-  formatSinceActivity
+  formatSinceActivity,
+  oversightSummary
 } from './eventReview';
 import * as eventReviewModule from './eventReview';
 import { ROLES } from './roles';
@@ -751,5 +752,29 @@ describe("K4 SCRUM-185 oversee all coordinators' assignments", () => {
     expect(formatSinceActivity(3 * DAY)).toBe('3 days ago');
     expect(formatSinceActivity(null)).toBe('No activity yet');
     expect(formatSinceActivity(undefined)).toBe('No activity yet');
+  });
+
+  test('K4-TC16 AC1 the list puts the longest-untouched events first so stalled ones are easy to spot, and events with no recorded activity last', () => {
+    const events = [
+      ev('recent', { updated_at: '2026-10-15T00:00:00.000Z' }),
+      ev('stalled', { updated_at: '2026-10-01T00:00:00.000Z' }),
+      ev('none', { updated_at: undefined }),
+      ev('middle', { updated_at: '2026-10-10T00:00:00.000Z' })
+    ];
+    expect(oversightRows(events, {}, NOW).map((row) => row.id)).toEqual(['stalled', 'middle', 'recent', 'none']);
+  });
+
+  test('K4-TC17 AC3 the summary lists the busiest coordinator first, ties by name, while coordinatorWorkload keeps its least-loaded-first order', () => {
+    const coordinators = [{ id: 'c1', name: 'Sam' }, { id: 'c2', name: 'Alex' }, { id: 'c3', name: 'Priya' }, { id: 'c4', name: 'Bea' }];
+    const events = [
+      ev('a'), ev('b'),
+      ev('c', { coordinator_id: 'c2' }),
+      ev('d', { coordinator_id: 'c3' })
+    ];
+    expect(oversightSummary(events, coordinators).map((item) => [item.name, item.activeEvents])).toEqual([
+      ['Sam', 2], ['Alex', 1], ['Priya', 1], ['Bea', 0]
+    ]);
+    // The shared helper A6 and K2 rely on is untouched: fewest first.
+    expect(coordinatorWorkload(events, coordinators).map((item) => item.activeEvents)).toEqual([0, 1, 1, 2]);
   });
 });

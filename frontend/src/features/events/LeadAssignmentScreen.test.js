@@ -420,4 +420,21 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(await screen.findByText('Workshop')).toBeInTheDocument();
     expect(screen.queryByText(/loading events/i)).toBeNull();
   });
+
+  test('K4-FT21 AC1 the list shows the longest-untouched event first, so a stalled one is at the top', async () => {
+    await openOversight();
+
+    const titles = screen.getAllByRole('article').map((row) => within(row).getByRole('heading', { level: 2 }).textContent);
+    // Summit 10 days, Workshop 3 days, Gala 1 day, Retreat 2 hours.
+    expect(titles).toEqual(['Summit', 'Workshop', 'Gala', 'Retreat']);
+  });
+
+  test('K4-FT22 AC3 the summary lists the busiest coordinator first, so overload is at the top', async () => {
+    await openOversight();
+
+    const items = within(screen.getByRole('region', { name: /active events per coordinator/i })).getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent(/Alex/);
+    expect(items[1]).toHaveTextContent(/Priya/);
+    expect(items[2]).toHaveTextContent(/Sam/);
+  });
 });

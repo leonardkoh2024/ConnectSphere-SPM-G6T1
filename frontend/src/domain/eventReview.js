@@ -192,6 +192,91 @@ export const unassignedQueue = (events = []) =>
     .filter((event) => event?.status === EVENT_STATUS.SUBMITTED && !event.coordinator_id)
     .sort((a, b) => String(a.submitted_at || "").localeCompare(String(b.submitted_at || "")));
 
+// K4 / SCRUM-185 — the Lead's oversight view: every active event and who is handling
+// it, so overloaded coordinators and stalled events stand out. Pure helpers only; the
+// view cannot change an event (AC4), assignment and reassignment stay with
+// assignEvent / reassignEvent.
+
+// AC1 — an active event is any event not Completed, Cancelled or Rejected.
+export const isActiveEvent = (event) => Boolean(event) && !TERMINAL.has(event.status);
+
+// AC1 — when an event was last touched: its last update, else its submission, else
+// its creation. null when nothing was ever recorded.
+export const lastActivityAt = (event) => event?.updated_at || event?.submitted_at || event?.created_at || null;
+
+// AC1 — milliseconds since that moment, never negative (a clock a little ahead of
+// ours reads as "just now", not as a time in the future). null when unknown.
+export const timeSinceLastActivity = (event, now = Date.now()) => {
+  const at = lastActivityAt(event);
+  if (!at) return null;
+  const then = new Date(at).getTime();
+  const current = new Date(now).getTime();
+  if (Number.isNaN(then) || Number.isNaN(current)) return null;
+  return Math.max(0, current - then);
+};
+
+// AC1 — "time since last activity" as plain words.
+export const formatSinceActivity = (ms) => {
+  if (ms === null || ms === undefined || Number.isNaN(ms)) return "No activity yet";
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hr${hrs === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+};
+
+// AC1/AC2 — the rows of the list: every active event, optionally narrowed by
+// coordinator and/or status (an empty filter means no filter), each a fixed read-only
+// summary rather than the event document (AC4). Longest-untouched first so a stalled
+// event is at the top; events with no recorded activity go last.
+export const oversightRows = (events = [], filters = {}, now = Date.now()) => {
+  const { coordinatorId = "", status = "" } = filters || {};
+  return (events || [])
+    .filter(isActiveEvent)
+    .filter((event) => !coordinatorId || event.coordinator_id === coordinatorId)
+    .filter((event) => !status || event.status === status)
+    .map((event) => ({
+      id: event.id,
+      name: event.name,
+      reference: event.reference_no ?? null,
+      coordinatorId: event.coordinator_id || null,
+      coordinatorName: event.coordinator_id ? (event.coordinator_name || event.coordinator_id) : null,
+      status: event.status,
+      proposedDate: event.event_date ?? null,
+      sinceLastActivityMs: timeSinceLastActivity(event, now)
+    }))
+    .sort((a, b) => {
+      if (a.sinceLastActivityMs === null && b.sinceLastActivityMs === null) return 0;
+      if (a.sinceLastActivityMs === null) return 1;
+      if (b.sinceLastActivityMs === null) return -1;
+      return b.sinceLastActivityMs - a.sinceLastActivityMs;
+    });
+};
+
+// AC3 — the coordinators the summary and the coordinator filter are built from: the
+// active ones, plus anyone who is no longer active but still holds an active event.
+// Without them that coordinator's load would vanish from the very view meant to
+// expose it. They are for display only; they are never offered as a reassign target.
+export const oversightCoordinators = (events = [], coordinators = []) => {
+  const known = new Set((coordinators || []).map((item) => item.id));
+  const extra = new Map();
+  (events || []).filter(isActiveEvent).forEach((event) => {
+    if (event.coordinator_id && !known.has(event.coordinator_id) && !extra.has(event.coordinator_id)) {
+      extra.set(event.coordinator_id, { id: event.coordinator_id, name: event.coordinator_name || event.coordinator_id, active: false });
+    }
+  });
+  return [...(coordinators || []), ...extra.values()];
+};
+
+// AC3 — active events per coordinator, busiest first (ties by name) so overload is at
+// the top. coordinatorWorkload keeps its own fewest-first order for assigning; this
+// only re-sorts a copy.
+export const oversightSummary = (events = [], coordinators = []) =>
+  coordinatorWorkload(events, coordinators)
+    .sort((a, b) => b.activeEvents - a.activeEvents || String(a.name).localeCompare(String(b.name)));
+
 export const chronologicalClarifications = (clarifications = [], responses = []) =>
   [
     ...clarifications.map((item) => ({ ...item, kind: "QUESTION" })),

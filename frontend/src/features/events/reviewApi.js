@@ -452,8 +452,10 @@ const approve = async (eventId) => {
 // a round trip per row. Mirrors withOrganiserNames.
 const withCoordinatorNames = async (events) => {
   const coordinatorIds = [...new Set(events.map((event) => event.coordinator_id).filter(Boolean))];
-  const snapshots = await Promise.all(coordinatorIds.map((id) => getDoc(doc(db, "users", id))));
-  const nameById = new Map(snapshots.filter((snapshot) => snapshot.exists()).map((snapshot) => {
+  // K4 / SCRUM-185 — as for organisers, a coordinator profile that cannot be read must
+  // not fail the whole board: that row falls back to the coordinator id.
+  const snapshots = await Promise.all(coordinatorIds.map((id) => getDoc(doc(db, "users", id)).catch(() => null)));
+  const nameById = new Map(snapshots.filter((snapshot) => snapshot && snapshot.exists()).map((snapshot) => {
     const data = snapshot.data();
     return [snapshot.id, data.name || data.email || snapshot.id];
   }));
