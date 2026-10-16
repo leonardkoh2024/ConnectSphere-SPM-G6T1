@@ -1,8 +1,10 @@
 // A6 / Week 7 change #5 — the Event Coordinator Lead's two screens, in one
 // component driven by `view`:
 //   - "queue"     : events with no coordinator yet, each with an Assign control.
-//   - "oversight" : every event with its coordinator, the per-coordinator
-//                   workload, and a Reassign control on each live assigned event.
+//   - "oversight" : K4 / SCRUM-185 — every active event with its coordinator,
+//                   status, proposed date and time since last activity; filters by
+//                   coordinator and status; a per-coordinator summary; and a Reassign
+//                   control on each assigned event. It never edits an event (AC4).
 // Both screens share the same board (reviewApi.leadBoard) and the same picker, so
 // they live together rather than in two near-identical files. The pure guards in
 // domain/eventReview decide what the Lead may do; firestore.rules is the real
@@ -11,11 +13,20 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { statusTone } from "../../domain/events";
 import { ROLES } from "../../domain/roles";
-import { assignmentSummary, canAssignCoordinator, canLeadReassign, coordinatorChoiceLabel, coordinatorWorkload, isTerminal, unassignedQueue } from "../../domain/eventReview";
+import { assignmentSummary, canAssignCoordinator, canLeadReassign, coordinatorChoiceLabel, coordinatorWorkload, EVENT_STATUS, formatSinceActivity, oversightCoordinators, oversightRows, oversightSummary, unassignedQueue } from "../../domain/eventReview";
 import { reviewApi } from "./reviewApi";
 import RecordLead from "../../components/RecordLead";
 
 const LEAD = ROLES.COORDINATOR_LEAD;
+
+// K4 / SCRUM-185 AC2 — the statuses an active event can be in, in workflow order.
+// Draft never reaches the Lead (K1) and Completed, Cancelled and Rejected are not on
+// this view, so none of them is offered.
+const OVERSIGHT_STATUSES = [
+  EVENT_STATUS.SUBMITTED, EVENT_STATUS.UNDER_REVIEW, EVENT_STATUS.APPROVED,
+  EVENT_STATUS.PLANNING, EVENT_STATUS.SAFETY_REVIEW, EVENT_STATUS.CONFIRMED
+];
+const statusLabel = (status) => status.charAt(0) + status.slice(1).toLowerCase().replace(/_/g, " ");
 
 export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
   const [events, setEvents] = useState([]);
@@ -29,9 +40,10 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
   // K3 / SCRUM-184 — which row the error belongs to, so a refused assign/reassign is
   // shown beside the button that was pressed, not off-screen at the top of a long list.
   const [errorFor, setErrorFor] = useState("");
-  // Oversight is shown one lens at a time — by event or by coordinator — so the
-  // screen stays a single clean list rather than everything stacked at once.
-  const [lens, setLens] = useState("event");
+  // K4 / SCRUM-185 AC2 — the two oversight filters. An empty value means "all". They
+  // belong to the view, so they survive a reload after a reassignment.
+  const [filterCoordinator, setFilterCoordinator] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
   // K2 / SCRUM-183 AC1 — which queued events have their read-only summary open.
   const [open, setOpen] = useState({});
 
@@ -50,6 +62,18 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
   // K1 / SCRUM-182 — waiting events, oldest submission first (AC3), leaving the
   // moment they are assigned (AC4). The ordering/filtering is the pure helper.
   const queue = useMemo(() => unassignedQueue(events), [events]);
+  // K4 / SCRUM-185 — the oversight view. The summary and the coordinator filter use
+  // the whole board (so a filter never hides who is overloaded) and include a
+  // coordinator who is no longer active but still holds an active event (AC3). The
+  // rows are the filtered, longest-untouched-first list (AC1/AC2); each is looked up
+  // by id so the reassign picker still gets the full event.
+  const eventById = useMemo(() => new Map(events.map((item) => [item.id, item])), [events]);
+  const filterChoices = useMemo(() => oversightCoordinators(events, coordinators), [events, coordinators]);
+  const summary = useMemo(() => oversightSummary(events, filterChoices), [events, filterChoices]);
+  const rows = useMemo(
+    () => oversightRows(events, { coordinatorId: filterCoordinator, status: filterStatus }, Date.now()),
+    [events, filterCoordinator, filterStatus]
+  );
 
   const pick = (eventId, coordinatorId) => setChoice((current) => ({ ...current, [eventId]: coordinatorId }));
   const toggle = (eventId) => setOpen((current) => ({ ...current, [eventId]: !current[eventId] }));
@@ -156,43 +180,51 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
     </>;
   }
 
-  // view === "oversight" — two lenses on the same board, chosen with a toggle.
-  // "By event" is the flat event-centric list; "By coordinator" groups each
-  // coordinator's live events under their name, least-loaded first, with the
-  // workload count folded into the group header so nothing is stacked twice.
-  const liveFor = (coordinatorId) => events.filter((event) => event.coordinator_id === coordinatorId && !isTerminal(event));
-
-  const eventRow = (event, withReassign) => <article className="cs-record cs-review-record" key={event.id}>
-    {eventHeader(event)}
-    <p className="cs-record-ref">{event.reference_no}</p>
-    <div className="cs-record-status"><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div>
-    {lens === "event" && <div className="cs-record-modified"><p className="cs-record-saved">{event.coordinator_id ? `Coordinator: ${event.coordinator_name || event.coordinator_id}` : "Unassigned"}</p></div>}
-    {withReassign && event.coordinator_id && !isTerminal(event) ? picker(event, "reassign") : <div className="cs-record-actions" />}
-  </article>;
+  // view === "oversight" — K4 / SCRUM-185. Read-only apart from the permitted Reassign
+  // (reviewApi.leadReassign): no field of an event can be edited from here (AC4).
+  const filtered = Boolean(filterCoordinator || filterStatus);
 
   return <>
     {topError}
-    <div className="cs-review-toolbar" role="group" aria-label="Group oversight by">
-      <button type="button" aria-pressed={lens === "event"} className={lens === "event" ? "cs-btn cs-btn-secondary" : "cs-btn cs-btn-ghost"} onClick={() => setLens("event")}>By event</button>
-      <button type="button" aria-pressed={lens === "coordinator"} className={lens === "coordinator" ? "cs-btn cs-btn-secondary" : "cs-btn cs-btn-ghost"} onClick={() => setLens("coordinator")}>By coordinator</button>
+    <section className="cs-request-section" aria-label="Active events per coordinator">
+      <div className="cs-review-heading"><div><h2>Active events per coordinator</h2></div></div>
+      {summary.length
+        ? <ul className="cs-record-list">{summary.map((item) => <li key={item.id}>
+            <span>{item.name}</span>{" "}
+            <span className="cs-pill">{item.activeEvents} active {item.activeEvents === 1 ? "event" : "events"}</span>
+          </li>)}</ul>
+        : <p className="cs-panel-note">No active coordinators yet.</p>}
+    </section>
+    <div className="cs-review-toolbar" role="group" aria-label="Filter oversight">
+      <label className="cs-field cs-inline-field">
+        <span className="cs-field-name">Filter by coordinator</span>
+        <select value={filterCoordinator} onChange={(e) => setFilterCoordinator(e.target.value)}>
+          <option value="">All coordinators</option>
+          {filterChoices.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
+        </select>
+      </label>
+      <label className="cs-field cs-inline-field">
+        <span className="cs-field-name">Filter by status</span>
+        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+          <option value="">All statuses</option>
+          {OVERSIGHT_STATUSES.map((status) => <option value={status} key={status}>{statusLabel(status)}</option>)}
+        </select>
+      </label>
     </div>
-    {lens === "event"
-      ? (events.length
-          ? <div className="cs-record-list">{events.map((event) => eventRow(event, true))}</div>
-          : <div className="cs-empty"><p>No events yet.</p></div>)
-      : (workload.length
-          ? workload.map((coordinator) => {
-              const theirs = liveFor(coordinator.id);
-              return <section className="cs-request-section" key={coordinator.id}>
-                <div className="cs-review-heading">
-                  <div><h2>{coordinator.name}</h2></div>
-                  <span className="cs-pill">{coordinator.activeEvents} active {coordinator.activeEvents === 1 ? "event" : "events"}</span>
-                </div>
-                {theirs.length
-                  ? <div className="cs-record-list">{theirs.map((event) => eventRow(event, true))}</div>
-                  : <p className="cs-panel-note">No active events.</p>}
-              </section>;
-            })
-          : <p className="cs-panel-note">No active coordinators yet.</p>)}
+    {rows.length
+      ? <div className="cs-record-list">{rows.map((row) => {
+          const event = eventById.get(row.id);
+          return <article className="cs-record cs-review-record" key={row.id}>
+            {eventHeader(event)}
+            <p className="cs-record-ref">{row.reference}</p>
+            <div className="cs-record-status"><span className={`cs-pill cs-pill-${statusTone(row.status)}`}>{row.status}</span></div>
+            <div className="cs-record-modified">
+              <p className="cs-record-saved">{row.coordinatorId ? `Coordinator: ${row.coordinatorName}` : "Unassigned"}</p>
+              <p className="cs-record-saved"><span>Last activity </span><span>{formatSinceActivity(row.sinceLastActivityMs)}</span></p>
+            </div>
+            {row.coordinatorId ? picker(event, "reassign") : <div className="cs-record-actions" />}
+          </article>;
+        })}</div>
+      : <div className="cs-empty"><p>{filtered ? "No events match these filters." : "No active events."}</p></div>}
   </>;
 }
