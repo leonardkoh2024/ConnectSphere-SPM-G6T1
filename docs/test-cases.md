@@ -38,9 +38,10 @@ they can be read next to the acceptance criteria and move into the service layer
 | C1 | SCRUM-102 | Have submitted events assigned to a coordinator automatically | TC-072 – TC-080 |
 | E8 | SCRUM-124 | Be stopped before booking an unsuitable venue | TC-112 – TC-174 |
 | E4 | SCRUM-120 | See when a venue is free | TC-200 – TC-249 |
+| J6 | SCRUM-155 | Be told the outcome of my booking and equipment requests (AC1: approval only — rejection awaits F5) | TC-313 – TC-346 |
 | E7 | — | Know whether a venue actually suits the event | TC-112 – TC-116 |
 | C6 | SCRUM-TBD | Approve a submitted request | TC-112 – TC-117 |
-| C2 | SCRUM-103 | See the events I am responsible for | TC-118 – TC-128 |
+| C2 | SCRUM-103 | See the events I am responsible for | TC-118 – TC-128, TC-347 |
 | G1 | SCRUM-TBD | Record the equipment an event needs | TC-285 – TC-289 |
 | G2 | SCRUM-TBD | Know whether enough equipment is free | TC-290 – TC-297 |
 | G3 | SCRUM-TBD | Reserve equipment for an event | TC-298 – TC-306 |
@@ -600,6 +601,12 @@ Pre-condition for the functional cases: an Event Coordinator is signed in and th
 | TC-127 | The status filter narrows the list | Three assigned events across SUBMITTED and APPROVED | 1. Render the list<br>2. Choose "SUBMITTED" in the "Filter by status" control | Only the SUBMITTED event remains visible | | Not Executed | AC3 - filter |
 | TC-128 | Sorting by proposed date reorders the rows | Three assigned events with different proposed dates | 1. Render (ascending by default)<br>2. Activate "Sort by proposed date" | Rows ascending by date first, then descending after the toggle | | Not Executed | AC3 - sort |
 
+**Security test cases — `frontend/src/security/firestoreRules.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-347 | A coordinator may read organiser profiles, and no other role's | firestore.rules in force | Inspect the `users` get rule | The coordinator clause is limited to `role == 'EVENT_ORGANISER'`; attendee and other staff profiles are not opened | As expected | Pass | AC2 — the organiser column and event details read `users/{organiser_id}`. Found 15 Oct 2026: the Review queue failed with "Missing or insufficient permissions." once the committed rules were deployed |
+
 ---
 
 ## J1 / SCRUM-150 — Have one place where things needing my attention appear
@@ -702,3 +709,101 @@ Pre-condition for the functional cases: an Event Coordinator is signed in and th
 | TC-276 | The coordinator's detail opens on the request | Coordinator opens an event with one clarification | 1. Open the event<br>2. Open Clarifications | Event request selected with the details shown and "Clarifications 1"; the history appears only on its tab | | Not Executed | Coordinator page |
 | TC-277 | Each action is on the tab it belongs to | Coordinator opens an event Under Review | Look at each tab | Reject and Reassign on Event request; Request clarification on Clarifications | | Not Executed | Coordinator page - actions |
 | TC-278 | Switching tab closes a half-written action | Coordinator has opened the Reject form | Switch to Clarifications and back | The Reject form is gone and nothing was sent | | Not Executed | Coordinator page - actions |
+
+## J6 / SCRUM-155 — Be told the outcome of my booking and equipment requests
+
+> As an Event Coordinator, I want the outcomes pushed to me so that I know whether the event can be confirmed without polling two queues.
+
+**Acceptance criteria:** AC1 — the coordinator is notified when a booking request is approved or rejected, with the reason on rejection. AC2 — the coordinator can open that venue booking from the notification and check its date and time. AC3 — the coordinator is notified when an equipment request is marked arranged or unable to be fulfilled. AC4 — the coordinator can open that equipment request from the notification and check its date, time and quantity.
+
+**Scope:** a venue booking approval (`approveVenueBooking`) writes a `VENUE_BOOKING_APPROVED` notification to the coordinator who raised the booking (`requested_by`) in the same transaction, carrying `booking_id`. `firestore.rules` accepts a venue booking outcome only from the Venue Staff member deciding that booking, to its raiser, in the same commit as the decision (`decided_at` and `created_at` are both the request time), and through no other clause. The equipment service writes `EQUIPMENT_UNABLE_TO_FULFIL` (per line, with the reason) and `EQUIPMENT_ARRANGED` (when the last open line is reserved or resolved) to the event's current coordinator inside its own transactions; no browser may create either type. View on these opens Venue bookings with that booking expanded, or Equipment requests with that event's request and Technical Support updates open.
+
+**Not yet covered:** booking *rejection* (half of AC1). F5 / SCRUM-129 (reject with a reason) is not built; when it is, it calls `venueBookingOutcomeMessage({ approved: false, reason })` and writes `VENUE_BOOKING_REJECTED` with `booking_id` and `created_at` equal to its `decided_at`, which the rule and inbox already accept. TC-313 and TC-318 check the rejection half of the rule and the message only; no test exercises a rejection end to end. A booking raised before a K3 reassignment notifies the coordinator who raised it, since Venue Staff cannot read the event to find its current coordinator. The rule tests read the policy text; behavioural evidence for the rule needs the Rules Playground or the emulator, as for TC-015.
+
+**AC coverage:** AC1 (approval; rejection awaits F5) — TC-313, TC-317 – TC-319, TC-335 – TC-338, TC-344. AC2 — TC-317, TC-320, TC-321, TC-324, TC-337 – TC-340, TC-343. AC3 — TC-314 – TC-316, TC-319, TC-325 – TC-334, TC-338, TC-344, TC-346. AC4 — TC-320, TC-322, TC-323, TC-338, TC-341 – TC-343, TC-345.
+
+**Executed:** 15 Oct 2026, every case below twice, plus a mutation check: each of 36 deliberate breakages of the J6 code and rules was caught by at least one of these cases.
+
+**Server rule — `frontend/src/security/firestoreRules.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-313 | A booking outcome is told only by its decider, to its raiser, with the decision | firestore.rules | Read the notifications create rule | The booking (read after the write) must match the notice's event and venue, have been raised by the recipient and decided by the writer, an assigned Venue Staff member, at this request's time, with the notice created at the same time, and hold the status the type names (approved / rejected); the clause needs a booking_id | As expected | Pass | AC1 - server rule |
+| TC-344 | Outcome types go through no other clause; equipment outcomes never from a browser | firestore.rules | Read the notifications create rule | The whole rule refuses EQUIPMENT_ARRANGED / EQUIPMENT_UNABLE_TO_FULFIL, and those types appear nowhere else in the rules; the ordinary clauses are closed to the venue booking outcome types | As expected | Pass | AC1, AC3 - server rule |
+
+**Venue booking approval — `frontend/src/features/venues/venuesApi.workflow.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-317 | Approval notifies the coordinator who raised the booking | Pending booking VB-001 raised by COORD-001 for Q4 Partner Summit at Harbour Hall | Venue Staff approve it | Exactly one document is written to notifications: VENUE_BOOKING_APPROVED to COORD-001 for EVT-001, carrying VB-001 and VEN-001, unread, reading "Q4 Partner Summit: the booking for Harbour Hall was approved." | As expected | Pass | AC1, AC2 |
+| TC-335 | A booking with no recorded raiser | Pending booking with no requested_by | Venue Staff approve it | Approved; nothing is written to notifications | As expected | Pass | AC1 - boundary |
+| TC-336 | A refused approval tells nobody | Pending booking overlapping an approved one | Venue Staff try to approve it | Refused as a clash; nothing is written at all | As expected | Pass | AC1 - negative |
+| TC-337 | One approval, one complete notification | Pending booking with no event name | Venue Staff approve it | Exactly one notifications document with every inbox field, booking_id and venue_id; the message falls back to "Your event" | As expected | Pass | AC1, AC2 |
+
+**Equipment outcomes — `backend/src/services/equipment/outcomeNotifications.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-325 | The arranged message lists what was reserved and counts what was not | All reserved; one reserved and two refused; all refused | Call arrangedMessage | Quantities and types in words; "2 lines were" / "1 line was unable to be fulfilled"; "Your event" when unnamed | As expected | Pass | AC3 |
+| TC-326 | The unable message names quantity, type and trimmed reason | A line of 3 visual, reason with spaces | Call unableMessage | "… cannot fulfil 3 × visual. Reason: Projector under repair."; "Your event" when unnamed | As expected | Pass | AC3 |
+| TC-327 | The notification goes to the current coordinator in the inbox's shape | Event with coordinator coord-2 | Call notifyCoordinator | One notifications document with every inbox field, unread, addressed to coord-2, plus the extra fields | As expected | Pass | AC3 |
+| TC-328 | No event or no coordinator, nothing written | Missing event; event with no or an empty coordinator; no snapshot | Call notifyCoordinator | Returns null and creates nothing; the event name falls back to its reference, then to empty | As expected | Pass | AC3 - boundary |
+
+**Equipment outcomes — `backend/src/services/equipment/requests.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-314 | A line marked unable to be fulfilled tells the coordinator why | Two open lines; event coordinator coord-1 | Mark line 2 unable to fulfil with a reason | Exactly one EQUIPMENT_UNABLE_TO_FULFIL notification, to coord-1, unread, naming the event, quantity, type and reason, with the line index | As expected | Pass | AC3 |
+| TC-315 | Resolving the last open line also says the request is arranged | Line 1 reserved, line 2 open | Mark line 2 unable to fulfil | Two notifications, unable then arranged; the arranged one lists the reserved line and "1 line was unable to be fulfilled" | As expected | Pass | AC3 |
+| TC-316 | No coordinator, no notification | Event with no coordinator | Mark the only line unable to fulfil | The request is Arranged; no notification is written | As expected | Pass | AC3 - boundary |
+| TC-331 | An amendment is not an outcome | One open line | Amend it with a note | No notification | As expected | Pass | AC3 - negative |
+| TC-332 | A refused resolution writes nothing | Blank reason; request already Arranged; line already reserved; line with an active reservation; unknown line | Try to mark it unable to fulfil | Each is refused with its message; no notification and no update | As expected | Pass | AC3 - negative |
+| TC-333 | Several refused lines are counted in the plural | Line 1 resolved, line 2 open | Mark line 2 unable to fulfil | The arranged notification reads "2 lines were unable to be fulfilled." with no "Reserved:" part | As expected | Pass | AC3 |
+
+**Equipment outcomes — `backend/src/services/equipment/reservations.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-329 | Reserving one of several open lines tells nobody yet | Two open lines | Reserve line 1 | The request stays Pending; no notification | As expected | Pass | AC3 - boundary |
+| TC-330 | The last line reserved after another was refused | Line 1 resolved unable, line 2 open; event coordinator coord-2 | Reserve line 2 | Arranged; exactly one EQUIPMENT_ARRANGED notification, to coord-2, listing the reserved line and "1 line was unable to be fulfilled" | As expected | Pass | AC3 |
+| TC-334 | No coordinator on the event, reservation still made | Event document missing | Reserve the only line | Reservation made and request Arranged; no notification | As expected | Pass | AC3 - boundary |
+| TC-346 | Reserving the only open line arranges the request and says so once | One open line; event coordinator coord-1 | Reserve it | Exactly one notifications document, EQUIPMENT_ARRANGED to coord-1, unread, its id matching the document, reading "Q4 Partner Summit: your equipment request is arranged. Reserved: 2 × audio." | As expected | Pass | AC3 |
+
+**Inbox rules — `frontend/src/domain/notifications.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-318 | A booking outcome says approved, or rejected with its reason | — | Call venueBookingOutcomeMessage | Approved names the event and venue; rejected adds "Reason: …" trimmed; missing names fall back to words | As expected | Pass | AC1 (rejection message only) |
+| TC-319 | Each outcome type has words | — | Call notificationTypeLabel | Venue booking approved / rejected, Equipment arranged, Equipment unavailable | As expected | Pass | AC1, AC3 |
+| TC-320 | View on an outcome goes to the booking or equipment request | Each outcome type, for a coordinator and other roles | Call notificationViewScreen | Coordinator: booking outcomes with a booking go to Venue bookings, equipment outcomes to Equipment requests, anything else to Assigned events; other roles unchanged | As expected | Pass | AC2, AC4 - routing |
+
+**Inbox — `frontend/src/features/notifications/NotificationInbox.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-338 | Outcomes read in words, and View hands over the outcome | An unread booking approval and a read equipment refusal | 1. Render the inbox<br>2. Click View on each | "Venue booking approved" and "Equipment unavailable" with their messages; each View passes the event and that notification; only the unread one is marked read | As expected | Pass | AC1, AC2, AC4 |
+
+**Navigation — `frontend/src/app/Workspace.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-321 | A booking outcome opens that booking | Coordinator on Notifications | Click View on a booking outcome | Venue bookings opens focused on VB-1, with "Back to notifications" | As expected | Pass | AC2 |
+| TC-322 | An equipment outcome opens that event's equipment request | Coordinator on Notifications | Click View on an equipment outcome | Equipment requests opens focused on e1, with "Back to notifications" | As expected | Pass | AC4 |
+| TC-343 | The focus lasts only for that visit | Coordinator on Notifications | For a booking outcome, then an equipment outcome: View it, go back to Notifications, then open its screen from the sidebar | Each time the sidebar opens the plain list, not the previously focused record | As expected | Pass | AC2, AC4 |
+
+**Venue bookings — `frontend/src/features/venues/VenueBookings.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-324 | The focused booking is open on arrival | Two bookings | Render Venue bookings focused on VB-1 | Only VB-1 is expanded, showing date 2026-11-20, time 10:00–12:00 and status | As expected | Pass | AC2 |
+| TC-339 | Nothing opens by itself without a named booking | Two bookings | Render Venue bookings with no focus, then focused on an unknown booking | Neither booking is expanded either time | As expected | Pass | AC2 - boundary |
+| TC-340 | The named booking is scrolled into view | Two bookings | Render Venue bookings focused on VB-2 | VB-2's record, and only it, is scrolled into view after loading | As expected | Pass | AC2 |
+
+**Equipment requests — `frontend/src/features/equipment/EquipmentRequestsScreen.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-323 | The focused equipment request is open on arrival | Arranged request for event-1, 2 × audio reserved | Render Equipment requests focused on event-1 | Date and time read "2026-11-04 · 09:00–17:00"; request details and Technical Support updates are both open, each showing AUDIO · 2, the update marked Reserved | As expected | Pass | AC4 |
+| TC-341 | Only the named event's equipment request opens | Two events with arranged requests | Render Equipment requests focused on event-2 | event-2's disclosures are open; event-1's are closed | As expected | Pass | AC4 |
+| TC-342 | Without a named event nothing opens or scrolls | One arranged request with no times | Render Equipment requests with no focus | Both disclosures closed, nothing scrolled, the date shown alone | As expected | Pass | AC4 - boundary |
+| TC-345 | The named event is scrolled into view | One arranged request | Render Equipment requests focused on event-1 | That record is scrolled into view after loading | As expected | Pass | AC4 |

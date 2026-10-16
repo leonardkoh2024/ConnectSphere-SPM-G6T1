@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { notificationRecord } from "../../domain/eventReviewRecords";
+import { venueBookingOutcomeMessage } from "../../domain/notifications";
 import { ROLES } from "../../domain/roles";
 
 const asIso = (value) => value?.toDate?.().toISOString?.() || value || null;
@@ -529,6 +530,27 @@ export const approveVenueBooking = async ({ user, bookingId }) => {
       description: `Venue booking ${booking.booking_label || bookingId} approved.`,
       created_at: decidedAt
     });
+    // J6 AC1/AC2 — tell the coordinator who raised it, in the same transaction,
+    // carrying the booking so View opens that booking rather than the event.
+    if (booking.requested_by) {
+      const notificationRef = doc(collection(db, "notifications"));
+      transaction.set(notificationRef, {
+        ...notificationRecord({
+          notificationId: notificationRef.id,
+          userId: booking.requested_by,
+          eventId: booking.event_id,
+          type: "VENUE_BOOKING_APPROVED",
+          message: venueBookingOutcomeMessage({
+            eventName: booking.event_name,
+            venueName: venue.name,
+            approved: true
+          }),
+          createdAt: decidedAt
+        }),
+        booking_id: bookingId,
+        venue_id: venueId
+      });
+    }
     return { booking_id: bookingId, status: "APPROVED" };
   });
 };

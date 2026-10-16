@@ -17,7 +17,13 @@ const reservationRecord = (changes = {}) => ({
   ...changes
 });
 
-const fixture = ({ reservations = [], unavailable = [], withReservationRequest = false } = {}) => {
+const fixture = ({
+  reservations = [],
+  unavailable = [],
+  withReservationRequest = false,
+  lines = [{ equipment_type: "AUDIO", quantity: 2 }],
+  event = { coordinator_id: "coord-1", name: "Q4 Partner Summit" }
+} = {}) => {
   const transaction = {
     created: [],
     updated: [],
@@ -29,7 +35,7 @@ const fixture = ({ reservations = [], unavailable = [], withReservationRequest =
           exists: true,
           data: () => (withReservationRequest
             ? { status: "ARRANGED", lines: [{ reservation_id: "reservation-1", fulfillment_status: "RESERVED" }] }
-            : { status: "PENDING", lines: [{ equipment_type: "AUDIO", quantity: 2 }] })
+            : { status: "PENDING", lines })
         };
       }
       if (reference.path === "equipment_inventory/AUDIO") {
@@ -50,6 +56,9 @@ const fixture = ({ reservations = [], unavailable = [], withReservationRequest =
       }
       if (reference.collectionName === "equipment_unavailability") {
         return { docs: unavailable.map((data) => ({ data: () => data })) };
+      }
+      if (reference.path === "events/event-1") {
+        return { exists: Boolean(event), data: () => event };
       }
       throw new Error(`Unexpected transaction read ${reference.path || reference.collectionName}`);
     }
@@ -101,7 +110,8 @@ test("TC-303 creates an event-linked reservation for its buffered approved venue
   assert.equal(result.start_datetime.toISOString(), "2026-11-04T00:30:00.000Z");
   assert.equal(result.end_datetime.toISOString(), "2026-11-04T09:30:00.000Z");
   assert.equal(result.reserved_by, "tech-1");
-  assert.equal(transaction.created.length, 2);
+  // Reservation, history, and (J6, TC-346) the coordinator's notification.
+  assert.equal(transaction.created.length, 3);
   assert.equal(transaction.created[1].data.action, "LINE_RESERVED");
   assert.equal(transaction.created[1].data.actor_id, "tech-1");
   assert.equal(transaction.updated[0].reference.path, "equipment_requests/event-1");
@@ -153,4 +163,66 @@ test("TC-305 release retains the reservation and advances the inventory revision
   assert.equal(transaction.updated[1].reference.path, "equipment_requests/event-1");
   assert.equal(transaction.updated[1].data.lines[0].fulfillment_status, "PENDING");
   assert.equal(transaction.updated[2].data.availability_revision, 1);
+});
+
+// J6 / SCRUM-155 AC3 — TC-329, TC-330, TC-334, TC-346 in docs/test-cases.md.
+test("TC-346 reserving the only open line arranges the request and tells the coordinator once", async () => {
+  const { service, transaction } = fixture();
+  await service.reserve({ eventId: "event-1", equipmentType: "AUDIO", quantity: 2, userId: "tech-1" });
+
+  const created = transaction.created.filter((item) => item.reference.collectionName === "notifications");
+  assert.equal(created.length, 1);
+  assert.equal(created[0].reference.id, created[0].data.notification_id);
+  assert.deepEqual(created[0].data, {
+    notification_id: created[0].reference.id,
+    user_id: "coord-1",
+    event_id: "event-1",
+    type: "EQUIPMENT_ARRANGED",
+    message: "Q4 Partner Summit: your equipment request is arranged. Reserved: 2 × audio.",
+    is_read: false,
+    created_at: { serverTimestamp: true },
+    read_at: null
+  });
+});
+
+const notices = (transaction) => transaction.created
+  .filter((item) => item.reference.collectionName === "notifications")
+  .map((item) => item.data);
+
+test("TC-329 reserving one of several open lines leaves the request Pending and tells nobody", async () => {
+  const { service, transaction } = fixture({
+    lines: [{ equipment_type: "AUDIO", quantity: 2 }, { equipment_type: "VISUAL", quantity: 1 }]
+  });
+  await service.reserve({ eventId: "event-1", equipmentType: "AUDIO", quantity: 2, userId: "tech-1", lineIndex: 0 });
+
+  assert.equal(transaction.updated[0].data.status, "PENDING");
+  assert.equal(notices(transaction).length, 0);
+});
+
+test("TC-330 the last line reserved after another was refused: arranged, told once, to the current coordinator", async () => {
+  const { service, transaction } = fixture({
+    lines: [
+      { equipment_type: "VISUAL", quantity: 1, fulfillment_status: "RESOLVED", resolution: "UNABLE_TO_FULFILL" },
+      { equipment_type: "AUDIO", quantity: 2 }
+    ],
+    event: { coordinator_id: "coord-2", name: "Q4 Partner Summit" }
+  });
+  await service.reserve({ eventId: "event-1", equipmentType: "AUDIO", quantity: 2, userId: "tech-1", lineIndex: 1 });
+
+  assert.equal(transaction.updated[0].data.status, "ARRANGED");
+  assert.deepEqual(notices(transaction).map(({ user_id: userId, event_id: eventId, type, message }) => ({ userId, eventId, type, message })), [{
+    userId: "coord-2",
+    eventId: "event-1",
+    type: "EQUIPMENT_ARRANGED",
+    message: "Q4 Partner Summit: your equipment request is arranged. Reserved: 2 × audio. 1 line was unable to be fulfilled."
+  }]);
+});
+
+test("TC-334 an event with no coordinator still has its equipment reserved, with nobody notified", async () => {
+  const { service, transaction } = fixture({ event: null });
+  const result = await service.reserve({ eventId: "event-1", equipmentType: "AUDIO", quantity: 2, userId: "tech-1" });
+
+  assert.equal(result.status, "RESERVED");
+  assert.equal(transaction.updated[0].data.status, "ARRANGED");
+  assert.equal(notices(transaction).length, 0);
 });

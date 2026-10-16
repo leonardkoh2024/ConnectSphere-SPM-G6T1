@@ -14,7 +14,7 @@ const snapshot = (id, data, ref = { path: `documents/${id}`, id }) => ({
 jest.mock('firebase/firestore', () => ({
   collection: (_database, name) => ({ path: name }),
   doc: (...args) => {
-    if (args.length === 1) return { path: 'event_history/history-auto', id: 'history-auto' };
+    if (args.length === 1) return { path: `${args[0].path}/${args[0].path}-auto`, id: `${args[0].path}-auto` };
     const [, collectionName, id] = args;
     return { path: `${collectionName}/${id}`, id };
   },
@@ -72,6 +72,103 @@ test('F4/F7 approval links the event to the approved booking in the same transac
     expect.objectContaining({ path: 'events/EVT-001' }),
     { approved_venue_booking_id: 'VB-001', updated_at: 'SERVER_TIMESTAMP' }
   );
+});
+
+// J6 / SCRUM-155 AC1/AC2 — TC-317 in docs/test-cases.md.
+test('TC-317 approval tells the coordinator who raised it, carrying the booking', async () => {
+  const booking = {
+    event_id: 'EVT-001', venue_id: 'VEN-001', status: 'PENDING', requested_by: 'COORD-001',
+    event_name: 'Q4 Partner Summit',
+    start_datetime: '2026-11-20T10:00:00.000Z', end_datetime: '2026-11-20T12:00:00.000Z',
+    submitted_at: '2026-10-14T09:00:00.000Z'
+  };
+  const bookingRef = { path: 'venue_bookings/VB-001', id: 'VB-001' };
+  const assignmentRef = { path: 'venue_staff/VEN-001', id: 'VEN-001' };
+  mockGetDoc.mockResolvedValue(snapshot('VB-001', booking, bookingRef));
+  mockGetDocs.mockImplementation((reference) => {
+    if (reference.path === 'venue_staff') return Promise.resolve({ docs: [{ ref: assignmentRef, data: () => ({ venue_id: 'VEN-001', user_id: 'STAFF-001' }) }] });
+    if (reference.path === 'venue_bookings') return Promise.resolve({ docs: [{ id: 'VB-001', ref: bookingRef, data: () => booking }] });
+    return Promise.resolve({ docs: [] });
+  });
+  mockTransactionDocuments.set(bookingRef.path, snapshot('VB-001', booking, bookingRef));
+  mockTransactionDocuments.set('venues/VEN-001', snapshot('VEN-001', { name: 'Harbour Hall', setup_minutes: 30, turnaround_minutes: 15 }));
+  mockTransactionDocuments.set(assignmentRef.path, snapshot('VEN-001', { venue_id: 'VEN-001', user_id: 'STAFF-001' }, assignmentRef));
+
+  await approveVenueBooking({ user: { uid: 'STAFF-001' }, bookingId: 'VB-001' });
+
+  const notices = mockTransactionSet.mock.calls
+    .filter(([reference]) => reference.path.startsWith('notifications/'))
+    .map(([, data]) => data);
+  expect(notices).toEqual([expect.objectContaining({
+    type: 'VENUE_BOOKING_APPROVED',
+    user_id: 'COORD-001', event_id: 'EVT-001', booking_id: 'VB-001', venue_id: 'VEN-001',
+    message: 'Q4 Partner Summit: the booking for Harbour Hall was approved.',
+    is_read: false, created_at: 'SERVER_TIMESTAMP'
+  })]);
+});
+
+// J6 / SCRUM-155 AC1 — TC-335 – TC-337: who is told, and when nobody is.
+const approvalSetup = ({ booking: changes = {}, others = [] } = {}) => {
+  const booking = {
+    event_id: 'EVT-001', venue_id: 'VEN-001', status: 'PENDING', requested_by: 'COORD-001',
+    event_name: 'Q4 Partner Summit',
+    start_datetime: '2026-11-20T10:00:00.000Z', end_datetime: '2026-11-20T12:00:00.000Z',
+    submitted_at: '2026-10-14T09:00:00.000Z', ...changes
+  };
+  const bookingRef = { path: 'venue_bookings/VB-001', id: 'VB-001' };
+  const assignmentRef = { path: 'venue_staff/VEN-001', id: 'VEN-001' };
+  const otherDocs = others.map((data, index) => {
+    const ref = { path: `venue_bookings/VB-OTHER-${index}`, id: `VB-OTHER-${index}` };
+    mockTransactionDocuments.set(ref.path, snapshot(ref.id, data, ref));
+    return { id: ref.id, ref, data: () => data };
+  });
+  mockGetDoc.mockResolvedValue(snapshot('VB-001', booking, bookingRef));
+  mockGetDocs.mockImplementation((reference) => {
+    if (reference.path === 'venue_staff') return Promise.resolve({ docs: [{ ref: assignmentRef, data: () => ({ venue_id: 'VEN-001', user_id: 'STAFF-001' }) }] });
+    if (reference.path === 'venue_bookings') return Promise.resolve({ docs: [{ id: 'VB-001', ref: bookingRef, data: () => booking }, ...otherDocs] });
+    return Promise.resolve({ docs: [] });
+  });
+  mockTransactionDocuments.set(bookingRef.path, snapshot('VB-001', booking, bookingRef));
+  mockTransactionDocuments.set('venues/VEN-001', snapshot('VEN-001', { name: 'Harbour Hall', setup_minutes: 30, turnaround_minutes: 15 }));
+  mockTransactionDocuments.set(assignmentRef.path, snapshot('VEN-001', { venue_id: 'VEN-001', user_id: 'STAFF-001' }, assignmentRef));
+};
+// Anything written to notifications, whatever its type, so a notice written
+// with the wrong type is still seen.
+const outcomeNotices = () => mockTransactionSet.mock.calls
+  .filter(([reference]) => reference.path.startsWith('notifications/'))
+  .map(([, data]) => data);
+
+test('TC-335 a booking with no recorded raiser is still approved, with nobody notified', async () => {
+  approvalSetup({ booking: { requested_by: undefined } });
+
+  await expect(approveVenueBooking({ user: { uid: 'STAFF-001' }, bookingId: 'VB-001' }))
+    .resolves.toEqual({ booking_id: 'VB-001', status: 'APPROVED' });
+  expect(outcomeNotices()).toEqual([]);
+});
+
+test('TC-336 an approval that is refused tells nobody anything', async () => {
+  approvalSetup({ others: [{
+    event_id: 'EVT-002', venue_id: 'VEN-001', status: 'APPROVED',
+    start_datetime: '2026-11-20T11:00:00.000Z', end_datetime: '2026-11-20T13:00:00.000Z'
+  }] });
+
+  await expect(approveVenueBooking({ user: { uid: 'STAFF-001' }, bookingId: 'VB-001' })).rejects.toThrow(/clashes with approved booking/);
+  expect(outcomeNotices()).toEqual([]);
+  expect(mockTransactionSet).not.toHaveBeenCalled();
+  expect(mockTransactionUpdate).not.toHaveBeenCalled();
+});
+
+test('TC-337 one approval, one notification, unread, even when the booking carries no event name', async () => {
+  approvalSetup({ booking: { event_name: undefined } });
+
+  await approveVenueBooking({ user: { uid: 'STAFF-001' }, bookingId: 'VB-001' });
+
+  expect(outcomeNotices()).toEqual([{
+    notification_id: 'notifications-auto', user_id: 'COORD-001', event_id: 'EVT-001',
+    type: 'VENUE_BOOKING_APPROVED', message: 'Your event: the booking for Harbour Hall was approved.',
+    is_read: false, created_at: 'SERVER_TIMESTAMP', read_at: null,
+    booking_id: 'VB-001', venue_id: 'VEN-001'
+  }]);
 });
 
 test('F8 cancellation release clears the linked booking while retaining history records', async () => {

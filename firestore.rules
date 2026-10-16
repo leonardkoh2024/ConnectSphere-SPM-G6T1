@@ -45,8 +45,11 @@ service cloud.firestore {
       // A6 — the Lead reads any profile so its board can name each event's
       // organiser and coordinator; others still see only themselves and active
       // coordinators.
-      // C2 AC2 / C3 AC2 — a coordinator reads one organiser's profile at a time (never
-      // lists them) so their events can show the organiser's name and contact.
+
+      // C2 AC2 — a coordinator reads organiser profiles, so their event lists
+      // and event details can name each event's organiser. Attendee and other
+      // staff profiles stay closed to them.
+
       allow get: if signedIn() && (userId == request.auth.uid
         || hasRole('EVENT_COORDINATOR_LEAD')
         || (hasRole('EVENT_COORDINATOR') && resource.data.role == 'EVENT_ORGANISER')
@@ -340,6 +343,21 @@ service cloud.firestore {
     }
 
     match /notifications/{notificationId} {
+      // J6 AC1 — a booking's outcome, told by the Venue Staff member deciding it
+      // to the coordinator who raised it. `booking` is read after the write, and
+      // both timestamps must be this request's, so the notice can only be written
+      // in the same commit as the decision, never replayed afterwards.
+      function venueBookingOutcomeNotice(booking) {
+        return booking.event_id == request.resource.data.event_id
+          && booking.venue_id == request.resource.data.venue_id
+          && booking.requested_by == request.resource.data.user_id
+          && booking.decided_by == request.auth.uid
+          && booking.decided_at == request.time
+          && request.resource.data.created_at == request.time
+          && ((request.resource.data.type == 'VENUE_BOOKING_APPROVED' && booking.status == 'APPROVED')
+            || (request.resource.data.type == 'VENUE_BOOKING_REJECTED' && booking.status == 'REJECTED'))
+          && assignedVenueStaff(booking.venue_id);
+      }
       // J1 AC2 — a user reads only notifications addressed to them. AC3/AC4 — the
       // one change they may make is marking one read: it cannot be re-addressed,
       // reworded or marked unread, and with no delete rule it stays in the list.
@@ -348,9 +366,20 @@ service cloud.firestore {
         && request.resource.data.is_read == true
         && request.resource.data.read_at is timestamp
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['is_read', 'read_at']);
+      // J6 AC3 — equipment outcomes are written only by the equipment service,
+      // whose Admin SDK bypasses these rules, so no browser may create one. J6
+      // AC1 — a venue booking outcome passes only the decider's clause, and no
+      // other clause, so nobody else can send one.
       allow create: if signedIn()
         && request.resource.data.notification_id == notificationId
+        && !(request.resource.data.get('type', '') in ['EQUIPMENT_ARRANGED', 'EQUIPMENT_UNABLE_TO_FULFIL'])
         && (
+          (request.resource.data.get('type', '') in ['VENUE_BOOKING_APPROVED', 'VENUE_BOOKING_REJECTED']
+            && request.resource.data.get('booking_id', null) is string
+            && venueBookingOutcomeNotice(
+              getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data))
+          || (!(request.resource.data.get('type', '') in ['VENUE_BOOKING_APPROVED', 'VENUE_BOOKING_REJECTED'])
+            && (
           (currentCoordinator(request.resource.data.event_id)
             && request.resource.data.user_id in [request.auth.uid,
               get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.organiser_id,
@@ -376,7 +405,7 @@ service cloud.firestore {
           || (request.resource.data.get('venue_id', null) is string
             && exists(/databases/$(database)/documents/venue_staff/$(request.resource.data.venue_id))
             && get(/databases/$(database)/documents/venue_staff/$(request.resource.data.venue_id)).data.user_id == request.resource.data.user_id)
-        );
+        )));
     }
 
     // E2 / E5 — catalogue and search reads are Coordinator and Venue Staff only.

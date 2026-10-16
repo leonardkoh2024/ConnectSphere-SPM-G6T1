@@ -1,7 +1,8 @@
 // J1 / SCRUM-150 — the inbox every role has under Notifications. AC1: each row
 // shows the message, the related event and when it arrived. AC3: unread rows are
 // marked, and opening one marks it read. AC4: read rows stay in the list.
-// View opens the related event on the screen the workspace picks for the role;
+// View opens the related event on the screen the workspace picks for the role
+// (J6: a booking or equipment outcome opens that booking or request instead);
 // with no `onViewEvent`, or an event this user can no longer read, there is none.
 // The list itself comes from the workspace (useNotifications), which also feeds
 // the sidebar badge, so the two never disagree.
@@ -53,7 +54,7 @@ export default function NotificationInbox({ notifications, loading, error, onOpe
   // Viewing the event is attending to the notification, so it counts as opening it.
   const view = (notification, event) => {
     if (isUnread(notification)) onOpen(notification.id);
-    onViewEvent(event);
+    onViewEvent(event, notification);
   };
 
   return <>

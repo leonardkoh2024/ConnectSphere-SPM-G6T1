@@ -51,6 +51,13 @@ an `event` service just to host one write, `coordinatorAssignment` is allowed to
 collection. Revisit this once the `event` service exists; the natural move then is for `event` to own the
 write and `coordinatorAssignment` to expose only the rotation decision.
 
+**Scoped exception — `equipment` reads `events` and creates `notifications`.** J6 (SCRUM-155) tells the
+coordinator when an equipment request is arranged or a line cannot be fulfilled, and the notification is
+written in the same transaction as that decision so the two never disagree. `notification` is not built
+yet, so `equipment` reads `coordinator_id` and `name` from `events/{eventId}` and creates `notifications`
+documents in the inbox's shape, and nothing else on either collection. See
+`src/services/equipment/outcomeNotifications.js`. Revisit once `notification` exists.
+
 `firestore.rules` stays at the repo root. Authorisation is enforced there regardless of what lives in this
 folder, because the browser can still reach Firestore directly.
 

@@ -45,7 +45,7 @@ const venueVerdict = (venue, requirements) => {
   };
 };
 
-export default function VenueBookings({ user, event: initialEvent = null, venue: initialVenue = null, onViewEvent, onBackChange, creating: creatingProp, onCreatingChange }) {
+export default function VenueBookings({ user, event: initialEvent = null, venue: initialVenue = null, focusBookingId = null, onViewEvent, onBackChange, creating: creatingProp, onCreatingChange }) {
   const [events, setEvents] = useState([]);
   const [venues, setVenues] = useState([]);
   const [eventId, setEventId] = useState(initialEvent?.id || initialEvent?.event_id || "");
@@ -58,7 +58,8 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
   const [ownCreating, setOwnCreating] = useState(Boolean(initialEvent || initialVenue));
   const creating = headerHosted ? Boolean(creatingProp) : ownCreating;
   const setCreating = headerHosted ? onCreatingChange : setOwnCreating;
-  const [openBooking, setOpenBooking] = useState(null);
+  // J6 AC2 — arriving from a booking's outcome notification opens that booking.
+  const [openBooking, setOpenBooking] = useState(focusBookingId);
   const [confirmWithdraw, setConfirmWithdraw] = useState(null);
   const [actionError, setActionError] = useState("");
   const [withdrawing, setWithdrawing] = useState(false);
@@ -79,6 +80,11 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, [user]);
+
+  useEffect(() => {
+    if (loading || !focusBookingId) return;
+    document.getElementById(`venue-booking-${focusBookingId}`)?.scrollIntoView?.({ block: "start" });
+  }, [loading, focusBookingId]);
 
   // The list view carries no venue requirements — only the detail does — so the
   // chosen event is always re-read before it is judged against a venue.
@@ -156,7 +162,7 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
               const expanded = openBooking === booking.booking_id;
               const venueRecord = venues.find((item) => item.venue_id === booking.venue_id);
               return (
-                <article className="cs-record" key={booking.booking_id}>
+                <article className="cs-record" key={booking.booking_id} id={`venue-booking-${booking.booking_id}`}>
                   <div className="cs-record-title">
                     <h2>{bookingEventName(booking)}</h2>
                     <p>{venueName(booking.venue_id)}</p>
