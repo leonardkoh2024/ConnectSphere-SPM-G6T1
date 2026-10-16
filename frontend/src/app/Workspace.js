@@ -21,6 +21,7 @@ import VenueBookings from "../features/venues/VenueBookings";
 import VenueBookingQueue from "../features/venues/VenueBookingQueue";
 import VenueSearch from "../features/venues/VenueSearch";
 import VenueSafetyInformation from "../features/venues/VenueSafetyInformation";
+import SafetyReviewScreen from "../features/safety/SafetyReviewScreen";
 import EquipmentRequestsScreen from "../features/equipment/EquipmentRequestsScreen";
 import EquipmentQueueScreen from "../features/equipment/EquipmentQueueScreen";
 import EquipmentAvailabilityScreen from "../features/equipment/EquipmentAvailabilityScreen";
@@ -166,6 +167,7 @@ export default function Workspace({ user, role }) {
   else if (role === ROLES.VENUE_STAFF && screen.name === "Booking requests") contents = <>{head(screen.name, screen.blurb)}<VenueBookingQueue user={user} onNotice={showToast} /></>;
   else if (role === ROLES.VENUE_STAFF && screen.name === "Venue catalogue") contents = <>{head(screen.name, screen.blurb, viewCalendar)}<VenueCatalogue user={user} role={role} showCalendar={venueCalendarOpen} /></>;
   else if (role === ROLES.VENUE_STAFF && screen.name === "Availability calendar") contents = <>{head(screen.name, screen.blurb)}<VenueAvailabilityCalendar user={user} role={role} /></>;
+  else if (role === ROLES.SAFETY_OFFICER && screen.name === "Safety reviews") contents = <>{head(screen.name, screen.blurb)}<SafetyReviewScreen onNotice={showToast} onBackChange={reportBack} /></>;
   else if (role === ROLES.SAFETY_OFFICER && screen.name === "Venue safety information") contents = <>{head(screen.name, screen.blurb)}<VenueSafetyInformation /></>;
   else if (role === ROLES.COORDINATOR_LEAD && screen.name === "Unassigned queue") contents = <>{head(screen.name, screen.blurb)}<LeadAssignmentScreen view="queue" onNotice={showToast} /></>;
   else if (role === ROLES.COORDINATOR_LEAD && screen.name === "Oversight") contents = <>{head(screen.name, screen.blurb)}<LeadAssignmentScreen view="oversight" onNotice={showToast} /></>;

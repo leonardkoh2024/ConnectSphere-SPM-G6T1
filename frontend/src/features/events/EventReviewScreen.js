@@ -9,6 +9,7 @@ import EventDetailTabs from "./components/EventDetailTabs";
 import ClarificationThread from "./components/ClarificationThread";
 import SignificantChangeEditor from "./components/SignificantChangeEditor";
 import { editableEventStatuses } from "../../domain/significantEventChanges";
+import SafetyPlanningNotes from "../safety/SafetyPlanningNotes";
 
 const shownTime = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Not recorded";
 
@@ -187,6 +188,16 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
           ? <ul className="cs-tag-list">{request.equipment.map((item, index) => <li key={index}>{item.label}{item.notes ? ` — ${item.notes}` : ""}</li>)}</ul>
           : <p className="cs-panel-note">No equipment requested.</p>}
       </section>
+      {/* A7 AC3 — keyed on the last update so a save reloads it with what was stored. */}
+      <SafetyPlanningNotes
+        key={`${event.id}-${event.updated_at || ""}`}
+        event={event}
+        onSaved={async () => {
+          await loadList();
+          await loadDetail(selected, false);
+          onNotice?.("Safety planning notes saved.");
+        }}
+      />
       {request.registration && <section className="cs-request-section">
         <h3>Registration</h3>
         <dl className="cs-detail-grid">

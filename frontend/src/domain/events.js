@@ -8,7 +8,7 @@
 // the pill does that on its own, but only once you read it, so each status also
 // carries a tone.
 //
-// The design system is explicit that the nine statuses map onto its five status
+// The design system is explicit that the ten statuses map onto its five status
 // tones rather than taking nine colours of their own, which is why APPROVED and
 // CONFIRMED share one: the tone says how the event is doing, the word says exactly
 // where it has got to. Accent violet is deliberately not used — the system warns
@@ -19,6 +19,8 @@ export const STATUS_TONE = {
   UNDER_REVIEW: "warning",
   APPROVED: "positive",
   PLANNING: "info",
+  // Waiting on someone other than the coordinator, like Under Review.
+  SAFETY_REVIEW: "warning",
   CONFIRMED: "positive",
   COMPLETED: "neutral",
   CANCELLED: "danger",

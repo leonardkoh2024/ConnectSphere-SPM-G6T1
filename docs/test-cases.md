@@ -39,6 +39,7 @@ they can be read next to the acceptance criteria and move into the service layer
 | E8 | SCRUM-124 | Be stopped before booking an unsuitable venue | TC-112 – TC-174 |
 | E4 | SCRUM-120 | See when a venue is free | TC-200 – TC-249 |
 | J6 | SCRUM-155 | Be told the outcome of my booking and equipment requests (AC1: approval only — rejection awaits F5) | TC-313 – TC-346 |
+| A7 | SCRUM-170 | Use ConnectSphere as a Safety Officer | TC-348 – TC-383 |
 | E7 | — | Know whether a venue actually suits the event | TC-112 – TC-116 |
 | C6 | SCRUM-TBD | Approve a submitted request | TC-112 – TC-117 |
 | C2 | SCRUM-103 | See the events I am responsible for | TC-118 – TC-128, TC-347 |
@@ -807,3 +808,91 @@ Pre-condition for the functional cases: an Event Coordinator is signed in and th
 | TC-341 | Only the named event's equipment request opens | Two events with arranged requests | Render Equipment requests focused on event-2 | event-2's disclosures are open; event-1's are closed | As expected | Pass | AC4 |
 | TC-342 | Without a named event nothing opens or scrolls | One arranged request with no times | Render Equipment requests with no focus | Both disclosures closed, nothing scrolled, the date shown alone | As expected | Pass | AC4 - boundary |
 | TC-345 | The named event is scrolled into view | One arranged request | Render Equipment requests focused on event-1 | That record is scrolled into view after loading | As expected | Pass | AC4 |
+
+---
+
+## A7 / SCRUM-170 — Use ConnectSphere as a Safety Officer
+
+> As a Safety Officer, I want to sign in and access only operational safety review functions so that I can assess planned events functions.
+
+**Acceptance criteria:** AC1 — a seeded Safety Officer account can sign in; no public account-creation flow exists for the role. AC2 — the Safety Officer can access events awaiting an Operational Safety Check. AC3 — they can access the information the review needs: expected attendance, venue capacity and layout, emergency access, accessibility requirements, equipment placement, crowd movement and known venue restrictions. AC4 — they can record one outcome: approve, reject or request changes. AC5 — functions not permitted to the role are not in its navigation. AC6 — restricted functions are refused server-side even when asked for directly.
+
+**Scope:** the Safety Officer's navigation is Safety reviews, Venue safety information and Notifications. Safety reviews (`features/safety/SafetyReviewScreen.js`) lists the events in Safety Review, oldest first, and opens a review of one: every active venue booking with its expected attendance against the venue's capacity, layout, emergency access and known restrictions; the accessibility requirements; requested and reserved equipment; equipment placement; crowd movement; and earlier checks with their comments. The outcome form writes, in one transaction (`features/safety/safetyApi.js`), a write-once `safety_reviews` record, the event's move (Approve → Confirmed, Reject / Request changes → Planning, with `last_safety_review_id`), an event history entry, and a notification to the event's coordinator and organiser. Reject and Request changes need a comment. Equipment placement and crowd movement had no source anywhere, so the event's coordinator now records them as **safety planning notes** on their event view while it is Approved or in Planning (`features/safety/SafetyPlanningNotes.js`). The rules are in `domain/safetyReview.js`; `firestore.rules` gains read access to reserved equipment for an event under review, and `coordinatorSafetyNotesUpdate` for the two notes. The rest of the Safety Officer's rules (event reads, `safety_reviews`, `safetyOutcomeUpdate`) were already in `firestore.rules` from A6 and are covered here for the first time.
+
+**Overlap and gaps:** AC2–AC4 overlap L2 (SCRUM-188) and L3 (SCRUM-189), both unassigned. A7 builds the queue, the review and the outcome; it does not build L1 (sending an event for its safety check, SCRUM-187), so no event reaches Safety Review through the app yet, nor L4's flagging of arrangements for review (SCRUM-190). Approving needs the event's `approved_venue_booking_id`, as `safetyOutcomeUpdate` already required, and every active venue booking approved (F12); the second is checked in the browser only, because a rule cannot read across an event's bookings. The rule tests read `firestore.rules` as text; they do not run it, so whether a given write is allowed is still to be shown in the Rules Playground or the emulator. Not changed here: J4's rule letting any signed-in user notify a venue's staff, which the Safety Officer can therefore use too.
+
+**AC coverage:** AC1 — TC-378 – TC-380. AC2 — TC-348, TC-356, TC-362, TC-372. AC3 — TC-352, TC-354, TC-355, TC-357, TC-361, TC-363, TC-364, TC-368 – TC-370, TC-375, TC-377. AC4 — TC-349 – TC-351, TC-353, TC-358 – TC-360, TC-365 – TC-367, TC-373, TC-374, TC-381 – TC-383. AC5 — TC-371. AC6 — TC-350, TC-360, TC-371 (client half); TC-372 – TC-376, TC-383 (the rule text).
+
+**Executed:** 16 Oct 2026 — every case below, with the full frontend suite, after each change. Mutation check: 42 deliberate breakages of the A7 code, rules and navigation, each run against these cases; all 42 were caught (one, a booking's own attendance being ignored, only after TC-357 was given a booking whose attendance differs from the event's). An independent review then traced every write against `firestore.rules`; its findings led to TC-381 – TC-383 and the tightened rows TC-373, TC-375, TC-376 and TC-377.
+
+**Unit tests — `frontend/src/domain/safetyReview.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-348 | The queue holds only events in Safety Review, longest-waiting first | Events in Safety Review, Planning and Confirmed | Build the queue | Only Safety Review events, ordered by when they were sent (else last update), oldest first | As expected | Pass | AC2; L2 AC1 |
+| TC-349 | An outcome is one of three, and only Approve may go without a comment | — | Validate each outcome with and without a comment | Approve passes bare; Reject / Request changes with a blank or whitespace comment are refused; an unknown outcome is refused | As expected | Pass | AC4; L3 AC1–AC2 |
+| TC-350 | Only the Safety Officer may record an outcome, only during Safety Review | — | Check every role and status | True only for the Safety Officer on a Safety Review event | As expected | Pass | AC4, AC6; L3 AC5 |
+| TC-351 | Approve confirms; Reject and Request changes return to Planning | — | Map each outcome; check the approval blocker | Confirmed / Planning / Planning; approval refused without an approved venue booking | As expected | Pass | AC4; L3 AC4, L4 AC1 |
+| TC-352 | Only active bookings are reviewed, each with attendance against capacity | Bookings in every status | Filter; compute capacity facts | Released, replaced, rejected, cancelled, expired dropped; 120 of 100 exceeds, 100 of 100 does not, an unrecorded capacity is not a breach | As expected | Pass | AC3; L2 AC2 |
+| TC-353 | The outcome notice names the event, the result and the comment | — | Build each message and type | Approve: passed and Confirmed; Reject / Request changes: back in Planning with the comment | As expected | Pass | AC4 |
+| TC-354 | Safety planning notes: coordinator only, Approved or Planning only, 2000 characters | — | Check statuses, coordinators, trimming and the limit | Editable only by the current coordinator in Approved / Planning; trimmed; 2001 characters refused | As expected | Pass | AC3 |
+| TC-355 | Safety Review is a status of its own; an unrecorded fact reads "Not recorded" | — | Check the status list, its tone and the fallback | SAFETY_REVIEW and CONFIRMED exist; Safety Review has the warning tone; blank → "Not recorded" | As expected | Pass | AC3 |
+
+**Data access — `frontend/src/features/safety/safetyApi.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-356 | The queue reads only events in Safety Review and names their venues | Two events in Safety Review; one active and one released booking | Load the queue | Events queried with `status == SAFETY_REVIEW`; bookings by `event_id`; released venue left out; oldest first | As expected | Pass | AC2 — the events rule refuses an unfiltered query |
+| TC-357 | The review gathers every AC3 fact, and opens only events awaiting a check | Event with requirements, accessibility, equipment, reservations, bookings and two earlier reviews | Open the review; then try an event in Planning and a missing one | All queries pinned to the event; booking attendance 130 (not the event's 150) against capacity 120 flagged; released booking and reservation left out; earlier reviews in order; Planning and missing events refused before any read | As expected | Pass | AC3; L2 AC2–AC4 |
+| TC-358 | Approve writes the review, confirms the event and tells coordinator and organiser | Event in Safety Review whose only booking is approved; Safety Officer signed in | Record Approve | The event's bookings read; one `safety_reviews` record; event → Confirmed with `last_safety_review_id` and nothing else; history; two notices | As expected | Pass | AC4 — the shape `safetyOutcomeUpdate` checks |
+| TC-359 | Request changes / Reject return the event to Planning with the comment | As TC-358 | Record each with a padded comment | Event → Planning; trimmed comment in the record, history and both notices | As expected | Pass | AC4; L4 AC1 |
+| TC-360 | Refused outcomes write nothing | Blank comment; event in Planning; caller a coordinator; no approved booking; unknown outcome | Record each | Each refused with its reason; no write at all | As expected | Pass | AC4, AC6 |
+| TC-361 | The coordinator saves safety planning notes, with history; others are refused | Event in Planning | Save as its coordinator; then as another coordinator, in Safety Review, over the limit, unchanged | Only the two notes and `updated_at` change, with a history entry; each refusal writes nothing | As expected | Pass | AC3 |
+
+**Functional tests — `frontend/src/features/safety/SafetyReviewScreen.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-362 | The queue lists each event awaiting its check; empty and refused reads say so | One queued event; then none; then a refused read | Render Safety reviews | Name, reference, date and time, venues and expected attendance; "No events are awaiting a safety check."; the refusal as an alert | As expected | Pass | AC2 |
+| TC-363 | Each booking shows attendance against capacity, layout, emergency access and restrictions | Review with one booking over capacity | Open the review | "150 of 120" with "Exceeds venue capacity", THEATRE, the venue's emergency access and restrictions | As expected | Pass | AC3 |
+| TC-364 | Accessibility, equipment, placement, crowd movement and earlier checks are shown | Full review; then one with nothing recorded | Open the review | Every fact shown; anything unrecorded reads "Not recorded" or says there is none | As expected | Pass | AC3; L2 AC3–AC4 |
+| TC-365 | Request changes needs a comment; with one it is recorded and the queue reloads | Open review | Choose Request changes, submit; add a comment, submit | First refused on screen with nothing sent; then recorded, confirmed in a toast, and the re-read queue is empty | As expected | Pass | AC4 |
+| TC-366 | Approve needs no comment; nothing is sent until an outcome is chosen | Open review | Submit with no choice; choose Approve, submit | First refused; then Approve recorded with an empty comment | As expected | Pass | AC4 |
+| TC-367 | A refused outcome is shown and the review stays open; the way back | Open review; Firestore refuses | Approve; then leave the review | The refusal is shown in the form; the workspace header's back (called) and the screen's own button each return to the queue | As expected | Pass | AC4, AC6 |
+
+**Functional tests — `frontend/src/features/safety/SafetyPlanningNotes.test.js` and `frontend/src/features/events/EventReviewScreen.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-368 | The current coordinator edits and saves both notes | Event in Planning (and Approved) | Type crowd movement; save; then a refused save | Saved with both values; a refusal is shown and the typed notes kept | As expected | Pass | AC3 |
+| TC-369 | Otherwise the notes are read only | Previous coordinator; Safety Review; Confirmed; Under Review | Render the notes | No text box or button; values shown, blanks as "Not recorded" | As expected | Pass | AC3 |
+| TC-370 | The notes are on the coordinator's event view, and a save reloads the event | Assigned event in Planning; one Under Review | Open each event | Editable section on the Planning event, saved with a toast and a reload; read only Under Review | As expected | Pass | AC3 |
+
+**Navigation and sign-in — `frontend/src/app/Workspace.test.js` and `frontend/src/app/App.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-371 | The Safety Officer reaches only safety review functions | Signed in as the Safety Officer | Render the workspace; ask for other roles' screens by hash; render every other role | Navigation is Safety reviews, Venue safety information, Notifications, landing on Safety reviews; every other role's screen is "Not authorised"; no other role is offered Safety reviews | As expected | Pass | AC5, AC6 (client half). The TC-014 matrix is updated to match |
+| TC-378 | A seeded Safety Officer signs in to their own workspace | A `users` profile with role SAFETY_OFFICER | Sign in | The Safety Officer workspace opens | As expected | Pass | AC1 |
+| TC-379 | The Safety Officer cannot be self-provisioned from an email address | — | Resolve safety-sounding addresses on both portals | Never SAFETY_OFFICER; always Attendee on the individual portal | As expected | Pass | AC1 |
+
+**Server rules — `frontend/src/security/firestoreRules.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-372 | The Safety Officer may read an event only while it is in Safety Review | firestore.rules | Inspect the events read rule and `safetyReviewing` | One Safety Officer clause, bound to `status == SAFETY_REVIEW` | As expected | Pass | AC2, AC6 |
+| TC-373 | A safety review is created once, by its reviewer, with a valid outcome, and never changed | firestore.rules | Inspect `safety_reviews` | Create needs the event under review, matching ids, reviewer = caller, a valid outcome, a comment unless Approve, `decided_at` = this request's time; no update or delete | As expected | Pass | AC4 |
+| TC-374 | The event moves only to the status its review record names | firestore.rules | Inspect `safetyOutcomeUpdate` | Approve → Confirmed with an approved booking; Reject / Request changes → Planning; only status, review id and timestamp change | As expected | Pass | AC4 |
+| TC-375 | Review facts are readable by the Safety Officer only for an event under review | firestore.rules | Inspect each fact collection | Requirements, accessibility, equipment, reservations, bookings, history and earlier safety reviews through `safetyReviewing`; venue catalogue facts by role | As expected | Pass | AC3, AC6 |
+| TC-376 | The Safety Officer can write only the outcome, its history and its notices | firestore.rules | Find every collection whose write rule names the role or its helpers | Exactly events, safety_reviews, event_history and notifications | As expected | Pass | AC6. Checks the rule text: clauses open to any signed-in user (J4's Venue Staff notices) are not found this way |
+| TC-377 | The coordinator may set only the two notes, on their own event, while planning | firestore.rules | Inspect `coordinatorSafetyNotesUpdate` | Coordinator of the event, Approved / Planning, status unchanged, strings of at most 2000, `updated_at` = this request's time, only those keys | As expected | Pass | AC3 |
+| TC-380 | A Safety Officer account cannot be created or claimed from the browser | firestore.rules | Inspect the users rules | Create allows only organiser and attendee; a user cannot change their own role | As expected | Pass | AC1 |
+
+**Added after the independent review — `frontend/src/domain/safetyReview.test.js`, `frontend/src/features/safety/safetyApi.test.js` and `frontend/src/security/firestoreRules.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-381 | Approve is refused while any active venue booking is not yet approved | Event with an approved main booking, a pending breakout and a released room | Check the blocker; record Approve through the API | Refused naming "Breakout 1"; the released room does not count; nothing written | As expected | Pass | AC4; F12. Browser check only — see Overlap and gaps |
+| TC-382 | A safety review counts only in the commit that records it | firestore.rules | Inspect `safetyOutcomeUpdate` and the `safety_reviews` create | The linked review must be decided at this request's time; a review can be created only if the event points at it after the commit; the approved booking is looked up only on Approve | As expected | Pass | AC4. Stops an old Approve record confirming a later check (CLAUDE.md: a check made after the most recent return to Planning) |
+| TC-383 | The Safety Officer writes history and notices only alongside an outcome | firestore.rules | Inspect `safetyOutcomeCommit`, `event_history` and `notifications` | Both require the event to leave Safety Review in the same commit with a review decided now, and an outcome type; no bare `safetyReviewing` write clause remains | As expected | Pass | AC4, AC6. Stops a forged "safety check approved" notice |
+

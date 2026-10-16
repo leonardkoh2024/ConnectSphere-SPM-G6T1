@@ -9,6 +9,9 @@ export const EVENT_STATUS = {
   UNDER_REVIEW: "UNDER_REVIEW",
   APPROVED: "APPROVED",
   PLANNING: "PLANNING",
+  // L1 / A7 — between Planning and Confirmed, while the Safety Officer checks it.
+  SAFETY_REVIEW: "SAFETY_REVIEW",
+  CONFIRMED: "CONFIRMED",
   REJECTED: "REJECTED",
   COMPLETED: "COMPLETED",
   CANCELLED: "CANCELLED"

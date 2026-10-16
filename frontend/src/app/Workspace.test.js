@@ -30,6 +30,8 @@ jest.mock('../features/events/LeadAssignmentScreen', () => ({ __esModule: true, 
 jest.mock('../features/venues/VenueCatalogue', () => ({ __esModule: true, default: (props) => (props.showCalendar ? 'calendar open' : 'venue list') }));
 jest.mock('../features/venues/VenueSearch', () => ({ __esModule: true, default: (props) => (props.showCalendar ? 'calendar open' : 'venue list') }));
 jest.mock('../features/venues/VenueSafetyInformation', () => ({ __esModule: true, default: () => 'venue safety information' }));
+// A7 — the Safety Officer's review screen reports only that it was opened.
+jest.mock('../features/safety/SafetyReviewScreen', () => ({ __esModule: true, default: () => 'safety review queue' }));
 // J6 — the coordinator's booking and equipment screens report which record they were asked to open.
 jest.mock('../features/equipment/EquipmentRequestsScreen', () => ({ __esModule: true, default: (props) => (props.focusEventId ? `equipment request of ${props.focusEventId}` : 'equipment requests') }));
 jest.mock('../features/venues/VenueBookings', () => ({ __esModule: true, default: (props) => (props.focusBookingId ? `booking ${props.focusBookingId}` : 'venue bookings') }));
@@ -59,7 +61,7 @@ const PERMITTED_SCREENS = {
   [ROLES.ORGANISER]: ['My events', 'Change requests', 'Registrations', 'Notifications'],
   [ROLES.COORDINATOR]: ['Review queue', 'Assigned events', 'Venue catalogue', 'Venue bookings', 'Equipment requests', 'Registrations', 'Notifications'],
   [ROLES.VENUE_STAFF]: ['Booking requests', 'Venue catalogue', 'Availability calendar', 'Notifications'],
-  [ROLES.SAFETY_OFFICER]: ['Venue safety information', 'Notifications'],
+  [ROLES.SAFETY_OFFICER]: ['Safety reviews', 'Venue safety information', 'Notifications'],
   [ROLES.TECH_SUPPORT]: ['Equipment queue', 'Availability check', 'Reservations', 'Notifications'],
   [ROLES.ATTENDEE]: ['Browse events', 'My registrations', 'Notifications']
 };
@@ -347,5 +349,37 @@ describe('A6 the Event Coordinator Lead navigation', () => {
 
     expect(screen.getByRole('heading', { name: /not authorised/i })).toBeInTheDocument();
     expect(sidebarScreens(container)).toEqual(LEAD_SCREENS);
+  });
+});
+
+// A7 / SCRUM-170 AC5 — TC-371. The Safety Officer lands on the review queue, and
+// every screen of the roles they are not is refused to them by hash as well as
+// left out of their navigation (AC6 is the server half, in firestoreRules.test.js).
+describe('TC-371 the Safety Officer reaches only safety review functions', () => {
+  test('lands on Safety reviews, which renders the review queue', () => {
+    render(<Workspace user={USER} role={ROLES.SAFETY_OFFICER} />);
+    expect(screen.getByRole('heading', { name: 'Safety reviews' })).toBeInTheDocument();
+    expect(screen.getByText('safety review queue')).toBeInTheDocument();
+  });
+
+  test.each([
+    [ROLES.COORDINATOR, 'Assigned events'],
+    [ROLES.COORDINATOR, 'Venue bookings'],
+    [ROLES.VENUE_STAFF, 'Booking requests'],
+    [ROLES.TECH_SUPPORT, 'Equipment queue'],
+    [ROLES.COORDINATOR_LEAD, 'Unassigned queue'],
+    [ROLES.ORGANISER, 'New event request']
+  ])('a %s screen (%s) asked for by hash is refused', (owner, name) => {
+    window.location.hash = screenHash(owner, name);
+    render(<Workspace user={USER} role={ROLES.SAFETY_OFFICER} />);
+    expect(screen.getByRole('heading', { name: /not authorised/i })).toBeInTheDocument();
+  });
+
+  test('no other role is offered Safety reviews', () => {
+    Object.values(ROLES).filter((role) => role !== ROLES.SAFETY_OFFICER).forEach((role) => {
+      const { container, unmount } = render(<Workspace user={USER} role={role} />);
+      expect(sidebarScreens(container)).not.toContain('Safety reviews');
+      unmount();
+    });
   });
 });

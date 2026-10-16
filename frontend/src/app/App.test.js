@@ -179,6 +179,19 @@ describe('landing page', () => {
 
     expect(await screen.findByText(`Workspace role: ${ROLES.TECH_SUPPORT}`)).toBeInTheDocument();
   });
+
+  // A7 / SCRUM-170 AC1 — TC-378. A seeded Safety Officer signs in to their own workspace.
+  test('TC-378 a seeded Safety Officer profile is routed to the Safety Officer workspace', async () => {
+    onAuthStateChanged.mockImplementation((_auth, callback) => {
+      callback({ uid: 'safety-officer-1' });
+      return () => {};
+    });
+    getDoc.mockResolvedValue({ exists: () => true, data: () => ({ role: ROLES.SAFETY_OFFICER }) });
+
+    render(<App />);
+
+    expect(await screen.findByText(`Workspace role: ${ROLES.SAFETY_OFFICER}`)).toBeInTheDocument();
+  });
 });
 
 describe('resolveRole', () => {
@@ -220,6 +233,14 @@ describe('resolveRole', () => {
     expect(resolveRole('team.lead@connectsphere.com', 'corporate')).toBe(
       ROLES.ORGANISER
     );
+  });
+
+  // A7 AC1 — TC-379. Likewise the Safety Officer: seeded, never self-provisioned.
+  test('TC-379 the Safety Officer cannot be self-provisioned from a work email', () => {
+    ['safety.officer@connectsphere.com', 'safety@connectsphere.com', 'officer@connectsphere.com'].forEach((email) => {
+      expect(resolveRole(email, 'corporate')).not.toBe(ROLES.SAFETY_OFFICER);
+      expect(resolveRole(email, 'individual')).toBe(ROLES.ATTENDEE);
+    });
   });
 });
 

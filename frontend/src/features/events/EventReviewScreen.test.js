@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event';
 import EventReviewScreen from './EventReviewScreen';
 import { reviewApi } from './reviewApi';
 
+// A7 — the safety planning notes section saves through its own API.
+jest.mock('../safety/safetyApi', () => ({ savePlanningNotes: jest.fn(() => Promise.resolve({ ok: true })) }));
 jest.mock('./reviewApi', () => ({ reviewApi: {
   list: jest.fn(), detail: jest.fn(), openReview: jest.fn(), clarify: jest.fn(), approve: jest.fn(), reject: jest.fn(), reassign: jest.fn(),
   significantChangeImpact: jest.fn(), saveSignificantChange: jest.fn()
@@ -449,5 +451,32 @@ describe('C3 the full event request in the review view', () => {
 
     // The transition (and the record of who opened it) is reviewApi.openReview.
     await waitFor(() => expect(reviewApi.openReview).toHaveBeenCalledWith('e9'));
+  });
+});
+
+// A7 / SCRUM-170 AC3 — TC-370. The coordinator finds the safety planning notes on
+// the event they are planning, and saving them reloads the event and says so.
+describe("TC-370 safety planning notes on the coordinator's event", () => {
+  test('a Planning event offers the notes for editing, and a save reloads the event', async () => {
+    const { savePlanningNotes } = require('../safety/safetyApi');
+    reviewApi.list.mockResolvedValue({ events: [{ ...baseEvent, status: 'PLANNING' }] });
+    reviewApi.detail.mockResolvedValue(detail({ status: 'PLANNING', equipment_placement: 'Speakers by the stage' }));
+    const onNotice = jest.fn();
+    await openRequest({ onNotice });
+
+    const notes = screen.getByRole('region', { name: 'Safety planning notes' });
+    expect(within(notes).getByLabelText('Equipment placement')).toHaveValue('Speakers by the stage');
+    await userEvent.click(within(notes).getByRole('button', { name: 'Save safety notes' }));
+
+    expect(savePlanningNotes).toHaveBeenCalledWith({ eventId: 'e1', values: { equipment_placement: 'Speakers by the stage', crowd_movement: '' } });
+    await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Safety planning notes saved.'));
+    expect(reviewApi.detail).toHaveBeenCalledTimes(2);
+  });
+
+  test('an event still Under Review shows the notes read only', async () => {
+    await openRequest();
+    const notes = screen.getByRole('region', { name: 'Safety planning notes' });
+    expect(within(notes).queryByRole('textbox')).not.toBeInTheDocument();
+    expect(notes).toHaveTextContent('Crowd movementNot recorded');
   });
 });

@@ -1,0 +1,193 @@
+// A7 / SCRUM-170 — the Safety Officer's reads and outcome, and the coordinator's
+// safety planning notes. Browser Firebase SDK, like the rest of the frontend:
+// firestore.rules lets the Safety Officer read an event and its facts only while
+// it is in Safety Review, and write only the outcome of its check (AC6).
+
+import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
+import { auth, db } from "../../lib/firebase";
+import { EVENT_STATUS } from "../../domain/eventReview";
+import { eventHistoryRecord, notificationRecord } from "../../domain/eventReviewRecords";
+import {
+  SAFETY_OUTCOME,
+  activeBookings,
+  canEditPlanningNotes,
+  canRecordSafetyOutcome,
+  capacityFact,
+  cleanPlanningNotes,
+  safetyApprovalBlocker,
+  safetyNotificationType,
+  safetyOutcomeMessage,
+  safetyOutcomeStatus,
+  safetyQueue,
+  validatePlanningNotes,
+  validateSafetyOutcome
+} from "../../domain/safetyReview";
+
+const requireUser = () => {
+  if (!auth.currentUser) throw new Error("Please sign in again.");
+  return auth.currentUser;
+};
+
+const asIso = (value) => value?.toDate?.().toISOString?.() || value || null;
+const byEvent = (name, eventId) => getDocs(query(collection(db, name), where("event_id", "==", eventId)));
+
+const venuesById = async (venueIds) => {
+  const snapshots = await Promise.all([...new Set(venueIds.filter(Boolean))].map((venueId) => getDoc(doc(db, "venues", venueId))));
+  return new Map(snapshots.filter((item) => item.exists()).map((item) => [item.id, item.data()]));
+};
+
+// AC2 — the events awaiting their check. The query must filter on status: the
+// events rule lets the Safety Officer list nothing else.
+export const listSafetyQueue = async () => {
+  requireUser();
+  const events = await getDocs(query(collection(db, "events"), where("status", "==", EVENT_STATUS.SAFETY_REVIEW)));
+  const withBookings = await Promise.all(events.docs.map(async (item) => ({
+    event: { id: item.id, ...item.data(), updated_at: asIso(item.data().updated_at), safety_review_requested_at: asIso(item.data().safety_review_requested_at) },
+    bookings: activeBookings((await byEvent("venue_bookings", item.id)).docs.map((booking) => booking.data()))
+  })));
+  const venues = await venuesById(withBookings.flatMap(({ bookings }) => bookings.map((booking) => booking.venue_id)));
+  return safetyQueue(withBookings.map(({ event, bookings }) => ({
+    ...event,
+    venue_names: bookings.map((booking) => venues.get(booking.venue_id)?.name || booking.venue_id)
+  })));
+};
+
+// AC3 — every fact the review needs, for one event in Safety Review.
+export const safetyReviewDetail = async (eventId) => {
+  requireUser();
+  const eventSnapshot = await getDoc(doc(db, "events", eventId));
+  if (!eventSnapshot.exists()) throw new Error("Event not found.");
+  const event = { id: eventSnapshot.id, ...eventSnapshot.data() };
+  if (event.status !== EVENT_STATUS.SAFETY_REVIEW) throw new Error("This event is not awaiting a safety check.");
+
+  const [requirement, accessibility, equipment, reservations, bookingRows, reviews] = await Promise.all([
+    getDoc(doc(db, "event_venue_requirements", eventId)),
+    byEvent("event_accessibility", eventId),
+    byEvent("event_equipment", eventId),
+    byEvent("equipment_reservations", eventId),
+    byEvent("venue_bookings", eventId),
+    byEvent("safety_reviews", eventId)
+  ]);
+  const requirements = requirement.exists() ? requirement.data() : {};
+  const bookings = activeBookings(bookingRows.docs.map((item) => ({ booking_id: item.id, ...item.data() })));
+  const venues = await venuesById(bookings.map((booking) => booking.venue_id));
+
+  return {
+    event: {
+      ...event,
+      required_layout: requirements.required_layout || null,
+      accessibility: accessibility.docs.map((item) => item.data().accessibility_id).filter(Boolean),
+      accessibility_notes: requirements.accessibility_notes || "",
+      equipment: equipment.docs.map((item) => ({
+        equipment_type: item.data().equipment_type,
+        quantity: item.data().quantity || 1,
+        notes: item.data().technical_note || item.data().notes || null
+      })),
+      equipment_placement: event.equipment_placement || "",
+      crowd_movement: event.crowd_movement || ""
+    },
+    bookings: bookings.map((booking) => {
+      const venue = venues.get(booking.venue_id) || {};
+      return {
+        booking_id: booking.booking_id,
+        venue_id: booking.venue_id,
+        venue_name: venue.name || booking.venue_id,
+        label: booking.booking_label || venue.name || booking.venue_id,
+        status: booking.status,
+        start_datetime: asIso(booking.start_datetime),
+        end_datetime: asIso(booking.end_datetime),
+        ...capacityFact({ attendance: booking.expected_attendance ?? event.expected_attendance, capacity: venue.max_capacity }),
+        layout: booking.layout_snapshot || booking.requested_layout_id || requirements.required_layout || null,
+        emergency_access_notes: venue.emergency_access_notes || "",
+        known_restrictions: venue.known_restrictions || ""
+      };
+    }),
+    // Only what is actually reserved: released stock will not be in the room.
+    reservations: reservations.docs
+      .filter((item) => item.data().status === "RESERVED")
+      .map((item) => ({ reservation_id: item.id, equipment_type: item.data().equipment_type, quantity: item.data().quantity })),
+    // L2 AC4 — earlier checks, in the order they were made.
+    reviews: reviews.docs
+      .map((item) => ({ review_id: item.id, ...item.data(), decided_at: asIso(item.data().decided_at) }))
+      .sort((a, b) => String(a.decided_at || "").localeCompare(String(b.decided_at || "")))
+  };
+};
+
+// AC4 — one commit: the write-once safety_reviews record, the event moved to
+// the status it names, the history entry, and the coordinator and organiser
+// told. firestore.rules (safetyOutcomeUpdate) refuses the event move unless the
+// record written alongside it matches.
+export const recordSafetyOutcome = async ({ eventId, outcome, comment }) => {
+  const user = requireUser();
+  const invalid = validateSafetyOutcome({ outcome, comment });
+  if (invalid) throw new Error(invalid);
+  const note = String(comment || "").trim() || null;
+  const status = safetyOutcomeStatus(outcome);
+  const type = safetyNotificationType(outcome);
+
+  // F12 — Approve needs every active booking approved. A query cannot run
+  // inside a transaction, so the bookings are read just before it.
+  const bookings = outcome === SAFETY_OUTCOME.APPROVE
+    ? (await byEvent("venue_bookings", eventId)).docs.map((item) => ({ booking_id: item.id, ...item.data() }))
+    : [];
+  const eventRef = doc(db, "events", eventId);
+  const actorRef = doc(db, "users", user.uid);
+  const reviewRef = doc(collection(db, "safety_reviews"));
+  const historyRef = doc(collection(db, "event_history"));
+  await runTransaction(db, async (tx) => {
+    const [eventSnapshot, actorSnapshot] = await Promise.all([tx.get(eventRef), tx.get(actorRef)]);
+    if (!eventSnapshot.exists()) throw new Error("Event not found.");
+    const event = eventSnapshot.data();
+    const role = actorSnapshot.exists() ? actorSnapshot.data().role : null;
+    if (!canRecordSafetyOutcome(event, role)) throw new Error("Outcomes can be recorded only by the Safety Officer, on an event in Safety Review.");
+    if (outcome === SAFETY_OUTCOME.APPROVE) {
+      const blocker = safetyApprovalBlocker(event, bookings);
+      if (blocker) throw new Error(blocker);
+    }
+
+    const decidedAt = serverTimestamp();
+    tx.set(reviewRef, { review_id: reviewRef.id, event_id: eventId, reviewer_id: user.uid, outcome, comment: note, decided_at: decidedAt });
+    tx.update(eventRef, { status, last_safety_review_id: reviewRef.id, updated_at: decidedAt });
+    tx.set(historyRef, eventHistoryRecord({
+      historyId: historyRef.id, eventId, actorId: user.uid, actionType: type,
+      fieldName: "status", oldValue: EVENT_STATUS.SAFETY_REVIEW, newValue: status,
+      description: note || "Safety Officer approved the event's safety check.", createdAt: decidedAt
+    }));
+    const message = safetyOutcomeMessage({ eventName: event.name || event.reference_no, outcome, comment: note });
+    [...new Set([event.coordinator_id, event.organiser_id].filter(Boolean))].forEach((recipient) => {
+      const notificationRef = doc(collection(db, "notifications"));
+      tx.set(notificationRef, notificationRecord({ notificationId: notificationRef.id, userId: recipient, eventId, type, message, createdAt: decidedAt }));
+    });
+  });
+  return { ok: true, reviewId: reviewRef.id, status };
+};
+
+// AC3 — the coordinator's equipment placement and crowd movement notes, kept in
+// the event history like any other edit. coordinatorSafetyNotesUpdate in
+// firestore.rules allows exactly these fields, in the same statuses.
+export const savePlanningNotes = async ({ eventId, values }) => {
+  const user = requireUser();
+  const notes = cleanPlanningNotes(values);
+  const invalid = validatePlanningNotes(notes);
+  if (invalid) throw new Error(invalid);
+
+  const eventRef = doc(db, "events", eventId);
+  const historyRef = doc(collection(db, "event_history"));
+  await runTransaction(db, async (tx) => {
+    const snapshot = await tx.get(eventRef);
+    if (!snapshot.exists() || !canEditPlanningNotes(snapshot.data(), user.uid)) {
+      throw new Error("Only the event's coordinator can record safety planning notes, while the event is Approved or in Planning.");
+    }
+    const before = cleanPlanningNotes(snapshot.data());
+    if (JSON.stringify(before) === JSON.stringify(notes)) throw new Error("There are no changes to save.");
+
+    const changedAt = serverTimestamp();
+    tx.update(eventRef, { ...notes, updated_at: changedAt });
+    tx.set(historyRef, eventHistoryRecord({
+      historyId: historyRef.id, eventId, actorId: user.uid, actionType: "SAFETY_PLANNING_NOTES_UPDATED",
+      fieldName: "safety_planning_notes", oldValue: before, newValue: notes,
+      description: "Coordinator updated the equipment placement and crowd movement notes.", createdAt: changedAt
+    }));
+  });
+  return { ok: true };
+};
