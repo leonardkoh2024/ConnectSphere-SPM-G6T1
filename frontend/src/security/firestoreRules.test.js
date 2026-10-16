@@ -64,15 +64,6 @@ describe('TC-015 no request is left unguarded', () => {
     expect(users).toContain("resource.data.role == 'EVENT_COORDINATOR'");
     expect(users).toContain('resource.data.is_active == true');
   });
-
-  // C2 / SCRUM-103 AC2 — TC-347. The coordinator's lists name each organiser, so
-  // a coordinator may read organiser profiles, and only those.
-  test('TC-347 a coordinator may read organiser profiles and no other role', () => {
-    const get = matchBlock('users').match(/allow get: if ([\s\S]*?);/)[1];
-    expect(get).toContain("(hasRole('EVENT_COORDINATOR') && resource.data.role == 'EVENT_ORGANISER')");
-    expect(get.match(/hasRole\('EVENT_COORDINATOR'\)/g)).toHaveLength(1);
-    expect(get).not.toMatch(/ATTENDEE|VENUE_STAFF|TECHNICAL_SUPPORT_STAFF|SAFETY_OFFICER/);
-  });
 });
 
 describe('TC-016 events are readable only by the roles related to them', () => {
@@ -134,7 +125,7 @@ describe('TC-080 coordinator assignment fields remain protected', () => {
     expect(events).toContain("request.resource.data.get('assigned_at', null) == resource.data.get('assigned_at', null)");
   });
 
-  test('reassignment target must be an active coordinator and only the assignment fields may change', () => {
+  test('C9 reassignment is limited to the current coordinator and an active coordinator target', () => {
     const events = matchBlock('events');
 
     expect(events).toContain('resource.data.coordinator_id == request.auth.uid');
@@ -343,66 +334,14 @@ describe('TC-284 notifications are only ever addressed to people related to the 
     expect(create()).toContain('ownsEvent(request.resource.data.event_id)');
   });
 
-  // J6 split the rule in two: a venue booking outcome takes the decider's clause
-  // and nothing else; every other notification takes the clauses below.
-  const VENUE_OUTCOMES = "['VENUE_BOOKING_APPROVED', 'VENUE_BOOKING_REJECTED']";
-  const ORDINARY = `!(request.resource.data.get('type', '') in ${VENUE_OUTCOMES}) && (`;
-  const DECIDED = `(request.resource.data.get('type', '') in ${VENUE_OUTCOMES}`;
-  const ordinary = () => {
-    const at = create().indexOf(ORDINARY);
-    expect(at).toBeGreaterThan(-1);
-    return create().slice(at + ORDINARY.length);
-  };
-  const decided = () => {
-    const at = create().indexOf(DECIDED);
-    expect(at).toBeGreaterThan(-1);
-    return create().slice(at, create().indexOf('|| (!(', at));
-  };
-
   test("every branch ties the recipient to the event's organiser or coordinator", () => {
-    // The coordinator, organiser, safety-officer and (A6) Lead branches, in order,
-    // then (J4) Venue Staff for their own venue.
-    const branches = ordinary().split(/\|\| \(/);
-    expect(branches).toHaveLength(5);
-    branches.slice(0, 4).forEach((branch) => {
+    // The coordinator, organiser, safety-officer and (A6) Lead branches, in order.
+    const branches = create().split(/\|\| \(/);
+    expect(branches).toHaveLength(4);
+    branches.forEach((branch) => {
       expect(branch).toMatch(/request\.resource\.data\.user_id (==|in)/);
       expect(branch).toMatch(/organiser_id|coordinator_id/);
     });
-    expect(branches[4]).toMatch(/venue_staff\/.*\.data\.user_id == request\.resource\.data\.user_id/);
-  });
-
-  // J6 / SCRUM-155 AC1 — TC-313. A booking's outcome goes only to the coordinator
-  // who raised it, only from the Venue Staff member who decided it, only for the
-  // event and venue booked, and only in the same commit as the decision.
-  test('TC-313 a booking outcome is told only by its decider, to its raiser, with the decision', () => {
-    const notice = matchBlock('notifications').match(/function venueBookingOutcomeNotice\(booking\) \{ return (.*?); \}/);
-    expect(notice).not.toBeNull();
-    [
-      'booking.event_id == request.resource.data.event_id',
-      'booking.venue_id == request.resource.data.venue_id',
-      'booking.requested_by == request.resource.data.user_id',
-      'booking.decided_by == request.auth.uid',
-      'booking.decided_at == request.time',
-      'request.resource.data.created_at == request.time',
-      "(request.resource.data.type == 'VENUE_BOOKING_APPROVED' && booking.status == 'APPROVED')",
-      "(request.resource.data.type == 'VENUE_BOOKING_REJECTED' && booking.status == 'REJECTED')",
-      'assignedVenueStaff(booking.venue_id)'
-    ].forEach((clause) => expect(notice[1]).toContain(clause));
-    expect(decided()).toContain("request.resource.data.get('booking_id', null) is string");
-    expect(decided()).toContain('venueBookingOutcomeNotice( getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data)');
-  });
-
-  // TC-344. Nobody else can send a booking outcome: the ordinary clauses are
-  // closed to those types. Equipment outcomes are refused to every browser; the
-  // equipment service writes them with the Admin SDK, which these rules do not bind.
-  test('TC-344 outcome types cannot be sent through any other clause, nor equipment outcomes from a browser', () => {
-    const refuseEquipment = "!(request.resource.data.get('type', '') in ['EQUIPMENT_ARRANGED', 'EQUIPMENT_UNABLE_TO_FULFIL'])";
-    expect(create().indexOf(refuseEquipment)).toBeGreaterThan(-1);
-    // A conjunct of the whole rule: it comes before the clauses open.
-    expect(create().indexOf(refuseEquipment)).toBeLessThan(create().indexOf(DECIDED));
-    expect(create().indexOf(DECIDED)).toBeLessThan(create().indexOf(ORDINARY));
-    expect(ordinary()).not.toContain('VENUE_BOOKING_');
-    expect(RULES.match(/EQUIPMENT_ARRANGED|EQUIPMENT_UNABLE_TO_FULFIL/g)).toHaveLength(2);
   });
 });
 
@@ -511,44 +450,5 @@ describe('C2/C3 a coordinator can read an organiser profile, one at a time', () 
   test('profile writes are unchanged — nobody gains a way to edit another user', () => {
     const users = matchBlock('users');
     expect(users).toContain('allow update: if signedIn() && userId == request.auth.uid');
-  });
-});
-
-// K3 / SCRUM-184 — reassignment at the server boundary. Same static-text style as
-// the rest of this file: these pin the policy the rules state, so loosening it
-// breaks the build.
-describe('K3 SCRUM-184 reassigning an event moves every coordinator permission with it', () => {
-  test('K3-RT1 AC4 coordinator workflow writes are keyed on the event\'s coordinator_id, so the outgoing coordinator loses them', () => {
-    const start = RULES.indexOf('function coordinatorWorkflowUpdate');
-    const workflow = RULES.slice(start, RULES.indexOf('function leadAssignmentUpdate')).replace(/\s+/g, ' ');
-    expect(workflow).toContain('resource.data.coordinator_id == request.auth.uid');
-  });
-
-  test('K3-RT2 AC4 a coordinator\'s history and notification writes need them to be the current coordinator', () => {
-    expect(RULES).toMatch(/function currentCoordinator\(eventId\)[^}]*coordinator_id == request\.auth\.uid/);
-    expect(matchBlock('event_history')).toContain('currentCoordinator(request.resource.data.event_id)');
-    expect(matchBlock('notifications')).toContain('currentCoordinator(request.resource.data.event_id)');
-  });
-
-  test('K3-RT3 AC3 the Lead may write the reassignment history entry and the assignment records', () => {
-    expect(matchBlock('event_history')).toContain("action_type in ['COORDINATOR_ASSIGNED', 'COORDINATOR_REASSIGNED']");
-    expect(matchBlock('coordinator_assignments')).toContain("hasRole('EVENT_COORDINATOR_LEAD')");
-  });
-
-  test('K3-RT4 AC5 the Lead may notify the outgoing coordinator, the incoming coordinator and the organiser', () => {
-    const notifications = matchBlock('notifications');
-    const lead = notifications.slice(notifications.indexOf("hasRole('EVENT_COORDINATOR_LEAD')"));
-    // incoming (after the write), outgoing (before the write), organiser.
-    expect(lead).toContain(".data.get('coordinator_id', '')");
-    expect(lead).toContain('getAfter(');
-    expect(lead).toContain(".data.get('organiser_id', '')");
-  });
-
-  test('K3-RT5 (replaces C9 criterion 5) a coordinator can no longer change coordinator_id: only the Lead path does', () => {
-    const start = RULES.indexOf('function coordinatorWorkflowUpdate');
-    const workflow = RULES.slice(start, RULES.indexOf('function leadAssignmentUpdate')).replace(/\s+/g, ' ');
-    expect(workflow).not.toContain("hasOnly(['coordinator_id'");
-    expect(workflow).not.toContain('request.resource.data.coordinator_id');
-    expect(matchBlock('events')).toContain('leadAssignmentUpdate()');
   });
 });

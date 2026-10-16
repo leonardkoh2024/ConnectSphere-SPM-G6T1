@@ -31,6 +31,18 @@ service cloud.firestore {
     // Operational Safety Check (L1). Once the check is recorded the event leaves
     // Safety Review and drops out of their reach again.
     function safetyReviewing(eventId) { return hasRole('SAFETY_OFFICER') && get(/databases/$(database)/documents/events/$(eventId)).data.status == 'SAFETY_REVIEW'; }
+    // A7 AC4 — a write the Safety Officer makes only alongside an outcome: in the
+    // same commit the event leaves Safety Review, pointing at a review recorded
+    // at this request's time. Their history entries and notices must pass this,
+    // so none can be sent on its own.
+    function safetyOutcomeCommit(eventId) {
+      let after = getAfter(/databases/$(database)/documents/events/$(eventId)).data;
+      return safetyReviewing(eventId)
+        && after.status in ['CONFIRMED', 'PLANNING']
+        && after.get('last_safety_review_id', '') is string
+        && after.get('last_safety_review_id', '').size() > 0
+        && getAfter(/databases/$(database)/documents/safety_reviews/$(after.last_safety_review_id)).data.decided_at == request.time;
+    }
 
     match /users/{userId} {
       allow create: if signedIn() && userId == request.auth.uid
@@ -167,23 +179,47 @@ service cloud.firestore {
       // request changes. The event must point at the safety_reviews record
       // written in the same batch, and that record's outcome must match the
       // move, so no event reaches Confirmed without an approved check (L1 AC4).
+      // A7 — the review must be the one written in this commit (decided now), so
+      // an earlier record can never confirm a later check.
       function safetyOutcomeUpdate() {
         let review = getAfter(/databases/$(database)/documents/safety_reviews/$(request.resource.data.last_safety_review_id)).data;
         let approvedBookingId = request.resource.data.get('approved_venue_booking_id', '');
-        let approvedBooking = getAfter(/databases/$(database)/documents/venue_bookings/$(approvedBookingId)).data;
         return hasRole('SAFETY_OFFICER')
           && resource.data.status == 'SAFETY_REVIEW'
           && request.resource.data.last_safety_review_id is string
           && review.event_id == eventId
           && review.reviewer_id == request.auth.uid
+          && review.decided_at == request.time
           && ((review.outcome == 'APPROVE'
               && request.resource.data.status == 'CONFIRMED'
               && approvedBookingId is string
               && approvedBookingId.size() > 0
-              && approvedBooking.event_id == eventId
-              && approvedBooking.status == 'APPROVED')
+              && approvedVenueBookingFor(approvedBookingId))
             || (review.outcome in ['REJECT', 'REQUEST_CHANGES'] && request.resource.data.status == 'PLANNING'))
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'last_safety_review_id', 'updated_at']);
+      }
+
+      // Called only on Approve, after the id is known to be present, so a Reject
+      // on an event with no approved booking never looks one up.
+      function approvedVenueBookingFor(bookingId) {
+        let approvedBooking = getAfter(/databases/$(database)/documents/venue_bookings/$(bookingId)).data;
+        return approvedBooking.event_id == eventId && approvedBooking.status == 'APPROVED';
+      }
+
+      // A7 AC3 — the coordinator records where equipment goes and how the crowd
+      // moves, for the Safety Officer to read. Only those two notes, only on
+      // their own event, and only while it is Approved or in Planning.
+      function coordinatorSafetyNotesUpdate() {
+        return hasRole('EVENT_COORDINATOR')
+          && resource.data.get('coordinator_id', '') == request.auth.uid
+          && resource.data.status in ['APPROVED', 'PLANNING']
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.get('equipment_placement', '') is string
+          && request.resource.data.get('crowd_movement', '') is string
+          && request.resource.data.get('equipment_placement', '').size() <= 2000
+          && request.resource.data.get('crowd_movement', '').size() <= 2000
+          && request.resource.data.updated_at == request.time
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['equipment_placement', 'crowd_movement', 'updated_at']);
       }
 
       // F4/F7 — Venue Staff may only link the event to the booking they approve
@@ -229,6 +265,7 @@ service cloud.firestore {
         || leadAssignmentUpdate()
         || coordinatorSignificantDetailsUpdate()
         || safetyOutcomeUpdate()
+        || coordinatorSafetyNotesUpdate()
         || venueBookingApprovalLinkUpdate()
         || coordinatorVenueReleaseLinkUpdate();
       // B8 — only the owning organiser, and only while it is still a draft. Once a
@@ -269,7 +306,9 @@ service cloud.firestore {
         && request.resource.data.get('history_id', historyId) == historyId
         && request.resource.data.actor_id == request.auth.uid
         && (ownsEvent(request.resource.data.event_id) || currentCoordinator(request.resource.data.event_id)
-          || safetyReviewing(request.resource.data.event_id)
+          // A7 AC4 — the Safety Officer records only the outcome they are making.
+          || (safetyOutcomeCommit(request.resource.data.event_id)
+            && request.resource.data.action_type in ['SAFETY_CHECK_APPROVED', 'SAFETY_CHECK_REJECTED', 'SAFETY_CHANGES_REQUESTED'])
           // A6 — the Lead records the (re)assignment it just made.
           || (hasRole('EVENT_COORDINATOR_LEAD')
             && request.resource.data.action_type in ['COORDINATOR_ASSIGNED', 'COORDINATOR_REASSIGNED'])
@@ -317,14 +356,18 @@ service cloud.firestore {
     // comment. No update or delete: a recorded outcome is history (L2 AC4 shows
     // earlier ones), and a fresh check after a return to Planning is a new record.
     match /safety_reviews/{reviewId} {
-      allow get, list: if hasRole('SAFETY_OFFICER') || canReadEvent(resource.data.event_id);
+      // A7 AC6 — the Safety Officer reads an event's checks while it is under review.
+      allow get, list: if safetyReviewing(resource.data.event_id) || canReadEvent(resource.data.event_id);
+      // Decided now, and pointed at by the event after the same commit: a record
+      // cannot be left lying about for a later check, nor backdated.
       allow create: if safetyReviewing(request.resource.data.event_id)
         && request.resource.data.review_id == reviewId
         && request.resource.data.reviewer_id == request.auth.uid
         && request.resource.data.outcome in ['APPROVE', 'REJECT', 'REQUEST_CHANGES']
         && (request.resource.data.outcome == 'APPROVE'
           || (request.resource.data.comment is string && request.resource.data.comment.size() > 0))
-        && request.resource.data.decided_at is timestamp;
+        && request.resource.data.decided_at == request.time
+        && getAfter(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.get('last_safety_review_id', '') == reviewId;
     }
 
     match /coordinator_assignments/{assignmentId} {
@@ -385,7 +428,8 @@ service cloud.firestore {
           || (ownsEvent(request.resource.data.event_id)
             && request.resource.data.user_id == get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.coordinator_id)
           // L3 AC4 / L4 AC1 — the outcome goes to the event's coordinator and organiser.
-          || (safetyReviewing(request.resource.data.event_id)
+          || (safetyOutcomeCommit(request.resource.data.event_id)
+            && request.resource.data.type in ['SAFETY_CHECK_APPROVED', 'SAFETY_CHECK_REJECTED', 'SAFETY_CHANGES_REQUESTED']
             && request.resource.data.user_id in [
               get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.organiser_id,
               get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.coordinator_id])
@@ -529,8 +573,10 @@ service cloud.firestore {
     // D2 limits coordinator reads to related events. G3 reservation writes go
     // through the authenticated equipment service, not the browser SDK.
     match /equipment_reservations/{reservationId} {
+      // A7 AC3 — the Safety Officer sees what is reserved, while the event is under review.
       allow get, list: if (hasRole('EVENT_COORDINATOR') && currentCoordinator(resource.data.event_id))
-        || hasRole('TECHNICAL_SUPPORT_STAFF');
+        || hasRole('TECHNICAL_SUPPORT_STAFF')
+        || safetyReviewing(resource.data.event_id);
     }
     // The Admin-backed G3 equipment service owns inventory revisions and
     // reservations. The browser can read availability, but cannot write stock.

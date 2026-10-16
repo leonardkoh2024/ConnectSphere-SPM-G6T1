@@ -33,6 +33,7 @@ import {
   LuPlus,
   LuRefreshCw,
   LuSearch,
+  LuShieldCheck,
   LuTicket,
   LuUsers,
   LuX
@@ -53,6 +54,7 @@ const GLYPHS = {
   check: LuCircleCheck,
   bookmark: LuBookmark,
   ticket: LuTicket,
+  shield: LuShieldCheck,
   "log-out": LuLogOut,
   "chevron-down": LuChevronDown,
   "chevron-left": LuChevronLeft,

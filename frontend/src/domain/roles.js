@@ -2,8 +2,8 @@
 //
 // Core feature F1 originally fixed this list at five roles with no admin role;
 // Week 7 customer changes add the Event Coordinator Lead and Safety Officer.
-// The Lead assigns events; the Safety Officer receives a narrow read-only
-// safety view. This module is the
+// The Lead assigns events; the Safety Officer reviews events awaiting their
+// safety check and records its outcome. This module is the
 // canonical definition; never re-declare a role as a string literal elsewhere.
 // It holds no React and no Firebase, so it can move into `backend/` unchanged
 // when the service layer is built.
@@ -195,7 +195,14 @@ export const ROLE_META = {
     label: "Safety Officer",
     portal: "corporate",
     summary: "Reviews event and venue safety information.",
+    // A7 AC5 — only the safety review functions: the queue of events awaiting
+    // their Operational Safety Check, the venue facts, and the inbox.
     screens: [
+      {
+        name: "Safety reviews",
+        icon: "shield",
+        blurb: "Events awaiting their Operational Safety Check."
+      },
       {
         name: "Venue safety information",
         icon: "building",
