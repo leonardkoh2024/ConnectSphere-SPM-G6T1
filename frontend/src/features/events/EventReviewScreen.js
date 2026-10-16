@@ -18,7 +18,6 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
   const [detail, setDetail] = useState(null);
   const [mode, setMode] = useState("");
   const [message, setMessage] = useState("");
-  const [target, setTarget] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -74,19 +73,17 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
       }
       const data = await reviewApi.detail(eventId);
       if (eventId !== selected) setTab(EVENT_TABS.REQUEST);
-      setSelected(eventId); setDetail(data); setMode(""); setMessage(""); setTarget("");
+      setSelected(eventId); setDetail(data); setMode(""); setMessage("");
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   };
 
   const act = async (action, success) => {
-    if (!message.trim() && action !== "reassign") { setError(`${mode === "reject" ? "Rejection reason" : "Clarification message"} is required.`); return; }
-    if (action === "reassign" && !target) { setError("Choose a new coordinator."); return; }
+    if (!message.trim()) { setError(`${mode === "reject" ? "Rejection reason" : "Clarification message"} is required.`); return; }
     setBusy(true); setError("");
     try {
       if (action === "clarify") await reviewApi.clarify(selected, message);
       if (action === "reject") await reviewApi.reject(selected, message);
-      if (action === "reassign") await reviewApi.reassign(selected, target);
       await loadList(); await loadDetail(selected, false); onNotice?.(success); setMode(""); setMessage("");
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
@@ -112,7 +109,8 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     // C6 — same gate as the domain rule (assigned coordinator, Under Review, no open
     // clarification); the transaction in reviewApi.approve re-checks it server-side.
     const canApprove = canDecide;
-    const canReassign = event.editable && !["COMPLETED", "CANCELLED", "REJECTED"].includes(event.status);
+    // K3 / SCRUM-184 — reassigning is the Event Coordinator Lead's alone (it replaces
+    // C9 criterion 5), so a coordinator, even the one in charge, is offered no Reassign.
     const canEditSignificant = event.editable && editableEventStatuses.includes(event.status) && !hasOpen;
     const showFindVenues = typeof onFindVenues === "function";
     const canRequestVenue = showFindVenues && event.editable && canFindVenues(event);
@@ -121,13 +119,12 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     const request = buildRequestView(detail);
     const startMode = (next) => { setMode(next); setMessage(""); setError(""); };
     // One form at a time, shown on the tab its action belongs to: Request
-    // clarification on Clarifications, Reject and Reassign on the request.
+    // clarification on Clarifications, Reject on the request.
     const actionBox = mode && mode !== "significant" && <section className="cs-form-section cs-action-box">
-      <h3>{mode === "clarify" ? "Request clarification" : mode === "reject" ? "Reject request" : "Reassign event"}</h3>
-      {mode === "reassign" ? <label className="cs-field"><span className="cs-field-name">New active coordinator</span><select value={target} onChange={(e) => setTarget(e.target.value)}><option value="">Choose a coordinator</option>{detail.coordinators.filter((item) => item.id !== event.coordinator_id).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
-        : <label className="cs-field"><span className="cs-field-name">{mode === "reject" ? "Reason" : "Message"}<span className="cs-required" aria-hidden="true">*</span></span><textarea rows="4" required value={message} aria-invalid={Boolean(error)} aria-describedby={error ? "cs-review-action-error" : undefined} onChange={(e) => { setMessage(e.target.value); if (error) setError(""); }} /></label>}
+      <h3>{mode === "clarify" ? "Request clarification" : "Reject request"}</h3>
+      <label className="cs-field"><span className="cs-field-name">{mode === "reject" ? "Reason" : "Message"}<span className="cs-required" aria-hidden="true">*</span></span><textarea rows="4" required value={message} aria-invalid={Boolean(error)} aria-describedby={error ? "cs-review-action-error" : undefined} onChange={(e) => { setMessage(e.target.value); if (error) setError(""); }} /></label>
       {error && <p id="cs-review-action-error" className="cs-error" role="alert">{error}</p>}
-      <div className="cs-form-actions"><button type="button" className="cs-btn cs-btn-ghost" onClick={() => { setMode(""); setError(""); }}>Cancel</button><button type="button" className={mode === "reject" ? "cs-btn cs-btn-ghost cs-record-danger" : "cs-btn cs-btn-primary"} disabled={busy} onClick={() => act(mode, mode === "clarify" ? "Clarification request sent." : mode === "reject" ? "Event request rejected." : "Event reassigned.")}>{busy ? "Saving…" : mode === "clarify" ? "Send request" : mode === "reject" ? "Reject event" : "Reassign"}</button></div>
+      <div className="cs-form-actions"><button type="button" className="cs-btn cs-btn-ghost" onClick={() => { setMode(""); setError(""); }}>Cancel</button><button type="button" className={mode === "reject" ? "cs-btn cs-btn-ghost cs-record-danger" : "cs-btn cs-btn-primary"} disabled={busy} onClick={() => act(mode, mode === "clarify" ? "Clarification request sent." : "Event request rejected.")}>{busy ? "Saving…" : mode === "clarify" ? "Send request" : "Reject event"}</button></div>
     </section>;
 
     const requestTab = <>
@@ -195,7 +192,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
           <div><dt>Closes</dt><dd>{request.registration.closes || "Not set"}</dd></div>
         </dl>
       </section>}
-      {mode !== "significant" && (canDecide || canReassign || showFindVenues || canEditSignificant) && <div className="cs-review-actions">
+      {mode !== "significant" && (canDecide || showFindVenues || canEditSignificant) && <div className="cs-review-actions">
         {showFindVenues && <button
           className="cs-btn cs-btn-secondary cs-find-venues"
           type="button"
@@ -205,7 +202,6 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
         >Find venues</button>}
         {canApprove && <button className="cs-btn cs-btn-primary" type="button" disabled={busy} onClick={approve}>{busy && !mode ? "Approving…" : "Approve"}</button>}
         {canDecide && <button className="cs-btn cs-btn-ghost cs-record-danger" type="button" disabled={busy} onClick={() => startMode("reject")}>Reject request</button>}
-        {canReassign && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => { setMode("reassign"); setError(""); }}>Reassign event</button>}
         {canEditSignificant && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => startMode("significant")}>Edit significant details</button>}
       </div>}
       {mode !== "significant" && showFindVenues && !canRequestVenue && (

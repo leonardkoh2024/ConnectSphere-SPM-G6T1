@@ -106,11 +106,9 @@ service cloud.firestore {
               && resource.data.get('open_clarification_id', null) == null
               && request.resource.data.status == 'APPROVED'
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updated_at']))
-            || (!(resource.data.status in ['COMPLETED', 'CANCELLED', 'REJECTED'])
-              && request.resource.data.coordinator_id != request.auth.uid
-              && get(/databases/$(database)/documents/users/$(request.resource.data.coordinator_id)).data.role == 'EVENT_COORDINATOR'
-              && get(/databases/$(database)/documents/users/$(request.resource.data.coordinator_id)).data.is_active == true
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coordinator_id', 'assigned_at', 'updated_at']))
+            // K3 / SCRUM-184 — the coordinator-side reassignment clause that stood here
+            // (C9 criterion 5) is removed: only the Event Coordinator Lead reassigns, via
+            // leadAssignmentUpdate below.
           );
       }
 
