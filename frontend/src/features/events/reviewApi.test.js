@@ -166,3 +166,121 @@ describe('K3 SCRUM-184 the Lead reassigns an event', () => {
     expect(typeof reviewApi.leadReassign).toBe('function');
   });
 });
+
+// K4 / SCRUM-185 — the data the Lead's oversight screen is built from. The board must
+// carry what AC1 shows (coordinator name, last-activity time), must never include a
+// draft (K1: a draft is the organiser's unsubmitted work), must stay Lead-only, and
+// must write nothing (AC4: the view cannot edit an event). Reads here go through a fake
+// that refuses what the real rules would, as in the K3 adapter tests.
+describe("K4 SCRUM-185 the Lead's oversight board", () => {
+  const stored = {
+    'users/lead1': { role: 'EVENT_COORDINATOR_LEAD', name: 'Lena Lead' },
+    'users/c1': { role: 'EVENT_COORDINATOR', name: 'Joshua Chua', is_active: true },
+    'users/c2': { role: 'EVENT_COORDINATOR', name: 'Alex Coordinator', is_active: true },
+    'users/org1': { name: 'Nadia Organiser' }
+  };
+  const eventDocs = [
+    ['e1', { organiser_id: 'org1', coordinator_id: 'c1', name: 'Workshop', status: 'UNDER_REVIEW', updated_at: { toDate: () => new Date('2026-10-10T00:00:00Z') } }],
+    ['e2', { organiser_id: 'org1', coordinator_id: null, name: 'Gala', status: 'SUBMITTED', submitted_at: '2026-10-14T00:00:00.000Z' }],
+    ['e3', { organiser_id: 'org1', coordinator_id: null, name: 'Unsent idea', status: 'DRAFT' }],
+    ['e4', { organiser_id: 'org1', coordinator_id: 'c2', name: 'Concert', status: 'COMPLETED' }]
+  ];
+
+  // The fake database answers the way firestore.rules does for the people involved:
+  //   events   : list/get allowed to the Lead only (a coordinator is refused a whole-collection read)
+  //   users    : get allowed for your own profile or, for the Lead, any profile;
+  //              list allowed only for a query limited to active coordinators
+  // Anything else is refused with the same error Firestore gives, so a read the real
+  // rules would block turns these tests red instead of surfacing in the live app.
+  const roleOf = () => stored[`users/${auth.currentUser.uid}`]?.role;
+  const isLead = () => roleOf() === 'EVENT_COORDINATOR_LEAD';
+
+  beforeEach(() => {
+    auth.currentUser = { uid: 'lead1' };
+    firestore.getDoc.mockImplementation(async (ref) => {
+      const [collection, id] = ref.path.split('/');
+      if (collection === 'users' && !(id === auth.currentUser.uid || isLead())) throw permissionDenied();
+      return snapshot(ref.id, stored[ref.path]);
+    });
+    firestore.getDocs.mockImplementation(async (q) => {
+      if (q.name === 'events') {
+        if (!isLead()) throw permissionDenied();
+        return docs(eventDocs);
+      }
+      if (q.name === 'users') {
+        const limits = Object.fromEntries((q.constraints || []).map((item) => [item.field, item.value]));
+        const limitedToActiveCoordinators = limits.role === 'EVENT_COORDINATOR' && limits.is_active === true;
+        if (!(isLead() || roleOf() === 'EVENT_COORDINATOR') || !limitedToActiveCoordinators) throw permissionDenied();
+        return docs([['c1', stored['users/c1']], ['c2', stored['users/c2']]]);
+      }
+      return docs([]);
+    });
+  });
+
+  test('K4 TC1 AC1 every submitted event is on the board with its coordinator name and last-activity time', async () => {
+    const { events } = await reviewApi.leadBoard();
+
+    expect(events.map((item) => item.id).sort()).toEqual(['e1', 'e2', 'e4']);
+    const workshop = events.find((item) => item.id === 'e1');
+    expect(workshop.coordinator_name).toBe('Joshua Chua');
+    // The Firestore timestamp reaches the screen as an ISO string it can measure from.
+    expect(workshop.updated_at).toBe('2026-10-10T00:00:00.000Z');
+    // An unassigned event has no coordinator name, not a made-up one.
+    expect(events.find((item) => item.id === 'e2').coordinator_name).toBeNull();
+  });
+
+  test('K4 TC2 AC1 a draft never reaches the board, so it cannot appear in the oversight view', async () => {
+    const { events } = await reviewApi.leadBoard();
+
+    expect(events.some((item) => item.status === 'DRAFT')).toBe(false);
+  });
+
+  test('K4 TC3 AC3 the coordinators the summary counts for are the active ones', async () => {
+    const { coordinators } = await reviewApi.leadBoard();
+
+    expect(coordinators.map((item) => item.id).sort()).toEqual(['c1', 'c2']);
+    expect(coordinators.find((item) => item.id === 'c2').name).toBe('Alex Coordinator');
+  });
+
+  test('K4 TC4 AC4 loading the board writes nothing', async () => {
+    await reviewApi.leadBoard();
+
+    expect(firestore.runTransaction).not.toHaveBeenCalled();
+  });
+
+  test('K4 TC5 only the Lead may load the board: a coordinator is refused', async () => {
+    auth.currentUser = { uid: 'c1' };
+
+    await expect(reviewApi.leadBoard()).rejects.toThrow('cannot oversee');
+  });
+
+  test('K4 TC6 AC1 under the real read rules the Lead can load every event, every coordinator name and the active coordinator list', async () => {
+    const { events, coordinators } = await reviewApi.leadBoard();
+
+    expect(events.length).toBeGreaterThan(0);
+    expect(coordinators.length).toBeGreaterThan(0);
+  });
+
+  test('K4 TC7 AC1 the active-coordinator list is asked for the way the rules demand: limited to active coordinators', async () => {
+    await reviewApi.leadBoard();
+
+    const userQuery = firestore.query.mock.calls.map(([source, ...constraints]) => ({ name: source.name, constraints }))
+      .find((item) => item.name === 'users');
+    expect(userQuery.constraints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: 'role', value: 'EVENT_COORDINATOR' }),
+      expect.objectContaining({ field: 'is_active', value: true })
+    ]));
+  });
+
+  test('K4 TC8 AC1 a profile the Lead cannot read does not blank the board: the row falls back to the id', async () => {
+    firestore.getDoc.mockImplementation(async (ref) => {
+      if (ref.path === 'users/lead1') return snapshot('lead1', stored['users/lead1']);
+      if (ref.path === 'users/c1') throw permissionDenied();
+      return snapshot(ref.id, stored[ref.path]);
+    });
+
+    const { events } = await reviewApi.leadBoard();
+
+    expect(events.map((item) => item.id).sort()).toEqual(['e1', 'e2', 'e4']);
+  });
+});

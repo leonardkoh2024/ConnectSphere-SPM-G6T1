@@ -25,7 +25,14 @@ import {
   assignEvent,
   assignmentSummary,
   coordinatorChoiceLabel,
-  reassignEvent
+  reassignEvent,
+  EVENT_STATUS,
+  isActiveEvent,
+  lastActivityAt,
+  timeSinceLastActivity,
+  oversightRows,
+  oversightCoordinators,
+  formatSinceActivity
 } from './eventReview';
 import * as eventReviewModule from './eventReview';
 import { ROLES } from './roles';
@@ -566,5 +573,183 @@ describe('K3 SCRUM-184 reassign an event to another coordinator', () => {
       { userId: 'c2', type: 'COORDINATOR_REASSIGNED', audience: 'incoming' },
       { userId: 'org-1', type: 'COORDINATOR_REASSIGNED', audience: 'organiser' }
     ]);
+  });
+});
+
+// K4 / SCRUM-185 — the Lead oversees every active event and who holds it. These pin
+// the pure helpers the oversight screen will follow: what "active" means and which
+// events are listed (AC1), the row each one gets, including time since last activity
+// (AC1), the coordinator and status filters (AC2), the per-coordinator count (AC3, via
+// the existing coordinatorWorkload so the summary and the list can never disagree), and
+// that nothing here can change an event (AC4). Assign / reassign stay with the K2 / K3
+// helpers and are deliberately not re-tested.
+describe("K4 SCRUM-185 oversee all coordinators' assignments", () => {
+  const NOW = '2026-10-16T00:00:00.000Z';
+  const DAY = 24 * 60 * 60 * 1000;
+  const ev = (id, overrides = {}) => ({
+    id, name: `Event ${id}`, reference_no: `REF-${id}`,
+    coordinator_id: 'c1', coordinator_name: 'Sam', status: 'UNDER_REVIEW',
+    event_date: '2026-11-01', updated_at: '2026-10-13T00:00:00.000Z',
+    ...overrides
+  });
+  const ids = (rows) => rows.map((row) => row.id).sort();
+
+  test('K4-TC1 AC1 an active event is any event not Completed, Cancelled or Rejected', () => {
+    const finished = ['COMPLETED', 'CANCELLED', 'REJECTED'];
+    Object.values(EVENT_STATUS).forEach((status) => {
+      expect(isActiveEvent({ status })).toBe(!finished.includes(status));
+    });
+    // Boundary: nothing to judge is not active.
+    expect(isActiveEvent(null)).toBe(false);
+    expect(isActiveEvent(undefined)).toBe(false);
+  });
+
+  test('K4-TC2 AC1 the list holds every active event, assigned or not, and no finished one', () => {
+    const events = [
+      ev('a'),
+      ev('b', { status: 'APPROVED' }),
+      ev('c', { coordinator_id: null, coordinator_name: null, status: 'SUBMITTED' }),
+      ev('d', { status: 'COMPLETED' }),
+      ev('e', { status: 'CANCELLED' }),
+      ev('f', { status: 'REJECTED' }),
+      ev('g', { status: 'SAFETY_REVIEW' }),
+      ev('h', { status: 'CONFIRMED' })
+    ];
+    expect(ids(oversightRows(events, {}, NOW))).toEqual(['a', 'b', 'c', 'g', 'h']);
+  });
+
+  test('K4-TC3 AC1 each row carries the coordinator, status, proposed date and time since last activity', () => {
+    const [row] = oversightRows([ev('a')], {}, NOW);
+    expect(row).toEqual({
+      id: 'a', name: 'Event a', reference: 'REF-a',
+      coordinatorId: 'c1', coordinatorName: 'Sam',
+      status: 'UNDER_REVIEW', proposedDate: '2026-11-01',
+      sinceLastActivityMs: 3 * DAY
+    });
+  });
+
+  test('K4-TC4 AC1 an active event with no coordinator is listed with no coordinator, not dropped', () => {
+    const [row] = oversightRows([ev('c', { coordinator_id: null, coordinator_name: null, status: 'SUBMITTED' })], {}, NOW);
+    expect(row.coordinatorId).toBeNull();
+    expect(row.coordinatorName).toBeNull();
+  });
+
+  test('K4-TC5 AC1 last activity is the last update, falling back to submission, then creation', () => {
+    const all = { updated_at: 'U', submitted_at: 'S', created_at: 'C' };
+    expect(lastActivityAt(all)).toBe('U');
+    expect(lastActivityAt({ submitted_at: 'S', created_at: 'C' })).toBe('S');
+    expect(lastActivityAt({ created_at: 'C' })).toBe('C');
+    // Boundary: no timestamp at all is null, and so is the time since.
+    expect(lastActivityAt({})).toBeNull();
+    expect(timeSinceLastActivity({}, NOW)).toBeNull();
+    expect(timeSinceLastActivity(ev('a', { updated_at: '2026-10-15T00:00:00.000Z' }), NOW)).toBe(DAY);
+  });
+
+  test('K4-TC6 AC1 boundary a last activity after "now" (clock skew) is 0, never negative', () => {
+    expect(timeSinceLastActivity(ev('a', { updated_at: '2026-10-17T00:00:00.000Z' }), NOW)).toBe(0);
+  });
+
+  test('K4-TC7 AC2 filtering by coordinator keeps only that coordinator\'s events', () => {
+    const events = [ev('a'), ev('b', { coordinator_id: 'c2', coordinator_name: 'Alex' }), ev('c', { coordinator_id: null, status: 'SUBMITTED' })];
+    expect(ids(oversightRows(events, { coordinatorId: 'c2' }, NOW))).toEqual(['b']);
+    // An unassigned event belongs to no coordinator, so it only shows when not filtering by one.
+    expect(ids(oversightRows(events, { coordinatorId: 'c1' }, NOW))).toEqual(['a']);
+  });
+
+  test('K4-TC8 AC2 filtering by status keeps only events in that status', () => {
+    const events = [ev('a'), ev('b', { status: 'APPROVED' }), ev('c', { status: 'APPROVED' })];
+    expect(ids(oversightRows(events, { status: 'APPROVED' }, NOW))).toEqual(['b', 'c']);
+  });
+
+  test('K4-TC9 AC2 both filters together narrow the list, and empty filters mean no filter', () => {
+    const events = [
+      ev('a'),
+      ev('b', { status: 'APPROVED' }),
+      ev('c', { coordinator_id: 'c2', coordinator_name: 'Alex', status: 'APPROVED' })
+    ];
+    expect(ids(oversightRows(events, { coordinatorId: 'c1', status: 'APPROVED' }, NOW))).toEqual(['b']);
+    expect(ids(oversightRows(events, { coordinatorId: '', status: '' }, NOW))).toEqual(['a', 'b', 'c']);
+    expect(ids(oversightRows(events, undefined, NOW))).toEqual(['a', 'b', 'c']);
+  });
+
+  test('K4-TC10 AC2 boundary a filter that matches nothing, or a finished status, gives an empty list not an error', () => {
+    const events = [ev('a'), ev('d', { status: 'COMPLETED' })];
+    expect(oversightRows(events, { coordinatorId: 'nobody' }, NOW)).toEqual([]);
+    // Finished events are never on this view, so filtering for one finds nothing.
+    expect(oversightRows(events, { status: 'COMPLETED' }, NOW)).toEqual([]);
+    expect(oversightRows([], {}, NOW)).toEqual([]);
+    expect(oversightRows(undefined, {}, NOW)).toEqual([]);
+  });
+
+  test('K4-TC11 AC3 the active-event count per coordinator equals the rows listed for them, zero included', () => {
+    const coordinators = [{ id: 'c1', name: 'Sam' }, { id: 'c2', name: 'Alex' }, { id: 'c3', name: 'Priya' }];
+    const events = [
+      ev('a'),
+      ev('b', { status: 'CONFIRMED' }),
+      ev('c', { status: 'CANCELLED' }),
+      ev('d', { coordinator_id: 'c2', status: 'SAFETY_REVIEW' }),
+      ev('e', { coordinator_id: 'c2', status: 'APPROVED' }),
+      ev('f', { coordinator_id: 'c2', status: 'COMPLETED' }),
+      ev('g', { coordinator_id: 'c3', status: 'REJECTED' }),
+      ev('h', { coordinator_id: null, status: 'SUBMITTED' })
+    ];
+    const counts = Object.fromEntries(coordinatorWorkload(events, coordinators).map((item) => [item.id, item.activeEvents]));
+    expect(counts).toEqual({ c1: 2, c2: 2, c3: 0 });
+    const rows = oversightRows(events, {}, NOW);
+    coordinators.forEach((coordinator) => {
+      expect(counts[coordinator.id]).toBe(rows.filter((row) => row.coordinatorId === coordinator.id).length);
+    });
+  });
+
+  test('K4-TC12 AC4 the oversight rows are read-only: input is never changed and a row cannot reach back into an event', () => {
+    const events = Object.freeze([Object.freeze(ev('a')), Object.freeze(ev('b', { status: 'APPROVED' }))]);
+    const rows = oversightRows(events, { status: 'APPROVED' }, NOW);
+    // Frozen input would throw in strict mode if anything wrote to it.
+    rows[0].status = 'CANCELLED';
+    expect(events[1].status).toBe('APPROVED');
+    // The row is a fixed summary, not the event document, so there is nothing editable on it.
+    expect(Object.keys(oversightRows(events, {}, NOW)[0]).sort()).toEqual([
+      'coordinatorId', 'coordinatorName', 'id', 'name', 'proposedDate', 'reference', 'sinceLastActivityMs', 'status'
+    ]);
+  });
+
+  test('K4-TC13 AC3 a coordinator who is no longer active but still holds an active event is still counted and filterable', () => {
+    const active = [{ id: 'c1', name: 'Sam', active: true }];
+    const events = [ev('a'), ev('b', { coordinator_id: 'c5', coordinator_name: 'Dana', status: 'APPROVED' })];
+
+    const list = oversightCoordinators(events, active);
+
+    expect(list.map((item) => item.id)).toEqual(['c1', 'c5']);
+    expect(list.find((item) => item.id === 'c5')).toMatchObject({ name: 'Dana', active: false });
+    expect(coordinatorWorkload(events, list).find((item) => item.id === 'c5').activeEvents).toBe(1);
+  });
+
+  test('K4-TC14 AC3 boundary no duplicates, and finished-only holders, unassigned events or no data add nobody', () => {
+    const active = [{ id: 'c1', name: 'Sam', active: true }];
+    const events = [
+      ev('a'),
+      ev('b', { coordinator_id: 'c5', status: 'COMPLETED' }),
+      ev('c', { coordinator_id: null, status: 'SUBMITTED' }),
+      ev('d', { coordinator_id: 'c1' })
+    ];
+    expect(oversightCoordinators(events, active).map((item) => item.id)).toEqual(['c1']);
+    expect(oversightCoordinators(undefined, undefined)).toEqual([]);
+    // With no name recorded the id stands in, so the row is never blank.
+    expect(oversightCoordinators([ev('x', { coordinator_id: 'c6', coordinator_name: undefined })], [])[0].name).toBe('c6');
+  });
+
+  test('K4-TC15 AC1 time since last activity reads in minutes, hours or days, with just-now and no-activity edges', () => {
+    const MIN = 60 * 1000;
+    const HR = 60 * MIN;
+    expect(formatSinceActivity(0)).toBe('just now');
+    expect(formatSinceActivity(59 * 1000)).toBe('just now');
+    expect(formatSinceActivity(MIN)).toBe('1 min ago');
+    expect(formatSinceActivity(59 * MIN)).toBe('59 min ago');
+    expect(formatSinceActivity(HR)).toBe('1 hr ago');
+    expect(formatSinceActivity(23 * HR + 59 * MIN)).toBe('23 hrs ago');
+    expect(formatSinceActivity(24 * HR)).toBe('1 day ago');
+    expect(formatSinceActivity(3 * DAY)).toBe('3 days ago');
+    expect(formatSinceActivity(null)).toBe('No activity yet');
+    expect(formatSinceActivity(undefined)).toBe('No activity yet');
   });
 });
