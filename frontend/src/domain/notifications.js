@@ -21,7 +21,7 @@ export const NOTIFICATION_TYPE_LABEL = {
   VENUE_CHANGE: "Venue details updated",
   VENUE_BOOKING_APPROVED: "Venue booking approved",
   VENUE_BOOKING_REJECTED: "Venue booking rejected",
-  EQUIPMENT_ARRANGED: "Equipment arranged",
+  EQUIPMENT_ARRANGED: "Equipment reserved",
   EQUIPMENT_UNABLE_TO_FULFIL: "Equipment unavailable"
 };
 

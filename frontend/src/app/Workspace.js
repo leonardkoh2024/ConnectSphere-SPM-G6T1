@@ -66,6 +66,8 @@ export default function Workspace({ user, role }) {
   const [venueCalendarOpen, setVenueCalendarOpen] = useState(false);
   const [bookingFormOpen, setBookingFormOpen] = useState(false);
   const [reviewEventId, setReviewEventId] = useState(null);
+  // Which tab of that event to open first, e.g. Arrangements from Equipment requests.
+  const [reviewTab, setReviewTab] = useState(null);
   // Where "Back to …" goes. `cameFrom` is the screen that opened this one from
   // inside a page (the sidebar clears it); `innerBack` is set by a screen while it
   // shows a detail view of its own, and closes that view.
@@ -101,6 +103,7 @@ export default function Workspace({ user, role }) {
     setSearchEvent(name === "Venue catalogue" ? extras.event || null : null);
     setBookingTarget(name === "Venue bookings" ? { event: extras.event || null, venue: extras.venue || null } : { event: null, venue: null });
     setReviewEventId(name === "Assigned events" ? extras.eventId || null : null);
+    setReviewTab(name === "Assigned events" ? extras.tab || null : null);
     setFocusBookingId(name === "Venue bookings" ? extras.bookingId || null : null);
     setFocusEquipmentEventId(name === "Equipment requests" ? extras.eventId || null : null);
     window.location.hash = screenHash(role, name);
@@ -160,10 +163,10 @@ export default function Workspace({ user, role }) {
   else if (role === ROLES.ORGANISER && screen.name === "New event request") contents = <>{head(selectedDraft ? "Event request" : screen.name, "Save a draft any time, or submit when ready.")}<OrganiserEventDetail user={user} event={selectedDraft} onNotice={showToast} onSaved={(message, savedDraft) => { showToast(message); setSelectedDraft(savedDraft); if (!savedDraft) chooseScreen("My events"); }} /></>;
   else if (role === ROLES.ORGANISER && screen.name === "My events") contents = <>{head("My events", "Your requests and drafts.", newEventRequest)}<EventList user={user} role={role} headerHosted onCreate={() => { setSelectedDraft(null); goTo("New event request"); }} onEdit={(draft) => { setSelectedDraft(draft); goTo("New event request"); }} onView={(event) => { setSelectedDraft(event); goTo("New event request"); }} onDeleted={(message) => showToast(message)} /></>;
   else if (role === ROLES.COORDINATOR && screen.name === "Review queue") contents = <>{head(screen.name, screen.blurb)}<EventReviewScreen queueOnly onNotice={showToast} onBackChange={reportBack} onFindVenues={(event) => goTo("Venue catalogue", { event })} /></>;
-  else if (role === ROLES.COORDINATOR && screen.name === "Assigned events") contents = <>{head(screen.name, screen.blurb)}<EventReviewScreen onNotice={showToast} initialEventId={reviewEventId} onBackChange={reportBack} onFindVenues={(event) => goTo("Venue catalogue", { event })} /></>;
+  else if (role === ROLES.COORDINATOR && screen.name === "Assigned events") contents = <>{head(screen.name, screen.blurb)}<EventReviewScreen onNotice={showToast} initialEventId={reviewEventId} initialTab={reviewTab} onBackChange={reportBack} onFindVenues={(event) => goTo("Venue catalogue", { event })} /></>;
   else if (role === ROLES.COORDINATOR && screen.name === "Venue catalogue") contents = <>{head(screen.name, searchEvent ? `Shortlist for ${searchEvent.name || searchEvent.reference_no}.` : screen.blurb, viewCalendar)}<VenueSearch event={searchEvent} onBookVenue={(event, venue) => goTo("Venue bookings", { event, venue })} showCalendar={venueCalendarOpen} /></>;
   else if (role === ROLES.COORDINATOR && screen.name === "Venue bookings") contents = <>{head(screen.name, screen.blurb, newBooking)}<VenueBookings user={user} creating={bookingFormOpen} onCreatingChange={setBookingFormOpen} event={bookingTarget.event} venue={bookingTarget.venue} onBackChange={reportBack} focusBookingId={focusBookingId} onViewEvent={(eventId) => goTo("Assigned events", { eventId })} /></>;
-  else if (role === ROLES.COORDINATOR && screen.name === "Equipment requests") contents = <>{head(screen.name, screen.blurb)}<EquipmentRequestsScreen onNotice={showToast} focusEventId={focusEquipmentEventId} /></>;
+  else if (role === ROLES.COORDINATOR && screen.name === "Equipment requests") contents = <>{head(screen.name, screen.blurb)}<EquipmentRequestsScreen onNotice={showToast} focusEventId={focusEquipmentEventId} onViewEvent={(eventId) => goTo("Assigned events", { eventId, tab: "arrangements" })} /></>;
   else if (role === ROLES.TECH_SUPPORT && screen.name === "Equipment queue") contents = <>{head(screen.name, screen.blurb)}<EquipmentQueueScreen /></>;
   else if (role === ROLES.TECH_SUPPORT && screen.name === "Availability check") contents = <>{head(screen.name, screen.blurb)}<EquipmentAvailabilityScreen /></>;
   else if (role === ROLES.TECH_SUPPORT && screen.name === "Equipment catalogue") contents = <>{head(screen.name, screen.blurb)}<EquipmentCatalogueScreen /></>;

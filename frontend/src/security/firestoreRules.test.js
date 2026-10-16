@@ -148,11 +148,17 @@ describe('D2 significant event details require an acknowledged audit record', ()
   test('only the assigned coordinator can change the significant event fields in planning statuses', () => {
     const events = matchBlock('events');
 
-    expect(events).toContain('coordinatorSignificantDetailsUpdate()');
+    expect(events).toContain('|| coordinatorEventDetailsUpdate()');
     expect(events).toContain('significantChangeHistory(eventId)');
     expect(RULES).toContain("changedEvent.status in ['APPROVED', 'PLANNING', 'CONFIRMED']");
-    expect(events).toContain("'expected_attendance', 'event_date', 'start_time', 'end_time'");
-    expect(events).toContain("'last_significant_change_id', 'updated_at'");
+    expect(events).toContain("'expected_attendance', 'event_date', 'start_time', 'end_time', 'last_significant_change_id', 'updated_at'");
+    // A significant field moves only together with a fresh acknowledged row.
+    expect(events).toContain("(!keys.hasAny(['expected_attendance', 'event_date', 'start_time', 'end_time']) || keys.hasAny(['last_significant_change_id']))");
+    expect(events).toContain("(!keys.hasAny(['last_significant_change_id']) || significantDetailsRecorded())");
+  });
+
+  test('an acknowledgement covers only the commit it was written in', () => {
+    expect(RULES).toContain('&& change.created_at == request.time;');
   });
 
   test('event requirement edits are paired with an acknowledged history record', () => {
@@ -436,7 +442,7 @@ describe('A6 the Event Coordinator Lead assignment boundary', () => {
   test('the Lead may only move a non-terminal event to a different active coordinator', () => {
     const lead = events().slice(
       events().indexOf('function leadAssignmentUpdate()'),
-      events().indexOf('function coordinatorSignificantDetailsUpdate()')
+      events().indexOf('function ordinaryText(')
     );
     expect(lead).toContain("hasRole('EVENT_COORDINATOR_LEAD')");
     expect(lead).toContain("!(resource.data.status in ['COMPLETED', 'CANCELLED', 'REJECTED'])");
@@ -787,10 +793,30 @@ describe('K5 SCRUM-186 a coordinator acts only on events currently assigned to t
 
   test('K5-RT6 AC2 sweep: the coordinator edit, approve and reject paths still exist and are all in the events update rule', () => {
     const update = blockOf('events').match(/allow update: if (.*?);/)[1];
-    ['coordinatorWorkflowUpdate()', 'coordinatorSignificantDetailsUpdate()', 'coordinatorSafetyNotesUpdate()', 'coordinatorVenueReleaseLinkUpdate()']
+    ['coordinatorWorkflowUpdate()', 'coordinatorEventDetailsUpdate()', 'coordinatorSafetyNotesUpdate()', 'coordinatorVenueReleaseLinkUpdate()']
       .forEach((call) => expect(update).toContain(call));
     const workflow = ruleFunctions().coordinatorWorkflowUpdate;
     ["request.resource.data.status == 'APPROVED'", "request.resource.data.status == 'REJECTED'", "request.resource.data.status == 'UNDER_REVIEW'"]
       .forEach((clause) => expect(workflow).toContain(clause));
+  });
+});
+
+describe('D1 SCRUM-111 ordinary event details are edited only with a recorded history row', () => {
+  test('D1 AC1/AC3 only the current coordinator, only in Approved, Planning or Confirmed, only the ordinary fields', () => {
+    const events = matchBlock('events');
+    expect(events).toContain('|| coordinatorEventDetailsUpdate()');
+    expect(events).toContain("resource.data.status in ['APPROVED', 'PLANNING', 'CONFIRMED']");
+    expect(events).toContain("keys.hasOnly([ 'name', 'purpose', 'description', 'contact_name', 'contact_email', 'contact_phone', 'internal_notes', 'last_detail_change_id', 'expected_attendance', 'event_date', 'start_time', 'end_time', 'last_significant_change_id', 'updated_at' ])");
+    // An ordinary field moves only together with a fresh ordinary history row.
+    expect(events).toContain("|| keys.hasAny(['last_detail_change_id']))");
+    expect(events).toContain("(!keys.hasAny(['last_detail_change_id']) || ordinaryDetailsRecorded())");
+  });
+
+  test('D1 AC2 the event must point at an EVENT_DETAILS_UPDATED row by this actor, written in the same commit', () => {
+    const events = matchBlock('events');
+    expect(events).toContain("change.action_type == 'EVENT_DETAILS_UPDATED'");
+    expect(events).toContain('change.actor_id == request.auth.uid');
+    expect(events).toContain('change.created_at == request.time');
+    expect(events).toContain('change.event_id == eventId');
   });
 });

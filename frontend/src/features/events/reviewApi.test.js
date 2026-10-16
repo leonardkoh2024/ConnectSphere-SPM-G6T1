@@ -5,6 +5,8 @@
 import { reviewApi } from './reviewApi';
 import * as firestore from 'firebase/firestore';
 import { auth } from '../../lib/firebase';
+import { ordinaryEventValues } from '../../domain/ordinaryEventChanges';
+import { significantEventValues } from '../../domain/significantEventChanges';
 
 jest.mock('../../lib/firebase', () => ({ auth: { currentUser: { uid: 'c1' } }, db: {} }));
 jest.mock('firebase/firestore', () => ({
@@ -427,5 +429,159 @@ describe('K5 SCRUM-186 a coordinator sees and opens only the events assigned to 
     const detail = await reviewApi.detail('e2');
 
     expect(detail.event).toMatchObject({ id: 'e2', name: 'Rival Gala' });
+  });
+});
+
+describe('D1 SCRUM-111 / D2 SCRUM-112 saving an Edit event form', () => {
+  let stored;
+  let writes;
+  let impactCalls;
+  const organiser = { name: 'Nadia Organiser', email: 'nadia@smu.edu.sg', phone: null };
+  const planning = {
+    organiser_id: 'org1', coordinator_id: 'c1', name: 'Partner Summit', purpose: 'Partners', description: 'Annual summit', status: 'PLANNING',
+    expected_attendance: 100, event_date: '2026-11-04', start_time: '09:00', end_time: '17:00'
+  };
+  // The whole form as it opens: ordinary values (contact from the profile) plus the significant ones.
+  const formFor = (event) => ({ ...ordinaryEventValues(event, organiser), ...significantEventValues(event) });
+  const noImpact = { venueBookings: [], equipmentReservations: [], registrationsCount: 0 };
+
+  beforeEach(() => {
+    stored = { ...planning };
+    writes = { updates: [], sets: [], deletes: [] };
+    impactCalls = 0;
+    firestore.getDocs.mockResolvedValue({ docs: [], size: 0 });
+    let historyCount = 0;
+    firestore.doc.mockImplementation((first, name, id) => {
+      if (name) return { path: `${name}/${id}`, id };
+      historyCount += 1;
+      return { path: `${first.name}/h${historyCount}`, id: `h${historyCount}` };
+    });
+    firestore.getDoc.mockImplementation(async (ref) => {
+      if (ref.path === 'users/c1') return snapshot('c1', { role: 'EVENT_COORDINATOR', name: 'Joshua Chua', is_active: true });
+      if (ref.path === 'events/e1') { impactCalls += 1; return snapshot('e1', stored); }
+      return snapshot(ref.id, null);
+    });
+    firestore.runTransaction.mockImplementation(async (db, work) => work({
+      get: async (ref) => (ref.path === 'events/e1' ? snapshot('e1', stored) : snapshot(ref.id, null)),
+      update: (ref, data) => writes.updates.push([ref.path, data]),
+      set: (ref, data) => writes.sets.push([ref.path, data]),
+      delete: (ref) => writes.deletes.push(ref.path)
+    }));
+  });
+
+  test('D1 TC7 AC1/AC2 only the changed event fields are written, with one history row per field', async () => {
+    const result = await reviewApi.saveEventEdit({
+      eventId: 'e1', before: planning, organiser,
+      values: { ...formFor(planning), name: 'Partner Summit 2026', internal_notes: 'Keynote TBC' }
+    });
+
+    expect(result).toEqual({ ok: true, changed: 2 });
+    // AC1 — one write, to the event document only: no booking, reservation or requirement row.
+    expect(writes.updates).toEqual([['events/e1', {
+      name: 'Partner Summit 2026', internal_notes: 'Keynote TBC', last_detail_change_id: 'h1', updated_at: 'TS'
+    }]]);
+    expect(impactCalls).toBe(0);
+    // AC2 — field, old value, new value, actor and timestamp on each row.
+    expect(writes.sets.map(([path]) => path)).toEqual(['event_history/h1', 'event_history/h2']);
+    expect(writes.sets[0][1]).toMatchObject({ event_id: 'e1', actor_id: 'c1', action_type: 'EVENT_DETAILS_UPDATED', field_name: 'name', old_value: 'Partner Summit', new_value: 'Partner Summit 2026', created_at: 'TS' });
+    expect(writes.sets[1][1]).toMatchObject({ field_name: 'internal_notes', old_value: '', new_value: 'Keynote TBC' });
+  });
+
+  test('D1 TC8 AC3 a terminal event is refused and nothing is written', async () => {
+    for (const status of ['COMPLETED', 'CANCELLED', 'REJECTED']) {
+      stored = { ...planning, status };
+      await expect(reviewApi.saveEventEdit({ eventId: 'e1', before: stored, organiser, values: { ...formFor(stored), name: 'New' } }))
+        .rejects.toThrow(/Approved, Planning or Confirmed/);
+    }
+    expect(writes.updates).toHaveLength(0);
+    expect(writes.sets).toHaveLength(0);
+  });
+
+  test('D1 TC9 AC4 repeated edits are each saved and recorded', async () => {
+    for (const name of ['Summit A', 'Summit B', 'Summit C']) {
+      await reviewApi.saveEventEdit({ eventId: 'e1', before: stored, organiser, values: { ...formFor(stored), name } });
+      stored = { ...stored, name };
+    }
+    expect(writes.updates).toHaveLength(3);
+    expect(writes.sets.map(([, data]) => data.new_value)).toEqual(['Summit A', 'Summit B', 'Summit C']);
+  });
+
+  test('D1 TC10 an edit made meanwhile by someone else is not overwritten', async () => {
+    const opened = { ...planning };
+    stored = { ...planning, name: 'Renamed elsewhere' };
+    await expect(reviewApi.saveEventEdit({ eventId: 'e1', before: opened, organiser, values: { ...formFor(opened), purpose: 'New purpose' } }))
+      .rejects.toThrow(/changed while you were editing/);
+    expect(writes.updates).toHaveLength(0);
+  });
+
+  test('D2 a significant change without acknowledgement is refused and nothing is written', async () => {
+    await expect(reviewApi.saveEventEdit({ eventId: 'e1', before: planning, organiser, impact: noImpact, values: { ...formFor(planning), expected_attendance: 125 } }))
+      .rejects.toThrow(/Acknowledge the impact warning/);
+    expect(writes.updates).toHaveLength(0);
+  });
+
+  test('D1+D2 one save carrying both kinds of change commits once, with both kinds of history', async () => {
+    await reviewApi.saveEventEdit({
+      eventId: 'e1', before: planning, organiser, impact: noImpact, acknowledged: true,
+      values: { ...formFor(planning), name: 'Partner Summit 2026', expected_attendance: 125 }
+    });
+
+    expect(writes.updates).toHaveLength(1);
+    expect(writes.updates[0][1]).toMatchObject({
+      name: 'Partner Summit 2026', expected_attendance: 125,
+      last_detail_change_id: 'h1', last_significant_change_id: 'h2', updated_at: 'TS'
+    });
+    const history = writes.sets.filter(([path]) => path.startsWith('event_history/')).map(([, data]) => data);
+    expect(history).toEqual([
+      expect.objectContaining({ action_type: 'EVENT_DETAILS_UPDATED', field_name: 'name' }),
+      expect.objectContaining({
+        action_type: 'SIGNIFICANT_EVENT_DETAILS_CHANGED', warning_acknowledged: true,
+        old_value: { expected_attendance: 100 }, new_value: { expected_attendance: 125 }
+      })
+    ]);
+  });
+});
+
+describe('the coordinator event detail carries its equipment arrangements', () => {
+  const planning = { organiser_id: 'org1', coordinator_id: 'c1', name: 'Partner Summit', status: 'PLANNING' };
+  const timestamp = (iso) => ({ toDate: () => new Date(iso) });
+
+  beforeEach(() => {
+    firestore.getDoc.mockImplementation(async (ref) => {
+      if (ref.path === 'users/c1') return snapshot('c1', { role: 'EVENT_COORDINATOR', name: 'Joshua Chua', is_active: true });
+      if (ref.path === 'events/e1') return snapshot('e1', planning);
+      if (ref.path === 'equipment_requests/e1') return snapshot('e1', {
+        status: 'PENDING',
+        lines: [{ equipment_type: 'AUDIO_SYSTEM', quantity: 2, fulfillment_status: 'RESERVED', reservation_id: 'r1', fulfilled_at: timestamp('2026-10-05T02:00:00.000Z') }]
+      });
+      return snapshot(ref.id, null);
+    });
+    firestore.getDocs.mockImplementation(async (q) => {
+      if (q.name === 'equipment_reservations') return docs([['r1', { reservation_id: 'r1', event_id: 'e1', status: 'RESERVED', start_datetime: timestamp('2026-11-04T01:00:00.000Z'), end_datetime: timestamp('2026-11-04T09:00:00.000Z') }]]);
+      if (q.name === 'equipment_request_history') return docs([['q1', { event_id: 'e1', action: 'LINE_RESERVED', actor_id: 'tech1', equipment_type: 'AUDIO_SYSTEM', quantity: 2, created_at: timestamp('2026-10-05T02:00:00.000Z') }]]);
+      if (q.name === 'event_history') return docs([['h1', { event_id: 'e1', action_type: 'EVENT_APPROVED', actor_id: 'c1', created_at: timestamp('2026-10-01T02:00:00.000Z') }]]);
+      return docs([]);
+    });
+  });
+
+  test('reserved lines read Approved with their window, and the reservation is in the activity history', async () => {
+    const detail = await reviewApi.detail('e1');
+
+    expect(detail.equipmentArrangements.lines).toEqual([expect.objectContaining({
+      label: 'Audio system × 2', status: { label: 'Approved', tone: 'positive' },
+      reservedFrom: '2026-11-04T01:00:00.000Z', reservedTo: '2026-11-04T09:00:00.000Z', decidedAt: '2026-10-05T02:00:00.000Z'
+    })]);
+    expect(detail.history.map((item) => item.action_type)).toEqual(['EVENT_APPROVED', 'EQUIPMENT_RESERVED']);
+  });
+
+  test('an equipment read that fails leaves the section empty instead of failing the detail', async () => {
+    const getDoc = firestore.getDoc.getMockImplementation();
+    firestore.getDoc.mockImplementation(async (ref) => {
+      if (ref.path === 'equipment_requests/e1') throw permissionDenied();
+      return getDoc(ref);
+    });
+    const detail = await reviewApi.detail('e1');
+    expect(detail.equipmentArrangements).toBeNull();
+    expect(detail.event).toMatchObject({ id: 'e1' });
   });
 });

@@ -11,7 +11,12 @@ export const arrangedMessage = ({ eventName, lines = [] }) => {
   const reserved = lines.filter((line) => line.fulfillment_status === "RESERVED");
   const summary = reserved.map((line) => `${Number(line.quantity)} × ${typeWords(line.equipment_type)}`).join(", ");
   const unfulfilled = lines.length - reserved.length;
-  return `${eventName || "Your event"}: your equipment request is arranged.`
+  // The coordinator reads "reserved", not the stored ARRANGED, and is never told
+  // everything is reserved when some of it was refused.
+  const outcome = !reserved.length
+    ? "none of your requested equipment could be reserved."
+    : unfulfilled ? "some of your equipment is reserved." : "your equipment is reserved.";
+  return `${eventName || "Your event"}: ${outcome}`
     + (summary ? ` Reserved: ${summary}.` : "")
     + (unfulfilled ? ` ${unfulfilled} line${unfulfilled === 1 ? " was" : "s were"} unable to be fulfilled.` : "");
 };

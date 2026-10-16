@@ -1309,6 +1309,31 @@ a.cs-btn-ghost:hover {
   margin: 0;
 }
 
+/* The coordinator's equipment request card: title, reference, status and action
+   on one row, the requested lines and Technical Support's updates full width
+   beneath, instead of squeezed into a fourth column. */
+.cs-record.cs-equipment-request { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+.cs-equipment-request .cs-record-details { grid-column: 1 / -1; }
+.cs-equipment-line-list,
+.cs-equipment-updates { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.cs-equipment-line-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--cs-line);
+  border-radius: var(--cs-radius-m);
+  background: var(--cs-surface);
+}
+.cs-equipment-line-name { font-weight: 600; color: var(--cs-ink); }
+.cs-equipment-line-note { flex-basis: 100%; color: var(--cs-muted); font-size: 13px; }
+.cs-equipment-updates li { display: grid; gap: 2px; color: var(--cs-ink); font-size: 14px; }
+.cs-equipment-updates .cs-equipment-line-note { flex-basis: auto; }
+@media (max-width: 900px) {
+  .cs-record.cs-equipment-request { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* The Yes/No question a section opens with. */
 .cs-yesno {
   margin: 0;
@@ -1818,6 +1843,18 @@ a.cs-btn-ghost:hover {
 .cs-exchange article strong { margin-right: 8px; }
 .cs-exchange article time { color: var(--cs-muted); font-size: 13px; }
 .cs-exchange article p { margin: 8px 0 0; white-space: pre-wrap; }
+/* D1/D2 — the Edit event form: a bare fieldset so its fields can be locked together. */
+.cs-plain-fieldset { min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: 12px; }
+.cs-plain-fieldset:disabled { opacity: 0.6; }
+.cs-action-box .cs-request-section h4 { margin: 0 0 4px; font-size: 14px; }
+/* D1 — the Activity tab reuses the exchange cards; each change is a field row. */
+.cs-activity .cs-activity-actor { margin-top: 4px; color: var(--cs-muted); font-size: 13px; }
+.cs-activity-changes { display: grid; gap: 8px; margin: 12px 0 0; }
+.cs-activity-changes div { display: grid; grid-template-columns: minmax(120px, 180px) 1fr; gap: 12px; }
+.cs-activity-changes dt { color: var(--cs-muted); font-size: 13px; }
+.cs-activity-changes dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cs-activity-old { color: var(--cs-muted); text-decoration: line-through; }
+@media (max-width: 600px) { .cs-activity-changes div { grid-template-columns: 1fr; gap: 2px; } }
 
 .cs-inline-form { display: grid; gap: 12px; margin-top: 24px; }
 .cs-inline-form .cs-btn { justify-self: end; }

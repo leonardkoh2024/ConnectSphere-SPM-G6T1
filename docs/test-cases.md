@@ -769,14 +769,14 @@ Pre-condition for the functional cases: an Event Coordinator is signed in and th
 | TC-329 | Reserving one of several open lines tells nobody yet | Two open lines | Reserve line 1 | The request stays Pending; no notification | As expected | Pass | AC3 - boundary |
 | TC-330 | The last line reserved after another was refused | Line 1 resolved unable, line 2 open; event coordinator coord-2 | Reserve line 2 | Arranged; exactly one EQUIPMENT_ARRANGED notification, to coord-2, listing the reserved line and "1 line was unable to be fulfilled" | As expected | Pass | AC3 |
 | TC-334 | No coordinator on the event, reservation still made | Event document missing | Reserve the only line | Reservation made and request Arranged; no notification | As expected | Pass | AC3 - boundary |
-| TC-346 | Reserving the only open line arranges the request and says so once | One open line; event coordinator coord-1 | Reserve it | Exactly one notifications document, EQUIPMENT_ARRANGED to coord-1, unread, its id matching the document, reading "Q4 Partner Summit: your equipment request is arranged. Reserved: 2 × audio." | As expected | Pass | AC3 |
+| TC-346 | Reserving the only open line arranges the request and says so once | One open line; event coordinator coord-1 | Reserve it | Exactly one notifications document, EQUIPMENT_ARRANGED to coord-1, unread, its id matching the document, reading "Q4 Partner Summit: your equipment is reserved. Reserved: 2 × audio." | As expected | Pass | AC3 |
 
 **Inbox rules — `frontend/src/domain/notifications.test.js`**
 
 | Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TC-318 | A booking outcome says approved, or rejected with its reason | — | Call venueBookingOutcomeMessage | Approved names the event and venue; rejected adds "Reason: …" trimmed; missing names fall back to words | As expected | Pass | AC1 (rejection message only) |
-| TC-319 | Each outcome type has words | — | Call notificationTypeLabel | Venue booking approved / rejected, Equipment arranged, Equipment unavailable | As expected | Pass | AC1, AC3 |
+| TC-319 | Each outcome type has words | — | Call notificationTypeLabel | Venue booking approved / rejected, Equipment reserved, Equipment unavailable | As expected | Pass | AC1, AC3 |
 | TC-320 | View on an outcome goes to the booking or equipment request | Each outcome type, for a coordinator and other roles | Call notificationViewScreen | Coordinator: booking outcomes with a booking go to Venue bookings, equipment outcomes to Equipment requests, anything else to Assigned events; other roles unchanged | As expected | Pass | AC2, AC4 - routing |
 
 **Inbox — `frontend/src/features/notifications/NotificationInbox.test.js`**

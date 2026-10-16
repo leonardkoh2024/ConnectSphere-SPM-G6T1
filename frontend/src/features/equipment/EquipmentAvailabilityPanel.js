@@ -173,7 +173,7 @@ export default function EquipmentAvailabilityPanel({ requests, onUpdated }) {
           loading: false,
           error: "",
           confirmation: result.status === "ARRANGED"
-            ? "Line resolved; all request lines are now arranged or resolved."
+            ? "Line resolved; every request line is now reserved or resolved."
             : "Line marked unable to be fulfilled with reason recorded."
         }
       }));

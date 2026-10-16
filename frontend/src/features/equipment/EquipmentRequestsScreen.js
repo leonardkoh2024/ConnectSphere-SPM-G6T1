@@ -1,11 +1,24 @@
 import React, { useEffect, useState } from "react";
 import EquipmentRequestEditor from "./EquipmentRequestEditor";
-import EquipmentRequestLines from "./EquipmentRequestLines";
 import { listCoordinatorEquipmentEvents } from "./equipmentApi";
+import { equipmentRequestStatus, equipmentTypeLabel, equipmentUpdateText } from "../../domain/eventEquipment";
+
+const timeOf = (value) => value?.toDate?.()?.getTime?.() || new Date(value || 0).getTime();
+const shownTime = (value) => value
+  ? new Date(timeOf(value)).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+  : "Time not recorded";
+
+// Each line in the coordinator's words: Reserved, Unable to fulfil, or Requested.
+const lineStatusOf = (line) => {
+  if (line.fulfillment_status === "RESERVED") return { label: "Reserved", tone: "positive" };
+  if (line.fulfillment_status === "RESOLVED") return { label: "Unable to fulfil", tone: "danger" };
+  return { label: "Requested", tone: "warning" };
+};
 
 // J6 AC4 — `focusEventId`, from an equipment outcome notification, opens that
-// event's request and its Technical Support updates, scrolled into view.
-export default function EquipmentRequestsScreen({ onNotice, focusEventId = null }) {
+// event's Technical Support updates, scrolled into view. `onViewEvent` opens a
+// request Technical Support has finished on the event's Arrangements tab.
+export default function EquipmentRequestsScreen({ onNotice, focusEventId = null, onViewEvent }) {
   const [events, setEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -43,62 +56,55 @@ export default function EquipmentRequestsScreen({ onNotice, focusEventId = null 
     {!events.length
       ? <div className="cs-empty"><p>No active events are assigned to you.</p></div>
       : <div className="cs-record-list">{events.map((event) => {
-        const status = event.equipment_request?.status || "Not submitted";
-        const locked = event.equipment_request?.has_support_decisions === true || status === "ARRANGED";
-        const supportHistory = [...(event.equipment_request?.support_history || [])]
-          .sort((left, right) => {
-            const leftTime = left.created_at?.toDate?.()?.getTime?.() || new Date(left.created_at || 0).getTime();
-            const rightTime = right.created_at?.toDate?.()?.getTime?.() || new Date(right.created_at || 0).getTime();
-            return rightTime - leftTime;
-          });
+        const request = event.equipment_request;
+        const status = equipmentRequestStatus(request);
+        // Finished by Technical Support: every line reserved or refused.
+        const done = request?.status === "ARRANGED";
+        const locked = request?.has_support_decisions === true || done;
+        const supportHistory = [...(request?.support_history || [])]
+          .sort((left, right) => timeOf(right.created_at) - timeOf(left.created_at));
         const focused = event.id === focusEventId;
         const timeWindow = event.start_time && event.end_time ? ` · ${event.start_time}–${event.end_time}` : "";
-        return <article className="cs-record" key={event.id} id={`equipment-request-${event.id}`}>
+        return <article className="cs-record cs-equipment-request" key={event.id} id={`equipment-request-${event.id}`}>
           <div className="cs-record-title"><div><h2>{event.name || "Untitled event"}</h2><p>{event.event_date || "Date not set"}{timeWindow}</p></div></div>
           <p className="cs-record-ref">{event.reference_no}</p>
-          <div className="cs-record-status"><span className="cs-pill cs-pill-info">{status === "PENDING" ? "Pending" : status}</span></div>
-          {event.equipment_request && <div className="cs-record-details cs-equipment-coordinator-summary">
-            <details className="cs-equipment-disclosure" open={focused || undefined}>
-              <summary>Equipment request details</summary>
-              <EquipmentRequestLines lines={event.equipment_request.lines} />
-            </details>
-            {(event.equipment_request.has_support_decisions || supportHistory.length > 0)
-              && <details className="cs-equipment-disclosure" open={focused || undefined}>
-                <summary>Technical Support updates</summary>
-                <EquipmentRequestLines lines={event.equipment_request.lines} getStatus={(line) => <>
-                  {line.fulfillment_status === "RESERVED"
-                    ? "Reserved"
-                    : line.fulfillment_status === "RESOLVED"
-                      ? `Unable to fulfil: ${line.resolution_reason}`
-                      : "Requested"}
-                  {line.amendment_note && <><br />Support note: {line.amendment_note}</>}
-                </>} />
-                {supportHistory.map((item) => <p key={item.id}>
-                  {item.action === "LINE_AMENDED"
-                    ? `Amended line ${Number(item.line_index) + 1}: ${item.old_values?.equipment_type} ${item.old_values?.quantity} → ${item.new_values?.equipment_type} ${item.new_values?.quantity}. ${item.note}`
-                    : item.action === "LINE_UNABLE_TO_FULFILL"
-                      ? `Line ${Number(item.line_index) + 1} unable to fulfil: ${item.reason}`
-                      : item.action === "LINE_RESERVED"
-                        ? `Reserved line ${Number(item.line_index) + 1}: ${item.quantity} ${item.equipment_type.replaceAll("_", " ")}.`
-                        : `Reservation released for line ${Number(item.line_index) + 1}: ${item.reason}`}
-                  {" "}· {item.actor_id} · {item.created_at?.toDate?.()?.toLocaleString?.() || (item.created_at ? new Date(item.created_at).toLocaleString() : "Time not recorded")}
-                </p>)}
-              </details>}
-            {!event.equipment_request.has_support_decisions && supportHistory.length === 0
-              && <details className="cs-equipment-disclosure">
-                <summary>Technical Support updates</summary>
-                <p>No updates from Technical Support yet.</p>
-              </details>}
-          </div>}
+          <div className="cs-record-status"><span className={`cs-pill cs-pill-${status.tone}`}>{status.label}</span></div>
           <div className="cs-record-actions">
-            <button type="button" className="cs-btn cs-btn-secondary cs-record-btn"
-              disabled={locked}
-              onClick={() => setSelectedEventId(event.id)}>
-              {locked
-                ? "Technical Support is handling this request"
-                : event.equipment_request ? "Edit equipment request" : "Create equipment request"}
-            </button>
+            {done && onViewEvent
+              ? <button type="button" className="cs-btn cs-btn-secondary cs-record-btn" onClick={() => onViewEvent(event.id)}>View details</button>
+              : <button type="button" className="cs-btn cs-btn-secondary cs-record-btn"
+                disabled={locked}
+                onClick={() => setSelectedEventId(event.id)}>
+                {locked
+                  ? "Technical Support is handling this request"
+                  : request ? "Edit equipment request" : "Create equipment request"}
+              </button>}
           </div>
+          {request && <div className="cs-record-details cs-equipment-coordinator-summary">
+            <ul className="cs-equipment-line-list" aria-label="Requested equipment">
+              {(request.lines || []).map((line, index) => {
+                const lineStatus = lineStatusOf(line);
+                return <li key={index}>
+                  <span className="cs-equipment-line-name">{equipmentTypeLabel(line.equipment_type)} × {Number(line.quantity) || 1}</span>
+                  <span className={`cs-pill cs-pill-${lineStatus.tone}`}>{lineStatus.label}</span>
+                  {line.technical_requirements && <span className="cs-equipment-line-note">{line.technical_requirements}</span>}
+                  {line.resolution_reason && <span className="cs-equipment-line-note">Reason: {line.resolution_reason}</span>}
+                  {line.amendment_note && <span className="cs-equipment-line-note">Support note: {line.amendment_note}</span>}
+                </li>;
+              })}
+            </ul>
+            <details className="cs-equipment-disclosure" open={focused || undefined}>
+              <summary>Technical Support updates{supportHistory.length ? ` (${supportHistory.length})` : ""}</summary>
+              {supportHistory.length
+                ? <ul className="cs-equipment-updates">
+                  {supportHistory.map((item) => <li key={item.id}>
+                    <span>{equipmentUpdateText(item)}</span>
+                    <span className="cs-equipment-line-note">Technical Support · {shownTime(item.created_at)}</span>
+                  </li>)}
+                </ul>
+                : <p>No updates from Technical Support yet.</p>}
+            </details>
+          </div>}
         </article>;
       })}</div>}
   </>;

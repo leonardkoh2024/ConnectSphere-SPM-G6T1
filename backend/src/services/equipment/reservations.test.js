@@ -178,7 +178,7 @@ test("TC-346 reserving the only open line arranges the request and tells the coo
     user_id: "coord-1",
     event_id: "event-1",
     type: "EQUIPMENT_ARRANGED",
-    message: "Q4 Partner Summit: your equipment request is arranged. Reserved: 2 × audio.",
+    message: "Q4 Partner Summit: your equipment is reserved. Reserved: 2 × audio.",
     is_read: false,
     created_at: { serverTimestamp: true },
     read_at: null
@@ -214,7 +214,7 @@ test("TC-330 the last line reserved after another was refused: arranged, told on
     userId: "coord-2",
     eventId: "event-1",
     type: "EQUIPMENT_ARRANGED",
-    message: "Q4 Partner Summit: your equipment request is arranged. Reserved: 2 × audio. 1 line was unable to be fulfilled."
+    message: "Q4 Partner Summit: some of your equipment is reserved. Reserved: 2 × audio. 1 line was unable to be fulfilled."
   }]);
 });
 

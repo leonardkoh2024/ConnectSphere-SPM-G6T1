@@ -31,7 +31,7 @@ test("TC-325 the arranged message lists what was reserved and counts what was no
         { equipment_type: "VIDEO_CONFERENCING", quantity: "1", fulfillment_status: "RESERVED" }
       ]
     }),
-    "Q4 Partner Summit: your equipment request is arranged. Reserved: 2 × audio, 1 × video conferencing."
+    "Q4 Partner Summit: your equipment is reserved. Reserved: 2 × audio, 1 × video conferencing."
   );
   assert.equal(
     arrangedMessage({
@@ -42,12 +42,12 @@ test("TC-325 the arranged message lists what was reserved and counts what was no
         { equipment_type: "LIGHTING", quantity: 1, fulfillment_status: "RESOLVED" }
       ]
     }),
-    "Q4 Partner Summit: your equipment request is arranged. Reserved: 2 × audio. 2 lines were unable to be fulfilled."
+    "Q4 Partner Summit: some of your equipment is reserved. Reserved: 2 × audio. 2 lines were unable to be fulfilled."
   );
   // Every line refused: arranged, nothing reserved, and it says so.
   assert.equal(
     arrangedMessage({ eventName: "", lines: [{ equipment_type: "AUDIO", quantity: 2, fulfillment_status: "RESOLVED" }] }),
-    "Your event: your equipment request is arranged. 1 line was unable to be fulfilled."
+    "Your event: none of your requested equipment could be reserved. 1 line was unable to be fulfilled."
   );
 });
 

@@ -7,7 +7,7 @@ import { reviewApi } from './reviewApi';
 jest.mock('../safety/safetyApi', () => ({ savePlanningNotes: jest.fn(() => Promise.resolve({ ok: true })) }));
 jest.mock('./reviewApi', () => ({ reviewApi: {
   list: jest.fn(), detail: jest.fn(), openReview: jest.fn(), clarify: jest.fn(), approve: jest.fn(), reject: jest.fn(),
-  significantChangeImpact: jest.fn(), saveSignificantChange: jest.fn()
+  significantChangeImpact: jest.fn(), saveEventEdit: jest.fn()
 } }));
 
 const baseEvent = { id: 'e1', name: 'Partner Summit', reference_no: 'EVT-001', event_date: '2026-11-04', start_time: '09:00', end_time: '17:00', expected_attendance: 100, purpose: 'Partners', description: 'Annual summit', status: 'UNDER_REVIEW', coordinator_id: 'c1', editable: true };
@@ -29,7 +29,7 @@ beforeEach(() => {
     equipmentReservations: [{ id: 'r1', label: 'Audio', status: 'RESERVED' }],
     registrationsCount: 42
   });
-  reviewApi.saveSignificantChange.mockResolvedValue({ ok: true });
+  reviewApi.saveEventEdit.mockResolvedValue({ ok: true, changed: 1 });
 });
 
 async function openRequest(props = {}) {
@@ -150,6 +150,7 @@ test('F7 shows each venue booking with its complete decision information inside 
 
   await openRequest();
 
+  await userEvent.click(screen.getByRole('tab', { name: /^Arrangements/ }));
   const section = screen.getByRole('region', { name: /venue booking status/i });
   expect(within(section).getByText('Harbour Hall')).toBeInTheDocument();
   expect(within(section).getByText('Garden Pavilion')).toBeInTheDocument();
@@ -164,7 +165,15 @@ test('D2 shows all existing arrangements and requires acknowledgement before sav
   reviewApi.detail.mockResolvedValue(detail(planningEvent));
   reviewApi.significantChangeImpact.mockImplementation(() => new Promise((resolve) => { resolveImpact = resolve; }));
   await openRequest();
-  await userEvent.click(screen.getByRole('button', { name: /edit significant details/i }));
+  await userEvent.click(screen.getByRole('button', { name: /^edit event$/i }));
+
+  // Arrangements are checked only once a significant field changes.
+  expect(reviewApi.significantChangeImpact).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: /save changes/i })).toBeDisabled();
+  await userEvent.clear(screen.getByLabelText(/expected attendance/i));
+  await userEvent.type(screen.getByLabelText(/expected attendance/i), '125');
+  expect(reviewApi.significantChangeImpact).toHaveBeenCalledWith('e1');
+  expect(screen.getByRole('button', { name: /save changes/i })).toBeDisabled();
 
   await act(async () => {
     resolveImpact({
@@ -173,44 +182,48 @@ test('D2 shows all existing arrangements and requires acknowledgement before sav
       registrationsCount: 42
     });
   });
-  await waitFor(() => expect(screen.queryByText(/checking existing arrangements/i)).not.toBeInTheDocument());
-  expect(screen.getByRole('button', { name: /save significant changes/i })).toBeDisabled();
-  await userEvent.clear(screen.getByLabelText(/expected attendance/i));
-  await userEvent.type(screen.getByLabelText(/expected attendance/i), '125');
   const warning = await screen.findByRole('complementary', { name: 'Significant change impact' });
   expect(within(warning).getByText(/main hall.*approved/i)).toBeInTheDocument();
   expect(within(warning).getByText(/audio.*reserved/i)).toBeInTheDocument();
   expect(within(warning).getByText(/attendee registrations: 42/i)).toBeInTheDocument();
 
-  const save = screen.getByRole('button', { name: /save significant changes/i });
+  const save = screen.getByRole('button', { name: /save changes/i });
   expect(save).toBeDisabled();
   await userEvent.click(screen.getByLabelText(/reviewed and acknowledge/i));
   expect(save).toBeEnabled();
   await userEvent.click(save);
-  await waitFor(() => expect(reviewApi.saveSignificantChange).toHaveBeenCalledWith(expect.objectContaining({
+  await waitFor(() => expect(reviewApi.saveEventEdit).toHaveBeenCalledWith(expect.objectContaining({
     eventId: 'e1',
     values: expect.objectContaining({ expected_attendance: 125 }),
+    impact: expect.objectContaining({ registrationsCount: 42 }),
     acknowledged: true
   })));
 });
 
 test('D2 cancelling a significant edit leaves the event unsaved', async () => {
   const planningEvent = { ...baseEvent, status: 'PLANNING' };
-  let resolveImpact;
   reviewApi.list.mockResolvedValue({ events: [planningEvent] });
   reviewApi.detail.mockResolvedValue(detail(planningEvent));
-  reviewApi.significantChangeImpact.mockImplementation(() => new Promise((resolve) => { resolveImpact = resolve; }));
+  reviewApi.significantChangeImpact.mockResolvedValue({ venueBookings: [], equipmentReservations: [], registrationsCount: 0 });
   await openRequest();
-  await userEvent.click(screen.getByRole('button', { name: /edit significant details/i }));
-  await act(async () => {
-    resolveImpact({ venueBookings: [], equipmentReservations: [], registrationsCount: 0 });
-  });
-  await waitFor(() => expect(screen.queryByText(/checking existing arrangements/i)).not.toBeInTheDocument());
+  await userEvent.click(screen.getByRole('button', { name: /^edit event$/i }));
   await userEvent.clear(screen.getByLabelText(/expected attendance/i));
   await userEvent.type(screen.getByLabelText(/expected attendance/i), '125');
+  await screen.findByRole('complementary', { name: 'Significant change impact' });
   await userEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
-  expect(reviewApi.saveSignificantChange).not.toHaveBeenCalled();
-  expect(screen.queryByRole('region', { name: /edit significant event details/i })).not.toBeInTheDocument();
+  expect(reviewApi.saveEventEdit).not.toHaveBeenCalled();
+  expect(screen.queryByRole('region', { name: /^edit event$/i })).not.toBeInTheDocument();
+});
+
+test('D2 an open clarification locks only the date, size and venue fields', async () => {
+  const planningEvent = { ...baseEvent, status: 'PLANNING', open_clarification_id: 'q1' };
+  reviewApi.list.mockResolvedValue({ events: [planningEvent] });
+  reviewApi.detail.mockResolvedValue(detail(planningEvent));
+  await openRequest();
+  await userEvent.click(screen.getByRole('button', { name: /^edit event$/i }));
+  expect(screen.getByLabelText(/expected attendance/i)).toBeDisabled();
+  expect(screen.getByLabelText(/^event name/i)).toBeEnabled();
+  expect(screen.getByText(/unavailable while a clarification is open/i)).toBeInTheDocument();
 });
 
 // C6 — approve a request the coordinator has reviewed (Under Review -> Approved).
@@ -407,7 +420,7 @@ describe('C3 the full event request in the review view', () => {
     // The four requirement groups the story names each get their own section.
     expect(screen.getByRole('heading', { name: /venue requirements/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /accessibility/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /equipment/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^equipment$/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /registration/i })).toBeInTheDocument();
 
     // A representative value from each group reaches the screen.
@@ -509,5 +522,104 @@ describe('K5 SCRUM-186 an event that is not assigned to the coordinator cannot b
     await userEvent.click(screen.getAllByRole('button', { name: /view request/i })[0]);
     await screen.findByRole('button', { name: /back to events/i });
     expect(screen.queryByText(/was reassigned|previously assigned/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('D1 SCRUM-111 ordinary event details and the Activity tab', () => {
+  const planningEvent = { ...baseEvent, status: 'PLANNING' };
+
+  test('D1 TC11 AC1 an ordinary edit saves with no arrangement check or acknowledgement', async () => {
+    reviewApi.list.mockResolvedValue({ events: [planningEvent] });
+    reviewApi.detail.mockResolvedValue({ ...detail(planningEvent), organiser: { id: 'org1', name: 'Nadia Organiser', email: 'nadia@smu.edu.sg' } });
+    await openRequest();
+    await userEvent.click(screen.getByRole('button', { name: /^edit event$/i }));
+
+    const save = screen.getByRole('button', { name: /save changes/i });
+    expect(save).toBeDisabled();
+    expect(screen.getByLabelText(/contact name/i)).toHaveValue('Nadia Organiser');
+    await userEvent.type(screen.getByLabelText(/internal notes/i), 'Keynote TBC');
+    expect(save).toBeEnabled();
+    expect(screen.queryByRole('complementary', { name: 'Significant change impact' })).not.toBeInTheDocument();
+    await userEvent.click(save);
+
+    await waitFor(() => expect(reviewApi.saveEventEdit).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: 'e1',
+      values: expect.objectContaining({ internal_notes: 'Keynote TBC', name: 'Partner Summit', expected_attendance: 100 }),
+      acknowledged: false,
+      impact: null
+    })));
+    // AC1 — no booking or reservation is even looked at.
+    expect(reviewApi.significantChangeImpact).not.toHaveBeenCalled();
+  });
+
+  test('D1 TC12 AC3 a terminal event offers no Edit event', async () => {
+    const completed = { ...baseEvent, status: 'COMPLETED' };
+    reviewApi.list.mockResolvedValue({ events: [completed] });
+    reviewApi.detail.mockResolvedValue(detail(completed));
+    await openRequest();
+    expect(screen.queryByRole('button', { name: /^edit event$/i })).not.toBeInTheDocument();
+  });
+
+  test('D1 TC13 AC2 the Activity tab lists each edit with field, old and new value, actor and time', async () => {
+    reviewApi.list.mockResolvedValue({ events: [planningEvent] });
+    reviewApi.detail.mockResolvedValue({
+      ...detail(planningEvent),
+      history: [{ id: 'h1', action_type: 'EVENT_DETAILS_UPDATED', actor_id: 'c1', field_name: 'name', old_value: 'Summit', new_value: 'Partner Summit', created_at: '2026-10-02T01:00:00.000Z' }],
+      actorNames: { c1: 'Sam Coordinator' }
+    });
+    await openRequest();
+    await userEvent.click(screen.getByRole('tab', { name: /^Activity/ }));
+
+    const log = screen.getByRole('region', { name: /event activity/i });
+    expect(within(log).getByText('Updated event details')).toBeInTheDocument();
+    expect(within(log).getByText(/by Sam Coordinator/)).toBeInTheDocument();
+    expect(within(log).getByText('Event name')).toBeInTheDocument();
+    expect(within(log).getByText('Summit')).toBeInTheDocument();
+    expect(within(log).getByText('Partner Summit')).toBeInTheDocument();
+    expect(within(log).getByText(/2026/)).toBeInTheDocument();
+  });
+});
+
+describe('equipment reservations on the coordinator event page', () => {
+  const planningEvent = { ...baseEvent, status: 'PLANNING' };
+
+  test('an equipment line Technical Support reserved shows an Approved badge, and the decision is on the Activity tab', async () => {
+    reviewApi.list.mockResolvedValue({ events: [planningEvent] });
+    reviewApi.detail.mockResolvedValue({
+      ...detail(planningEvent),
+      equipmentArrangements: {
+        status: { label: 'Pending', tone: 'warning' },
+        lines: [
+          { key: '0-AUDIO_SYSTEM', label: 'Audio system × 2', status: { label: 'Approved', tone: 'positive' }, reservedFrom: '2026-11-04T01:00:00.000Z', reservedTo: '2026-11-04T09:00:00.000Z', decidedAt: '2026-10-05T02:00:00.000Z', reason: null },
+          { key: '1-PROJECTOR', label: 'Projector × 1', status: { label: 'Pending', tone: 'warning' }, reservedFrom: null, reservedTo: null, decidedAt: null, reason: null }
+        ]
+      },
+      history: [{ id: 'equipment-q1', action_type: 'EQUIPMENT_RESERVED', actor_id: 'tech1', actor_role: 'Technical Support', field_name: 'equipment', old_value: 'Audio system × 2 — Pending', new_value: 'Audio system × 2 — Approved', created_at: '2026-10-05T02:00:00.000Z' }],
+      actorNames: {}
+    });
+    await openRequest();
+
+    await userEvent.click(screen.getByRole('tab', { name: /^Arrangements/ }));
+    const section = screen.getByRole('region', { name: /equipment reservation status/i });
+    const audio = within(section).getByText('Audio system × 2').closest('article');
+    expect(within(audio).getByText('Approved')).toHaveClass('cs-pill-positive');
+    const projector = within(section).getByText('Projector × 1').closest('article');
+    expect(within(projector).getByText('Pending')).toBeInTheDocument();
+    expect(within(projector).getByText('Not reserved yet')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('tab', { name: /^Activity/ }));
+    const log = screen.getByRole('region', { name: /event activity/i });
+    expect(within(log).getByText('Approved an equipment reservation')).toBeInTheDocument();
+    expect(within(log).getByText(/by Technical Support/)).toBeInTheDocument();
+    expect(within(log).getByText('Audio system × 2 — Approved')).toBeInTheDocument();
+  });
+
+  test('an event with no equipment request says so', async () => {
+    reviewApi.list.mockResolvedValue({ events: [planningEvent] });
+    reviewApi.detail.mockResolvedValue(detail(planningEvent));
+    await openRequest();
+    await userEvent.click(screen.getByRole('tab', { name: /^Arrangements/ }));
+    const section = screen.getByRole('region', { name: /equipment reservation status/i });
+    expect(within(section).getByText(/no equipment request has been sent/i)).toBeInTheDocument();
   });
 });

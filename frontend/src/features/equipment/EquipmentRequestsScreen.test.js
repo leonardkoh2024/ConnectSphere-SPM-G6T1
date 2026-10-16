@@ -318,23 +318,52 @@ test("TC-311 coordinator can see support amendment and decision history", async 
         line_index: 0,
         actor_id: "tech-1",
         created_at: new Date("2026-10-12T12:01:00.000Z"),
+        // The equipment service records the line's type and quantity on every decision.
+        equipment_type: "VISUAL",
+        quantity: 3,
         reason: "No compatible projector was available."
       }]
     }
   }]);
-  render(<EquipmentRequestsScreen />);
+  render(<EquipmentRequestsScreen onViewEvent={jest.fn()} />);
 
-  const requestDetails = await screen.findByText("Equipment request details");
-  expect(requestDetails.closest("details")).not.toHaveAttribute("open");
-  await userEvent.click(requestDetails);
-  expect(requestDetails.closest("details")).toHaveAttribute("open");
-  const supportUpdates = screen.getByText("Technical Support updates");
+  // Each line once, with its own status and the reason it could not be supplied.
+  const lines = await screen.findByRole("list", { name: "Requested equipment" });
+  expect(lines).toHaveTextContent("Visual × 3");
+  expect(lines).toHaveTextContent("Unable to fulfil");
+  expect(lines).toHaveTextContent("Reason: No compatible projector was available.");
+  // The request as a whole: every line refused, so not "Arranged" and not "Reserved".
+  expect(screen.getByText("Unable to fulfil", { selector: ".cs-record-status .cs-pill" })).toBeInTheDocument();
+
+  const supportUpdates = screen.getByText(/Technical Support updates/);
+  expect(supportUpdates).toHaveTextContent("Technical Support updates (2)");
   expect(supportUpdates.closest("details")).not.toHaveAttribute("open");
   await userEvent.click(supportUpdates);
   expect(supportUpdates.closest("details")).toHaveAttribute("open");
-  expect(await screen.findByText(/Amended line 1: AUDIO 2 → VISUAL 3/i)).toBeInTheDocument();
-  expect(screen.getAllByText(/Unable to fulfil: No compatible projector was available/i)).toHaveLength(2);
-  expect(screen.getByRole("button", { name: /technical support is handling this request/i })).toBeDisabled();
+  expect(screen.getByText("Amended 2 × audio → 3 × visual: Substitute visual equipment.")).toBeInTheDocument();
+  expect(screen.getByText("Unable to fulfil 3 × visual: No compatible projector was available.")).toBeInTheDocument();
+  // Credited to the role, never a raw user id.
+  expect(screen.queryByText(/tech-1/)).not.toBeInTheDocument();
+  expect(screen.getAllByText(/^Technical Support · /)).toHaveLength(2);
+});
+
+test("a request Technical Support has finished offers View details, which opens the event", async () => {
+  const onViewEvent = jest.fn();
+  listCoordinatorEquipmentEvents.mockResolvedValue([{ ...event, equipment_request: arrangedRequest }]);
+  render(<EquipmentRequestsScreen onViewEvent={onViewEvent} />);
+
+  expect(await screen.findByText("Reserved", { selector: ".cs-record-status .cs-pill" })).toBeInTheDocument();
+  expect(screen.queryByText(/arranged/i)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /technical support is handling this request/i })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "View details" }));
+  expect(onViewEvent).toHaveBeenCalledWith("event-1");
+});
+
+test("a request Technical Support is still working on stays locked", async () => {
+  listCoordinatorEquipmentEvents.mockResolvedValue([{ ...event, equipment_request: { ...arrangedRequest, status: "PENDING" } }]);
+  render(<EquipmentRequestsScreen onViewEvent={jest.fn()} />);
+  expect(await screen.findByRole("button", { name: /technical support is handling this request/i })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "View details" })).not.toBeInTheDocument();
 });
 
 // J6 / SCRUM-155 AC4 — TC-323, TC-341, TC-342, TC-345 in docs/test-cases.md.
@@ -351,12 +380,13 @@ test("TC-323 arriving from an outcome notification opens that event's request an
   render(<EquipmentRequestsScreen focusEventId="event-1" />);
 
   expect(await screen.findByText("2026-11-04 · 09:00–17:00")).toBeInTheDocument();
+  // The quantity reserved is on the line itself; Technical Support's updates open.
+  const lines = screen.getByRole("list", { name: "Requested equipment" });
+  expect(lines).toHaveTextContent("Audio × 2");
+  expect(lines).toHaveTextContent("Reserved");
   const disclosures = screen.getAllByRole("group");
-  expect(disclosures).toHaveLength(2);
-  disclosures.forEach((item) => expect(item).toHaveAttribute("open"));
-  // The quantity reserved, in the request details and in Technical Support's update.
-  disclosures.forEach((item) => expect(item).toHaveTextContent(/AUDIO · 2 · None specified · /));
-  expect(disclosures[1]).toHaveTextContent("Reserved");
+  expect(disclosures).toHaveLength(1);
+  expect(disclosures[0]).toHaveAttribute("open");
 });
 
 const arrangedRequest = {
@@ -388,8 +418,8 @@ test("TC-341 only the named event's request opens; the others stay closed", asyn
   await screen.findByText("Board Offsite");
 
   const openState = (id) => [...container.querySelectorAll(`#equipment-request-${id} details`)].map((item) => item.open);
-  expect(openState("event-1")).toEqual([false, false]);
-  expect(openState("event-2")).toEqual([true, true]);
+  expect(openState("event-1")).toEqual([false]);
+  expect(openState("event-2")).toEqual([true]);
 });
 
 test("TC-342 without a named event nothing opens or scrolls, and an event with no times shows its date alone", async () => {
@@ -400,7 +430,7 @@ test("TC-342 without a named event nothing opens or scrolls, and an event with n
     ]);
     const { container } = render(<EquipmentRequestsScreen />);
     expect(await screen.findByText("2026-11-04")).toBeInTheDocument();
-    expect([...container.querySelectorAll("details")].map((item) => item.open)).toEqual([false, false]);
+    expect([...container.querySelectorAll("details")].map((item) => item.open)).toEqual([false]);
     expect(spy.scrolled).toEqual([]);
   } finally {
     spy.restore();

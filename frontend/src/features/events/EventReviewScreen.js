@@ -7,13 +7,14 @@ import RecordLead from "../../components/RecordLead";
 import Icon from "../../app/Icon";
 import EventDetailTabs from "./components/EventDetailTabs";
 import ClarificationThread from "./components/ClarificationThread";
-import SignificantChangeEditor from "./components/SignificantChangeEditor";
+import EventDetailsEditor from "./components/EventDetailsEditor";
+import ActivityLog from "./components/ActivityLog";
 import { editableEventStatuses } from "../../domain/significantEventChanges";
 import SafetyPlanningNotes from "../safety/SafetyPlanningNotes";
 
 const shownTime = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Not recorded";
 
-export default function EventReviewScreen({ queueOnly = false, onNotice, onFindVenues, initialEventId = null, onBackChange }) {
+export default function EventReviewScreen({ queueOnly = false, onNotice, onFindVenues, initialEventId = null, initialTab = null, onBackChange }) {
   const [events, setEvents] = useState([]);
   const [selected, setSelected] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -36,9 +37,10 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
 
   // Opened from a venue booking: show that request without starting a review on
   // it, so arriving here to read never moves a Submitted event to Under Review.
+  // `initialTab` opens a particular tab of it, e.g. Arrangements from Equipment requests.
   useEffect(() => {
-    if (initialEventId) loadDetail(initialEventId, false);
-  }, [initialEventId]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (initialEventId) loadDetail(initialEventId, false, initialTab);
+  }, [initialEventId, initialTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Inside the workspace the back button lives in the page header; this screen
   // only says when it has a detail view open and how to close it.
@@ -64,7 +66,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     [events, statusFilter, sortDir]
   );
 
-  const loadDetail = async (eventId, open = true) => {
+  const loadDetail = async (eventId, open = true, startTab = null) => {
     setError(""); setBusy(true);
     try {
       let current = events.find((item) => item.id === eventId);
@@ -73,7 +75,8 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
         await loadList();
       }
       const data = await reviewApi.detail(eventId);
-      if (eventId !== selected) setTab(EVENT_TABS.REQUEST);
+      if (startTab) setTab(startTab);
+      else if (eventId !== selected) setTab(EVENT_TABS.REQUEST);
       setSelected(eventId); setDetail(data); setMode(""); setMessage("");
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
@@ -112,7 +115,10 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     const canApprove = canDecide;
     // K3 / SCRUM-184 — reassigning is the Event Coordinator Lead's alone (it replaces
     // C9 criterion 5), so a coordinator, even the one in charge, is offered no Reassign.
-    const canEditSignificant = event.editable && editableEventStatuses.includes(event.status) && !hasOpen;
+    // D1 / D2 — one Edit event form, in Approved, Planning and Confirmed only (D1 AC3).
+    // An open clarification locks just its date, size and venue fields.
+    const canEdit = event.editable && editableEventStatuses.includes(event.status);
+    const editing = mode === "edit";
     const showFindVenues = typeof onFindVenues === "function";
     const canRequestVenue = showFindVenues && event.editable && canFindVenues(event);
     const summary = clarificationSummary(detail);
@@ -121,7 +127,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     const startMode = (next) => { setMode(next); setMessage(""); setError(""); };
     // One form at a time, shown on the tab its action belongs to: Request
     // clarification on Clarifications, Reject on the request.
-    const actionBox = mode && mode !== "significant" && <section className="cs-form-section cs-action-box">
+    const actionBox = mode && !editing && <section className="cs-form-section cs-action-box">
       <h3>{mode === "clarify" ? "Request clarification" : "Reject request"}</h3>
       <label className="cs-field"><span className="cs-field-name">{mode === "reject" ? "Reason" : "Message"}<span className="cs-required" aria-hidden="true">*</span></span><textarea rows="4" required value={message} aria-invalid={Boolean(error)} aria-describedby={error ? "cs-review-action-error" : undefined} onChange={(e) => { setMessage(e.target.value); if (error) setError(""); }} /></label>
       {error && <p id="cs-review-action-error" className="cs-error" role="alert">{error}</p>}
@@ -139,6 +145,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
           {request.contact.phone && <span>{request.contact.phone}</span>}
         </dd></div>
         <div className="cs-detail-wide"><dt>Purpose</dt><dd>{event.purpose}</dd></div><div className="cs-detail-wide"><dt>Description</dt><dd>{event.description}</dd></div>
+        {event.internal_notes && <div className="cs-detail-wide"><dt>Internal notes</dt><dd>{event.internal_notes}</dd></div>}
         {event.decision_reason && <div className="cs-detail-wide"><dt>Decision reason</dt><dd>{event.decision_reason} · {shownTime(event.decided_at)}</dd></div>}
       </dl>
       <section className="cs-request-section">
@@ -150,27 +157,6 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
         {request.venue.facilities.length > 0
           ? <ul className="cs-tag-list">{request.venue.facilities.map((item) => <li key={item}>{item}</li>)}</ul>
           : <p className="cs-panel-note">No specific facilities requested.</p>}
-      </section>
-      <section className="cs-request-section" aria-label="Venue booking status">
-        <h3>Venue bookings</h3>
-        {(detail.venueBookings || []).length ? (
-          <div className="cs-record-list">
-            {detail.venueBookings.map((booking) => (
-              <article className="cs-record" key={booking.booking_id}>
-                <div className="cs-record-title"><h4>{booking.venue_name}</h4></div>
-                <p className="cs-record-ref">{shownTime(booking.start_datetime)}–{shownTime(booking.end_datetime)}</p>
-                <div className="cs-record-modified">
-                  <span className={`cs-pill cs-pill-${statusTone(booking.status)}`}>{booking.status}</span>
-                </div>
-                <dl className="cs-detail-grid cs-record-expanded">
-                  <div><dt>Decision time</dt><dd>{booking.decided_at ? shownTime(booking.decided_at) : "Not decided"}</dd></div>
-                  {booking.decision_reason && <div className="cs-detail-wide"><dt>Decision reason</dt><dd>{booking.decision_reason}</dd></div>}
-                  {booking.release_reason && <div className="cs-detail-wide"><dt>Release reason</dt><dd>{booking.release_reason}</dd></div>}
-                </dl>
-              </article>
-            ))}
-          </div>
-        ) : <p className="cs-panel-note">No venue booking requests have been raised for this event.</p>}
       </section>
       <section className="cs-request-section">
         <h3>Accessibility</h3>
@@ -203,7 +189,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
           <div><dt>Closes</dt><dd>{request.registration.closes || "Not set"}</dd></div>
         </dl>
       </section>}
-      {mode !== "significant" && (canDecide || showFindVenues || canEditSignificant) && <div className="cs-review-actions">
+      {!editing && (canDecide || showFindVenues || canEdit) && <div className="cs-review-actions">
         {showFindVenues && <button
           className="cs-btn cs-btn-secondary cs-find-venues"
           type="button"
@@ -213,23 +199,72 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
         >Find venues</button>}
         {canApprove && <button className="cs-btn cs-btn-primary" type="button" disabled={busy} onClick={approve}>{busy && !mode ? "Approving…" : "Approve"}</button>}
         {canDecide && <button className="cs-btn cs-btn-ghost cs-record-danger" type="button" disabled={busy} onClick={() => startMode("reject")}>Reject request</button>}
-        {canEditSignificant && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => startMode("significant")}>Edit significant details</button>}
+        {canEdit && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => startMode("edit")}>Edit event</button>}
       </div>}
-      {mode !== "significant" && showFindVenues && !canRequestVenue && (
+      {!editing && showFindVenues && !canRequestVenue && (
         <p id="cs-find-venues-reason" className="cs-panel-note">
           Venue requests are available only for events with Approved or Planning status.
         </p>
       )}
       {mode !== "clarify" && actionBox}
-      {mode === "significant" && <SignificantChangeEditor
+      {editing && <EventDetailsEditor
         event={event}
+        organiser={detail.organiser}
+        significantLocked={hasOpen}
         onCancel={() => { setMode(""); setError(""); }}
         onSaved={async () => {
           await loadList();
           await loadDetail(selected, false);
-          onNotice?.("Significant event changes saved.");
+          onNotice?.("Event changes saved.");
         }}
       />}
+    </>;
+
+    // Venue bookings and Technical Support's equipment arrangements, on their own tab.
+    const equipmentLines = detail.equipmentArrangements?.lines || [];
+    const arrangementsTab = <>
+      <section className="cs-request-section" aria-label="Venue booking status">
+        <h3>Venue bookings</h3>
+        {(detail.venueBookings || []).length ? (
+          <div className="cs-record-list">
+            {detail.venueBookings.map((booking) => (
+              <article className="cs-record" key={booking.booking_id}>
+                <div className="cs-record-title"><h4>{booking.venue_name}</h4></div>
+                <p className="cs-record-ref">{shownTime(booking.start_datetime)}–{shownTime(booking.end_datetime)}</p>
+                <div className="cs-record-modified">
+                  <span className={`cs-pill cs-pill-${statusTone(booking.status)}`}>{booking.status}</span>
+                </div>
+                <dl className="cs-detail-grid cs-record-expanded">
+                  <div><dt>Decision time</dt><dd>{booking.decided_at ? shownTime(booking.decided_at) : "Not decided"}</dd></div>
+                  {booking.decision_reason && <div className="cs-detail-wide"><dt>Decision reason</dt><dd>{booking.decision_reason}</dd></div>}
+                  {booking.release_reason && <div className="cs-detail-wide"><dt>Release reason</dt><dd>{booking.release_reason}</dd></div>}
+                </dl>
+              </article>
+            ))}
+          </div>
+        ) : <p className="cs-panel-note">No venue booking requests have been raised for this event.</p>}
+      </section>
+      {/* Technical Support's arrangements, shown like the venue bookings above. */}
+      <section className="cs-request-section" aria-label="Equipment reservation status">
+        <h3>Equipment reservations</h3>
+        {equipmentLines.length ? (
+          <div className="cs-record-list">
+            {equipmentLines.map((line) => (
+              <article className="cs-record" key={line.key}>
+                <div className="cs-record-title"><h4>{line.label}</h4></div>
+                <p className="cs-record-ref">{line.reservedFrom ? `${shownTime(line.reservedFrom)}–${shownTime(line.reservedTo)}` : "Not reserved yet"}</p>
+                <div className="cs-record-modified">
+                  <span className={`cs-pill cs-pill-${line.status.tone}`}>{line.status.label}</span>
+                </div>
+                <dl className="cs-detail-grid cs-record-expanded">
+                  <div><dt>Decision time</dt><dd>{line.decidedAt ? shownTime(line.decidedAt) : "Not decided"}</dd></div>
+                  {line.reason && <div className="cs-detail-wide"><dt>Reason</dt><dd>{line.reason}</dd></div>}
+                </dl>
+              </article>
+            ))}
+          </div>
+        ) : <p className="cs-panel-note">No equipment request has been sent to Technical Support for this event.</p>}
+      </section>
     </>;
 
     const clarificationsTab = <>
@@ -253,7 +288,10 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
         onChange={changeTab}
         tabs={[
           { id: EVENT_TABS.REQUEST, label: "Event request", content: requestTab },
-          { id: EVENT_TABS.CLARIFICATIONS, label: "Clarifications", count: summary.requests, content: clarificationsTab }
+          { id: EVENT_TABS.ARRANGEMENTS, label: "Arrangements", count: (detail.venueBookings || []).length + equipmentLines.length, content: arrangementsTab },
+          { id: EVENT_TABS.CLARIFICATIONS, label: "Clarifications", count: summary.requests, content: clarificationsTab },
+          // D1 AC2 — every recorded edit, with field, old and new value, who and when.
+          { id: EVENT_TABS.ACTIVITY, label: "Activity", content: <ActivityLog history={detail.history} actorNames={detail.actorNames} /> }
         ]}
       />
     </div>;

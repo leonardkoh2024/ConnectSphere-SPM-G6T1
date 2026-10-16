@@ -69,7 +69,7 @@ describe('J6 outcome notifications', () => {
   test('TC-319 each outcome type has words', () => {
     expect(notificationTypeLabel('VENUE_BOOKING_APPROVED')).toBe('Venue booking approved');
     expect(notificationTypeLabel('VENUE_BOOKING_REJECTED')).toBe('Venue booking rejected');
-    expect(notificationTypeLabel('EQUIPMENT_ARRANGED')).toBe('Equipment arranged');
+    expect(notificationTypeLabel('EQUIPMENT_ARRANGED')).toBe('Equipment reserved');
     expect(notificationTypeLabel('EQUIPMENT_UNABLE_TO_FULFIL')).toBe('Equipment unavailable');
   });
 

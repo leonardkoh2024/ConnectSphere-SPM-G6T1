@@ -202,7 +202,7 @@ test("TC-315 resolving the last open line also tells the coordinator the request
 
   assert.deepEqual(notices(transaction).map((item) => item.type), ["EQUIPMENT_UNABLE_TO_FULFIL", "EQUIPMENT_ARRANGED"]);
   assert.equal(notices(transaction)[1].message,
-    "Q4 Partner Summit: your equipment request is arranged. Reserved: 2 × audio. 1 line was unable to be fulfilled.");
+    "Q4 Partner Summit: some of your equipment is reserved. Reserved: 2 × audio. 1 line was unable to be fulfilled.");
 });
 
 test("TC-316 with no coordinator on the event the decision still lands and nobody is notified", async () => {
@@ -252,5 +252,5 @@ test("TC-333 several refused lines are counted in the plural when the request is
   await actions.resolveLine({ eventId: "event-1", lineIndex: 1, reason: "None left.", userId: "tech-1" });
 
   assert.equal(notices(transaction)[1].message,
-    "Q4 Partner Summit: your equipment request is arranged. 2 lines were unable to be fulfilled.");
+    "Q4 Partner Summit: none of your requested equipment could be reserved. 2 lines were unable to be fulfilled.");
 });

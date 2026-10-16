@@ -288,7 +288,7 @@ export const chronologicalClarifications = (clarifications = [], responses = [])
 // flagged when the organiser owes an answer — the one case where the viewer has
 // something to do there. The organiser lands on it in that case; everyone else
 // starts on the request.
-export const EVENT_TABS = { REQUEST: "request", CLARIFICATIONS: "clarifications" };
+export const EVENT_TABS = { REQUEST: "request", ARRANGEMENTS: "arrangements", CLARIFICATIONS: "clarifications", ACTIVITY: "activity" };
 
 export const clarificationSummary = (detail) => ({
   requests: (detail?.clarifications || []).length,
@@ -384,12 +384,16 @@ export const submitClarificationResponse = ({
 // organiser contact with fallbacks (AC2), the registration gate/window and the
 // equipment lines (AC1), and buildRequestView that assembles the whole model so
 // the screen stays a thin render. The Firestore reads live in reviewApi.detail.
-export const contactDetails = (organiser = {}) => {
+// D1 — a contact corrected on the event (contact_name/email/phone) wins over the
+// organiser's profile, field by field.
+export const contactDetails = (organiser = {}, event = {}) => {
   const source = organiser || {};
+  const own = event || {};
+  const email = own.contact_email || source.email || null;
   return {
-    name: source.name || source.email || "Unknown organiser",
-    email: source.email || null,
-    phone: source.phone || source.contact_number || null
+    name: own.contact_name || source.name || email || "Unknown organiser",
+    email,
+    phone: own.contact_phone || source.phone || source.contact_number || null
   };
 };
 
@@ -415,7 +419,7 @@ export const buildRequestView = (detail = {}) => {
   return {
     reference: event.reference_no || null,
     submittedAt: event.submitted_at || null,
-    contact: contactDetails(detail && detail.organiser),
+    contact: contactDetails(detail && detail.organiser, event),
     venue: {
       preferredLocation: event.preferred_location || null,
       layout: event.required_layout || null,
