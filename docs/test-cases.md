@@ -39,7 +39,7 @@ they can be read next to the acceptance criteria and move into the service layer
 | E8 | SCRUM-124 | Be stopped before booking an unsuitable venue | TC-112 – TC-174 |
 | E4 | SCRUM-120 | See when a venue is free | TC-200 – TC-249 |
 | J6 | SCRUM-155 | Be told the outcome of my booking and equipment requests (AC1: approval only — rejection awaits F5) | TC-313 – TC-346 |
-| A7 | SCRUM-170 | Use ConnectSphere as a Safety Officer | TC-348 – TC-383 |
+| A7 | SCRUM-170 | Use ConnectSphere as a Safety Officer | TC-348 – TC-385 |
 | E7 | — | Know whether a venue actually suits the event | TC-112 – TC-116 |
 | C6 | SCRUM-TBD | Approve a submitted request | TC-112 – TC-117 |
 | C2 | SCRUM-103 | See the events I am responsible for | TC-118 – TC-128, TC-347 |
@@ -821,7 +821,7 @@ Pre-condition for the functional cases: an Event Coordinator is signed in and th
 
 **Overlap and gaps:** AC2–AC4 overlap L2 (SCRUM-188) and L3 (SCRUM-189), both unassigned. A7 builds the queue, the review and the outcome; it does not build L1 (sending an event for its safety check, SCRUM-187), so no event reaches Safety Review through the app yet, nor L4's flagging of arrangements for review (SCRUM-190). Approving needs the event's `approved_venue_booking_id`, as `safetyOutcomeUpdate` already required, and every active venue booking approved (F12); the second is checked in the browser only, because a rule cannot read across an event's bookings. The rule tests read `firestore.rules` as text; they do not run it, so whether a given write is allowed is still to be shown in the Rules Playground or the emulator. Not changed here: J4's rule letting any signed-in user notify a venue's staff, which the Safety Officer can therefore use too.
 
-**AC coverage:** AC1 — TC-378 – TC-380. AC2 — TC-348, TC-356, TC-362, TC-372. AC3 — TC-352, TC-354, TC-355, TC-357, TC-361, TC-363, TC-364, TC-368 – TC-370, TC-375, TC-377. AC4 — TC-349 – TC-351, TC-353, TC-358 – TC-360, TC-365 – TC-367, TC-373, TC-374, TC-381 – TC-383. AC5 — TC-371. AC6 — TC-350, TC-360, TC-371 (client half); TC-372 – TC-376, TC-383 (the rule text).
+**AC coverage:** AC1 — TC-378 – TC-380. AC2 — TC-348, TC-356, TC-362, TC-372. AC3 — TC-352, TC-354, TC-355, TC-357, TC-384, TC-385, TC-361, TC-363, TC-364, TC-368 – TC-370, TC-375, TC-377. AC4 — TC-349 – TC-351, TC-353, TC-358 – TC-360, TC-365 – TC-367, TC-373, TC-374, TC-381 – TC-383. AC5 — TC-371. AC6 — TC-350, TC-360, TC-371 (client half); TC-372 – TC-376, TC-383 (the rule text).
 
 **Executed:** 16 Oct 2026 — every case below, with the full frontend suite, after each change. Mutation check: 42 deliberate breakages of the A7 code, rules and navigation, each run against these cases; all 42 were caught (one, a booking's own attendance being ignored, only after TC-357 was given a booking whose attendance differs from the event's). An independent review then traced every write against `firestore.rules`; its findings led to TC-381 – TC-383 and the tightened rows TC-373, TC-375, TC-376 and TC-377.
 
@@ -896,3 +896,11 @@ Pre-condition for the functional cases: an Event Coordinator is signed in and th
 | TC-382 | A safety review counts only in the commit that records it | firestore.rules | Inspect `safetyOutcomeUpdate` and the `safety_reviews` create | The linked review must be decided at this request's time; a review can be created only if the event points at it after the commit; the approved booking is looked up only on Approve | As expected | Pass | AC4. Stops an old Approve record confirming a later check (CLAUDE.md: a check made after the most recent return to Planning) |
 | TC-383 | The Safety Officer writes history and notices only alongside an outcome | firestore.rules | Inspect `safetyOutcomeCommit`, `event_history` and `notifications` | Both require the event to leave Safety Review in the same commit with a review decided now, and an outcome type; no bare `safetyReviewing` write clause remains | As expected | Pass | AC4, AC6. Stops a forged "safety check approved" notice |
 
+**Added after the first run against the shared project — `frontend/src/features/safety/safetyApi.test.js`**
+
+Opening a review on the live project failed with "Missing or insufficient permissions." for events that have no `event_venue_requirements` document: a direct read of a missing document is refused, because its rule reads `resource.data.event_id`.
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-384 | An event with no venue requirements document still opens for review | Event in Safety Review with no requirements, bookings, equipment or earlier checks | Open the review | The only direct read is the event; the requirements are queried by `event_id`; the review opens with layout "Not recorded" and empty lists | As expected | Pass | AC3 |
+| TC-385 | A refused read names the collection it was reading | Firestore refuses the reservations query; then the event read | Open the review | "Missing or insufficient permissions. (Reading equipment_reservations.)", then "(Reading events.)" | As expected | Pass | AC3, AC6 — a rule gap can be found from the screen |

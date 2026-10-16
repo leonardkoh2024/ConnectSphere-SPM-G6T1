@@ -31,6 +31,11 @@ const requireUser = () => {
 const asIso = (value) => value?.toDate?.().toISOString?.() || value || null;
 const byEvent = (name, eventId) => getDocs(query(collection(db, name), where("event_id", "==", eventId)));
 
+// A refused read says which collection it was, so a rule gap shows on screen.
+const reading = (name, promise) => promise.catch((failure) => {
+  throw new Error(`${failure.message} (Reading ${name}.)`);
+});
+
 const venuesById = async (venueIds) => {
   const snapshots = await Promise.all([...new Set(venueIds.filter(Boolean))].map((venueId) => getDoc(doc(db, "venues", venueId))));
   return new Map(snapshots.filter((item) => item.exists()).map((item) => [item.id, item.data()]));
@@ -55,22 +60,21 @@ export const listSafetyQueue = async () => {
 // AC3 — every fact the review needs, for one event in Safety Review.
 export const safetyReviewDetail = async (eventId) => {
   requireUser();
-  const eventSnapshot = await getDoc(doc(db, "events", eventId));
+  const eventSnapshot = await reading("events", getDoc(doc(db, "events", eventId)));
   if (!eventSnapshot.exists()) throw new Error("Event not found.");
   const event = { id: eventSnapshot.id, ...eventSnapshot.data() };
   if (event.status !== EVENT_STATUS.SAFETY_REVIEW) throw new Error("This event is not awaiting a safety check.");
 
-  const [requirement, accessibility, equipment, reservations, bookingRows, reviews] = await Promise.all([
-    getDoc(doc(db, "event_venue_requirements", eventId)),
-    byEvent("event_accessibility", eventId),
-    byEvent("event_equipment", eventId),
-    byEvent("equipment_reservations", eventId),
-    byEvent("venue_bookings", eventId),
-    byEvent("safety_reviews", eventId)
-  ]);
-  const requirements = requirement.exists() ? requirement.data() : {};
+  // Every read is a query on event_id. The requirements are one document per
+  // event, but a direct read of one that was never written is refused (its rule
+  // reads resource.data.event_id); the query just comes back empty.
+  const [requirement, accessibility, equipment, reservations, bookingRows, reviews] = await Promise.all(
+    ["event_venue_requirements", "event_accessibility", "event_equipment", "equipment_reservations", "venue_bookings", "safety_reviews"]
+      .map((name) => reading(name, byEvent(name, eventId)))
+  );
+  const requirements = requirement.docs[0]?.data() || {};
   const bookings = activeBookings(bookingRows.docs.map((item) => ({ booking_id: item.id, ...item.data() })));
-  const venues = await venuesById(bookings.map((booking) => booking.venue_id));
+  const venues = await reading("venues", venuesById(bookings.map((booking) => booking.venue_id)));
 
   return {
     event: {

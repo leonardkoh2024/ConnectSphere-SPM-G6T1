@@ -92,13 +92,13 @@ test('TC-357 the review gathers capacity, layout, emergency access, restrictions
   mockGetDoc.mockImplementation((reference) => {
     const documents = {
       'events/e1': EVENT,
-      'event_venue_requirements/e1': { required_layout: 'THEATRE', accessibility_notes: 'Two wheelchair users' },
       'venues/V-1': { name: 'Harbour Hall', max_capacity: 120, emergency_access_notes: 'Exit via the loading bay', known_restrictions: 'No open flames' }
     };
     return Promise.resolve(snapshot(reference.id, documents[reference.path]));
   });
   mockGetDocs.mockImplementation((reference) => {
     const byCollection = {
+      event_venue_requirements: [['e1', { event_id: 'e1', required_layout: 'THEATRE', accessibility_notes: 'Two wheelchair users' }]],
       event_accessibility: [['a1', { event_id: 'e1', accessibility_id: 'WHEELCHAIR_ACCESS' }]],
       event_equipment: [['q1', { event_id: 'e1', equipment_type: 'AUDIO', quantity: 2, technical_note: 'Wireless' }]],
       equipment_reservations: [
@@ -146,6 +146,34 @@ test('TC-357 an event that is not awaiting its check is not opened for review', 
   mockGetDoc.mockResolvedValue(snapshot('e1', undefined));
   await expect(safetyReviewDetail('e1')).rejects.toThrow('Event not found.');
   expect(mockGetDocs).not.toHaveBeenCalled();
+});
+
+// A requirements document that was never written must not stop the review: a
+// direct read of a missing document is refused by the rule (it reads
+// resource.data.event_id), whereas a query on event_id simply comes back empty.
+test('TC-384 the venue requirements are queried by event, so an event without them still opens', async () => {
+  mockGetDoc.mockImplementation((reference) => Promise.resolve(snapshot(reference.id, reference.path === 'events/e1' ? EVENT : undefined)));
+  mockGetDocs.mockResolvedValue(rows([]));
+
+  const review = await safetyReviewDetail('e1');
+
+  expect(mockGetDoc.mock.calls.map(([reference]) => reference.path)).toEqual(['events/e1']);
+  expect(queries()).toContainEqual({ path: 'event_venue_requirements', constraints: [['event_id', '==', 'e1']] });
+  expect(review.event).toEqual(expect.objectContaining({ required_layout: null, accessibility_notes: '', accessibility: [], equipment: [] }));
+  expect(review.bookings).toEqual([]);
+});
+
+// When Firestore does refuse a read, the message says which one, so a rule gap
+// can be found from the screen rather than guessed at.
+test('TC-385 a refused read names the collection it was reading', async () => {
+  mockGetDoc.mockResolvedValue(snapshot('e1', EVENT));
+  mockGetDocs.mockImplementation((reference) => (reference.path === 'equipment_reservations'
+    ? Promise.reject(new Error('Missing or insufficient permissions.'))
+    : Promise.resolve(rows([]))));
+  await expect(safetyReviewDetail('e1')).rejects.toThrow('Missing or insufficient permissions. (Reading equipment_reservations.)');
+
+  mockGetDoc.mockRejectedValue(new Error('Missing or insufficient permissions.'));
+  await expect(safetyReviewDetail('e1')).rejects.toThrow('Missing or insufficient permissions. (Reading events.)');
 });
 
 const givenEvent = (changes = {}, role = 'SAFETY_OFFICER', bookings = [['VB-1', { event_id: 'e1', venue_id: 'V-1', status: 'APPROVED' }]]) => {
