@@ -1,5 +1,5 @@
 // G2 / G3 / G5 — Technical Support's equipment catalogue and reservation list,
-// as plain functions. TC-393 to TC-395 in docs/test-cases.md.
+// as plain functions. TC-403 to TC-405 in docs/test-cases.md.
 
 import {
   RESERVATION_STATE,
@@ -17,7 +17,7 @@ const reservation = (overrides) => ({
   ...overrides
 });
 
-test("TC-393 a reservation is upcoming, in use, completed or released", () => {
+test("TC-403 a reservation is upcoming, in use, completed or released", () => {
   expect(reservationState(reservation({ start_datetime: "2026-11-05T01:00:00.000Z", end_datetime: "2026-11-05T09:00:00.000Z" }), NOW))
     .toBe(RESERVATION_STATE.UPCOMING);
   expect(reservationState(reservation({}), NOW)).toBe(RESERVATION_STATE.IN_USE);
@@ -30,10 +30,19 @@ test("TC-393 a reservation is upcoming, in use, completed or released", () => {
     .toBe(RESERVATION_STATE.RELEASED);
   // An older reservation recorded as APPROVED is still active.
   expect(reservationState(reservation({ status: "APPROVED" }), NOW)).toBe(RESERVATION_STATE.IN_USE);
+  // An active reservation with a missing or unreadable window is not treated as
+  // over (new Date(null) is 1970): it stays current, where staff will see it.
+  expect(reservationState(reservation({ start_datetime: null, end_datetime: null }), NOW)).toBe(RESERVATION_STATE.UPCOMING);
+  expect(reservationState(reservation({ start_datetime: "", end_datetime: "not a date" }), NOW)).toBe(RESERVATION_STATE.UPCOMING);
+  expect(catalogueRows({
+    inventory: [{ equipment_type: "AUDIO", total_quantity: 5 }],
+    reservations: [reservation({ start_datetime: null, end_datetime: null })],
+    now: NOW
+  })[0]).toMatchObject({ reservedNow: 0, freeNow: 5, upcoming: 0 });
   expect(RESERVATION_STATE_LABEL).toEqual({ UPCOMING: "Upcoming", IN_USE: "In use", COMPLETED: "Completed", RELEASED: "Released" });
 });
 
-test("TC-394 the catalogue shows, per type, what is held, reserved and unavailable now, what is free, and what is coming up", () => {
+test("TC-404 the catalogue shows, per type, what is held, reserved and unavailable now, what is free, and what is coming up", () => {
   const rows = catalogueRows({
     inventory: [
       { equipment_type: "AUDIO", total_quantity: 10 },
@@ -75,9 +84,22 @@ test("TC-394 the catalogue shows, per type, what is held, reserved and unavailab
   const extra = catalogueRows({ inventory: [{ equipment_type: "PROJECTOR_SCREEN", total_quantity: 2 }], reservations: [], unavailability: [], now: NOW });
   expect(extra.map((row) => row.equipmentType)).toEqual([...EQUIPMENT_TYPES, "PROJECTOR_SCREEN"]);
   expect(catalogueRows({ now: NOW })).toHaveLength(EQUIPMENT_TYPES.length);
+
+  // Windows are half-open: stock whose reservation or unavailability ends now is
+  // free now; one starting now is not.
+  const edges = catalogueRows({
+    inventory: [{ equipment_type: "AUDIO", total_quantity: 10 }],
+    reservations: [
+      reservation({ id: "ends-now", quantity: 3, end_datetime: NOW.toISOString() }),
+      reservation({ id: "starts-now", quantity: 1, start_datetime: NOW.toISOString() })
+    ],
+    unavailability: [{ equipment_type: "AUDIO", quantity: 2, start_datetime: "2026-11-04T00:00:00.000Z", end_datetime: NOW.toISOString() }],
+    now: NOW
+  })[0];
+  expect(edges).toMatchObject({ reservedNow: 1, unavailableNow: 0, freeNow: 9 });
 });
 
-test("TC-395 reservations split into current (soonest first) and past (latest first), optionally only the caller's", () => {
+test("TC-405 reservations split into current (soonest first) and past (latest first), optionally only the caller's", () => {
   const all = [
     reservation({ id: "in-use", reserved_by: "tech-1" }),
     reservation({ id: "next-week", reserved_by: "tech-2", start_datetime: "2026-11-11T01:00:00.000Z", end_datetime: "2026-11-11T09:00:00.000Z" }),

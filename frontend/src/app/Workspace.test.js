@@ -36,6 +36,9 @@ jest.mock('../features/safety/SafetyReviewScreen', () => ({ __esModule: true, de
 jest.mock('../features/equipment/EquipmentRequestsScreen', () => ({ __esModule: true, default: (props) => (props.focusEventId ? `equipment request of ${props.focusEventId}` : 'equipment requests') }));
 jest.mock('../features/venues/VenueBookings', () => ({ __esModule: true, default: (props) => (props.focusBookingId ? `booking ${props.focusBookingId}` : 'venue bookings') }));
 jest.mock('../features/equipment/EquipmentQueueScreen', () => ({ __esModule: true, default: () => 'equipment queue' }));
+// G2 / G3 — Technical Support's catalogue and reservation list report only that they were opened.
+jest.mock('../features/equipment/EquipmentCatalogueScreen', () => ({ __esModule: true, default: () => 'equipment catalogue' }));
+jest.mock('../features/equipment/EquipmentReservationsScreen', () => ({ __esModule: true, default: () => 'equipment reservations' }));
 // J1 — the live inbox is stubbed so the badge can be driven by hand.
 jest.mock('../features/notifications/useNotifications', () => ({ __esModule: true, default: jest.fn() }));
 // The stub offers View only when the shell hands it somewhere to go.
@@ -106,6 +109,21 @@ describe('TC-014 role-specific navigation', () => {
     await userEvent.click(within(container.querySelector('.cs-sidebar-screens')).getByText('My events'));
 
     expect(screen.getByRole('heading', { name: 'My events' })).toBeInTheDocument();
+  });
+
+  // TC-410 — the two Technical Support screens open their own content, not the
+  // "ready to be connected" placeholder Reservations used to show.
+  test.each([
+    ['Equipment catalogue', 'equipment catalogue'],
+    ['Reservations', 'equipment reservations']
+  ])('TC-410 Technical Support choosing %s opens it', async (name, rendered) => {
+    const { container } = render(<Workspace user={USER} role={ROLES.TECH_SUPPORT} />);
+
+    await userEvent.click(within(container.querySelector('.cs-sidebar-screens')).getByText(name));
+
+    expect(screen.getByRole('heading', { name })).toBeInTheDocument();
+    expect(screen.getByText(rendered)).toBeInTheDocument();
+    expect(screen.queryByText(/ready to be connected/)).not.toBeInTheDocument();
   });
 
   test('TC-072 an organiser lands on My events', () => {

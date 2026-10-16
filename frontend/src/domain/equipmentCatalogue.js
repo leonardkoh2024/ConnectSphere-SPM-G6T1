@@ -18,7 +18,9 @@ export const RESERVATION_STATE_LABEL = {
   RELEASED: "Released"
 };
 
+// null for a missing or unreadable time: new Date(null) would be 1 January 1970.
 const time = (value) => {
+  if (value == null || value === "") return null;
   const parsed = new Date(value).getTime();
   return Number.isNaN(parsed) ? null : parsed;
 };
@@ -39,8 +41,12 @@ const coversNow = (record, now) => {
 export const reservationState = (reservation, now = new Date()) => {
   if (!isActiveReservation(reservation)) return RESERVATION_STATE.RELEASED;
   const at = time(now);
-  if (time(reservation.end_datetime) <= at) return RESERVATION_STATE.COMPLETED;
-  if (time(reservation.start_datetime) <= at) return RESERVATION_STATE.IN_USE;
+  const start = time(reservation.start_datetime);
+  const end = time(reservation.end_datetime);
+  // Without a readable window it cannot be placed, so it stays current.
+  if (start === null || end === null) return RESERVATION_STATE.UPCOMING;
+  if (end <= at) return RESERVATION_STATE.COMPLETED;
+  if (start <= at) return RESERVATION_STATE.IN_USE;
   return RESERVATION_STATE.UPCOMING;
 };
 

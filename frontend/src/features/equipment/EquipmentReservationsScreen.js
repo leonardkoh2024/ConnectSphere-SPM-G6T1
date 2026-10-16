@@ -4,8 +4,9 @@ import useEquipmentCatalogue from "./useEquipmentCatalogue";
 
 const STATE_TONE = { UPCOMING: "info", IN_USE: "positive", COMPLETED: "neutral", RELEASED: "neutral" };
 
+// A missing date must not read as 1 January 1970, which is what new Date(null) gives.
 const when = (value) => {
-  const date = new Date(value);
+  const date = value == null || value === "" ? new Date(NaN) : new Date(value);
   return Number.isNaN(date.getTime())
     ? "Not recorded"
     : date.toLocaleString("en-SG", { dateStyle: "medium", timeStyle: "short" });

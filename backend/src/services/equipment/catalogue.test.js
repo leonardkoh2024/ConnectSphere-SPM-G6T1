@@ -1,5 +1,5 @@
 // G2 / G3 / G5 — the catalogue read: what Technical Support holds, what is
-// reserved and for which event. TC-396 in docs/test-cases.md.
+// reserved and for which event. TC-406 in docs/test-cases.md.
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -60,7 +60,7 @@ const fakeFirestore = ({ role = "TECHNICAL_SUPPORT_STAFF" } = {}) => {
   };
 };
 
-test("TC-396 the catalogue returns stock, unavailability and every reservation with its event's details", async () => {
+test("TC-406 the catalogue returns stock, unavailability and every reservation with its event's details", async () => {
   const firestore = fakeFirestore();
   const catalogue = await createEquipmentCatalogue({ firestore }).load();
 
@@ -93,6 +93,66 @@ test("TC-396 the catalogue returns stock, unavailability and every reservation w
   ]);
 });
 
+test("TC-406 a stock record without its type uses its id, and a missing or unreadable date comes back as null", async () => {
+  const firestore = {
+    collection(name) {
+      const data = {
+        equipment_inventory: [["STAGING", { total_quantity: 4 }], ["OTHERS", {}]],
+        equipment_reservations: [["res-x", { equipment_type: "STAGING", quantity: 1, status: "RESERVED", start_datetime: "not a date" }]],
+        equipment_unavailability: [["un-x", { equipment_type: "STAGING", quantity: 1, status: "AVAILABLE" }]]
+      }[name] || [];
+      return {
+        get: async () => rows(data),
+        doc: () => ({ get: async () => ({ exists: false, data: () => undefined }) })
+      };
+    }
+  };
+  const catalogue = await createEquipmentCatalogue({ firestore }).load();
+  assert.deepEqual(catalogue.inventory, [
+    { equipment_type: "STAGING", total_quantity: 4 },
+    { equipment_type: "OTHERS", total_quantity: null }
+  ]);
+  // A recorded status is kept as it is, so a lifted unavailability does not count.
+  assert.deepEqual(catalogue.unavailability, [
+    { equipment_type: "STAGING", quantity: 1, status: "AVAILABLE", start_datetime: null, end_datetime: null }
+  ]);
+  assert.equal(catalogue.reservations[0].start_datetime, null);
+  assert.equal(catalogue.reservations[0].end_datetime, null);
+  // No event id: no request is looked up.
+  assert.equal(catalogue.reservations[0].event_id, null);
+  assert.equal(catalogue.reservations[0].event_name, null);
+});
+
+test("TC-406 a catalogue read that fails is passed on as a server error, not left hanging", async () => {
+  const firestore = fakeFirestore();
+  const failing = {
+    collection(name) {
+      if (name === "equipment_reservations") return { get: async () => { throw new Error("Firestore unavailable"); } };
+      return firestore.collection(name);
+    }
+  };
+  const app = express();
+  app.use("/api/equipment", createEquipmentService({
+    firestore: failing,
+    verifyIdToken: async () => ({ uid: "tech-1" }),
+    serverTimestamp: () => ({}),
+    getApprovedEventBookings: async () => []
+  }));
+  // The same final handler as src/index.js.
+  app.use((_error, _request, response, _next) => response.status(500).json({ error: "Internal server error" }));
+  const server = app.listen(0);
+  try {
+    await new Promise((resolve) => server.once("listening", resolve));
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/equipment/catalogue`, {
+      headers: { Authorization: "Bearer valid-token" }
+    });
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), { error: "Internal server error" });
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 const getCatalogue = async (firestore, authorization = "Bearer valid-token") => {
   const app = express();
   app.use(express.json());
@@ -114,7 +174,7 @@ const getCatalogue = async (firestore, authorization = "Bearer valid-token") => 
   }
 };
 
-test("TC-396 only signed-in Technical Support Staff can read the catalogue", async () => {
+test("TC-406 only signed-in Technical Support Staff can read the catalogue", async () => {
   const allowed = await getCatalogue(fakeFirestore());
   assert.equal(allowed.status, 200);
   assert.equal(allowed.body.reservations.length, 2);

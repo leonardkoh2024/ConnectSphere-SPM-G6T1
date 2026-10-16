@@ -1,5 +1,5 @@
 // G2 / G3 / G5 — Technical Support's Equipment catalogue and Reservations
-// screens. TC-398 and TC-399 in docs/test-cases.md.
+// screens. TC-408 and TC-409 in docs/test-cases.md.
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import EquipmentCatalogueScreen from "./EquipmentCatalogueScreen";
@@ -44,7 +44,7 @@ beforeEach(() => {
   });
 });
 
-test("TC-398 the Equipment catalogue shows each type's stock, what is reserved and free now, and what is coming up", async () => {
+test("TC-408 the Equipment catalogue shows each type's stock, what is reserved and free now, and what is coming up", async () => {
   render(<EquipmentCatalogueScreen now={NOW} />);
 
   const audio = await screen.findByRole("article", { name: "AUDIO" });
@@ -61,13 +61,13 @@ test("TC-398 the Equipment catalogue shows each type's stock, what is reserved a
   expect(loadEquipmentCatalogue).toHaveBeenCalledTimes(1);
 });
 
-test("TC-398 a catalogue that cannot be loaded says why", async () => {
+test("TC-408 a catalogue that cannot be loaded says why", async () => {
   loadEquipmentCatalogue.mockRejectedValue(new Error("The equipment service is not responding."));
   render(<EquipmentCatalogueScreen now={NOW} />);
   expect(await screen.findByRole("alert")).toHaveTextContent("The equipment service is not responding.");
 });
 
-test("TC-399 Reservations lists current ones soonest first and past ones with why they were released, and can show only mine", async () => {
+test("TC-409 Reservations lists current ones soonest first and past ones with why they were released, and can show only mine", async () => {
   render(<EquipmentReservationsScreen now={NOW} />);
 
   const current = await screen.findByRole("region", { name: "Current reservations" });
@@ -96,7 +96,24 @@ test("TC-399 Reservations lists current ones soonest first and past ones with wh
   expect(within(screen.getByRole("region", { name: "Past reservations" })).getAllByRole("article")).toHaveLength(1);
 });
 
-test("TC-399 with no reservations, each list says so", async () => {
+test("TC-409 a reservation missing its reference, release reason or dates says so, and type names read as words", async () => {
+  loadEquipmentCatalogue.mockResolvedValue({
+    userId: "tech-1", inventory: [], unavailability: [],
+    reservations: [reservation({
+      id: "bare", equipment_type: "SOUND_DESK", reference_no: null, status: "RELEASED", release_reason: null,
+      start_datetime: "not a date", end_datetime: null
+    })]
+  });
+  render(<EquipmentReservationsScreen now={NOW} />);
+
+  const card = await screen.findByRole("article", { name: "Partner Summit · SOUND_DESK" });
+  expect(within(card).getByText("No reference")).toBeInTheDocument();
+  expect(within(card).getByText("Release reason: Not recorded")).toBeInTheDocument();
+  expect(within(card).getByText("Not recorded – Not recorded")).toBeInTheDocument();
+  expect(within(card).getByText("SOUND DESK · 2")).toBeInTheDocument();
+});
+
+test("TC-409 with no reservations, each list says so", async () => {
   loadEquipmentCatalogue.mockResolvedValue({ userId: "tech-1", inventory: [], unavailability: [], reservations: [] });
   render(<EquipmentReservationsScreen now={NOW} />);
   expect(await screen.findByText("No current reservations.")).toBeInTheDocument();

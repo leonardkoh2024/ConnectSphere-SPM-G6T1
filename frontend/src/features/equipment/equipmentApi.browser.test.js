@@ -142,14 +142,14 @@ test("TC-309 unable-to-fulfil resolution calls the authenticated service with it
 
 // When the backend is not running, CRA's dev proxy answers with a plain-text
 // "Proxy error: ..." page, not JSON. Each equipment action says the service is
-// unreachable instead of showing the JSON parse error. TC-392 in
+// unreachable instead of showing the JSON parse error. TC-402 in
 // docs/test-cases.md.
 test.each([
   ["reserving", () => reserveEquipmentForEvent({ eventId: "event-1", equipmentType: "AUDIO", quantity: 1 })],
   ["releasing", () => releaseEquipmentReservation({ reservationId: "reservation-1" })],
   ["amending", () => amendEquipmentRequestLine({ eventId: "event-1", lineIndex: 0, equipmentType: "AUDIO", quantity: 1, note: "x" })],
   ["marking unable to fulfil", () => markEquipmentLineUnableToFulfill({ eventId: "event-1", lineIndex: 0, reason: "x" })]
-])("TC-392 %s reports an unreachable equipment service rather than a JSON error", async (_name, run) => {
+])("TC-402 %s reports an unreachable equipment service rather than a JSON error", async (_name, run) => {
   const proxyError = "Proxy error: Could not proxy request /api/equipment/reservations from localhost:3000 to http://localhost:4000/ (ECONNREFUSED).";
   mockFetch.mockResolvedValue({
     ok: false,
@@ -172,8 +172,8 @@ test.each([
 
 // The catalogue comes from the equipment service, which can join each
 // reservation to its event after the request has left the Pending queue.
-// TC-397 in docs/test-cases.md.
-test("TC-397 the catalogue is read from the equipment service with the caller's token, and carries the caller's id", async () => {
+// TC-407 in docs/test-cases.md.
+test("TC-407 the catalogue is read from the equipment service with the caller's token, and carries the caller's id", async () => {
   auth.currentUser.getIdToken.mockResolvedValue("test-id-token");
   const body = { inventory: [{ equipment_type: "AUDIO", total_quantity: 10 }], reservations: [], unavailability: [] };
   mockFetch.mockResolvedValue({ ok: true, json: async () => body });
@@ -188,6 +188,17 @@ test("TC-397 the catalogue is read from the equipment service with the caller's 
   mockFetch.mockClear();
   await expect(loadEquipmentCatalogue()).rejects.toThrow("Only Technical Support Staff can view the equipment catalogue.");
   expect(mockFetch).not.toHaveBeenCalled();
+});
+
+test("TC-407 a refused catalogue read shows the service's reason, a fallback without one, and an unreachable service plainly", async () => {
+  mockFetch.mockResolvedValue({ ok: false, status: 403, json: async () => ({ error: "Only Technical Support Staff can manage equipment reservations." }) });
+  await expect(loadEquipmentCatalogue()).rejects.toThrow("Only Technical Support Staff can manage equipment reservations.");
+
+  mockFetch.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) });
+  await expect(loadEquipmentCatalogue()).rejects.toThrow("The equipment catalogue could not be loaded.");
+
+  mockFetch.mockRejectedValue(new TypeError("Failed to fetch"));
+  await expect(loadEquipmentCatalogue()).rejects.toThrow(/equipment service is not responding/);
 });
 
 // Technical Support see who coordinates each event in their queue. The request
