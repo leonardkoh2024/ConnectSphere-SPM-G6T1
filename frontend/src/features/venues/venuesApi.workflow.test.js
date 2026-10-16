@@ -34,7 +34,7 @@ jest.mock('firebase/firestore', () => ({
 jest.mock('../../lib/firebase', () => ({ db: { name: 'browser-firestore' } }));
 
 import * as firestore from 'firebase/firestore';
-import { approveVenueBooking, loadVenueBookings, loadVenueSearchContext, releaseCancelledEventBookings, withdrawVenueBooking } from './venuesApi';
+import { approveVenueBooking, loadVenueBookingQueue, loadVenueBookings, loadVenueSearchContext, releaseCancelledEventBookings, withdrawVenueBooking } from './venuesApi';
 
 beforeEach(() => {
   mockTransactionUpdate.mockClear();
@@ -54,7 +54,7 @@ test('F4/F7 approval links the event to the approved booking in the same transac
   const assignmentRef = { path: 'venue_staff/VEN-001', id: 'VEN-001' };
   mockGetDoc.mockResolvedValue(snapshot('VB-001', booking, bookingRef));
   mockGetDocs.mockImplementation((reference) => {
-    if (reference.path === 'venue_staff') return Promise.resolve({ docs: [{ ref: assignmentRef, data: () => ({ venue_id: 'VEN-001', user_id: 'STAFF-001' }) }] });
+    if (reference.path === 'venue_staff') return Promise.resolve({ docs: [{ id: 'VEN-001', ref: assignmentRef, data: () => ({ venue_id: 'VEN-001', user_id: 'STAFF-001' }) }] });
     if (reference.path === 'venue_bookings') return Promise.resolve({ docs: [{ id: 'VB-001', ref: bookingRef, data: () => booking }] });
     return Promise.resolve({ docs: [] });
   });
@@ -87,7 +87,7 @@ test('TC-317 approval tells the coordinator who raised it, carrying the booking'
   const assignmentRef = { path: 'venue_staff/VEN-001', id: 'VEN-001' };
   mockGetDoc.mockResolvedValue(snapshot('VB-001', booking, bookingRef));
   mockGetDocs.mockImplementation((reference) => {
-    if (reference.path === 'venue_staff') return Promise.resolve({ docs: [{ ref: assignmentRef, data: () => ({ venue_id: 'VEN-001', user_id: 'STAFF-001' }) }] });
+    if (reference.path === 'venue_staff') return Promise.resolve({ docs: [{ id: 'VEN-001', ref: assignmentRef, data: () => ({ venue_id: 'VEN-001', user_id: 'STAFF-001' }) }] });
     if (reference.path === 'venue_bookings') return Promise.resolve({ docs: [{ id: 'VB-001', ref: bookingRef, data: () => booking }] });
     return Promise.resolve({ docs: [] });
   });
@@ -125,7 +125,7 @@ const approvalSetup = ({ booking: changes = {}, others = [] } = {}) => {
   });
   mockGetDoc.mockResolvedValue(snapshot('VB-001', booking, bookingRef));
   mockGetDocs.mockImplementation((reference) => {
-    if (reference.path === 'venue_staff') return Promise.resolve({ docs: [{ ref: assignmentRef, data: () => ({ venue_id: 'VEN-001', user_id: 'STAFF-001' }) }] });
+    if (reference.path === 'venue_staff') return Promise.resolve({ docs: [{ id: 'VEN-001', ref: assignmentRef, data: () => ({ venue_id: 'VEN-001', user_id: 'STAFF-001' }) }] });
     if (reference.path === 'venue_bookings') return Promise.resolve({ docs: [{ id: 'VB-001', ref: bookingRef, data: () => booking }, ...otherDocs] });
     return Promise.resolve({ docs: [] });
   });
@@ -334,4 +334,40 @@ test('TC-387 Venue Staff with no assigned venue read no bookings; coordinators s
   const coordinator = await loadVenueSearchContext({ userId: 'COORD-001', role: 'EVENT_COORDINATOR' });
   expect(bookingQueries()).toEqual([{ path: 'venue_bookings' }]);
   expect(coordinator.bookings.map((booking) => booking.id)).toEqual(['B-1']);
+});
+
+// One owner per venue — TC-397, TC-398. firestore.rules honours only the
+// assignment keyed by the venue id, so a seeded "-staff-2" record must not make
+// the queue or catalogue read that venue's bookings: one refused query failed
+// the whole Booking requests screen with "Missing or insufficient permissions."
+const assignmentsFor = () => docsOf([
+  ['V-OWN', { venue_id: 'V-OWN', user_id: 'STAFF-001' }],
+  ['V-OTHER-staff-2', { venue_id: 'V-OTHER', user_id: 'STAFF-001' }]
+]);
+
+test('TC-397 the booking queue reads only venues the staff member owns, ignoring a second-staff record', async () => {
+  mockGetDocs.mockImplementation((reference) => {
+    if (reference.path === 'venue_staff') return Promise.resolve(assignmentsFor());
+    if (reference.path === 'venue_bookings') return Promise.resolve(docsOf([['B-1', { venue_id: 'V-OWN', status: 'PENDING' }]]));
+    return Promise.resolve({ docs: [] });
+  });
+  mockGetDoc.mockResolvedValue({ exists: () => false, data: () => undefined });
+
+  const queue = await loadVenueBookingQueue({ user: { uid: 'STAFF-001' } });
+
+  expect(bookingQueries().map((reference) => reference.constraints)).toEqual([[['venue_id', '==', 'V-OWN']]]);
+  expect(queue.map((booking) => booking.booking_id)).toEqual(['B-1']);
+});
+
+test('TC-398 the catalogue marks only owned venues as the staff member\'s, so their bookings alone are read', async () => {
+  mockGetDocs.mockImplementation((reference) => Promise.resolve(reference.path === 'venue_staff'
+    ? assignmentsFor()
+    : docsOf(reference.path === 'venues'
+      ? [['V-OWN', { venue_id: 'V-OWN', name: 'Own' }], ['V-OTHER', { venue_id: 'V-OTHER', name: 'Other' }]]
+      : [])));
+
+  const context = await loadVenueSearchContext({ userId: 'STAFF-001', role: 'VENUE_STAFF' });
+
+  expect(context.venues.filter((venue) => venue.is_assigned_to_user).map((venue) => venue.venue_id)).toEqual(['V-OWN']);
+  expect(bookingQueries().map((reference) => reference.constraints)).toEqual([[['venue_id', '==', 'V-OWN']]]);
 });

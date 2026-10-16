@@ -78,6 +78,12 @@ const assemble = (venuesSnap, related, assignedVenueIds) =>
     };
   });
 
+// One owner per venue: the assignment keyed by the venue id is the only one
+// firestore.rules honours (assignedVenueStaff). Any other record naming the same
+// venue — the seeded "-staff-2" rows — grants nothing, and reading that venue's
+// bookings on its strength is refused, so it is ignored here.
+const ownedAssignments = (snapshot) => snapshot.docs.filter((item) => item.id === item.data().venue_id);
+
 export const loadVenueCatalogue = async ({ userId, role } = {}) => {
   const assignmentsRequest = role === ROLES.VENUE_STAFF && userId
     ? getDocs(query(collection(db, "venue_staff"), where("user_id", "==", userId)))
@@ -90,7 +96,7 @@ export const loadVenueCatalogue = async ({ userId, role } = {}) => {
     getDocs(collection(db, "venue_operating_hours")),
     assignmentsRequest
   ]);
-  const assignedVenueIds = new Set(assignments.docs.map((item) => item.data().venue_id).filter(Boolean));
+  const assignedVenueIds = new Set(ownedAssignments(assignments).map((item) => item.data().venue_id));
   return assemble(venues, {
     layouts: grouped(layouts),
     facilities: grouped(facilities),
@@ -147,17 +153,17 @@ export const saveVenuePlanningDetails = async ({ user, venueId, changes = {} }) 
   }
 
   const venueRef = doc(db, "venues", venueId);
-  const [assignmentSnapshot, bookingSnapshot, venueStaffSnapshot] = await Promise.all([
+  const [assignmentSnapshot, bookingSnapshot] = await Promise.all([
     getDocs(query(collection(db, "venue_staff"), where("venue_id", "==", venueId), where("user_id", "==", userId))),
-    getDocs(query(collection(db, "venue_bookings"), where("venue_id", "==", venueId))),
-    getDocs(query(collection(db, "venue_staff"), where("venue_id", "==", venueId)))
+    getDocs(query(collection(db, "venue_bookings"), where("venue_id", "==", venueId)))
   ]);
-  if (!assignmentSnapshot.docs.length) throw new Error("You are not assigned to manage this venue.");
+  const [owned] = ownedAssignments(assignmentSnapshot);
+  if (!owned) throw new Error("You are not assigned to manage this venue.");
 
   return runTransaction(db, async (transaction) => {
     const [venueSnapshot, assignment, ...bookings] = await Promise.all([
       transaction.get(venueRef),
-      transaction.get(assignmentSnapshot.docs[0].ref),
+      transaction.get(owned.ref),
       ...bookingSnapshot.docs.map((item) => transaction.get(item.ref))
     ]);
     if (!venueSnapshot.exists()) throw new Error("Venue not found.");
@@ -198,7 +204,9 @@ export const saveVenuePlanningDetails = async ({ user, venueId, changes = {} }) 
         .map((item) => item.data().event_id)
         .filter(Boolean)
     )];
-    const venueStaffUsers = [...new Set(venueStaffSnapshot.docs.map((item) => item.data().user_id).filter(Boolean))];
+    // The venue's one owner is the caller — listing venue_staff by venue is
+    // refused to Venue Staff, so it is not queried.
+    const venueStaffUsers = [userId];
     const changedAt = serverTimestamp();
     relatedEvents.forEach((eventId) => {
       venueStaffUsers.forEach((recipient) => {
@@ -443,7 +451,7 @@ export const loadVenueBookings = async ({ user }) => {
 export const loadVenueBookingQueue = async ({ user }) => {
   const userId = requiredUser(user);
   const assignments = await getDocs(query(collection(db, "venue_staff"), where("user_id", "==", userId)));
-  const venueIds = [...new Set(assignments.docs.map((item) => item.data().venue_id).filter(Boolean))];
+  const venueIds = ownedAssignments(assignments).map((item) => item.data().venue_id);
   const [bookingSnapshots, venueSnapshots] = await Promise.all([
     Promise.all(venueIds.map((venueId) => getDocs(query(collection(db, "venue_bookings"), where("venue_id", "==", venueId))))),
     Promise.all(venueIds.map((venueId) => getDoc(doc(db, "venues", venueId))))
@@ -481,12 +489,13 @@ export const approveVenueBooking = async ({ user, bookingId }) => {
     getDocs(query(collection(db, "venue_bookings"), where("venue_id", "==", venueId))),
     getDocs(query(collection(db, "venue_unavailability"), where("venue_id", "==", venueId)))
   ]);
-  if (!assignments.docs.length) throw new Error("You are not assigned to manage this venue.");
+  const [owned] = ownedAssignments(assignments);
+  if (!owned) throw new Error("You are not assigned to manage this venue.");
   return runTransaction(db, async (transaction) => {
     const [bookingSnapshot, venueSnapshot, assignment, ...related] = await Promise.all([
       transaction.get(bookingRef),
       transaction.get(doc(db, "venues", venueId)),
-      transaction.get(assignments.docs[0].ref),
+      transaction.get(owned.ref),
       ...bookings.docs.filter((item) => item.id !== bookingId).map((item) => transaction.get(item.ref)),
       ...unavailable.docs.map((item) => transaction.get(item.ref))
     ]);

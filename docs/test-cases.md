@@ -945,3 +945,16 @@ A coordinator's booking details name the Venue Staff member who looks after the 
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TC-395 | The booking details name the venue's Venue Staff member | One booking whose venue is managed by Priya Nair; one with no recorded name | Open each booking's details | "Venue Staff: Priya Nair"; the other shows "Venue Staff: Not recorded" | As expected | Pass | E8 |
 | TC-396 | Each booking carries its Venue Staff name from the assignment | Three venues: one assignment with `staff_name`, one missing, one refused | Load the coordinator's bookings | Names Priya Nair, blank, blank; no Venue Staff profile is read | As expected | Pass | E8, TC-347 unchanged |
+
+---
+
+## Venue Staff act only on the venues they own
+
+One owner per venue: `firestore.rules` (`assignedVenueStaff`) honours only the `venue_staff` record keyed by the venue id. The seeded `-staff-2` records named a second staff member for some venues, and the Booking requests queue read those venues' bookings too — the refused query failed the whole screen with "Missing or insufficient permissions." The queue, catalogue, approval and planning-details save now count only the owner's record, and the planning-details save no longer lists every assignment for the venue (always refused to Venue Staff).
+
+**Tests — `frontend/src/features/venues/venuesApi.workflow.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-397 | The booking queue reads only owned venues | Staff member owns V-OWN and has a second-staff record for V-OTHER | Load the Booking requests queue | `venue_bookings` queried for V-OWN only; its pending booking listed | As expected | Pass | — |
+| TC-398 | The catalogue marks only owned venues as the staff member's | Same assignments | Load the venue search context as Venue Staff | Only V-OWN is `is_assigned_to_user`; bookings read for V-OWN only | As expected | Pass | — |
