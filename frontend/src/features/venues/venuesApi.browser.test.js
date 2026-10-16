@@ -1,6 +1,8 @@
 const mockTransactionSet = jest.fn();
 const mockTransactionUpdate = jest.fn();
 const mockGetDocs = jest.fn();
+const mockVenueStaff = jest.fn();
+const assignedTo = (userId) => ({ exists: () => true, data: () => ({ venue_id: 'venue-1', user_id: userId }) });
 
 jest.mock('firebase/firestore', () => ({
   collection: (_database, name) => ({ path: name }),
@@ -26,6 +28,7 @@ jest.mock('firebase/firestore', () => ({
         exists: () => true,
         data: () => ({ name: 'Harbour Auditorium', max_capacity: 120, setup_minutes: 30, turnaround_minutes: 15 })
       };
+      if (reference.path === 'venue_staff/venue-1') return mockVenueStaff();
       throw new Error(`Unexpected transaction read: ${reference.path}`);
     },
     set: mockTransactionSet,
@@ -45,14 +48,11 @@ describe('venue booking browser SDK persistence', () => {
     mockTransactionSet.mockClear();
     mockTransactionUpdate.mockClear();
     mockGetDocs.mockReset().mockResolvedValue({ docs: [] });
+    mockVenueStaff.mockReset().mockReturnValue(assignedTo('staff-1'));
   });
 
   test('creates a pending request in a Firestore transaction without requesting an Admin token', async () => {
     const user = { uid: 'coordinator-1', getIdToken: jest.fn() };
-    mockGetDocs.mockImplementation((reference) => {
-      if (reference.path === 'venue_staff') return Promise.resolve({ docs: [{ data: () => ({ venue_id: 'venue-1', user_id: 'staff-1' }) }] });
-      return Promise.resolve({ docs: [] });
-    });
 
     await expect(requestVenueBooking({
       user,
@@ -85,6 +85,38 @@ describe('venue booking browser SDK persistence', () => {
     });
     expect(mockTransactionSet.mock.calls[0][1].occupied_start.toISOString()).toBe('2026-11-10T01:30:00.000Z');
     expect(mockTransactionSet.mock.calls[0][1].occupied_end.toISOString()).toBe('2026-11-10T04:15:00.000Z');
+  });
+
+  // A coordinator may get venue_staff/{venueId} but not list the collection, so
+  // the assignment must be read as that one document. TC-392, TC-393.
+  test('TC-392 reads the venue assignment as one document, never a list query on venue_staff', async () => {
+    await requestVenueBooking({
+      user: { uid: 'coordinator-1' },
+      event_id: 'event-1',
+      venue_id: 'venue-1',
+      required_layout: 'THEATRE',
+      required_facilities: [],
+      acknowledgement: { acknowledged: false, criteria: [] }
+    });
+
+    expect(mockVenueStaff).toHaveBeenCalledTimes(1);
+    expect(mockGetDocs.mock.calls.map(([reference]) => reference.path)).not.toContain('venue_staff');
+  });
+
+  test('TC-393 still raises the request when no Venue Staff member manages the venue, notifying nobody', async () => {
+    mockVenueStaff.mockReturnValue({ exists: () => false, data: () => undefined });
+
+    await expect(requestVenueBooking({
+      user: { uid: 'coordinator-1' },
+      event_id: 'event-1',
+      venue_id: 'venue-1',
+      required_layout: 'THEATRE',
+      required_facilities: [],
+      acknowledgement: { acknowledged: false, criteria: [] }
+    })).resolves.toEqual({ booking_id: 'booking-auto', status: 'PENDING' });
+
+    expect(mockTransactionSet).toHaveBeenCalledTimes(1);
+    expect(mockTransactionSet.mock.calls[0][1]).toMatchObject({ status: 'PENDING', venue_id: 'venue-1' });
   });
 
   test.each([

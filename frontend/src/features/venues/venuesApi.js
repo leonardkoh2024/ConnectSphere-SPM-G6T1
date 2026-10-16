@@ -310,14 +310,15 @@ export const requestVenueBooking = async ({
   const facilitySnapshot = [...new Set(required_facilities.map((item) => String(item || "").trim()).filter(Boolean))];
   const eventRef = doc(db, "events", event_id);
   const venueRef = doc(db, "venues", venue_id);
-  const [existingSnapshot, venueStaffSnapshot] = await Promise.all([
-    getDocs(query(collection(db, "venue_bookings"), where("event_id", "==", event_id))),
-    getDocs(query(collection(db, "venue_staff"), where("venue_id", "==", venue_id)))
-  ]);
+  // venue_staff is keyed by venue id, and a coordinator may only get that one
+  // document — a list query on the collection is refused by firestore.rules.
+  const venueStaffRef = doc(db, "venue_staff", venue_id);
+  const existingSnapshot = await getDocs(query(collection(db, "venue_bookings"), where("event_id", "==", event_id)));
   return runTransaction(db, async (transaction) => {
-    const [eventSnapshot, venueSnapshot, ...existing] = await Promise.all([
+    const [eventSnapshot, venueSnapshot, venueStaffSnapshot, ...existing] = await Promise.all([
       transaction.get(eventRef),
       transaction.get(venueRef),
+      transaction.get(venueStaffRef),
       ...existingSnapshot.docs.map((item) => transaction.get(item.ref))
     ]);
     if (!eventSnapshot.exists()) throw new Error("Event not found.");
@@ -377,9 +378,8 @@ export const requestVenueBooking = async ({
       requested_by: userId
     });
     const changedAt = serverTimestamp();
-    venueStaffSnapshot.docs.forEach((item) => {
-      const recipient = item.data().user_id;
-      if (!recipient) return;
+    const recipient = venueStaffSnapshot.exists() ? venueStaffSnapshot.data().user_id : null;
+    if (recipient) {
       const notificationRef = doc(collection(db, "notifications"));
       transaction.set(notificationRef, {
         ...notificationRecord({
@@ -392,7 +392,7 @@ export const requestVenueBooking = async ({
         }),
         venue_id: venue_id
       });
-    });
+    }
     return { booking_id: bookingRef.id, status: "PENDING" };
   });
 };

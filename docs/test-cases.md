@@ -37,6 +37,7 @@ they can be read next to the acceptance criteria and move into the service layer
 | — | — | Confirmations appear as toasts | TC-071 |
 | C1 | SCRUM-102 | Have submitted events assigned to a coordinator automatically | TC-072 – TC-080 |
 | E8 | SCRUM-124 | Be stopped before booking an unsuitable venue | TC-112 – TC-174 |
+| J4 | SCRUM-153 | Be told when work arrives for me (a booking request reaches its Venue Staff) | TC-392 – TC-394 |
 | E4 | SCRUM-120 | See when a venue is free | TC-200 – TC-249 |
 | J6 | SCRUM-155 | Be told the outcome of my booking and equipment requests (AC1: approval only — rejection awaits F5) | TC-313 – TC-346 |
 | A7 | SCRUM-170 | Use ConnectSphere as a Safety Officer | TC-348 – TC-385 |
@@ -917,3 +918,17 @@ Opening a review on the live project failed with "Missing or insufficient permis
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TC-386 | Venue Staff read bookings one assigned venue at a time | Staff member assigned V-1 and V-2 of three venues | Load the venue search context as Venue Staff | `venue_bookings` queried with `venue_id == V-1` and `venue_id == V-2`, never unfiltered; both venues' bookings returned; all three venues still listed | As expected | Pass | E2/E4 with F-story read rule |
 | TC-387 | No assigned venue means no booking read; coordinators unchanged | Staff member with no assignment; then a coordinator | Load the context as each | Venue Staff: no `venue_bookings` query, no bookings. Coordinator: the whole collection, as before | As expected | Pass | E2/E4 |
+
+---
+
+## Coordinators can raise a venue booking again
+
+Raising a booking failed with "Missing or insufficient permissions." Since J4 the request notifies the venue's Venue Staff member, and it found them with a list query on `venue_staff`, which `firestore.rules` lets only Venue Staff run. The request now reads the one `venue_staff/{venueId}` document inside its transaction, and the rules let a coordinator `get` that document, but still not list the collection.
+
+**Tests — `frontend/src/features/venues/venuesApi.browser.test.js` and `frontend/src/security/firestoreRules.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-392 | The venue assignment is read as one document | Planning event; venue managed by staff-1 | Raise a booking as the event's coordinator | `venue_staff/venue-1` read once in the transaction; no query on `venue_staff`; booking and notice to staff-1 written | As expected | Pass | E8 / J4 |
+| TC-393 | A venue with no Venue Staff member can still be requested | No `venue_staff` document for the venue | Raise a booking as the event's coordinator | Booking written as Pending; no notification written | As expected | Pass | E8 / J4 |
+| TC-394 | A coordinator may get one assignment but never list them | `firestore.rules` | Inspect the `venue_staff` rules granted to the coordinator role | Only `get` is granted, never `list` | As expected | Pass | A4 / J4 |

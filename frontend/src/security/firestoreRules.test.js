@@ -304,6 +304,16 @@ describe('E1 venue catalogue updates are assigned-staff only', () => {
     expect(assignments).toContain("hasRole('VENUE_STAFF')");
     expect(assignments).toContain('resource.data.user_id == request.auth.uid');
   });
+
+  // J4 / TC-394 — a coordinator raising a booking reads that venue's assignment
+  // to notify its staff, but only as a single get: listing it is still refused.
+  test('TC-394 a coordinator may get one venue assignment but never list them', () => {
+    const coordinatorRules = [...matchBlock('venue_staff').matchAll(/allow ([a-z, ]+): if ([^;]*);/g)]
+      .filter(([, , condition]) => condition.includes("hasRole('EVENT_COORDINATOR')"))
+      .map(([, operations]) => operations.trim());
+
+    expect(coordinatorRules).toEqual(['get']);
+  });
 });
 
 // J1 / SCRUM-150 — TC-262. A recipient reads only their own notifications and may

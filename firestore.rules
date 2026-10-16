@@ -458,6 +458,10 @@ service cloud.firestore {
     match /venue_staff/{venueId} {
       allow get, list: if hasRole('VENUE_STAFF')
         && resource.data.user_id == request.auth.uid;
+      // J4 — a coordinator raising a booking reads the one venue's assignment to
+      // address its "booking request raised" notice. A single get, never a list,
+      // so no coordinator can enumerate who manages every venue.
+      allow get: if hasRole('EVENT_COORDINATOR');
     }
     match /venues/{venueId} {
       allow get, list: if hasRole('EVENT_COORDINATOR') || hasRole('VENUE_STAFF') || hasRole('SAFETY_OFFICER');
