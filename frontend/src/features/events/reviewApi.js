@@ -4,7 +4,7 @@
 
 import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
 import { auth, db } from "../../lib/firebase";
-import { EVENT_STATUS, canApproveEvent, assignEvent, canLeadReassign, canOpenReview, canRejectEvent, canReassignEvent, canRequestClarification, canRespondToClarification, cleanRequiredText, leadVisibleEvents, supervisesAllEvents } from "../../domain/eventReview";
+import { EVENT_STATUS, canApproveEvent, assignEvent, reassignEvent, canOpenReview, canRejectEvent, canRequestClarification, canRespondToClarification, cleanRequiredText, leadVisibleEvents, supervisesAllEvents } from "../../domain/eventReview";
 import { clarificationRecord, clarificationResponseRecord, coordinatorAssignmentRecord, eventHistoryRecord, notificationRecord } from "../../domain/eventReviewRecords";
 import { ROLES } from "../../domain/roles";
 import {
@@ -403,32 +403,6 @@ const reject = async (eventId, value) => {
   return { ok: true };
 };
 
-const reassign = async (eventId, coordinatorId) => {
-  const user = requireUser();
-  const eventRef = doc(db, "events", eventId);
-  const targetRef = doc(db, "users", coordinatorId);
-  const previousRef = doc(db, "coordinator_assignments", `${eventId}_${user.uid}`);
-  const nextRef = doc(db, "coordinator_assignments", `${eventId}_${coordinatorId}`);
-  const historyRef = doc(collection(db, "event_history"));
-  const notificationRefs = [doc(collection(db, "notifications")), doc(collection(db, "notifications")), doc(collection(db, "notifications"))];
-  await runTransaction(db, async (tx) => {
-    const [eventSnapshot, targetSnapshot, previousSnapshot] = await Promise.all([tx.get(eventRef), tx.get(targetRef), tx.get(previousRef)]);
-    if (!eventSnapshot.exists() || !targetSnapshot.exists()) throw new Error("Event or coordinator not found.");
-    const event = eventSnapshot.data();
-    const targetData = targetSnapshot.data();
-    const target = targetData.role === ROLES.COORDINATOR ? { id: targetSnapshot.id, ...targetData, active: targetData.is_active !== false } : null;
-    if (!canReassignEvent(event, user.uid, target)) throw new Error("Only the current coordinator can reassign this event to another active coordinator.");
-    const changedAt = serverTimestamp();
-    tx.update(eventRef, { coordinator_id: coordinatorId, assigned_at: changedAt, updated_at: changedAt });
-    tx.set(previousRef, coordinatorAssignmentRecord({ assignmentId: previousRef.id, eventId, coordinatorId: user.uid, assignedAt: previousSnapshot.exists() ? previousSnapshot.data().assigned_at : event.assigned_at || null, endedAt: changedAt }));
-    tx.set(nextRef, coordinatorAssignmentRecord({ assignmentId: nextRef.id, eventId, coordinatorId, assignedAt: changedAt }));
-    tx.set(historyRef, eventHistoryRecord({ historyId: historyRef.id, eventId, actorId: user.uid, actionType: "COORDINATOR_REASSIGNED", fieldName: "coordinator_id", oldValue: user.uid, newValue: coordinatorId, description: `Event reassigned to ${target.name || targetData.email || coordinatorId}.`, createdAt: changedAt }));
-    const note = `${event.name || event.reference_no} was reassigned to ${target.name || targetData.email || coordinatorId}.`;
-    [user.uid, coordinatorId, event.organiser_id].forEach((recipient, index) => tx.set(notificationRefs[index], notificationRecord({ notificationId: notificationRefs[index].id, userId: recipient, eventId, type: "COORDINATOR_REASSIGNED", message: note, createdAt: changedAt })));
-  });
-  return { ok: true };
-};
-
 const respond = async (eventId, clarificationId, value) => {
   const user = requireUser();
   const message = cleanRequiredText(value);
@@ -551,16 +525,19 @@ const assign = async (eventId, coordinatorId) => {
   return { ok: true };
 };
 
-// The Lead moves an already-assigned event to a different active coordinator.
-// Unlike reassign (coordinator-only) this is keyed on the Lead role via
-// canLeadReassign; the previous coordinator is the event's current one, and all
-// three parties — old coordinator, new coordinator and organiser — are notified.
+// The Lead moves an already-assigned event to a different active coordinator
+// (K3 / SCRUM-184). reassignEvent is the one pure decision (AC1/AC2 guard, AC3 record,
+// AC5 recipients), as assignEvent is for K2; this only turns it into one atomic
+// transaction. The outgoing coordinator is the event's current one, and all three
+// parties — outgoing coordinator, incoming coordinator and organiser — are told.
 const leadReassign = async (eventId, coordinatorId) => {
   const user = requireUser();
   const eventRef = doc(db, "events", eventId);
   const targetRef = doc(db, "users", coordinatorId);
   const actorRef = doc(db, "users", user.uid);
+  const nextRef = doc(db, "coordinator_assignments", `${eventId}_${coordinatorId}`);
   const historyRef = doc(collection(db, "event_history"));
+  const notificationRefs = [doc(collection(db, "notifications")), doc(collection(db, "notifications")), doc(collection(db, "notifications"))];
   await runTransaction(db, async (tx) => {
     const [eventSnapshot, targetSnapshot, actorSnapshot] = await Promise.all([tx.get(eventRef), tx.get(targetRef), tx.get(actorRef)]);
     if (!eventSnapshot.exists() || !targetSnapshot.exists()) throw new Error("Event or coordinator not found.");
@@ -568,27 +545,41 @@ const leadReassign = async (eventId, coordinatorId) => {
     const actorRole = actorSnapshot.exists() ? actorSnapshot.data().role : null;
     const targetData = targetSnapshot.data();
     const target = targetData.role === ROLES.COORDINATOR ? { id: targetSnapshot.id, ...targetData, active: targetData.is_active !== false } : null;
-    if (!canLeadReassign(event, actorRole, target)) throw new Error("This event cannot be reassigned to that coordinator.");
-    const previous = event.coordinator_id;
-    const previousRef = doc(db, "coordinator_assignments", `${eventId}_${previous}`);
-    const nextRef = doc(db, "coordinator_assignments", `${eventId}_${coordinatorId}`);
-    const previousSnapshot = await tx.get(previousRef);
+    // The outgoing coordinator's original assignment time is the event's own assigned_at.
+    // The coordinator_assignments record is deliberately NOT read: firestore.rules lets only
+    // an event's owner, current or previous coordinator read it, never the Lead, so a read here
+    // would be refused with "Missing or insufficient permissions". Writing it is allowed.
+    const previousRef = event.coordinator_id ? doc(db, "coordinator_assignments", `${eventId}_${event.coordinator_id}`) : null;
+    const originalAssignedAt = event.assigned_at ?? null;
     const changedAt = serverTimestamp();
-    tx.update(eventRef, { coordinator_id: coordinatorId, assigned_at: changedAt, updated_at: changedAt });
-    tx.set(previousRef, coordinatorAssignmentRecord({ assignmentId: previousRef.id, eventId, coordinatorId: previous, assignedAt: previousSnapshot.exists() ? previousSnapshot.data().assigned_at : event.assigned_at || null, endedAt: changedAt }));
+    const outcome = reassignEvent({ event: { ...event, assigned_at: originalAssignedAt }, role: actorRole, leadId: user.uid, target, now: changedAt });
+    if (!outcome.ok) throw new Error("This event cannot be reassigned to that coordinator.");
+    const describedTo = target.name || targetData.email || coordinatorId;
+    const label = event.name || event.reference_no;
+    const previous = outcome.previousAssignment;
+    tx.update(eventRef, { coordinator_id: outcome.event.coordinator_id, assigned_at: changedAt, updated_at: changedAt });
+    tx.set(previousRef, coordinatorAssignmentRecord({ assignmentId: previousRef.id, eventId, coordinatorId: previous.coordinatorId, assignedAt: previous.assignedAt, endedAt: previous.endedAt, reassignedBy: previous.reassignedBy }));
     tx.set(nextRef, coordinatorAssignmentRecord({ assignmentId: nextRef.id, eventId, coordinatorId, assignedAt: changedAt }));
-    tx.set(historyRef, eventHistoryRecord({ historyId: historyRef.id, eventId, actorId: user.uid, actionType: "COORDINATOR_REASSIGNED", fieldName: "coordinator_id", oldValue: previous, newValue: coordinatorId, description: `Event reassigned to ${target.name || targetData.email || coordinatorId}.`, createdAt: changedAt }));
-    const note = `${event.name || event.reference_no} was reassigned to ${target.name || targetData.email || coordinatorId}.`;
-    [previous, coordinatorId, event.organiser_id].filter(Boolean).forEach((recipient) => {
-      const ref = doc(collection(db, "notifications"));
-      tx.set(ref, notificationRecord({ notificationId: ref.id, userId: recipient, eventId, type: "COORDINATOR_REASSIGNED", message: note, createdAt: changedAt }));
-    });
+    tx.set(historyRef, eventHistoryRecord({ historyId: historyRef.id, eventId, actorId: outcome.history.actorId, actionType: outcome.history.actionType, fieldName: outcome.history.fieldName, oldValue: outcome.history.oldValue, newValue: outcome.history.newValue, description: `Event reassigned to ${describedTo}.`, previousAssignedAt: outcome.history.previousAssignedAt, createdAt: changedAt }));
+    const wording = {
+      outgoing: `${label} was reassigned to ${describedTo}. You are no longer its coordinator.`,
+      incoming: `${label} was reassigned to you.`,
+      organiser: `${label} was reassigned to ${describedTo}.`
+    };
+    outcome.notifications.forEach((recipient, index) => tx.set(notificationRefs[index], notificationRecord({
+      notificationId: notificationRefs[index].id,
+      userId: recipient.userId,
+      eventId,
+      type: recipient.type,
+      message: wording[recipient.audience],
+      createdAt: changedAt
+    })));
   });
   return { ok: true };
 };
 
 export const reviewApi = {
-  list, detail, openReview, clarify, reject, reassign, respond, approve,
+  list, detail, openReview, clarify, reject, respond, approve,
   leadBoard, assign, leadReassign,
   significantChangeImpact, saveSignificantChange
 };

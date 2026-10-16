@@ -45,17 +45,10 @@ export const canFindVenues = (event) => Boolean(event)
 // set the guards use rather than keeping their own copy of the statuses.
 export const isTerminal = (event) => TERMINAL.has(event?.status);
 
-export const canReassignEvent = (event, userId, targetCoordinator) =>
-  isCurrentCoordinator(event, userId) &&
-  !TERMINAL.has(event.status) &&
-  Boolean(targetCoordinator?.active !== false) &&
-  Boolean(targetCoordinator?.id) &&
-  targetCoordinator.id !== userId;
-
 // A6 / Week 7 change #5 — the Event Coordinator Lead. The Lead oversees every
 // event (AC3) and is the only role that assigns a coordinator to a new event or
-// reassigns an existing one (AC2). The coordinator-only canReassignEvent above is
-// deliberately left as it is: it still governs a coordinator handing on their own
+// reassigns an existing one (AC2). K3 / SCRUM-184 removed the old coordinator-side
+// canReassignEvent (C9 criterion 5): a coordinator can no longer hand on their own
 // event. These are pure guards; firestore.rules remains the authoritative
 // server-side boundary (AC5).
 export const isLead = (role) => role === ROLES.COORDINATOR_LEAD;
@@ -76,9 +69,8 @@ export const canAssignCoordinator = (event, role, targetCoordinator) =>
   Boolean(targetCoordinator?.id);
 
 // AC2 (reassign) — the Lead moves an already-assigned, non-terminal event to a
-// different active coordinator. Unlike canReassignEvent this is keyed on the Lead
-// role rather than on holding the event, and it still refuses handing the event
-// back to the coordinator who already has it.
+// different active coordinator. It is keyed on the Lead role, not on holding the
+// event, and it refuses handing the event back to the coordinator who already has it.
 export const canLeadReassign = (event, role, targetCoordinator) =>
   isLead(role) &&
   Boolean(event?.coordinator_id) &&
@@ -129,6 +121,40 @@ export const assignEvent = ({ event, role, leadId, target, now }) => {
       { userId: target.id, type: "COORDINATOR_ASSIGNED" },
       { userId: event.organiser_id, type: "COORDINATOR_ASSIGNED" }
     ]
+  };
+};
+
+// K3 / SCRUM-184 — the single reassignment outcome, mirroring assignEvent. It reuses
+// canLeadReassign, so a non-Lead, unassigned, terminal, inactive-target or
+// same-coordinator move (AC1/AC2) is refused in exactly one place. On success it
+// gives: the event with exactly one coordinator (AC3); the outgoing assignment kept
+// with its original time, the reassignment time and the Lead (AC3); the history entry
+// (AC3); and the three people to tell (AC5). Because coordinator actions are all keyed
+// on event.coordinator_id, the outgoing coordinator loses every one the moment the
+// event is saved (AC4). Pure: the adapter turns this into Firestore writes, and
+// firestore.rules stays the authoritative boundary.
+export const reassignEvent = ({ event, role, leadId, target, now }) => {
+  if (!canLeadReassign(event, role, target)) return { ok: false };
+  const previousId = event.coordinator_id;
+  const previousAssignedAt = event.assigned_at ?? null;
+  return {
+    ok: true,
+    event: { ...event, coordinator_id: target.id, assigned_at: now },
+    previousAssignment: { coordinatorId: previousId, assignedAt: previousAssignedAt, endedAt: now, reassignedBy: leadId },
+    history: {
+      actionType: "COORDINATOR_REASSIGNED",
+      fieldName: "coordinator_id",
+      oldValue: previousId,
+      newValue: target.id,
+      actorId: leadId,
+      previousAssignedAt,
+      createdAt: now
+    },
+    notifications: [
+      { userId: previousId, type: "COORDINATOR_REASSIGNED", audience: "outgoing" },
+      { userId: target.id, type: "COORDINATOR_REASSIGNED", audience: "incoming" },
+      { userId: event.organiser_id, type: "COORDINATOR_REASSIGNED", audience: "organiser" }
+    ].filter((item) => item.userId)
   };
 };
 

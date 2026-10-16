@@ -26,6 +26,9 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
+  // K3 / SCRUM-184 — which row the error belongs to, so a refused assign/reassign is
+  // shown beside the button that was pressed, not off-screen at the top of a long list.
+  const [errorFor, setErrorFor] = useState("");
   // Oversight is shown one lens at a time — by event or by coordinator — so the
   // screen stays a single clean list rather than everything stacked at once.
   const [lens, setLens] = useState("event");
@@ -53,8 +56,8 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
 
   const run = async (event, kind) => {
     const coordinatorId = choice[event.id] || "";
-    if (!coordinatorId) { setError("Choose a coordinator first."); return; }
-    setBusyId(event.id); setError("");
+    if (!coordinatorId) { setError("Choose a coordinator first."); setErrorFor(event.id); return; }
+    setBusyId(event.id); setError(""); setErrorFor("");
     try {
       if (kind === "assign") await reviewApi.assign(event.id, coordinatorId);
       else await reviewApi.leadReassign(event.id, coordinatorId);
@@ -62,7 +65,7 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
       setChoice((current) => { const next = { ...current }; delete next[event.id]; return next; });
       const name = coordinatorById.get(coordinatorId)?.name || "the coordinator";
       onNotice?.(kind === "assign" ? `Assigned to ${name}.` : `Reassigned to ${name}.`);
-    } catch (e) { setError(e.message); }
+    } catch (e) { setError(e.message); setErrorFor(event.id); }
     finally { setBusyId(""); }
   };
 
@@ -76,7 +79,8 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
     const allowed = kind === "assign"
       ? canAssignCoordinator(event, LEAD, target)
       : canLeadReassign(event, LEAD, target);
-    return <div className="cs-record-actions">
+    return <>
+      <div className="cs-record-actions">
       <label className="cs-field cs-inline-field">
         <span className="cs-field-name">{kind === "assign" ? "Assign to" : "Reassign to"}</span>
         <select value={chosen} disabled={busyId === event.id} onChange={(e) => pick(event.id, e.target.value)}>
@@ -87,7 +91,9 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
       <button type="button" className="cs-btn cs-btn-primary cs-record-btn" disabled={!allowed || busyId === event.id} onClick={() => run(event, kind)}>
         {busyId === event.id ? "Saving…" : kind === "assign" ? "Assign" : "Reassign"}
       </button>
-    </div>;
+      </div>
+      {error && errorFor === event.id && <p className="cs-error" role="alert">{error}</p>}
+    </>;
   };
 
   const eventHeader = (event) => <div className="cs-record-title">
@@ -129,14 +135,16 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
     </>;
   };
 
+  const topError = error && !errorFor ? <p className="cs-error" role="alert">{error}</p> : null;
+
   if (loading) return <p className="cs-panel-note">Loading events…</p>;
 
   if (view === "queue") {
     if (!queue.length) {
-      return <>{error && <p className="cs-error" role="alert">{error}</p>}<div className="cs-empty"><p>No events are waiting for a coordinator.</p></div></>;
+      return <>{topError}<div className="cs-empty"><p>No events are waiting for a coordinator.</p></div></>;
     }
     return <>
-      {error && <p className="cs-error" role="alert">{error}</p>}
+      {topError}
       <div className="cs-record-list">{queue.map((event) => <article className="cs-record cs-review-record" key={event.id}>
         {eventHeader(event)}
         <p className="cs-record-ref">{event.reference_no}</p>
@@ -163,7 +171,7 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
   </article>;
 
   return <>
-    {error && <p className="cs-error" role="alert">{error}</p>}
+    {topError}
     <div className="cs-review-toolbar" role="group" aria-label="Group oversight by">
       <button type="button" aria-pressed={lens === "event"} className={lens === "event" ? "cs-btn cs-btn-secondary" : "cs-btn cs-btn-ghost"} onClick={() => setLens("event")}>By event</button>
       <button type="button" aria-pressed={lens === "coordinator"} className={lens === "coordinator" ? "cs-btn cs-btn-secondary" : "cs-btn cs-btn-ghost"} onClick={() => setLens("coordinator")}>By coordinator</button>
