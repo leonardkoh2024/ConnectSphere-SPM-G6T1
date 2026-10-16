@@ -64,6 +64,15 @@ describe('TC-015 no request is left unguarded', () => {
     expect(users).toContain("resource.data.role == 'EVENT_COORDINATOR'");
     expect(users).toContain('resource.data.is_active == true');
   });
+
+  // C2 / SCRUM-103 AC2 — TC-347. The coordinator's lists name each organiser, so
+  // a coordinator may read organiser profiles, and only those.
+  test('TC-347 a coordinator may read organiser profiles and no other role', () => {
+    const get = matchBlock('users').match(/allow get: if ([\s\S]*?);/)[1];
+    expect(get).toContain("(hasRole('EVENT_COORDINATOR') && resource.data.role == 'EVENT_ORGANISER')");
+    expect(get.match(/hasRole\('EVENT_COORDINATOR'\)/g)).toHaveLength(1);
+    expect(get).not.toMatch(/ATTENDEE|VENUE_STAFF|TECHNICAL_SUPPORT_STAFF|SAFETY_OFFICER/);
+  });
 });
 
 describe('TC-016 events are readable only by the roles related to them', () => {
@@ -125,7 +134,7 @@ describe('TC-080 coordinator assignment fields remain protected', () => {
     expect(events).toContain("request.resource.data.get('assigned_at', null) == resource.data.get('assigned_at', null)");
   });
 
-  test('C9 reassignment is limited to the current coordinator and an active coordinator target', () => {
+  test('reassignment target must be an active coordinator and only the assignment fields may change', () => {
     const events = matchBlock('events');
 
     expect(events).toContain('resource.data.coordinator_id == request.auth.uid');
@@ -334,14 +343,66 @@ describe('TC-284 notifications are only ever addressed to people related to the 
     expect(create()).toContain('ownsEvent(request.resource.data.event_id)');
   });
 
+  // J6 split the rule in two: a venue booking outcome takes the decider's clause
+  // and nothing else; every other notification takes the clauses below.
+  const VENUE_OUTCOMES = "['VENUE_BOOKING_APPROVED', 'VENUE_BOOKING_REJECTED']";
+  const ORDINARY = `!(request.resource.data.get('type', '') in ${VENUE_OUTCOMES}) && (`;
+  const DECIDED = `(request.resource.data.get('type', '') in ${VENUE_OUTCOMES}`;
+  const ordinary = () => {
+    const at = create().indexOf(ORDINARY);
+    expect(at).toBeGreaterThan(-1);
+    return create().slice(at + ORDINARY.length);
+  };
+  const decided = () => {
+    const at = create().indexOf(DECIDED);
+    expect(at).toBeGreaterThan(-1);
+    return create().slice(at, create().indexOf('|| (!(', at));
+  };
+
   test("every branch ties the recipient to the event's organiser or coordinator", () => {
-    // The coordinator, organiser, safety-officer and (A6) Lead branches, in order.
-    const branches = create().split(/\|\| \(/);
-    expect(branches).toHaveLength(4);
-    branches.forEach((branch) => {
+    // The coordinator, organiser, safety-officer and (A6) Lead branches, in order,
+    // then (J4) Venue Staff for their own venue.
+    const branches = ordinary().split(/\|\| \(/);
+    expect(branches).toHaveLength(5);
+    branches.slice(0, 4).forEach((branch) => {
       expect(branch).toMatch(/request\.resource\.data\.user_id (==|in)/);
       expect(branch).toMatch(/organiser_id|coordinator_id/);
     });
+    expect(branches[4]).toMatch(/venue_staff\/.*\.data\.user_id == request\.resource\.data\.user_id/);
+  });
+
+  // J6 / SCRUM-155 AC1 — TC-313. A booking's outcome goes only to the coordinator
+  // who raised it, only from the Venue Staff member who decided it, only for the
+  // event and venue booked, and only in the same commit as the decision.
+  test('TC-313 a booking outcome is told only by its decider, to its raiser, with the decision', () => {
+    const notice = matchBlock('notifications').match(/function venueBookingOutcomeNotice\(booking\) \{ return (.*?); \}/);
+    expect(notice).not.toBeNull();
+    [
+      'booking.event_id == request.resource.data.event_id',
+      'booking.venue_id == request.resource.data.venue_id',
+      'booking.requested_by == request.resource.data.user_id',
+      'booking.decided_by == request.auth.uid',
+      'booking.decided_at == request.time',
+      'request.resource.data.created_at == request.time',
+      "(request.resource.data.type == 'VENUE_BOOKING_APPROVED' && booking.status == 'APPROVED')",
+      "(request.resource.data.type == 'VENUE_BOOKING_REJECTED' && booking.status == 'REJECTED')",
+      'assignedVenueStaff(booking.venue_id)'
+    ].forEach((clause) => expect(notice[1]).toContain(clause));
+    expect(decided()).toContain("request.resource.data.get('booking_id', null) is string");
+    expect(decided()).toContain('venueBookingOutcomeNotice( getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data)');
+  });
+
+  // TC-344. Nobody else can send a booking outcome: the ordinary clauses are
+  // closed to those types. Equipment outcomes are refused to every browser; the
+  // equipment service writes them with the Admin SDK, which these rules do not bind.
+  test('TC-344 outcome types cannot be sent through any other clause, nor equipment outcomes from a browser', () => {
+    const refuseEquipment = "!(request.resource.data.get('type', '') in ['EQUIPMENT_ARRANGED', 'EQUIPMENT_UNABLE_TO_FULFIL'])";
+    expect(create().indexOf(refuseEquipment)).toBeGreaterThan(-1);
+    // A conjunct of the whole rule: it comes before the clauses open.
+    expect(create().indexOf(refuseEquipment)).toBeLessThan(create().indexOf(DECIDED));
+    expect(create().indexOf(DECIDED)).toBeLessThan(create().indexOf(ORDINARY));
+    expect(ordinary()).not.toContain('VENUE_BOOKING_');
+    expect(RULES.match(/EQUIPMENT_ARRANGED|EQUIPMENT_UNABLE_TO_FULFIL/g)).toHaveLength(2);
   });
 });
 
@@ -452,3 +513,180 @@ describe('C2/C3 a coordinator can read an organiser profile, one at a time', () 
     expect(users).toContain('allow update: if signedIn() && userId == request.auth.uid');
   });
 });
+
+// K3 / SCRUM-184 — reassignment at the server boundary. Same static-text style as
+// the rest of this file: these pin the policy the rules state, so loosening it
+// breaks the build.
+describe('K3 SCRUM-184 reassigning an event moves every coordinator permission with it', () => {
+  test('K3-RT1 AC4 coordinator workflow writes are keyed on the event\'s coordinator_id, so the outgoing coordinator loses them', () => {
+    const start = RULES.indexOf('function coordinatorWorkflowUpdate');
+    const workflow = RULES.slice(start, RULES.indexOf('function leadAssignmentUpdate')).replace(/\s+/g, ' ');
+    expect(workflow).toContain('resource.data.coordinator_id == request.auth.uid');
+  });
+
+  test('K3-RT2 AC4 a coordinator\'s history and notification writes need them to be the current coordinator', () => {
+    expect(RULES).toMatch(/function currentCoordinator\(eventId\)[^}]*coordinator_id == request\.auth\.uid/);
+    expect(matchBlock('event_history')).toContain('currentCoordinator(request.resource.data.event_id)');
+    expect(matchBlock('notifications')).toContain('currentCoordinator(request.resource.data.event_id)');
+  });
+
+  test('K3-RT3 AC3 the Lead may write the reassignment history entry and the assignment records', () => {
+    expect(matchBlock('event_history')).toContain("action_type in ['COORDINATOR_ASSIGNED', 'COORDINATOR_REASSIGNED']");
+    expect(matchBlock('coordinator_assignments')).toContain("hasRole('EVENT_COORDINATOR_LEAD')");
+  });
+
+  test('K3-RT4 AC5 the Lead may notify the outgoing coordinator, the incoming coordinator and the organiser', () => {
+    const notifications = matchBlock('notifications');
+    const lead = notifications.slice(notifications.indexOf("hasRole('EVENT_COORDINATOR_LEAD')"));
+    // incoming (after the write), outgoing (before the write), organiser.
+    expect(lead).toContain(".data.get('coordinator_id', '')");
+    expect(lead).toContain('getAfter(');
+    expect(lead).toContain(".data.get('organiser_id', '')");
+  });
+
+  test('K3-RT5 (replaces C9 criterion 5) a coordinator can no longer change coordinator_id: only the Lead path does', () => {
+    const start = RULES.indexOf('function coordinatorWorkflowUpdate');
+    const workflow = RULES.slice(start, RULES.indexOf('function leadAssignmentUpdate')).replace(/\s+/g, ' ');
+    expect(workflow).not.toContain("hasOnly(['coordinator_id'");
+    expect(workflow).not.toContain('request.resource.data.coordinator_id');
+    expect(matchBlock('events')).toContain('leadAssignmentUpdate()');
+  });
+});
+
+// A7 / SCRUM-170 — the Safety Officer at the server boundary (AC2, AC3, AC4, AC6).
+// TC-372 to TC-377, TC-380, TC-382 and TC-383 in docs/test-cases.md.
+describe('A7 the Safety Officer reaches only events under review, and writes only their outcome', () => {
+  const functionBody = (name) => {
+    const match = RULES.replace(/\s+/g, ' ').match(new RegExp(`function ${name}\\([^)]*\\) \\{ (.*?) \\}(?= //| function| allow| match)`));
+    expect(match).not.toBeNull();
+    return match[1];
+  };
+  const collections = [...new Set([...RULES.matchAll(/match \/([a-z_]+)\/\{/g)].map(([, name]) => name))];
+  const writeConditions = (collection) => [...matchBlock(collection).matchAll(/allow ([a-z, ]+): if (.*?);/g)]
+    .filter(([, verbs]) => /create|update|delete|write/.test(verbs))
+    .map(([, , condition]) => condition);
+
+  // AC2 — an event is the Safety Officer's to read only while it is in Safety Review.
+  test('TC-372 the Safety Officer may read an event only while it is in Safety Review', () => {
+    const readRule = eventsGetList().replace(/\s+/g, ' ');
+    const clauses = readRule.split('||').filter((part) => part.includes("'SAFETY_OFFICER'"));
+    expect(clauses).toHaveLength(1);
+    expect(clauses[0]).toContain("hasRole('SAFETY_OFFICER') && resource.data.status == 'SAFETY_REVIEW'");
+    expect(functionBody('safetyReviewing')).toContain("hasRole('SAFETY_OFFICER')");
+    expect(functionBody('safetyReviewing')).toContain(".data.status == 'SAFETY_REVIEW'");
+  });
+
+  // AC3 — the facts of a review, each readable only while that event is under review.
+  test('TC-375 the review facts are readable by the Safety Officer only through safetyReviewing', () => {
+    ['event_venue_requirements', 'event_accessibility', 'event_equipment', 'equipment_reservations', 'venue_bookings', 'event_history']
+      .forEach((collection) => {
+        const read = matchBlock(collection).match(/allow get, list: if (.*?);/)[1];
+        expect(read).toContain('safetyReviewing(resource.data.event_id)');
+        expect(read).not.toContain("hasRole('SAFETY_OFFICER')");
+      });
+    // Venue facts (capacity, layouts, accessibility, emergency access and
+    // restrictions) are catalogue data, not event data.
+    ['venues', 'venue_layouts', 'venue_accessibility']
+      .forEach((collection) => expect(matchBlock(collection).match(/allow get, list: if (.*?);/)[1]).toContain("hasRole('SAFETY_OFFICER')"));
+    // Earlier checks too: only for an event under review, not every event's.
+    const reviewsRead = matchBlock('safety_reviews').match(/allow get, list: if (.*?);/)[1];
+    expect(reviewsRead).toContain('safetyReviewing(resource.data.event_id)');
+    expect(reviewsRead).not.toContain("hasRole('SAFETY_OFFICER')");
+  });
+
+  // AC4 — one write-once record per check, with a comment unless it is an approval.
+  test('TC-373 a safety review is created once, by the reviewer, with a valid outcome, and never changed', () => {
+    const reviews = matchBlock('safety_reviews');
+    const create = reviews.match(/allow create: if (.*?);/)[1];
+    [
+      'safetyReviewing(request.resource.data.event_id)',
+      'request.resource.data.review_id == reviewId',
+      'request.resource.data.reviewer_id == request.auth.uid',
+      "request.resource.data.outcome in ['APPROVE', 'REJECT', 'REQUEST_CHANGES']",
+      "(request.resource.data.outcome == 'APPROVE' || (request.resource.data.comment is string && request.resource.data.comment.size() > 0))",
+      'request.resource.data.decided_at == request.time'
+    ].forEach((clause) => expect(create).toContain(clause));
+    expect(reviews).not.toMatch(/allow [a-z, ]*(update|delete|write)/);
+  });
+
+  // AC4 — the event moves only with a matching record: Confirmed on Approve,
+  // Planning otherwise, and nothing else on the event changes.
+  test('TC-374 the Safety Officer moves an event only to the status its review record names', () => {
+    const update = functionBody('safetyOutcomeUpdate');
+    [
+      "hasRole('SAFETY_OFFICER')",
+      "resource.data.status == 'SAFETY_REVIEW'",
+      'review.event_id == eventId',
+      'review.reviewer_id == request.auth.uid',
+      "review.outcome == 'APPROVE' && request.resource.data.status == 'CONFIRMED'",
+      'approvedVenueBookingFor(approvedBookingId)',
+      "review.outcome in ['REJECT', 'REQUEST_CHANGES'] && request.resource.data.status == 'PLANNING'",
+      "affectedKeys().hasOnly(['status', 'last_safety_review_id', 'updated_at'])"
+    ].forEach((clause) => expect(update).toContain(clause));
+    expect(matchBlock('events').match(/allow update: if (.*?);/)[1]).toContain('safetyOutcomeUpdate()');
+  });
+
+  // AC6 — every other write is refused to the Safety Officer server-side: only
+  // these four collections name them in a write condition at all.
+  test('TC-376 the Safety Officer can write only the outcome, its history and its notices', () => {
+    const writable = collections.filter((collection) => writeConditions(collection)
+      .some((condition) => /'SAFETY_OFFICER'|safetyReviewing\(|safetyOutcomeUpdate\(\)|safetyOutcomeCommit\(/.test(condition)));
+    expect(writable.sort()).toEqual(['event_history', 'events', 'notifications', 'safety_reviews']);
+  });
+
+  // AC3 — equipment placement and crowd movement come from the event's coordinator,
+  // and that is the only thing the new clause lets them change.
+  test('TC-377 the coordinator may set only the two safety planning notes, on their own event, while planning', () => {
+    const notes = functionBody('coordinatorSafetyNotesUpdate');
+    [
+      "hasRole('EVENT_COORDINATOR')",
+      "resource.data.get('coordinator_id', '') == request.auth.uid",
+      "resource.data.status in ['APPROVED', 'PLANNING']",
+      'request.resource.data.status == resource.data.status',
+      "request.resource.data.get('equipment_placement', '') is string",
+      "request.resource.data.get('crowd_movement', '') is string",
+      "request.resource.data.get('equipment_placement', '').size() <= 2000",
+      "request.resource.data.get('crowd_movement', '').size() <= 2000",
+      'request.resource.data.updated_at == request.time',
+      "affectedKeys().hasOnly(['equipment_placement', 'crowd_movement', 'updated_at'])"
+    ].forEach((clause) => expect(notes).toContain(clause));
+    expect(matchBlock('events').match(/allow update: if (.*?);/)[1]).toContain('coordinatorSafetyNotesUpdate()');
+  });
+
+  // AC4 — a review record decided now, and the event pointed at it in the same
+  // commit: an old record can never confirm a later check, nor be backdated.
+  test('TC-382 a safety review counts only in the commit that records it', () => {
+    expect(functionBody('safetyOutcomeUpdate')).toContain('review.decided_at == request.time');
+    expect(matchBlock('safety_reviews').match(/allow create: if (.*?);/)[1])
+      .toContain("getAfter(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.get('last_safety_review_id', '') == reviewId");
+    // The approved booking is looked up only on Approve, once its id is known.
+    const update = functionBody('safetyOutcomeUpdate');
+    expect(update.indexOf('approvedBookingId.size() > 0')).toBeLessThan(update.indexOf('approvedVenueBookingFor(approvedBookingId)'));
+    expect(update).not.toContain('venue_bookings');
+  });
+
+  // AC4 / AC6 — the Safety Officer's history entries and notices go only with an
+  // outcome, of an outcome type, to the event's coordinator and organiser.
+  test('TC-383 the Safety Officer writes history and notices only alongside an outcome', () => {
+    const commit = functionBody('safetyOutcomeCommit');
+    ['safetyReviewing(eventId)', "after.status in ['CONFIRMED', 'PLANNING']", 'decided_at == request.time']
+      .forEach((clause) => expect(commit).toContain(clause));
+    const types = "['SAFETY_CHECK_APPROVED', 'SAFETY_CHECK_REJECTED', 'SAFETY_CHANGES_REQUESTED']";
+    const history = matchBlock('event_history').match(/allow create: if (.*?);/)[1];
+    expect(history).toContain(`(safetyOutcomeCommit(request.resource.data.event_id) && request.resource.data.action_type in ${types})`);
+    expect(history).not.toContain('|| safetyReviewing(');
+    const notices = matchBlock('notifications');
+    expect(notices).toContain(`(safetyOutcomeCommit(request.resource.data.event_id) && request.resource.data.type in ${types} && request.resource.data.user_id in [`);
+    expect(notices).not.toContain('safetyReviewing(');
+  });
+
+  // AC1 — no browser can make itself a Safety Officer: self-registration creates
+  // only organisers and attendees, and a user can never change their own role.
+  test('TC-380 a Safety Officer account cannot be created or claimed from the browser', () => {
+    const users = matchBlock('users');
+    expect(users).toContain("request.resource.data.role in ['EVENT_ORGANISER', 'ATTENDEE']");
+    expect(users).toContain('request.resource.data.role == resource.data.role');
+    expect(users.match(/allow create: if (.*?);/)[1]).not.toContain('SAFETY_OFFICER');
+  });
+});
+
