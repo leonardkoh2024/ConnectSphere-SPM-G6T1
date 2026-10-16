@@ -34,7 +34,7 @@ jest.mock('firebase/firestore', () => ({
 jest.mock('../../lib/firebase', () => ({ db: { name: 'browser-firestore' } }));
 
 import * as firestore from 'firebase/firestore';
-import { approveVenueBooking, loadVenueBookings, releaseCancelledEventBookings, withdrawVenueBooking } from './venuesApi';
+import { approveVenueBooking, loadVenueBookings, loadVenueSearchContext, releaseCancelledEventBookings, withdrawVenueBooking } from './venuesApi';
 
 beforeEach(() => {
   mockTransactionUpdate.mockClear();
@@ -261,4 +261,50 @@ describe('K5 SCRUM-186 venue bookings follow the coordinator the event is assign
     expect(eventsQuery.constraints).toEqual([['coordinator_id', '==', 'COORD-1']]);
     expect(queries.filter((item) => item.path === 'venue_bookings')).toHaveLength(1);
   });
+});
+
+// Venue Staff may read bookings only for venues assigned to them (firestore.rules,
+// assignedVenueStaff). Firestore refuses a list query it cannot prove stays inside
+// that, so an unfiltered read of venue_bookings failed the whole catalogue with
+// "Missing or insufficient permissions." TC-386, TC-387 in docs/test-cases.md.
+const catalogueRows = (path) => ({
+  venues: [['V-1', { name: 'Harbour Hall' }], ['V-2', { name: 'Breakout Room' }], ['V-3', { name: "Someone else's hall" }]],
+  venue_staff: [['V-1', { venue_id: 'V-1', user_id: 'STAFF-001' }], ['V-2', { venue_id: 'V-2', user_id: 'STAFF-001' }]]
+}[path] || []);
+const docsOf = (items) => ({ docs: items.map(([id, data]) => snapshot(id, data)) });
+const bookingQueries = () => mockGetDocs.mock.calls.map(([reference]) => reference).filter((reference) => reference.path === 'venue_bookings');
+
+test('TC-386 Venue Staff read bookings one assigned venue at a time, never the whole collection', async () => {
+  mockGetDocs.mockImplementation((reference) => {
+    if (reference.path === 'venue_bookings') {
+      const venueId = reference.constraints[0][2];
+      return Promise.resolve(docsOf([[`B-${venueId}`, { venue_id: venueId, status: 'APPROVED', start_datetime: '2026-11-04T01:00:00.000Z', end_datetime: '2026-11-04T03:00:00.000Z' }]]));
+    }
+    return Promise.resolve(docsOf(catalogueRows(reference.path)));
+  });
+
+  const context = await loadVenueSearchContext({ userId: 'STAFF-001', role: 'VENUE_STAFF' });
+
+  expect(bookingQueries()).toEqual([
+    { path: 'venue_bookings', constraints: [['venue_id', '==', 'V-1']] },
+    { path: 'venue_bookings', constraints: [['venue_id', '==', 'V-2']] }
+  ]);
+  expect(context.bookings.map((booking) => [booking.id, booking.venue_id])).toEqual([['B-V-1', 'V-1'], ['B-V-2', 'V-2']]);
+  // The catalogue itself still lists every venue.
+  expect(context.venues.map((venue) => venue.venue_id)).toEqual(['V-1', 'V-2', 'V-3']);
+});
+
+test('TC-387 Venue Staff with no assigned venue read no bookings; coordinators still read them all', async () => {
+  mockGetDocs.mockImplementation((reference) => Promise.resolve(docsOf(reference.path === 'venue_staff' ? [] : catalogueRows(reference.path))));
+  const unassigned = await loadVenueSearchContext({ userId: 'STAFF-002', role: 'VENUE_STAFF' });
+  expect(bookingQueries()).toEqual([]);
+  expect(unassigned.bookings).toEqual([]);
+
+  mockGetDocs.mockClear();
+  mockGetDocs.mockImplementation((reference) => Promise.resolve(docsOf(reference.path === 'venue_bookings'
+    ? [['B-1', { venue_id: 'V-3', status: 'PENDING' }]]
+    : catalogueRows(reference.path))));
+  const coordinator = await loadVenueSearchContext({ userId: 'COORD-001', role: 'EVENT_COORDINATOR' });
+  expect(bookingQueries()).toEqual([{ path: 'venue_bookings' }]);
+  expect(coordinator.bookings.map((booking) => booking.id)).toEqual(['B-1']);
 });

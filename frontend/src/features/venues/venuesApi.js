@@ -220,13 +220,25 @@ export const saveVenuePlanningDetails = async ({ user, venueId, changes = {} }) 
   });
 };
 
+// Venue Staff may read bookings only for the venues assigned to them
+// (assignedVenueStaff in firestore.rules), and Firestore refuses any list query
+// it cannot prove stays inside that — so theirs are read one venue at a time.
+// Everyone else reads the whole collection, as before.
+const loadSearchBookings = async (venues, role) => {
+  if (role !== ROLES.VENUE_STAFF) return (await getDocs(collection(db, "venue_bookings"))).docs;
+  const assigned = venues.filter((venue) => venue.is_assigned_to_user).map((venue) => venue.venue_id);
+  const perVenue = await Promise.all(assigned.map((venueId) =>
+    getDocs(query(collection(db, "venue_bookings"), where("venue_id", "==", venueId)))));
+  return perVenue.flatMap((snapshot) => snapshot.docs);
+};
+
 export const loadVenueSearchContext = async ({ userId, role } = {}) => {
-  const [venues, bookingsSnap, unavailabilitySnap] = await Promise.all([
+  const [venues, unavailabilitySnap] = await Promise.all([
     loadVenueCatalogue({ userId, role }),
-    getDocs(collection(db, "venue_bookings")),
     getDocs(collection(db, "venue_unavailability"))
   ]);
-  const bookings = bookingsSnap.docs.map((item) => {
+  const bookingDocs = await loadSearchBookings(venues, role);
+  const bookings = bookingDocs.map((item) => {
     const data = item.data();
     return {
       id: item.id,

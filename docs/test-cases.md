@@ -904,3 +904,16 @@ Opening a review on the live project failed with "Missing or insufficient permis
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TC-384 | An event with no venue requirements document still opens for review | Event in Safety Review with no requirements, bookings, equipment or earlier checks | Open the review | The only direct read is the event; the requirements are queried by `event_id`; the review opens with layout "Not recorded" and empty lists | As expected | Pass | AC3 |
 | TC-385 | A refused read names the collection it was reading | Firestore refuses the reservations query; then the event read | Open the review | "Missing or insufficient permissions. (Reading equipment_reservations.)", then "(Reading events.)" | As expected | Pass | AC3, AC6 — a rule gap can be found from the screen |
+
+---
+
+## Venue Staff catalogue — bookings read within the staff member's own venues
+
+**Found:** 17 Oct 2026, signed in as Venue Staff on the shared project: Venue catalogue (and the Availability calendar, which uses the same loader) failed with "Missing or insufficient permissions." `loadVenueSearchContext` listed the whole `venue_bookings` collection, but since F1–F8 (`fb7ea60`) Venue Staff may read only bookings for venues assigned to them (`assignedVenueStaff`), and Firestore refuses a list query it cannot prove stays inside that. The rule is kept; Venue Staff now query bookings one assigned venue at a time. Coordinators are unchanged.
+
+**Data access — `frontend/src/features/venues/venuesApi.workflow.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-386 | Venue Staff read bookings one assigned venue at a time | Staff member assigned V-1 and V-2 of three venues | Load the venue search context as Venue Staff | `venue_bookings` queried with `venue_id == V-1` and `venue_id == V-2`, never unfiltered; both venues' bookings returned; all three venues still listed | As expected | Pass | E2/E4 with F-story read rule |
+| TC-387 | No assigned venue means no booking read; coordinators unchanged | Staff member with no assignment; then a coordinator | Load the context as each | Venue Staff: no `venue_bookings` query, no bookings. Coordinator: the whole collection, as before | As expected | Pass | E2/E4 |
