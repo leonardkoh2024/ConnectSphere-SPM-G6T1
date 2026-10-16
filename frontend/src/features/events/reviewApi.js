@@ -4,7 +4,7 @@
 
 import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
 import { auth, db } from "../../lib/firebase";
-import { EVENT_STATUS, canApproveEvent, assignEvent, canLeadReassign, canOpenReview, canRejectEvent, canReassignEvent, canRequestClarification, canRespondToClarification, cleanRequiredText, supervisesAllEvents } from "../../domain/eventReview";
+import { EVENT_STATUS, canApproveEvent, assignEvent, canLeadReassign, canOpenReview, canRejectEvent, canReassignEvent, canRequestClarification, canRespondToClarification, cleanRequiredText, leadVisibleEvents, supervisesAllEvents } from "../../domain/eventReview";
 import { clarificationRecord, clarificationResponseRecord, coordinatorAssignmentRecord, eventHistoryRecord, notificationRecord } from "../../domain/eventReviewRecords";
 import { ROLES } from "../../domain/roles";
 import {
@@ -492,7 +492,9 @@ const leadBoard = async () => {
     getDocs(collection(db, "events")),
     activeCoordinators()
   ]);
-  const events = await withCoordinatorNames(await withOrganiserNames(eventSnapshots.docs.map(record)));
+  // K1 / SCRUM-182 — drafts are the organiser's unsubmitted work; drop them so the
+  // Lead never sees a draft in the queue or the oversight view, only submitted events.
+  const events = leadVisibleEvents(await withCoordinatorNames(await withOrganiserNames(eventSnapshots.docs.map(record))));
   return { events, coordinators };
 };
 

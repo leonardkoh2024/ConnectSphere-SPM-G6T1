@@ -22,6 +22,7 @@ import {
   supervisesAllEvents,
   coordinatorWorkload,
   unassignedQueue,
+  leadVisibleEvents,
   assignEvent,
   assignmentSummary,
   coordinatorChoiceLabel
@@ -389,6 +390,24 @@ describe('K1 SCRUM-182 the unassigned queue', () => {
   test('K1-TC4 no events means an empty queue', () => {
     expect(unassignedQueue()).toEqual([]);
     expect(unassignedQueue([])).toEqual([]);
+  });
+
+  test('K1-TC5 AC a draft is not yet submitted, so it never reaches the Lead queue', () => {
+    const events = [
+      waiting('e1', '2026-03-01T09:00:00Z'),
+      { id: 'e2-draft', coordinator_id: null, status: 'DRAFT', submitted_at: null }
+    ];
+    expect(unassignedQueue(events).map((e) => e.id)).toEqual(['e1']);
+  });
+
+  test('K1-TC6 AC the Lead board carries every submitted event but no draft, in either view', () => {
+    const events = [
+      { id: 'sub', status: 'SUBMITTED', coordinator_id: null },
+      { id: 'rev', status: 'UNDER_REVIEW', coordinator_id: 'c1' },
+      { id: 'done', status: 'COMPLETED', coordinator_id: 'c1' },
+      { id: 'dft', status: 'DRAFT', coordinator_id: null }
+    ];
+    expect(leadVisibleEvents(events).map((e) => e.id)).toEqual(['sub', 'rev', 'done']);
   });
 });
 

@@ -4,6 +4,7 @@
 import { ROLES } from "./roles";
 
 export const EVENT_STATUS = {
+  DRAFT: "DRAFT",
   SUBMITTED: "SUBMITTED",
   UNDER_REVIEW: "UNDER_REVIEW",
   APPROVED: "APPROVED",
@@ -146,12 +147,20 @@ export const coordinatorWorkload = (events = [], coordinators = []) =>
     }))
     .sort((a, b) => a.activeEvents - b.activeEvents);
 
+// K1 / SCRUM-182 — events the Lead's board may show at all: everything the
+// organiser has submitted, and nothing still in DRAFT. A draft is the organiser's
+// unsubmitted work, so it never reaches the Lead in any view (queue or oversight).
+// The adapter runs leadBoard's events through this before handing them to the UI.
+export const leadVisibleEvents = (events = []) =>
+  (events || []).filter((event) => event?.status !== EVENT_STATUS.DRAFT);
+
 // K1 / SCRUM-182 — the Lead's unassigned queue: submitted events still waiting for
 // a coordinator, oldest submission first (AC3). An event leaves the moment it has a
-// coordinator (AC4), and terminal events are not waiting for anyone.
+// coordinator (AC4). Only a SUBMITTED, still-unassigned event is waiting — a draft
+// is not yet submitted, and an under-review/approved/terminal event is not waiting.
 export const unassignedQueue = (events = []) =>
   (events || [])
-    .filter((event) => !event.coordinator_id && !isTerminal(event))
+    .filter((event) => event?.status === EVENT_STATUS.SUBMITTED && !event.coordinator_id)
     .sort((a, b) => String(a.submitted_at || "").localeCompare(String(b.submitted_at || "")));
 
 export const chronologicalClarifications = (clarifications = [], responses = []) =>
