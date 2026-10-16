@@ -186,7 +186,21 @@ export const listPendingEquipmentRequests = async () => {
     ));
     return { ...request, reservations: reservations.docs.map(requestRecord) };
   }));
-  return items.sort((left, right) => String(left.event_date || "").localeCompare(String(right.event_date || "")));
+  const names = await coordinatorNames(items.map((item) => item.coordinator_id));
+  return items
+    .map((item) => ({ ...item, coordinator_name: names.get(item.coordinator_id) || null }))
+    .sort((left, right) => String(left.event_date || "").localeCompare(String(right.event_date || "")));
+};
+
+// Technical Support see who coordinates each event. Firestore rules let any
+// signed-in user read an active coordinator's profile; one that cannot be read
+// (inactive or removed) leaves the name blank rather than failing the queue.
+const coordinatorNames = async (coordinatorIds) => {
+  const ids = [...new Set(coordinatorIds.filter(Boolean))];
+  const entries = await Promise.all(ids.map((id) => getDoc(doc(db, "users", id))
+    .then((snapshot) => [id, snapshot.exists() ? snapshot.data().name || snapshot.data().email || null : null])
+    .catch(() => [id, null])));
+  return new Map(entries);
 };
 
 export const checkEquipmentAvailability = async ({
@@ -218,6 +232,33 @@ export const checkEquipmentAvailability = async ({
   });
 };
 
+const SERVICE_UNREACHABLE =
+  "The equipment service is not responding. Check that the backend is running (npm start), then try again.";
+
+// Every equipment action goes through the backend. When it is down, CRA's dev
+// proxy replies with a plain-text "Proxy error" page, so a reply that is not
+// JSON (or no reply at all) means the service could not be reached.
+const callEquipmentService = async (user, path, method, body, fallbackError) => {
+  const token = await user.getIdToken();
+  let response;
+  let result;
+  try {
+    response = await fetch(path, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(body)
+    });
+    result = await response.json();
+  } catch (_error) {
+    throw new Error(SERVICE_UNREACHABLE);
+  }
+  if (!response.ok) throw new Error(result?.error || fallbackError);
+  return result;
+};
+
 export const reserveEquipmentForEvent = async ({ eventId, equipmentType, quantity, lineIndex }) => {
   const user = currentUser();
   const userProfile = await profile(user.uid);
@@ -225,22 +266,12 @@ export const reserveEquipmentForEvent = async ({ eventId, equipmentType, quantit
     throw new Error("Only Technical Support Staff can reserve equipment.");
   }
   if (!EQUIPMENT_TYPES.includes(equipmentType)) throw new Error("Choose a supported equipment type.");
-  const token = await user.getIdToken();
-  const response = await fetch("/api/equipment/reservations", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`
-    },
-    body: JSON.stringify({
-      event_id: eventId,
-      equipment_type: equipmentType,
-      quantity,
-      line_index: lineIndex
-    })
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || "The equipment reservation could not be saved.");
+  const result = await callEquipmentService(user, "/api/equipment/reservations", "POST", {
+    event_id: eventId,
+    equipment_type: equipmentType,
+    quantity,
+    line_index: lineIndex
+  }, "The equipment reservation could not be saved.");
   const reservation = result.reservation;
   return {
     id: reservation.id,
@@ -253,20 +284,8 @@ export const reserveEquipmentForEvent = async ({ eventId, equipmentType, quantit
   };
 };
 
-const equipmentAction = async (user, path, method, body) => {
-  const token = await user.getIdToken();
-  const response = await fetch(path, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`
-    },
-    body: JSON.stringify(body)
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || "The equipment request could not be updated.");
-  return result;
-};
+const equipmentAction = (user, path, method, body) =>
+  callEquipmentService(user, path, method, body, "The equipment request could not be updated.");
 
 export const amendEquipmentRequestLine = async ({ eventId, lineIndex, equipmentType, quantity, note }) => {
   const user = currentUser();
@@ -294,6 +313,20 @@ export const markEquipmentLineUnableToFulfill = async ({ eventId, lineIndex, rea
     "POST",
     { reason }
   );
+};
+
+// G2 / G3 / G5 — stock, unavailability and every reservation with its event,
+// from the equipment service. `userId` lets the screen pick out the caller's own.
+export const loadEquipmentCatalogue = async () => {
+  const user = currentUser();
+  const userProfile = await profile(user.uid);
+  if (userProfile.role !== ROLES.TECH_SUPPORT) {
+    throw new Error("Only Technical Support Staff can view the equipment catalogue.");
+  }
+  const catalogue = await callEquipmentService(
+    user, "/api/equipment/catalogue", "GET", undefined, "The equipment catalogue could not be loaded."
+  );
+  return { ...catalogue, userId: user.uid };
 };
 
 export const releaseEquipmentReservation = async ({ reservationId, reason = "No longer required" }) => {

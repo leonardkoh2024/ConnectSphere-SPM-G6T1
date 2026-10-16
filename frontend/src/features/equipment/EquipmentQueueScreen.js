@@ -25,6 +25,7 @@ export default function EquipmentQueueScreen() {
       <div className="cs-record-title"><div><h2>{request.event_name || "Untitled event"}</h2><p>{request.event_date || "Date not set"} · {request.start_time || "Time not set"}–{request.end_time || "Time not set"}</p></div></div>
       <p className="cs-record-ref">{request.reference_no}</p>
       <div className="cs-record-status"><span className="cs-pill cs-pill-warning">Pending</span></div>
+      <div className="cs-record-modified"><p className="cs-record-saved">Coordinator: {request.coordinator_name || "Not recorded"}</p></div>
       <div className="cs-record-details">
         <details className="cs-equipment-disclosure">
           <summary>Request details</summary>

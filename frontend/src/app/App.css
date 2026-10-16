@@ -1405,6 +1405,8 @@ a.cs-btn-ghost:hover {
 .cs-list-actions { display: flex; justify-content: flex-end; margin-top: 24px; }
 
 .cs-record-list { display: grid; gap: 8px; margin-top: 16px; }
+/* A titled group of records on one screen, e.g. current and past reservations. */
+.cs-group-heading { margin: 28px 0 0; font-size: 16px; }
 
 /* Left to right: what it is, its reference, where it has got to, what you can do
    with it. Each column keeps its own width so the four read as columns down the

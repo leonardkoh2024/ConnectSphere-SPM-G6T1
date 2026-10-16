@@ -233,10 +233,14 @@ export const ROLE_META = {
           "Check what equipment is free."
       },
       {
+        name: "Equipment catalogue",
+        icon: "clipboard",
+        blurb: "What you hold, what is reserved now, and what is free."
+      },
+      {
         name: "Reservations",
         icon: "bookmark",
-        blurb:
-          "Reserve equipment for an event."
+        blurb: "Every equipment reservation, current and past."
       },
       {
         name: "Notifications",

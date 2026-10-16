@@ -40,7 +40,7 @@ they can be read next to the acceptance criteria and move into the service layer
 | J4 | SCRUM-153 | Be told when work arrives for me (a booking request reaches its Venue Staff) | TC-392 – TC-394 |
 | E4 | SCRUM-120 | See when a venue is free | TC-200 – TC-249 |
 | J6 | SCRUM-155 | Be told the outcome of my booking and equipment requests (AC1: approval only — rejection awaits F5) | TC-313 – TC-346 |
-| A7 | SCRUM-170 | Use ConnectSphere as a Safety Officer | TC-348 – TC-385 |
+| A7 | SCRUM-170 | Use ConnectSphere as a Safety Officer | TC-348 – TC-385, TC-388 |
 | E7 | — | Know whether a venue actually suits the event | TC-112 – TC-116 |
 | C6 | SCRUM-TBD | Approve a submitted request | TC-112 – TC-117 |
 | C2 | SCRUM-103 | See the events I am responsible for | TC-118 – TC-128, TC-347 |
@@ -906,6 +906,14 @@ Opening a review on the live project failed with "Missing or insufficient permis
 | TC-384 | An event with no venue requirements document still opens for review | Event in Safety Review with no requirements, bookings, equipment or earlier checks | Open the review | The only direct read is the event; the requirements are queried by `event_id`; the review opens with layout "Not recorded" and empty lists | As expected | Pass | AC3 |
 | TC-385 | A refused read names the collection it was reading | Firestore refuses the reservations query; then the event read | Open the review | "Missing or insufficient permissions. (Reading equipment_reservations.)", then "(Reading events.)" | As expected | Pass | AC3, AC6 — a rule gap can be found from the screen |
 
+**Reads checked against the rules — `frontend/src/features/safety/safetyRulesContract.test.js`**
+
+The other A7 tests mock Firestore, so they pass whether or not a real read would be allowed; three failures on the shared project got through that way. Firestore refuses a whole query unless the query's own filters guarantee every result is allowed, and refuses a direct read of a missing document whose rule reads its fields.
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-388 | Every read the Safety Officer's code makes is one `firestore.rules` allows | Firestore mocked to record each read; `firestore.rules` read from disk | Load the queue, open a review, record an approval; check each read against the collection's Safety Officer read clause | Every collection read has such a clause; every query filters with `==` on each field the clause reads (and on its value, e.g. `status == SAFETY_REVIEW`); direct reads only where the clause reads no field, or of the event under review and the user's own profile | As expected | Pass | AC2, AC3, AC6. Shown to fail on each of the three shared-project failures put back: requirements read by id, reservations rule without the Safety Officer, an unfiltered events or bookings query |
+
 ---
 
 ## Venue Staff catalogue — bookings read within the staff member's own venues
@@ -918,6 +926,35 @@ Opening a review on the live project failed with "Missing or insufficient permis
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TC-386 | Venue Staff read bookings one assigned venue at a time | Staff member assigned V-1 and V-2 of three venues | Load the venue search context as Venue Staff | `venue_bookings` queried with `venue_id == V-1` and `venue_id == V-2`, never unfiltered; both venues' bookings returned; all three venues still listed | As expected | Pass | E2/E4 with F-story read rule |
 | TC-387 | No assigned venue means no booking read; coordinators unchanged | Staff member with no assignment; then a coordinator | Load the context as each | Venue Staff: no `venue_bookings` query, no bookings. Coordinator: the whole collection, as before | As expected | Pass | E2/E4 |
+
+---
+
+## Technical Support — see who coordinates each event
+
+Technical Support see each event's coordinator on Equipment queue and Availability check. The name comes from the profile of the coordinator recorded on the equipment request (`coordinator_id`, set when it is submitted or amended); `firestore.rules` lets any signed-in user read an active coordinator's profile. One that cannot be read leaves "Not recorded" rather than failing the queue. After a reassignment the request names the previous coordinator until the new one amends it.
+
+**Tests — `frontend/src/features/equipment/equipmentApi.browser.test.js` and `EquipmentRequestsScreen.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-389 | Pending requests carry their coordinator's name | Four pending requests: two by one coordinator, one by an unreadable profile, one with none | Load the Technical Support queue | Names attached; unreadable and missing coordinators give a blank name; one profile read per coordinator | As expected | Pass | — |
+| TC-390 | The Equipment queue names each event's coordinator | One pending request by Sam Tan | Open Equipment queue | The card shows "Coordinator: Sam Tan" | As expected | Pass | — |
+| TC-391 | The Availability check names the coordinator, or says it is not recorded | One pending request with no readable coordinator | Open Availability check | The card shows "Coordinator: Not recorded" | As expected | Pass | — |
+| TC-392 | An equipment action says the service is unreachable when the backend is down | Backend not running, so the dev proxy answers "Proxy error: ..." (or the request fails, or the reply is HTML) | Reserve, release, amend, or mark unable to fulfil | "The equipment service is not responding. Check that the backend is running (npm start), then try again." instead of a JSON parse error | As expected | Pass | `equipmentApi.browser.test.js` |
+
+**Technical Support's Equipment catalogue and Reservations screens (G2, G3, G5) — `frontend/src/domain/equipmentCatalogue.test.js`, `backend/src/services/equipment/catalogue.test.js`, `frontend/src/features/equipment/equipmentApi.browser.test.js` and `frontend/src/features/equipment/EquipmentCatalogueScreen.test.js`**
+
+The catalogue comes from a new `GET /api/equipment/catalogue` on the equipment service, which reads only its own collections. Once an equipment request is arranged it leaves the Pending queue that `firestore.rules` lets Technical Support read, so the event's name, reference and date are joined in there from `equipment_requests`; no rule changes.
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-393 | A reservation is upcoming, in use, completed or released | Reservations before, during and after a fixed time; one released; one recorded as APPROVED | Work out each one's state | Upcoming / In use / Completed by its window (ending now is completed, starting now is in use); Released whatever its window; APPROVED counts as active | As expected | Pass | G3 AC9, G5 AC3 |
+| TC-394 | The catalogue shows each type's stock now | Stock for three types; reservations in use, later, released and finished; unavailability now, ended and in future | Build the catalogue rows | Every equipment type listed in order (extra stocked types after); held, reserved now, unavailable now, free now (never below zero) and upcoming count; held and free "not recorded" with no stock record | As expected | Pass | G2 AC1, AC3 |
+| TC-395 | Reservations split into current and past, optionally only mine | Six reservations by two staff | Group them, then group only one staff member's | Current soonest first, past latest first; the filter keeps only that member's | As expected | Pass | G3 AC8 |
+| TC-396 | The equipment service returns the catalogue to Technical Support only | Stock, unavailability, one reservation with its request and one whose request is gone | Read through the service; call the endpoint as Technical Support, as a coordinator, and with no token | Dates as ISO strings; each reservation carries its event name, reference and date (null when the request is gone); only the service's own collections read. 200 for Technical Support; 403 for a coordinator after reading only their profile; 401 with no token, before any read | As expected | Pass | G3 AC8 |
+| TC-397 | The browser reads the catalogue with the caller's token | Technical Support signed in; then a coordinator | Load the catalogue | GET `/api/equipment/catalogue` with the bearer token, no body, result carries the caller's id; a coordinator is refused before any request | As expected | Pass | — |
+| TC-398 | The Equipment catalogue screen | Stock for audio and visual; audio partly reserved and unavailable now; visual fully reserved | Open Equipment catalogue | Audio: "Held: 10", "7 free now", reserved, unavailable and upcoming counts; visual "None free now" flagged; staging "Held: Not recorded", "Stock not recorded"; a load failure shown as an alert | As expected | Pass | G2 AC1 |
+| TC-399 | The Reservations screen | Reservations in use, upcoming, released (with reason) and completed, by two staff | Open Reservations; tick "Only reservations I made" | Current and past lists in order, each with event, reference, window, type and quantity, state and who reserved it; the release reason shown; the filter keeps only mine; empty lists say so | As expected | Pass | G3 AC8, AC9; G5 AC3 |
 
 ---
 

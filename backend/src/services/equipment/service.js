@@ -1,5 +1,6 @@
 import express from "express";
 
+import { createEquipmentCatalogue } from "./catalogue.js";
 import { createEquipmentRequestActions } from "./requests.js";
 import { createEquipmentReservations } from "./reservations.js";
 
@@ -16,6 +17,7 @@ export const createEquipmentService = ({
     getApprovedEventBookings
   });
   const requestActions = createEquipmentRequestActions({ firestore, serverTimestamp });
+  const catalogue = createEquipmentCatalogue({ firestore });
 
   const authenticateTechnicalSupport = async (request, response) => {
     const token = request.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
@@ -37,6 +39,16 @@ export const createEquipmentService = ({
     }
     return user;
   };
+
+  router.get("/catalogue", async (request, response, next) => {
+    try {
+      const user = await authenticateTechnicalSupport(request, response);
+      if (!user) return;
+      response.json(await catalogue.load());
+    } catch (error) {
+      next(error);
+    }
+  });
 
   router.post("/reservations", async (request, response, next) => {
     let user;

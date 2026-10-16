@@ -62,7 +62,7 @@ const PERMITTED_SCREENS = {
   [ROLES.COORDINATOR]: ['Review queue', 'Assigned events', 'Venue catalogue', 'Venue bookings', 'Equipment requests', 'Registrations', 'Notifications'],
   [ROLES.VENUE_STAFF]: ['Booking requests', 'Venue catalogue', 'Availability calendar', 'Notifications'],
   [ROLES.SAFETY_OFFICER]: ['Safety reviews', 'Venue safety information', 'Notifications'],
-  [ROLES.TECH_SUPPORT]: ['Equipment queue', 'Availability check', 'Reservations', 'Notifications'],
+  [ROLES.TECH_SUPPORT]: ['Equipment queue', 'Availability check', 'Equipment catalogue', 'Reservations', 'Notifications'],
   [ROLES.ATTENDEE]: ['Browse events', 'My registrations', 'Notifications']
 };
 

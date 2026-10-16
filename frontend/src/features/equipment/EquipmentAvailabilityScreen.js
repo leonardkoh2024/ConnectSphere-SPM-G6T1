@@ -38,6 +38,7 @@ export default function EquipmentAvailabilityScreen() {
       </div></div>
       <p className="cs-record-ref">{request.reference_no}</p>
       <div className="cs-record-status"><span className="cs-pill cs-pill-warning">Pending</span></div>
+      <div className="cs-record-modified"><p className="cs-record-saved">Coordinator: {request.coordinator_name || "Not recorded"}</p></div>
       <div className="cs-record-details">{request.lines.map((line, index) => <p key={`${request.id}-${index}`}>
         {line.equipment_type.replaceAll("_", " ")} · requested {line.quantity}
       </p>)}</div>

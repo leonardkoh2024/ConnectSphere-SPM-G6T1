@@ -45,7 +45,7 @@ beforeEach(() => {
   listPendingEquipmentRequests.mockResolvedValue([{
     id: "event-1", event_id: "event-1", event_name: "Partner Summit",
     reference_no: "EVT-001", event_date: "2026-11-04", start_time: "09:00",
-    end_time: "17:00", status: "PENDING", expected_attendance: 120,
+    end_time: "17:00", status: "PENDING", expected_attendance: 120, coordinator_name: "Sam Tan",
     lines: [{ equipment_type: "AUDIO", quantity: 2, technical_requirements: "Wireless microphones" }]
   }]);
   checkEquipmentAvailability.mockResolvedValue({
@@ -417,4 +417,23 @@ test("TC-345 the named event is scrolled into view once the list has loaded", as
   } finally {
     spy.restore();
   }
+});
+
+// Technical Support see who coordinates each event, on both their screens.
+// TC-390, TC-391 in docs/test-cases.md.
+test("TC-390 the Equipment queue names each event's coordinator", async () => {
+  render(<EquipmentQueueScreen />);
+  const card = (await screen.findByRole("heading", { name: "Partner Summit" })).closest("article");
+  expect(card).toHaveTextContent("Coordinator: Sam Tan");
+});
+
+test("TC-391 the Availability check names each event's coordinator, or says it is not recorded", async () => {
+  listPendingEquipmentRequests.mockResolvedValue([{
+    id: "event-1", event_id: "event-1", event_name: "Partner Summit", reference_no: "EVT-001",
+    event_date: "2026-11-04", start_time: "09:00", end_time: "17:00", status: "PENDING", coordinator_name: null,
+    lines: [{ equipment_type: "AUDIO", quantity: 2 }]
+  }]);
+  render(<EquipmentAvailabilityScreen />);
+  const card = (await screen.findByRole("heading", { name: "Partner Summit" })).closest("article");
+  expect(card).toHaveTextContent("Coordinator: Not recorded");
 });
