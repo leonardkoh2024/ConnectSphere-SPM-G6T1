@@ -682,7 +682,9 @@ describe('E8 / SCRUM-124 functional — the booking screen is where an unsuitabl
 
     await userEvent.click(screen.getByRole('button', { name: /withdraw request/i }));
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /yes, withdraw/i }));
-    await waitFor(() => expect(withdrawVenueBooking).toHaveBeenCalledWith({ bookingId: 'BK-1' }));
+    // K5 / SCRUM-186 AC2 — the withdrawal is made on behalf of the signed-in coordinator, so the
+    // adapter can refuse it once the event is no longer assigned to them.
+    await waitFor(() => expect(withdrawVenueBooking).toHaveBeenCalledWith({ user, bookingId: 'BK-1' }));
   });
 
   test('TC-172 a request that is not pending offers no withdraw', async () => {

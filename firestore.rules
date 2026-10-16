@@ -6,8 +6,10 @@ service cloud.firestore {
     function hasRole(role) { return signedIn() && profile().role == role; }
     function ownsEvent(eventId) { return signedIn() && get(/databases/$(database)/documents/events/$(eventId)).data.organiser_id == request.auth.uid; }
     function currentCoordinator(eventId) { return signedIn() && get(/databases/$(database)/documents/events/$(eventId)).data.coordinator_id == request.auth.uid; }
-    function previousCoordinator(eventId) { return signedIn() && exists(/databases/$(database)/documents/coordinator_assignments/$(eventId + '_' + request.auth.uid)); }
-    function canReadEvent(eventId) { return ownsEvent(eventId) || currentCoordinator(eventId) || previousCoordinator(eventId); }
+    // K5 / SCRUM-186 — an event and the records hanging off it are readable by its
+    // organiser and its CURRENT coordinator only. The previous-coordinator route that
+    // stood here (C9) is removed: a coordinator reassigned away loses all access.
+    function canReadEvent(eventId) { return ownsEvent(eventId) || currentCoordinator(eventId); }
     function significantChangeHistory(eventId) {
       let changedEvent = getAfter(/databases/$(database)/documents/events/$(eventId)).data;
       let historyId = changedEvent.get('last_significant_change_id', '');
@@ -253,7 +255,6 @@ service cloud.firestore {
       allow create: if hasRole('EVENT_ORGANISER') && request.resource.data.organiser_id == request.auth.uid && request.resource.data.created_by == request.auth.uid && noClientCoordinatorWrite();
       allow get, list: if (hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid)
         || (hasRole('EVENT_COORDINATOR') && resource.data.get('coordinator_id', '') == request.auth.uid)
-        || (hasRole('EVENT_COORDINATOR') && previousCoordinator(eventId))
         // A6 — the Event Coordinator Lead oversees every event (AC3).
         || hasRole('EVENT_COORDINATOR_LEAD')
         || (hasRole('VENUE_STAFF') && resource.data.get('venue_staff_id', '') == request.auth.uid)
@@ -540,8 +541,11 @@ service cloud.firestore {
         && request.resource.data.suitability_acknowledgement.acknowledged is bool
         && request.resource.data.suitability_acknowledgement.criteria is list;
       allow update: if
+        // K5 / SCRUM-186 AC2 — withdrawing is for the coordinator the event is assigned to
+        // now, not for whoever raised the request before it was reassigned.
         (hasRole('EVENT_COORDINATOR')
           && resource.data.requested_by == request.auth.uid
+          && currentCoordinator(resource.data.event_id)
           && resource.data.status == 'PENDING'
           && request.resource.data.status == 'WITHDRAWN'
           && request.resource.data.suitability_acknowledgement == resource.data.suitability_acknowledgement

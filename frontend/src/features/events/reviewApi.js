@@ -14,6 +14,11 @@ import {
   validateSignificantEventValues
 } from "../../domain/significantEventChanges";
 
+// K5 / SCRUM-186 AC3 — one response for every event the caller may not open (someone
+// else's, one they held before it was reassigned, an unassigned one, or an id that does
+// not exist), so the answer never says which of those it was and never carries details.
+const NOT_AUTHORISED = "You are not authorised to view this event.";
+
 const requireUser = () => {
   if (!auth.currentUser) throw new Error("Please sign in again.");
   return auth.currentUser;
@@ -88,15 +93,9 @@ const list = async () => {
   if (profile.role === ROLES.ORGANISER) {
     snapshots = (await getDocs(query(collection(db, "events"), where("organiser_id", "==", user.uid)))).docs;
   } else if (profile.role === ROLES.COORDINATOR) {
-    const [current, assignments] = await Promise.all([
-      step("assigned events", () => getDocs(query(collection(db, "events"), where("coordinator_id", "==", user.uid)))),
-      step("assignment records", () => getDocs(query(collection(db, "coordinator_assignments"), where("coordinator_id", "==", user.uid))))
-    ]);
-    const currentIds = new Set(current.docs.map((item) => item.id));
-    const priorIds = [...new Set(assignments.docs.map((item) => item.data().event_id))]
-      .filter((eventId) => eventId && !currentIds.has(eventId));
-    const prior = await step("previously assigned events", () => Promise.all(priorIds.map((eventId) => getDoc(doc(db, "events", eventId)))));
-    snapshots = [...current.docs, ...prior.filter((item) => item.exists())];
+    // K5 / SCRUM-186 AC1 — only the events assigned to this coordinator now. The old
+    // "previously assigned" rows (read through coordinator_assignments) are gone.
+    snapshots = (await step("assigned events", () => getDocs(query(collection(db, "events"), where("coordinator_id", "==", user.uid))))).docs;
   } else throw new Error("This role cannot review event requests.");
   const unique = [...new Map(snapshots.map((item) => [item.id, item])).values()];
   const events = unique.map((item) => ({ ...record(item), editable: item.data().coordinator_id === user.uid }));
@@ -105,13 +104,18 @@ const list = async () => {
 
 const detail = async (eventId) => {
   const user = requireUser();
-  const eventSnapshot = await getDoc(doc(db, "events", eventId));
-  if (!eventSnapshot.exists()) throw new Error("Event not found.");
+  // K5 / SCRUM-186 AC3 — a refused read, a missing event and (below) an event held by
+  // another coordinator all answer the same way and read nothing further.
+  const eventSnapshot = await getDoc(doc(db, "events", eventId)).catch(() => null);
+  if (!eventSnapshot || !eventSnapshot.exists()) throw new Error(NOT_AUTHORISED);
   const event = record(eventSnapshot);
   // Organisers also use this shared detail loader. Resolve the profile before
   // starting role-specific reads so their existing event view never attempts a
   // venue_bookings query that Firestore correctly reserves for internal staff.
   const profile = await profileFor(user.uid);
+  // The adapter's own check, behind firestore.rules: even if a read were permitted, a
+  // coordinator is never handed an event that is not currently assigned to them.
+  if (profile.role === ROLES.COORDINATOR && event.coordinator_id !== user.uid) throw new Error(NOT_AUTHORISED);
   const [questions, assignments, history, coordinator, requirement, facilities, accessibility, equipment, organiserSnapshot, venueBookings] = await Promise.all([
     getDocs(query(collection(db, "clarification_requests"), where("event_id", "==", eventId))),
     getDocs(query(collection(db, "coordinator_assignments"), where("event_id", "==", eventId))),
@@ -549,7 +553,7 @@ const leadReassign = async (eventId, coordinatorId) => {
     const target = targetData.role === ROLES.COORDINATOR ? { id: targetSnapshot.id, ...targetData, active: targetData.is_active !== false } : null;
     // The outgoing coordinator's original assignment time is the event's own assigned_at.
     // The coordinator_assignments record is deliberately NOT read: firestore.rules lets only
-    // an event's owner, current or previous coordinator read it, never the Lead, so a read here
+    // an event's owner or current coordinator read it, never the Lead, so a read here
     // would be refused with "Missing or insufficient permissions". Writing it is allowed.
     const previousRef = event.coordinator_id ? doc(db, "coordinator_assignments", `${eventId}_${event.coordinator_id}`) : null;
     const originalAssignedAt = event.assigned_at ?? null;

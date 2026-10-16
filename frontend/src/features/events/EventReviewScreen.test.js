@@ -100,13 +100,8 @@ test('K3-FT6 AC (replaces C9 criterion 5) the coordinator in charge has no Reass
   expect(screen.queryByRole('combobox', { name: /new active coordinator/i })).not.toBeInTheDocument();
 });
 
-test('TC-078 an outgoing coordinator gets a read-only assignment view', async () => {
-  reviewApi.list.mockResolvedValue({ events: [{ ...baseEvent, editable: false }] });
-  reviewApi.detail.mockResolvedValue(detail({ editable: false }));
-  await openRequest();
-  expect(screen.getByText(/reassigned.*view.*only the current coordinator/i)).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /reassign event/i })).not.toBeInTheDocument();
-});
+// TC-078 (an outgoing coordinator gets a read-only assignment view) is replaced by K5 SCRUM-186:
+// a coordinator an event was reassigned away from has no view of it at all (K5-FT1, K5-TC3).
 
 test.each(['SUBMITTED', 'UNDER_REVIEW', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'REJECTED', 'SAFETY_REVIEW'])(
   'F1 disables Find venues while an assigned event is %s',
@@ -258,13 +253,6 @@ describe('C6 approve a submitted request', () => {
       expect(screen.queryByRole('button', { name: /^approve/i })).not.toBeInTheDocument();
     }
   );
-
-  test('C6 TC4 only the current coordinator can approve — an outgoing coordinator has no Approve', async () => {
-    reviewApi.list.mockResolvedValue({ events: [{ ...baseEvent, editable: false }] });
-    reviewApi.detail.mockResolvedValue(detail({ editable: false }));
-    await openRequest();
-    expect(screen.queryByRole('button', { name: /^approve/i })).not.toBeInTheDocument();
-  });
 
   test('C6 TC5 Approve is unavailable while a clarification is open, and the screen says so', async () => {
     reviewApi.detail.mockResolvedValue(detail({ open_clarification_id: 'q1' }));
@@ -478,5 +466,48 @@ describe("TC-370 safety planning notes on the coordinator's event", () => {
     const notes = screen.getByRole('region', { name: 'Safety planning notes' });
     expect(within(notes).queryByRole('textbox')).not.toBeInTheDocument();
     expect(notes).toHaveTextContent('Crowd movementNot recorded');
+  });
+});
+
+// K5 / SCRUM-186 — what the coordinator sees when an event is not theirs to open
+// (AC3). The server and the adapter refuse; the screen must show that refusal and
+// nothing of the event, and must not offer any action on it.
+describe('K5 SCRUM-186 an event that is not assigned to the coordinator cannot be opened', () => {
+  const refusal = 'You are not authorised to view this event.';
+
+  test('K5-FT1 AC3 opening an event by id that is refused shows the not-authorised message and no event details or actions', async () => {
+    reviewApi.list.mockResolvedValue({ events: [] });
+    reviewApi.detail.mockRejectedValue(new Error(refusal));
+
+    render(<EventReviewScreen initialEventId="e2" />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(refusal);
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /approve|reject|request clarification|find venues|back to events/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('Partner Summit')).not.toBeInTheDocument();
+  });
+
+  test('K5-FT2 AC3 a refused event leaves the coordinator on their list, and the events assigned to them still open', async () => {
+    reviewApi.detail.mockRejectedValueOnce(new Error(refusal));
+
+    render(<EventReviewScreen initialEventId="e2" />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(refusal);
+
+    await userEvent.click(await screen.findByRole('button', { name: /view request/i }));
+    expect(await screen.findByRole('button', { name: /back to events/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Partner Summit' })).toBeInTheDocument();
+  });
+
+  test('K5-FT3 AC1 the assigned events list shows only what is assigned and has no read-only reassigned view', async () => {
+    reviewApi.list.mockResolvedValue({ events: [baseEvent, { ...baseEvent, id: 'e5', name: 'Second Workshop', reference_no: 'EVT-005' }] });
+
+    render(<EventReviewScreen />);
+
+    expect(await screen.findByText('Partner Summit')).toBeInTheDocument();
+    expect(screen.getByText('Second Workshop')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /view request/i })).toHaveLength(2);
+    await userEvent.click(screen.getAllByRole('button', { name: /view request/i })[0]);
+    await screen.findByRole('button', { name: /back to events/i });
+    expect(screen.queryByText(/was reassigned|previously assigned/i)).not.toBeInTheDocument();
   });
 });

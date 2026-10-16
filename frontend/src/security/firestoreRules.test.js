@@ -690,3 +690,97 @@ describe('A7 the Safety Officer reaches only events under review, and writes onl
   });
 });
 
+
+// K5 / SCRUM-186 — a coordinator acts only on events currently assigned to them
+// (AC2: refused server-side; AC3: nothing about another coordinator's event is
+// readable). K3 already keys the workflow writes on coordinator_id (K3-RT1/RT2); K5
+// closes what was left: the previous-coordinator read route and any write that still
+// names a coordinator without the event's current assignment. Like the rest of this
+// file it asserts the rule text, because the text is what a loosened rule would change.
+describe('K5 SCRUM-186 a coordinator acts only on events currently assigned to them', () => {
+  // Comments stripped (they hold brackets that would unbalance the splitter), then
+  // whitespace flattened so a rule split over several lines reads as one piece.
+  const bare = RULES.replace(/\/\/[^\n]*/g, '');
+  const blockOf = (collection) => {
+    const start = bare.indexOf(`match /${collection}/`);
+    if (start === -1) throw new Error(`No rules found for ${collection}`);
+    return bare.slice(start, bare.indexOf('\n    }', start)).replace(/\s+/g, ' ');
+  };
+  const collections = [...new Set([...bare.matchAll(/match \/([a-z_]+)\/\{/g)].map(([, name]) => name))];
+  const ruleFunctions = () => Object.fromEntries(
+    [...bare.replace(/\s+/g, ' ').matchAll(/function (\w+)\([^)]*\) \{ (.*?) \}(?= function| allow| match)/g)].map(([, name, body]) => [name, body])
+  );
+  // Splits "a || (b && c) || d" into its three alternatives, ignoring any || inside brackets.
+  const alternatives = (condition) => {
+    const parts = [];
+    let depth = 0;
+    let from = 0;
+    for (let i = 0; i < condition.length; i += 1) {
+      if ('([{'.includes(condition[i])) depth += 1;
+      else if (')]}'.includes(condition[i])) depth -= 1;
+      else if (depth === 0 && condition.startsWith('||', i)) { parts.push(condition.slice(from, i).trim()); from = i + 2; i += 1; }
+    }
+    parts.push(condition.slice(from).trim());
+    return parts;
+  };
+  // "this caller is the event's current coordinator", in any of the spellings the rules use.
+  const NAMES_CURRENT_COORDINATOR = /currentCoordinator\(|coordinator_id(?:', '')?\)? == request\.auth\.uid/;
+  const isWrite = (operations) => /create|update|delete|write/.test(operations);
+
+  test("K5-RT1 AC3 a coordinator reads an event only while it is assigned to them: there is no previous-coordinator route", () => {
+    const read = eventsGetList();
+
+    expect(read).toContain("hasRole('EVENT_COORDINATOR') && resource.data.get('coordinator_id', '') == request.auth.uid");
+    expect(read).not.toContain('previousCoordinator(');
+  });
+
+  test('K5-RT2 AC3 the records hanging off an event follow the same rule: canReadEvent is the owner or the current coordinator only', () => {
+    expect(RULES).not.toContain('previousCoordinator');
+    expect(ruleFunctions().canReadEvent).toBe('return ownsEvent(eventId) || currentCoordinator(eventId);');
+  });
+
+  test('K5-RT3 AC2 a coordinator who raised a booking cannot withdraw it once the event is no longer theirs', () => {
+    const update = blockOf('venue_bookings').match(/allow update: if (.*?);/)[1];
+    const withdraw = alternatives(update).find((clause) => clause.includes('requested_by == request.auth.uid'));
+
+    expect(withdraw).toBeDefined();
+    expect(withdraw).toContain("request.resource.data.status == 'WITHDRAWN'");
+    expect(withdraw).toContain('currentCoordinator(resource.data.event_id)');
+  });
+
+  test('K5-RT4 AC2 sweep: every write the coordinator role is granted outside the events collection names the current coordinator', () => {
+    const offenders = [];
+    collections.forEach((collection) => {
+      [...blockOf(collection).matchAll(/allow ([a-z, ]+): if (.*?);/g)]
+        .filter(([, operations]) => isWrite(operations))
+        .forEach(([, operations, condition]) => alternatives(condition)
+          .filter((clause) => clause.includes("hasRole('EVENT_COORDINATOR')"))
+          .forEach((clause) => {
+            if (!NAMES_CURRENT_COORDINATOR.test(clause)) offenders.push(`${collection} (${operations.trim()}): ${clause.slice(0, 100)}`);
+          }));
+    });
+
+    expect(offenders).toEqual([]);
+  });
+
+  test('K5-RT5 AC2 sweep: every rule function that grants the coordinator role does so only for the current coordinator', () => {
+    const offenders = Object.entries(ruleFunctions())
+      .filter(([, body]) => body.includes("hasRole('EVENT_COORDINATOR')") && !NAMES_CURRENT_COORDINATOR.test(body))
+      .map(([name]) => name);
+
+    expect(offenders).toEqual([]);
+    // The functions the events update rule is built from are all in that sweep.
+    const functions = ruleFunctions();
+    ['coordinatorWorkflowUpdate', 'coordinatorSafetyNotesUpdate', 'coordinatorVenueReleaseLinkUpdate', 'significantChangeHistory']
+      .forEach((name) => expect(functions[name]).toBeDefined());
+  });
+
+  test('K5-RT6 AC2 sweep: the coordinator edit, approve and reject paths still exist and are all in the events update rule', () => {
+    const update = blockOf('events').match(/allow update: if (.*?);/)[1];
+    ['coordinatorWorkflowUpdate()', 'coordinatorSignificantDetailsUpdate()', 'coordinatorSafetyNotesUpdate()', 'coordinatorVenueReleaseLinkUpdate()']
+      .forEach((call) => expect(update).toContain(call));
+    const workflow = ruleFunctions().coordinatorWorkflowUpdate;
+    ["request.resource.data.status == 'APPROVED'", "request.resource.data.status == 'REJECTED'", "request.resource.data.status == 'UNDER_REVIEW'"]
+      .forEach((clause) => expect(workflow).toContain(clause));
+  });
+});

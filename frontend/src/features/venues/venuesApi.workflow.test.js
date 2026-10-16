@@ -33,7 +33,8 @@ jest.mock('firebase/firestore', () => ({
 
 jest.mock('../../lib/firebase', () => ({ db: { name: 'browser-firestore' } }));
 
-import { approveVenueBooking, releaseCancelledEventBookings } from './venuesApi';
+import * as firestore from 'firebase/firestore';
+import { approveVenueBooking, loadVenueBookings, releaseCancelledEventBookings, withdrawVenueBooking } from './venuesApi';
 
 beforeEach(() => {
   mockTransactionUpdate.mockClear();
@@ -199,4 +200,65 @@ test('F8 cancellation release clears the linked booking while retaining history 
     { approved_venue_booking_id: null, updated_at: 'SERVER_TIMESTAMP' }
   );
   expect(mockTransactionSet).toHaveBeenCalledTimes(2);
+});
+
+// K5 / SCRUM-186 AC2 — booking actions follow the event's *current* coordinator. A
+// coordinator the event was reassigned away from keeps nothing: not the booking they
+// raised, and not the list of bookings. The server (firestore.rules, K5-RT3) refuses the
+// same write; the adapter stops it first and says why.
+describe('K5 SCRUM-186 venue bookings follow the coordinator the event is assigned to', () => {
+  const pendingBooking = { event_id: 'EVT-9', venue_id: 'VEN-1', status: 'PENDING', requested_by: 'COORD-OLD' };
+  const storedDocs = (eventCoordinator) => (ref) => {
+    if (ref.path === 'venue_bookings/VB-9') return Promise.resolve(snapshot('VB-9', pendingBooking, ref));
+    if (ref.path === 'events/EVT-9') return Promise.resolve(snapshot('EVT-9', { coordinator_id: eventCoordinator, status: 'APPROVED' }, ref));
+    return Promise.resolve({ exists: () => false, data: () => undefined });
+  };
+
+  test('K5-TC8 AC2 a coordinator the event was reassigned away from cannot withdraw the booking they raised', async () => {
+    mockGetDoc.mockImplementation(storedDocs('COORD-NEW'));
+
+    await expect(withdrawVenueBooking({ user: { uid: 'COORD-OLD' }, bookingId: 'VB-9' }))
+      .rejects.toThrow('Only the current event coordinator may withdraw this booking.');
+    expect(firestore.updateDoc).not.toHaveBeenCalled();
+  });
+
+  test('K5-TC9 AC2 the coordinator the event is assigned to can withdraw a pending booking', async () => {
+    mockGetDoc.mockImplementation(storedDocs('COORD-NEW'));
+
+    await expect(withdrawVenueBooking({ user: { uid: 'COORD-NEW' }, bookingId: 'VB-9' }))
+      .resolves.toEqual({ booking_id: 'VB-9', status: 'WITHDRAWN' });
+    expect(firestore.updateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'venue_bookings/VB-9' }),
+      expect.objectContaining({ status: 'WITHDRAWN' })
+    );
+  });
+
+  test('K5-TC10 AC2 withdrawing needs a signed-in coordinator, and an unknown booking is refused without a write', async () => {
+    mockGetDoc.mockImplementation(storedDocs('COORD-NEW'));
+
+    await expect(withdrawVenueBooking({ bookingId: 'VB-9' })).rejects.toThrow('Sign in is required.');
+    await expect(withdrawVenueBooking({ user: { uid: 'COORD-NEW' }, bookingId: 'VB-GONE' })).rejects.toThrow();
+    expect(firestore.updateDoc).not.toHaveBeenCalled();
+  });
+
+  test('K5-TC11 AC1 the bookings list is built from the events currently assigned to the coordinator and no others', async () => {
+    const queries = [];
+    mockGetDocs.mockImplementation((reference) => {
+      queries.push(reference);
+      const eventId = (reference.constraints || []).find((item) => item[0] === 'event_id')?.[2];
+      if (reference.path === 'events') return Promise.resolve({ docs: [{ id: 'EVT-1', data: () => ({ name: 'Mine', coordinator_id: 'COORD-1' }) }] });
+      if (reference.path === 'venue_bookings' && eventId === 'EVT-1') {
+        return Promise.resolve({ docs: [{ id: 'VB-1', data: () => ({ event_id: 'EVT-1', venue_id: 'VEN-1', status: 'APPROVED' }) }] });
+      }
+      return Promise.resolve({ docs: [] });
+    });
+    mockGetDoc.mockResolvedValue({ exists: () => false, data: () => undefined });
+
+    const bookings = await loadVenueBookings({ user: { uid: 'COORD-1' } });
+
+    expect(bookings.map((item) => item.booking_id)).toEqual(['VB-1']);
+    const eventsQuery = queries.find((item) => item.path === 'events');
+    expect(eventsQuery.constraints).toEqual([['coordinator_id', '==', 'COORD-1']]);
+    expect(queries.filter((item) => item.path === 'venue_bookings')).toHaveLength(1);
+  });
 });
