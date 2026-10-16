@@ -603,8 +603,18 @@ export const releaseCancelledEventBookings = async ({ user, eventId, reason = "E
 
 // E8 / F1 AC4 — withdrawing frees the event-and-venue pairing to be requested
 // again. The record stays, so what was acknowledged at the time is not erased.
-export const withdrawVenueBooking = async ({ bookingId }) => {
+//
+// K5 / SCRUM-186 AC2 — only the coordinator the event is assigned to now may withdraw.
+// firestore.rules refuses the same write; checking here first gives a clear reason.
+export const withdrawVenueBooking = async ({ user, bookingId }) => {
+  const userId = requiredUser(user);
   if (!bookingId) throw new Error("That booking could not be identified.");
+  const bookingSnapshot = await getDoc(doc(db, "venue_bookings", bookingId));
+  if (!bookingSnapshot.exists()) throw new Error("That booking could not be found.");
+  const eventSnapshot = await getDoc(doc(db, "events", bookingSnapshot.data().event_id));
+  if (!eventSnapshot.exists() || eventSnapshot.data().coordinator_id !== userId) {
+    throw new Error("Only the current event coordinator may withdraw this booking.");
+  }
   await updateDoc(doc(db, "venue_bookings", bookingId), {
     status: "WITHDRAWN",
     withdrawn_at: serverTimestamp()

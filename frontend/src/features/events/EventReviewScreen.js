@@ -244,7 +244,6 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     return <div className="cs-review-detail">
       {!onBackChange && <button type="button" className="cs-btn cs-btn-ghost cs-back" onClick={closeDetail}><Icon name="chevron-left" />Back to events</button>}
       {error && !mode && <p className="cs-error" role="alert">{error}</p>}
-      {!event.editable && <p className="cs-panel-note">This event was reassigned. You can view the assignment record, but only the current coordinator can make changes.</p>}
       <div className="cs-review-heading"><div><h2>{event.name}</h2><p>{event.reference_no}</p></div><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div>
       {hasOpen && <p className="cs-attention">Awaiting the organiser. Approve, Clarify and Reject are unavailable until they respond.</p>}
       <EventDetailTabs
@@ -263,16 +262,16 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
   // The Review queue (queueOnly) is unchanged: it lists only the requests waiting
   // for action and keeps its original card (now with the shared RecordLead tile).
   if (queueOnly) {
-    if (!visible.length) return <div className="cs-empty"><p>{error || "No requests are waiting for review."}</p></div>;
-    return <>{error && <p className="cs-error">{error}</p>}<div className="cs-record-list">{visible.map((event) => <article className="cs-record cs-review-record" key={event.id}><div className="cs-record-title"><RecordLead date={event.event_date} /><div><h2>{event.name || "Untitled event"}</h2><p>{event.event_date || "Date not set"}</p></div></div><p className="cs-record-ref">{event.reference_no}</p><div className="cs-record-status"><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div><div className="cs-record-modified"><p className="cs-record-saved">{event.editable ? "Current assignment" : "Previous assignment · read only"}</p></div><div className="cs-record-actions"><button className="cs-btn cs-btn-ghost cs-record-btn" type="button" disabled={busy} onClick={() => loadDetail(event.id)}>View request</button></div></article>)}</div></>;
+    if (!visible.length) return <div className="cs-empty"><p role={error ? "alert" : undefined}>{error || "No requests are waiting for review."}</p></div>;
+    return <>{error && <p className="cs-error" role="alert">{error}</p>}<div className="cs-record-list">{visible.map((event) => <article className="cs-record cs-review-record" key={event.id}><div className="cs-record-title"><RecordLead date={event.event_date} /><div><h2>{event.name || "Untitled event"}</h2><p>{event.event_date || "Date not set"}</p></div></div><p className="cs-record-ref">{event.reference_no}</p><div className="cs-record-status"><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div><div className="cs-record-modified"><p className="cs-record-saved">{event.editable ? "Current assignment" : "Previous assignment · read only"}</p></div><div className="cs-record-actions"><button className="cs-btn cs-btn-ghost cs-record-btn" type="button" disabled={busy} onClick={() => loadDetail(event.id)}>View request</button></div></article>)}</div></>;
   }
 
   // C2 / SCRUM-103 — the coordinator's "Assigned events" list: everything they are
   // accountable for, with the five columns the story asks for plus the status
   // filter and proposed-date sort.
-  if (!events.length) return <div className="cs-empty"><p>{error || "No events are assigned to you."}</p></div>;
+  if (!events.length) return <div className="cs-empty"><p role={error ? "alert" : undefined}>{error || "No events are assigned to you."}</p></div>;
   return <>
-    {error && <p className="cs-error">{error}</p>}
+    {error && <p className="cs-error" role="alert">{error}</p>}
     <div className="cs-review-toolbar">
       <label className="cs-field cs-inline-field">
         <span className="cs-field-name">Status</span>

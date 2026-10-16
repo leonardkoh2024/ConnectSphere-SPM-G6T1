@@ -284,3 +284,148 @@ describe("K4 SCRUM-185 the Lead's oversight board", () => {
     expect(events.map((item) => item.id).sort()).toEqual(['e1', 'e2', 'e4']);
   });
 });
+
+// K5 / SCRUM-186 — what a coordinator can see and open. The fake below refuses what
+// firestore.rules refuses once K5 is in (an event is readable to a coordinator only
+// while event.coordinator_id is theirs; every record hanging off an event follows it),
+// so an adapter that still reaches for a reassigned or someone else's event fails here
+// instead of passing against a fake that lets everything through.
+describe('K5 SCRUM-186 a coordinator sees and opens only the events assigned to them', () => {
+  const stored = {
+    'users/c1': { role: 'EVENT_COORDINATOR', name: 'Joshua Chua', is_active: true },
+    'users/c2': { role: 'EVENT_COORDINATOR', name: 'Alex Coordinator', is_active: true },
+    'users/org1': { role: 'EVENT_ORGANISER', name: 'Nadia Organiser', email: 'nadia@smu.edu.sg' },
+    'events/e1': { organiser_id: 'org1', coordinator_id: 'c1', name: 'Partner Summit', status: 'UNDER_REVIEW' },
+    'events/e2': { organiser_id: 'org1', coordinator_id: 'c2', name: 'Rival Gala', description: 'Secret seating plan', status: 'UNDER_REVIEW' },
+    // c1 held this one until the Lead handed it to c2, so an assignment record for c1 remains.
+    'events/e3': { organiser_id: 'org1', coordinator_id: 'c2', name: 'Handed Over Retreat', status: 'APPROVED' },
+    'events/e4': { organiser_id: 'org1', coordinator_id: null, name: 'Unassigned Fair', status: 'SUBMITTED' },
+    'coordinator_assignments/e3_c1': { event_id: 'e3', coordinator_id: 'c1', assigned_at: 'T0', ended_at: 'T1' },
+    'coordinator_assignments/e3_c2': { event_id: 'e3', coordinator_id: 'c2', assigned_at: 'T1', ended_at: null }
+  };
+  const entries = (prefix) => Object.entries(stored).filter(([path]) => path.startsWith(`${prefix}/`)).map(([path, data]) => [path.split('/')[1], data]);
+
+  let reads;
+  let looseEventRule;
+  const eventReadable = (eventId) => {
+    const event = stored[`events/${eventId}`];
+    if (!event) return false;
+    if (looseEventRule) return true;
+    const me = stored[`users/${auth.currentUser.uid}`];
+    if (me.role === 'EVENT_COORDINATOR') return event.coordinator_id === auth.currentUser.uid;
+    if (me.role === 'EVENT_ORGANISER') return event.organiser_id === auth.currentUser.uid;
+    return false;
+  };
+  const constraint = (q, field) => (q.constraints || []).find((item) => item.field === field);
+
+  beforeEach(() => {
+    auth.currentUser = { uid: 'c1' };
+    reads = { paths: [], queries: [] };
+    looseEventRule = false;
+    firestore.getDoc.mockImplementation(async (ref) => {
+      reads.paths.push(ref.path);
+      const [collectionName, id] = ref.path.split('/');
+      const me = stored[`users/${auth.currentUser.uid}`];
+      if (collectionName === 'users') {
+        const data = stored[ref.path];
+        const allowed = id === auth.currentUser.uid
+          || (me.role === 'EVENT_COORDINATOR' && data?.role === 'EVENT_ORGANISER')
+          || (data?.role === 'EVENT_COORDINATOR' && data?.is_active === true);
+        if (!allowed) throw permissionDenied();
+        return snapshot(id, data);
+      }
+      if (collectionName === 'events') {
+        if (!eventReadable(id)) throw permissionDenied();
+        return snapshot(id, stored[ref.path]);
+      }
+      if (collectionName === 'event_venue_requirements') {
+        if (!eventReadable(id)) throw permissionDenied();
+        return snapshot(id, stored[ref.path]);
+      }
+      return snapshot(id, stored[ref.path]);
+    });
+    firestore.getDocs.mockImplementation(async (q) => {
+      reads.queries.push(q.name);
+      const mine = auth.currentUser.uid;
+      if (q.name === 'events') {
+        const byCoordinator = constraint(q, 'coordinator_id');
+        const byOrganiser = constraint(q, 'organiser_id');
+        if (!((byCoordinator && byCoordinator.value === mine) || (byOrganiser && byOrganiser.value === mine))) throw permissionDenied();
+        return docs(entries('events').filter(([, data]) => data.coordinator_id === mine || data.organiser_id === mine));
+      }
+      if (q.name === 'coordinator_assignments') {
+        if (constraint(q, 'coordinator_id')?.value === mine) return docs(entries('coordinator_assignments').filter(([, data]) => data.coordinator_id === mine));
+        const eventId = constraint(q, 'event_id')?.value;
+        if (!eventId || !eventReadable(eventId)) throw permissionDenied();
+        return docs(entries('coordinator_assignments').filter(([, data]) => data.event_id === eventId));
+      }
+      if (q.name === 'users') return docs(entries('users').filter(([, data]) => data.role === 'EVENT_COORDINATOR' && data.is_active));
+      if (q.name === 'venue_bookings') return docs([]);
+      const eventId = constraint(q, 'event_id')?.value;
+      if (eventId && !eventReadable(eventId)) throw permissionDenied();
+      return docs([]);
+    });
+  });
+
+  test('K5-TC1 AC1 the active event list holds only events currently assigned to the signed-in coordinator', async () => {
+    const { events } = await reviewApi.list();
+
+    expect(events.map((item) => item.id)).toEqual(['e1']);
+    expect(events[0]).toMatchObject({ coordinator_id: 'c1', editable: true });
+  });
+
+  test('K5-TC2 AC1 a reassigned-away event stays out of the list even though an assignment record for this coordinator remains', async () => {
+    const { events } = await reviewApi.list();
+
+    expect(events.some((item) => item.id === 'e3')).toBe(false);
+    // The list is the one query on coordinator_id: it does not go back through assignment history.
+    expect(reads.queries.filter((name) => name === 'events')).toHaveLength(1);
+    expect(reads.queries).not.toContain('coordinator_assignments');
+    expect(reads.paths).not.toContain('events/e3');
+  });
+
+  test.each([
+    ['assigned to another coordinator', 'e2'],
+    ['one this coordinator held before it was reassigned', 'e3'],
+    ['not assigned to anyone yet', 'e4'],
+    ['an id that does not exist', 'no-such-event']
+  ])('K5-TC3 AC3 opening an event by id that is %s is refused with the same not-authorised response', async (_label, eventId) => {
+    await expect(reviewApi.detail(eventId)).rejects.toThrow('You are not authorised to view this event.');
+  });
+
+  test('K5-TC4 AC3 the refusal reveals nothing about the event: no name, no description, and no further reads', async () => {
+    const error = await reviewApi.detail('e2').catch((failure) => failure);
+
+    expect(error).toBeInstanceOf(Error);
+    ['Rival Gala', 'Secret seating plan', 'e2', 'Alex'].forEach((leak) => expect(error.message).not.toContain(leak));
+    expect(reads.queries).toEqual([]);
+  });
+
+  test('K5-TC5 AC3 the adapter refuses on its own, too: an event that is not theirs is never returned even if a read slipped through', async () => {
+    looseEventRule = true;
+
+    await expect(reviewApi.detail('e2')).rejects.toThrow('You are not authorised to view this event.');
+    await expect(reviewApi.detail('e4')).rejects.toThrow('You are not authorised to view this event.');
+    expect(reads.queries).toEqual([]);
+  });
+
+  test('K5-TC6 AC3 the coordinator an event is assigned to can still open it', async () => {
+    const detail = await reviewApi.detail('e1');
+
+    expect(detail.event).toMatchObject({ id: 'e1', name: 'Partner Summit', editable: true });
+  });
+
+  test("K5-TC7 AC3 the organiser still opens their own event: the check is on coordinators, not on everyone using the loader", async () => {
+    auth.currentUser = { uid: 'org1' };
+    firestore.getDoc.mockImplementation(async (ref) => {
+      const [collectionName, id] = ref.path.split('/');
+      if (collectionName === 'users') return snapshot(id, stored[ref.path]);
+      if (collectionName === 'events') return snapshot(id, stored[ref.path]);
+      return snapshot(id, stored[ref.path]);
+    });
+
+    const detail = await reviewApi.detail('e2');
+
+    expect(detail.event).toMatchObject({ id: 'e2', name: 'Rival Gala' });
+  });
+});

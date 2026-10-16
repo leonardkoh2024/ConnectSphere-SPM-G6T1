@@ -112,7 +112,7 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
     setWithdrawing(true);
     setActionError("");
     try {
-      await withdrawVenueBooking({ bookingId });
+      await withdrawVenueBooking({ user, bookingId });
       setBookings(await loadVenueBookings({ user }));
       setConfirmWithdraw(null);
     } catch (withdrawError) {
