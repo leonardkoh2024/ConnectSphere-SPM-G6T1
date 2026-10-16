@@ -134,7 +134,7 @@ describe('TC-080 coordinator assignment fields remain protected', () => {
     expect(events).toContain("request.resource.data.get('assigned_at', null) == resource.data.get('assigned_at', null)");
   });
 
-  test('C9 reassignment is limited to the current coordinator and an active coordinator target', () => {
+  test('reassignment target must be an active coordinator and only the assignment fields may change', () => {
     const events = matchBlock('events');
 
     expect(events).toContain('resource.data.coordinator_id == request.auth.uid');
@@ -511,5 +511,44 @@ describe('C2/C3 a coordinator can read an organiser profile, one at a time', () 
   test('profile writes are unchanged — nobody gains a way to edit another user', () => {
     const users = matchBlock('users');
     expect(users).toContain('allow update: if signedIn() && userId == request.auth.uid');
+  });
+});
+
+// K3 / SCRUM-184 — reassignment at the server boundary. Same static-text style as
+// the rest of this file: these pin the policy the rules state, so loosening it
+// breaks the build.
+describe('K3 SCRUM-184 reassigning an event moves every coordinator permission with it', () => {
+  test('K3-RT1 AC4 coordinator workflow writes are keyed on the event\'s coordinator_id, so the outgoing coordinator loses them', () => {
+    const start = RULES.indexOf('function coordinatorWorkflowUpdate');
+    const workflow = RULES.slice(start, RULES.indexOf('function leadAssignmentUpdate')).replace(/\s+/g, ' ');
+    expect(workflow).toContain('resource.data.coordinator_id == request.auth.uid');
+  });
+
+  test('K3-RT2 AC4 a coordinator\'s history and notification writes need them to be the current coordinator', () => {
+    expect(RULES).toMatch(/function currentCoordinator\(eventId\)[^}]*coordinator_id == request\.auth\.uid/);
+    expect(matchBlock('event_history')).toContain('currentCoordinator(request.resource.data.event_id)');
+    expect(matchBlock('notifications')).toContain('currentCoordinator(request.resource.data.event_id)');
+  });
+
+  test('K3-RT3 AC3 the Lead may write the reassignment history entry and the assignment records', () => {
+    expect(matchBlock('event_history')).toContain("action_type in ['COORDINATOR_ASSIGNED', 'COORDINATOR_REASSIGNED']");
+    expect(matchBlock('coordinator_assignments')).toContain("hasRole('EVENT_COORDINATOR_LEAD')");
+  });
+
+  test('K3-RT4 AC5 the Lead may notify the outgoing coordinator, the incoming coordinator and the organiser', () => {
+    const notifications = matchBlock('notifications');
+    const lead = notifications.slice(notifications.indexOf("hasRole('EVENT_COORDINATOR_LEAD')"));
+    // incoming (after the write), outgoing (before the write), organiser.
+    expect(lead).toContain(".data.get('coordinator_id', '')");
+    expect(lead).toContain('getAfter(');
+    expect(lead).toContain(".data.get('organiser_id', '')");
+  });
+
+  test('K3-RT5 (replaces C9 criterion 5) a coordinator can no longer change coordinator_id: only the Lead path does', () => {
+    const start = RULES.indexOf('function coordinatorWorkflowUpdate');
+    const workflow = RULES.slice(start, RULES.indexOf('function leadAssignmentUpdate')).replace(/\s+/g, ' ');
+    expect(workflow).not.toContain("hasOnly(['coordinator_id'");
+    expect(workflow).not.toContain('request.resource.data.coordinator_id');
+    expect(matchBlock('events')).toContain('leadAssignmentUpdate()');
   });
 });

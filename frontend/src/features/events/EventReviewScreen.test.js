@@ -4,7 +4,7 @@ import EventReviewScreen from './EventReviewScreen';
 import { reviewApi } from './reviewApi';
 
 jest.mock('./reviewApi', () => ({ reviewApi: {
-  list: jest.fn(), detail: jest.fn(), openReview: jest.fn(), clarify: jest.fn(), approve: jest.fn(), reject: jest.fn(), reassign: jest.fn(),
+  list: jest.fn(), detail: jest.fn(), openReview: jest.fn(), clarify: jest.fn(), approve: jest.fn(), reject: jest.fn(),
   significantChangeImpact: jest.fn(), saveSignificantChange: jest.fn()
 } }));
 
@@ -22,7 +22,6 @@ beforeEach(() => {
   reviewApi.clarify.mockResolvedValue({ ok: true });
   reviewApi.approve.mockResolvedValue({ ok: true });
   reviewApi.reject.mockResolvedValue({ ok: true });
-  reviewApi.reassign.mockResolvedValue({ ok: true });
   reviewApi.significantChangeImpact.mockResolvedValue({
     venueBookings: [{ id: 'b1', label: 'Main Hall', status: 'APPROVED' }],
     equipmentReservations: [{ id: 'r1', label: 'Audio', status: 'RESERVED' }],
@@ -88,14 +87,15 @@ test('TC-072/073 requires a rejection reason and sends the recorded reason', asy
   await waitFor(() => expect(reviewApi.reject).toHaveBeenCalledWith('e1', 'No suitable venue can be secured.'));
 });
 
-test('TC-077 reassigns to a different active coordinator', async () => {
+// K3 / SCRUM-184 — this replaces C9's old TC-077 (the coordinator reassigning their own
+// event). Only the Event Coordinator Lead reassigns now, from the oversight screen, so the
+// coordinator in charge has no Reassign control at all, on any status.
+test('K3-FT6 AC (replaces C9 criterion 5) the coordinator in charge has no Reassign control', async () => {
   await openRequest();
-  await userEvent.click(screen.getByRole('button', { name: /reassign event/i }));
-  const select = screen.getByRole('combobox', { name: /new active coordinator/i });
-  expect(within(select).queryByRole('option', { name: 'Sam Coordinator' })).not.toBeInTheDocument();
-  await userEvent.selectOptions(select, 'c2');
-  await userEvent.click(screen.getByRole('button', { name: /^reassign$/i }));
-  await waitFor(() => expect(reviewApi.reassign).toHaveBeenCalledWith('e1', 'c2'));
+
+  expect(screen.getByRole('button', { name: /reject request/i })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /reassign/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole('combobox', { name: /new active coordinator/i })).not.toBeInTheDocument();
 });
 
 test('TC-078 an outgoing coordinator gets a read-only assignment view', async () => {
@@ -360,12 +360,12 @@ describe('the coordinator event detail tabs', () => {
     expect(screen.getByText('Annual summit')).not.toBeVisible();
   });
 
-  test('TC-277 Request clarification is on the Clarifications tab; Reject and Reassign stay on the request', async () => {
+  test('TC-277 Request clarification is on the Clarifications tab; Reject stays on the request', async () => {
     await openRequest();
 
     expect(screen.queryByRole('button', { name: /request clarification/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /reject request/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /reassign event/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reassign event/i })).not.toBeInTheDocument();
 
     await openClarifications();
     expect(screen.getByRole('button', { name: /request clarification/i })).toBeInTheDocument();

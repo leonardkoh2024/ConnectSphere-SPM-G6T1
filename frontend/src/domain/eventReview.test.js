@@ -4,7 +4,6 @@ import {
   canApproveEvent,
   canOpenReview,
   canRejectEvent,
-  canReassignEvent,
   canRequestClarification,
   canRespondToClarification,
   chronologicalClarifications,
@@ -25,8 +24,10 @@ import {
   leadVisibleEvents,
   assignEvent,
   assignmentSummary,
-  coordinatorChoiceLabel
+  coordinatorChoiceLabel,
+  reassignEvent
 } from './eventReview';
+import * as eventReviewModule from './eventReview';
 import { ROLES } from './roles';
 
 const event = (changes = {}) => ({ coordinator_id: 'c1', status: 'UNDER_REVIEW', ...changes });
@@ -65,15 +66,11 @@ describe('C7 and C9 workflow boundaries', () => {
     expect(canOpenReview(event({ status: 'SUBMITTED' }), 'c2')).toBe(false);
   });
 
-  test('TC-077/080 reassignment needs the current coordinator and another active target', () => {
-    expect(canReassignEvent(event(), 'c1', { id: 'c2', active: true })).toBe(true);
-    expect(canReassignEvent(event(), 'c3', { id: 'c2', active: true })).toBe(false);
-    expect(canReassignEvent(event(), 'c1', { id: 'c2', active: false })).toBe(false);
-    expect(canReassignEvent(event(), 'c1', { id: 'c1', active: true })).toBe(false);
-  });
-
-  test.each(['COMPLETED', 'CANCELLED', 'REJECTED'])('terminal %s events cannot be reassigned', (status) => {
-    expect(canReassignEvent(event({ status }), 'c1', { id: 'c2', active: true })).toBe(false);
+  // K3 / SCRUM-184 replaces C9 criterion 5: the Lead, not the coordinator in charge,
+  // reassigns. The old coordinator-side guard (canReassignEvent, TC-077/080) is gone.
+  test('K3-TC11 (replaces C9 criterion 5) a coordinator, even the one in charge, has no reassign guard', () => {
+    expect(eventReviewModule.canReassignEvent).toBeUndefined();
+    expect(canLeadReassign(event(), ROLES.COORDINATOR, { id: 'c2', active: true })).toBe(false);
   });
 });
 
@@ -474,5 +471,100 @@ describe('K2 SCRUM-183 assign an event to a coordinator', () => {
   test('K2-TC8 AC2 boundary an inactive coordinator cannot be assigned', () => {
     const inactive = { id: 'c9', name: 'Bo', active: false };
     expect(assignEvent({ event: unassigned, role: LEAD, leadId: 'lead-1', target: inactive, now: 'T1' }).ok).toBe(false);
+  });
+});
+
+// K3 / SCRUM-184 — the Lead moves an event to a different coordinator. These pin
+// the single pure outcome (reassignEvent) the adapter will follow, exactly as K2's
+// assignEvent does for assignment: the guard (AC1/AC2), the one-coordinator result
+// and the retained previous assignment (AC3), the outgoing coordinator losing every
+// coordinator action (AC4), and the three people told (AC5).
+describe('K3 SCRUM-184 reassign an event to another coordinator', () => {
+  const LEAD = ROLES.COORDINATOR_LEAD;
+  const assigned = {
+    id: 'EVT-2', coordinator_id: 'c1', assigned_at: 'T0', status: 'UNDER_REVIEW',
+    organiser_id: 'org-1', name: 'Workshop'
+  };
+  const target = { id: 'c2', name: 'Alex', active: true };
+  const reassign = (overrides = {}) =>
+    reassignEvent({ event: assigned, role: LEAD, leadId: 'lead-1', target, now: 'T1', ...overrides });
+
+  test('K3-TC1 AC1 the Lead can reassign an event in any status except Completed, Cancelled or Rejected', () => {
+    ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PLANNING'].forEach((status) => {
+      expect(reassign({ event: { ...assigned, status } }).ok).toBe(true);
+    });
+    ['COMPLETED', 'CANCELLED', 'REJECTED'].forEach((status) => {
+      expect(reassign({ event: { ...assigned, status } }).ok).toBe(false);
+    });
+  });
+
+  test('K3-TC2 AC1 only the Lead may reassign, and only an event that already has a coordinator', () => {
+    expect(reassign({ role: ROLES.COORDINATOR }).ok).toBe(false);
+    expect(reassign({ role: ROLES.ORGANISER }).ok).toBe(false);
+    // An event with no coordinator is an assignment (K2), not a reassignment.
+    expect(reassign({ event: { ...assigned, coordinator_id: null } }).ok).toBe(false);
+  });
+
+  test('K3-TC3 AC2 reassigning to the coordinator who already holds the event is refused', () => {
+    const result = reassign({ target: { id: 'c1', name: 'Joshua', active: true } });
+    expect(result.ok).toBe(false);
+    expect(result.event).toBeUndefined();
+  });
+
+  test('K3-TC4 AC2 boundary no coordinator chosen, or an inactive one, is refused and changes nothing', () => {
+    expect(reassign({ target: null }).ok).toBe(false);
+    expect(reassign({ target: { id: 'c9', name: 'Bo', active: false } }).ok).toBe(false);
+  });
+
+  test('K3-TC5 AC3 after reassignment exactly one coordinator is assigned, from the reassignment time', () => {
+    const result = reassign();
+    expect(result.ok).toBe(true);
+    expect(result.event.coordinator_id).toBe('c2');
+    expect(result.event.assigned_at).toBe('T1');
+    // The input event is left untouched (pure).
+    expect(assigned.coordinator_id).toBe('c1');
+  });
+
+  test('K3-TC6 AC3 the previous assignment is kept with its original time, the reassignment time and the Lead', () => {
+    expect(reassign().previousAssignment).toEqual({
+      coordinatorId: 'c1', assignedAt: 'T0', endedAt: 'T1', reassignedBy: 'lead-1'
+    });
+  });
+
+  test('K3-TC7 AC3 the history entry names the outgoing and incoming coordinator, the Lead and both times', () => {
+    expect(reassign().history).toMatchObject({
+      actionType: 'COORDINATOR_REASSIGNED', fieldName: 'coordinator_id',
+      oldValue: 'c1', newValue: 'c2', actorId: 'lead-1',
+      previousAssignedAt: 'T0', createdAt: 'T1'
+    });
+  });
+
+  test('K3-TC8 AC3 boundary an event with no recorded assignment time keeps null, not undefined', () => {
+    const { assigned_at, ...withoutTime } = assigned;
+    const result = reassign({ event: withoutTime });
+    expect(result.previousAssignment.assignedAt).toBeNull();
+    expect(result.history.previousAssignedAt).toBeNull();
+  });
+
+  test('K3-TC9 AC4 immediately after, the outgoing coordinator can take no coordinator action and the incoming one can', () => {
+    const underReview = reassign().event;
+    expect(canRequestClarification(underReview, 'c1')).toBe(false);
+    expect(canRejectEvent(underReview, 'c1')).toBe(false);
+    expect(canApproveEvent(underReview, 'c1')).toBe(false);
+    expect(canLeadReassign(underReview, ROLES.COORDINATOR, { id: 'c3', active: true })).toBe(false);
+    expect(canRequestClarification(underReview, 'c2')).toBe(true);
+    expect(canApproveEvent(underReview, 'c2')).toBe(true);
+
+    const submitted = reassign({ event: { ...assigned, status: 'SUBMITTED' } }).event;
+    expect(canOpenReview(submitted, 'c1')).toBe(false);
+    expect(canOpenReview(submitted, 'c2')).toBe(true);
+  });
+
+  test('K3-TC10 AC5 the outgoing coordinator, the incoming coordinator and the organiser are each notified once', () => {
+    expect(reassign().notifications).toEqual([
+      { userId: 'c1', type: 'COORDINATOR_REASSIGNED', audience: 'outgoing' },
+      { userId: 'c2', type: 'COORDINATOR_REASSIGNED', audience: 'incoming' },
+      { userId: 'org-1', type: 'COORDINATOR_REASSIGNED', audience: 'organiser' }
+    ]);
   });
 });
