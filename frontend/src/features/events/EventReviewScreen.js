@@ -92,11 +92,26 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     finally { setBusy(false); }
   };
 
+  // C6 / SCRUM-107 — approve moves an Under Review request to Approved. It needs no
+  // text from the coordinator, so it runs straight from the button (not via `act`).
+  // A failure keeps the event where it was and shows the reason above the actions.
+  const approve = async () => {
+    setBusy(true); setError("");
+    try {
+      await reviewApi.approve(selected);
+      await loadList(); await loadDetail(selected, false); onNotice?.("Event request approved.");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  };
+
   if (loading) return <p className="cs-panel-note">Loading assigned events…</p>;
   if (detail) {
     const event = detail.event;
     const hasOpen = Boolean(event.open_clarification_id);
     const canDecide = event.editable && event.status === "UNDER_REVIEW" && !hasOpen;
+    // C6 — same gate as the domain rule (assigned coordinator, Under Review, no open
+    // clarification); the transaction in reviewApi.approve re-checks it server-side.
+    const canApprove = canDecide;
     const canReassign = event.editable && !["COMPLETED", "CANCELLED", "REJECTED"].includes(event.status);
     const canEditSignificant = event.editable && editableEventStatuses.includes(event.status) && !hasOpen;
     const showFindVenues = typeof onFindVenues === "function";
@@ -188,7 +203,8 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
           aria-describedby={!canRequestVenue ? "cs-find-venues-reason" : undefined}
           onClick={() => { if (canRequestVenue) onFindVenues(event); }}
         >Find venues</button>}
-        {canDecide && <button className="cs-btn cs-btn-ghost cs-record-danger" type="button" onClick={() => startMode("reject")}>Reject request</button>}
+        {canApprove && <button className="cs-btn cs-btn-primary" type="button" disabled={busy} onClick={approve}>{busy && !mode ? "Approving…" : "Approve"}</button>}
+        {canDecide && <button className="cs-btn cs-btn-ghost cs-record-danger" type="button" disabled={busy} onClick={() => startMode("reject")}>Reject request</button>}
         {canReassign && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => { setMode("reassign"); setError(""); }}>Reassign event</button>}
         {canEditSignificant && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => startMode("significant")}>Edit significant details</button>}
       </div>}
@@ -223,7 +239,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
       {error && !mode && <p className="cs-error" role="alert">{error}</p>}
       {!event.editable && <p className="cs-panel-note">This event was reassigned. You can view the assignment record, but only the current coordinator can make changes.</p>}
       <div className="cs-review-heading"><div><h2>{event.name}</h2><p>{event.reference_no}</p></div><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div>
-      {hasOpen && <p className="cs-attention">Awaiting the organiser. Clarify and Reject are unavailable until they respond.</p>}
+      {hasOpen && <p className="cs-attention">Awaiting the organiser. Approve, Clarify and Reject are unavailable until they respond.</p>}
       <EventDetailTabs
         label="Event request sections"
         idPrefix={`review-${event.id}`}

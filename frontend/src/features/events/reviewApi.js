@@ -61,8 +61,10 @@ const activeCoordinators = async () => {
 // "Unknown", so a missing profile never leaves the column blank.
 const withOrganiserNames = async (events) => {
   const organiserIds = [...new Set(events.map((event) => event.organiser_id).filter(Boolean))];
-  const snapshots = await Promise.all(organiserIds.map((id) => getDoc(doc(db, "users", id))));
-  const nameById = new Map(snapshots.filter((snapshot) => snapshot.exists()).map((snapshot) => {
+  // A profile this user may not read (or that no longer exists) must not fail the
+  // whole list — that row just falls back to the organiser id instead of a name.
+  const snapshots = await Promise.all(organiserIds.map((id) => getDoc(doc(db, "users", id)).catch(() => null)));
+  const nameById = new Map(snapshots.filter((snapshot) => snapshot && snapshot.exists()).map((snapshot) => {
     const data = snapshot.data();
     return [snapshot.id, data.name || data.email || snapshot.id];
   }));
@@ -72,21 +74,28 @@ const withOrganiserNames = async (events) => {
   }));
 };
 
+// Firestore's permission error never says which read it refused, so each step of
+// the list load is named: "Missing or insufficient permissions" becomes
+// "<step>: Missing or insufficient permissions" and points at the rule to look at.
+const step = async (label, work) => {
+  try { return await work(); } catch (error) { throw new Error(`${label}: ${error.message}`); }
+};
+
 const list = async () => {
   const user = requireUser();
-  const profile = await profileFor(user.uid);
+  const profile = await step("your profile", () => profileFor(user.uid));
   let snapshots;
   if (profile.role === ROLES.ORGANISER) {
     snapshots = (await getDocs(query(collection(db, "events"), where("organiser_id", "==", user.uid)))).docs;
   } else if (profile.role === ROLES.COORDINATOR) {
     const [current, assignments] = await Promise.all([
-      getDocs(query(collection(db, "events"), where("coordinator_id", "==", user.uid))),
-      getDocs(query(collection(db, "coordinator_assignments"), where("coordinator_id", "==", user.uid)))
+      step("assigned events", () => getDocs(query(collection(db, "events"), where("coordinator_id", "==", user.uid)))),
+      step("assignment records", () => getDocs(query(collection(db, "coordinator_assignments"), where("coordinator_id", "==", user.uid))))
     ]);
     const currentIds = new Set(current.docs.map((item) => item.id));
     const priorIds = [...new Set(assignments.docs.map((item) => item.data().event_id))]
       .filter((eventId) => eventId && !currentIds.has(eventId));
-    const prior = await Promise.all(priorIds.map((eventId) => getDoc(doc(db, "events", eventId))));
+    const prior = await step("previously assigned events", () => Promise.all(priorIds.map((eventId) => getDoc(doc(db, "events", eventId)))));
     snapshots = [...current.docs, ...prior.filter((item) => item.exists())];
   } else throw new Error("This role cannot review event requests.");
   const unique = [...new Map(snapshots.map((item) => [item.id, item])).values()];
@@ -115,7 +124,8 @@ const detail = async (eventId) => {
     getDocs(query(collection(db, "event_accessibility"), where("event_id", "==", eventId))),
     // C3 — equipment lines (AC1) and the organiser's profile for contact details (AC2).
     getDocs(query(collection(db, "event_equipment"), where("event_id", "==", eventId))),
-    event.organiser_id ? getDoc(doc(db, "users", event.organiser_id)) : Promise.resolve(null),
+    // An unreadable profile leaves the contact blank; it never blocks the request.
+    event.organiser_id ? getDoc(doc(db, "users", event.organiser_id)).catch(() => null) : Promise.resolve(null),
     // F7 — keep booking decisions with the event they belong to. Historical
     // Released/Replaced rows are deliberately retained for audit visibility.
     profile.role === ROLES.COORDINATOR

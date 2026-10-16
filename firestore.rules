@@ -45,8 +45,11 @@ service cloud.firestore {
       // A6 — the Lead reads any profile so its board can name each event's
       // organiser and coordinator; others still see only themselves and active
       // coordinators.
+      // C2 AC2 / C3 AC2 — a coordinator reads one organiser's profile at a time (never
+      // lists them) so their events can show the organiser's name and contact.
       allow get: if signedIn() && (userId == request.auth.uid
         || hasRole('EVENT_COORDINATOR_LEAD')
+        || (hasRole('EVENT_COORDINATOR') && resource.data.role == 'EVENT_ORGANISER')
         || (resource.data.role == 'EVENT_COORDINATOR' && resource.data.is_active == true));
       allow list: if (hasRole('EVENT_COORDINATOR') || hasRole('EVENT_COORDINATOR_LEAD'))
         && resource.data.role == 'EVENT_COORDINATOR'
@@ -93,6 +96,12 @@ service cloud.firestore {
             || (resource.data.status == 'UNDER_REVIEW'
               && resource.data.get('open_clarification_id', null) == null
               && request.resource.data.status == 'REJECTED'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updated_at']))
+            // C6 / SCRUM-107 — approve: Under Review -> Approved, same guard as reject
+            // (assigned coordinator, no open clarification), status and updated_at only.
+            || (resource.data.status == 'UNDER_REVIEW'
+              && resource.data.get('open_clarification_id', null) == null
+              && request.resource.data.status == 'APPROVED'
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updated_at']))
             || (!(resource.data.status in ['COMPLETED', 'CANCELLED', 'REJECTED'])
               && request.resource.data.coordinator_id != request.auth.uid

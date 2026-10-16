@@ -58,7 +58,7 @@ describe('TC-015 no request is left unguarded', () => {
     expect(users).toContain('request.resource.data.role == resource.data.role');
   });
 
-  test('a user profile is private except for active coordinator directory entries', () => {
+  test('a user profile is private except for active coordinator directory entries (and organisers, to coordinators — see C6 below)', () => {
     const users = matchBlock('users');
     expect(users).toContain('userId == request.auth.uid');
     expect(users).toContain("resource.data.role == 'EVENT_COORDINATOR'");
@@ -391,5 +391,64 @@ describe('K1 SCRUM-182 unassigned events are the Lead\'s alone', () => {
 
   test('K1-TC6 AC2 the Lead may read every event, assigned or not', () => {
     expect(eventsGetList()).toContain("hasRole('EVENT_COORDINATOR_LEAD')");
+  });
+});
+
+// C6 / SCRUM-107 and the C2/C3 organiser details — two gaps found when the Approve
+// button was restored: (1) no rule let the assigned coordinator move an Under Review
+// event to Approved, so Approve was denied by the server; (2) a coordinator could not
+// read the organiser's profile, so loading their assigned events (organiser name, C2)
+// or an event's detail (organiser contact, C3) failed with "Missing or insufficient
+// permissions". Same static-text style as the rest of this file.
+describe('C6 the assigned coordinator may approve a reviewed request', () => {
+  const workflow = () => {
+    const start = RULES.indexOf('function coordinatorWorkflowUpdate');
+    const end = RULES.indexOf('function leadAssignmentUpdate');
+    return RULES.slice(start, end).replace(/\s+/g, ' ');
+  };
+  const approveClause = () => {
+    const clause = workflow().split('|| (').find((part) => part.includes("request.resource.data.status == 'APPROVED'"));
+    if (!clause) throw new Error('coordinatorWorkflowUpdate has no Approved transition');
+    return clause;
+  };
+
+  test('only the current coordinator, from Under Review, with no open clarification', () => {
+    expect(workflow()).toContain("hasRole('EVENT_COORDINATOR')");
+    expect(workflow()).toContain('resource.data.coordinator_id == request.auth.uid');
+    expect(approveClause()).toContain("resource.data.status == 'UNDER_REVIEW'");
+    expect(approveClause()).toContain("resource.data.get('open_clarification_id', null) == null");
+  });
+
+  test('the approval changes nothing but status and updated_at', () => {
+    expect(approveClause()).toContain("affectedKeys().hasOnly(['status', 'updated_at'])");
+  });
+
+  test('an organiser can never write Approved themselves', () => {
+    const start = RULES.indexOf('function organiserMayEdit');
+    const organiserRule = RULES.slice(start, RULES.indexOf('// A7 AC4', start));
+    expect(organiserRule).not.toContain('APPROVED');
+  });
+
+  test('the EVENT_APPROVED history entry is writable by the current coordinator', () => {
+    const history = matchBlock('event_history');
+    expect(history).toContain('request.resource.data.actor_id == request.auth.uid');
+    expect(history).toContain('currentCoordinator(request.resource.data.event_id)');
+  });
+});
+
+describe('C2/C3 a coordinator can read an organiser profile, one at a time', () => {
+  test('get is open to coordinators for organiser profiles only', () => {
+    const getRule = matchBlock('users').match(/allow get:\s*if([^;]*);/)[1];
+    expect(getRule).toContain("hasRole('EVENT_COORDINATOR') && resource.data.role == 'EVENT_ORGANISER'");
+  });
+
+  test('organisers still cannot be listed or browsed', () => {
+    const listRule = matchBlock('users').match(/allow list:\s*if([^;]*);/)[1];
+    expect(listRule).not.toContain('EVENT_ORGANISER');
+  });
+
+  test('profile writes are unchanged — nobody gains a way to edit another user', () => {
+    const users = matchBlock('users');
+    expect(users).toContain('allow update: if signedIn() && userId == request.auth.uid');
   });
 });
