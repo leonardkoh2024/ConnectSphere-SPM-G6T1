@@ -469,7 +469,7 @@ describe('D1 SCRUM-111 / D2 SCRUM-112 saving an Edit event form', () => {
     }));
   });
 
-  test('D1 TC7 AC1/AC2 only the changed event fields are written, with one history row per field', async () => {
+  test('TC-456 D1 AC1/AC2 only the changed event fields are written, with one history row per field', async () => {
     const result = await reviewApi.saveEventEdit({
       eventId: 'e1', before: planning, organiser,
       values: { ...formFor(planning), name: 'Partner Summit 2026', internal_notes: 'Keynote TBC' }
@@ -487,7 +487,7 @@ describe('D1 SCRUM-111 / D2 SCRUM-112 saving an Edit event form', () => {
     expect(writes.sets[1][1]).toMatchObject({ field_name: 'internal_notes', old_value: '', new_value: 'Keynote TBC' });
   });
 
-  test('D1 TC8 AC3 a terminal event is refused and nothing is written', async () => {
+  test('TC-457 D1 AC3 a terminal event is refused and nothing is written', async () => {
     for (const status of ['COMPLETED', 'CANCELLED', 'REJECTED']) {
       stored = { ...planning, status };
       await expect(reviewApi.saveEventEdit({ eventId: 'e1', before: stored, organiser, values: { ...formFor(stored), name: 'New' } }))
@@ -497,7 +497,7 @@ describe('D1 SCRUM-111 / D2 SCRUM-112 saving an Edit event form', () => {
     expect(writes.sets).toHaveLength(0);
   });
 
-  test('D1 TC9 AC4 repeated edits are each saved and recorded', async () => {
+  test('TC-458 D1 AC4 repeated edits are each saved and recorded', async () => {
     for (const name of ['Summit A', 'Summit B', 'Summit C']) {
       await reviewApi.saveEventEdit({ eventId: 'e1', before: stored, organiser, values: { ...formFor(stored), name } });
       stored = { ...stored, name };
@@ -506,7 +506,7 @@ describe('D1 SCRUM-111 / D2 SCRUM-112 saving an Edit event form', () => {
     expect(writes.sets.map(([, data]) => data.new_value)).toEqual(['Summit A', 'Summit B', 'Summit C']);
   });
 
-  test('D1 TC10 an edit made meanwhile by someone else is not overwritten', async () => {
+  test('TC-459 D1 an edit made meanwhile by someone else is not overwritten', async () => {
     const opened = { ...planning };
     stored = { ...planning, name: 'Renamed elsewhere' };
     await expect(reviewApi.saveEventEdit({ eventId: 'e1', before: opened, organiser, values: { ...formFor(opened), purpose: 'New purpose' } }))
@@ -514,13 +514,13 @@ describe('D1 SCRUM-111 / D2 SCRUM-112 saving an Edit event form', () => {
     expect(writes.updates).toHaveLength(0);
   });
 
-  test('D2 a significant change without acknowledgement is refused and nothing is written', async () => {
+  test('TC-460 D2 a significant change without acknowledgement is refused and nothing is written', async () => {
     await expect(reviewApi.saveEventEdit({ eventId: 'e1', before: planning, organiser, impact: noImpact, values: { ...formFor(planning), expected_attendance: 125 } }))
       .rejects.toThrow(/Acknowledge the impact warning/);
     expect(writes.updates).toHaveLength(0);
   });
 
-  test('D1+D2 one save carrying both kinds of change commits once, with both kinds of history', async () => {
+  test('TC-461 D1+D2 one save carrying both kinds of change commits once, with both kinds of history', async () => {
     await reviewApi.saveEventEdit({
       eventId: 'e1', before: planning, organiser, impact: noImpact, acknowledged: true,
       values: { ...formFor(planning), name: 'Partner Summit 2026', expected_attendance: 125 }
@@ -540,6 +540,63 @@ describe('D1 SCRUM-111 / D2 SCRUM-112 saving an Edit event form', () => {
       })
     ]);
   });
+  test('TC-462 D2 a significant change is refused when the arrangements changed after the warning was shown', async () => {
+    const shown = { venueBookings: [{ id: 'b1', label: 'Main Hall', status: 'APPROVED' }], equipmentReservations: [], registrationsCount: 0 };
+    await expect(reviewApi.saveEventEdit({
+      eventId: 'e1', before: planning, organiser, impact: shown, acknowledged: true,
+      values: { ...formFor(planning), expected_attendance: 125 }
+    })).rejects.toThrow(/existing arrangements changed/);
+    expect(writes.updates).toHaveLength(0);
+    expect(writes.sets).toHaveLength(0);
+  });
+
+  test('TC-463 D2 a significant change is refused while a clarification is open; an ordinary one is not', async () => {
+    stored = { ...planning, open_clarification_id: 'q1' };
+    await expect(reviewApi.saveEventEdit({
+      eventId: 'e1', before: stored, organiser, impact: noImpact, acknowledged: true,
+      values: { ...formFor(stored), expected_attendance: 125 }
+    })).rejects.toThrow(/clarification is open/);
+    expect(writes.updates).toHaveLength(0);
+
+    await reviewApi.saveEventEdit({ eventId: 'e1', before: stored, organiser, values: { ...formFor(stored), name: 'Renamed' } });
+    expect(writes.updates).toHaveLength(1);
+  });
+
+  test('TC-464 D2 a venue-requirement change rewrites the requirement, facility and accessibility rows with the acknowledged record', async () => {
+    const withNeeds = { ...planning, facilities_required: true, facilities: ['WIFI'], accessibility_needed: false };
+    const rows = {
+      'event_facilities/e1_WIFI': { event_id: 'e1', facility_id: 'WIFI' },
+      'event_venue_requirements/e1': { event_id: 'e1', preferred_location: 'CENTRAL', required_layout: 'THEATRE', facilities_required: true, accessibility_needed: false }
+    };
+    firestore.getDocs.mockImplementation(async (q) => {
+      if (q.name === 'event_facilities') return { size: 1, docs: [{ ref: { path: 'event_facilities/e1_WIFI', id: 'e1_WIFI' }, data: () => rows['event_facilities/e1_WIFI'] }] };
+      return { docs: [], size: 0 };
+    });
+    firestore.runTransaction.mockImplementation(async (db, work) => work({
+      get: async (ref) => (ref.path === 'events/e1' ? snapshot('e1', stored) : { ...snapshot(ref.id, rows[ref.path] || null), ref }),
+      update: (ref, data) => writes.updates.push([ref.path, data]),
+      set: (ref, data) => writes.sets.push([ref.path, data]),
+      delete: (ref) => writes.deletes.push(ref.path)
+    }));
+    const before = { ...withNeeds, preferred_location: 'CENTRAL', required_layout: 'THEATRE' };
+
+    await reviewApi.saveEventEdit({
+      eventId: 'e1', before, organiser, impact: noImpact, acknowledged: true,
+      values: { ...formFor(before), required_layout: 'BANQUET', facilities: ['STAGE'] }
+    });
+
+    expect(writes.deletes).toEqual(['event_facilities/e1_WIFI']);
+    const paths = writes.sets.map(([path]) => path);
+    expect(paths).toEqual(expect.arrayContaining(['event_venue_requirements/e1', 'event_facilities/e1_STAGE']));
+    expect(writes.sets.find(([path]) => path === 'event_venue_requirements/e1')[1]).toMatchObject({ required_layout: 'BANQUET' });
+    const record = writes.sets.find(([, data]) => data.action_type === 'SIGNIFICANT_EVENT_DETAILS_CHANGED')[1];
+    expect(record).toMatchObject({
+      warning_acknowledged: true, affected_arrangements: noImpact,
+      old_value: { required_layout: 'THEATRE', facilities: ['WIFI'] }, new_value: { required_layout: 'BANQUET', facilities: ['STAGE'] }
+    });
+    expect(writes.updates[0][1]).toMatchObject({ last_significant_change_id: record.history_id });
+  });
+
 });
 
 describe('the coordinator event detail carries its equipment arrangements', () => {
@@ -564,7 +621,7 @@ describe('the coordinator event detail carries its equipment arrangements', () =
     });
   });
 
-  test('reserved lines read Approved with their window, and the reservation is in the activity history', async () => {
+  test('TC-483 G4 reserved lines read Approved with their window, and the reservation is in the activity history', async () => {
     const detail = await reviewApi.detail('e1');
 
     expect(detail.equipmentArrangements.lines).toEqual([expect.objectContaining({
@@ -574,7 +631,7 @@ describe('the coordinator event detail carries its equipment arrangements', () =
     expect(detail.history.map((item) => item.action_type)).toEqual(['EVENT_APPROVED', 'EQUIPMENT_RESERVED']);
   });
 
-  test('an equipment read that fails leaves the section empty instead of failing the detail', async () => {
+  test('TC-484 G4 an equipment read that fails leaves the section empty instead of failing the detail', async () => {
     const getDoc = firestore.getDoc.getMockImplementation();
     firestore.getDoc.mockImplementation(async (ref) => {
       if (ref.path === 'equipment_requests/e1') throw permissionDenied();
@@ -583,5 +640,22 @@ describe('the coordinator event detail carries its equipment arrangements', () =
     const detail = await reviewApi.detail('e1');
     expect(detail.equipmentArrangements).toBeNull();
     expect(detail.event).toMatchObject({ id: 'e1' });
+  });
+  test('TC-485 the Activity tab names each actor it may read, and leaves the rest for the role fallback', async () => {
+    const getDoc = firestore.getDoc.getMockImplementation();
+    firestore.getDocs.mockImplementation(async (q) => {
+      if (q.name === 'event_history') return docs([
+        ['h1', { event_id: 'e1', action_type: 'EVENT_APPROVED', actor_id: 'c1', created_at: timestamp('2026-10-01T02:00:00.000Z') }],
+        ['h2', { event_id: 'e1', action_type: 'VENUE_BOOKING_APPROVED', actor_id: 'vs1', created_at: timestamp('2026-10-02T02:00:00.000Z') }]
+      ]);
+      return docs([]);
+    });
+    firestore.getDoc.mockImplementation(async (ref) => {
+      if (ref.path === 'users/vs1') throw permissionDenied();
+      return getDoc(ref);
+    });
+
+    const detail = await reviewApi.detail('e1');
+    expect(detail.actorNames).toEqual({ c1: 'Joshua Chua' });
   });
 });

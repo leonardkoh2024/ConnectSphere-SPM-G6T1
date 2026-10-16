@@ -12,21 +12,21 @@ const event = { name: 'Partner Summit', purpose: 'Partners', description: 'Annua
 const organiser = { name: 'Nadia Organiser', email: 'nadia@smu.edu.sg', phone: '+65 9123 4567' };
 
 describe('D1 SCRUM-111 ordinary event information', () => {
-  test('D1 TC1 AC1 the ordinary set is exactly name, purpose, description, contact details and internal notes', () => {
+  test('TC-450 D1 AC1 the ordinary set is exactly name, purpose, description, contact details and internal notes', () => {
     expect(ORDINARY_FIELD_NAMES).toEqual(['name', 'purpose', 'description', 'contact_name', 'contact_email', 'contact_phone', 'internal_notes']);
     // Nothing a booking or reservation depends on is in the set.
     ['expected_attendance', 'event_date', 'start_time', 'end_time', 'status', 'coordinator_id']
       .forEach((field) => expect(ORDINARY_FIELD_NAMES).not.toContain(field));
   });
 
-  test('D1 TC2 AC3 editable in Approved, Planning and Confirmed by the current coordinator only', () => {
+  test('TC-451 D1 AC3 editable in Approved, Planning and Confirmed by the current coordinator only', () => {
     ['APPROVED', 'PLANNING', 'CONFIRMED'].forEach((status) => expect(canEditOrdinaryDetails({ ...event, status }, 'c1')).toBe(true));
     ['COMPLETED', 'CANCELLED', 'REJECTED', 'DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'SAFETY_REVIEW']
       .forEach((status) => expect(canEditOrdinaryDetails({ ...event, status }, 'c1')).toBe(false));
     expect(canEditOrdinaryDetails(event, 'c2')).toBe(false);
   });
 
-  test('D1 TC3 AC2 each changed field is listed with its old and new value; untouched fields are not', () => {
+  test('TC-452 D1 AC2 each changed field is listed with its old and new value; untouched fields are not', () => {
     const before = ordinaryEventValues(event, organiser);
     const after = { ...before, name: 'Partner Summit 2026', internal_notes: 'VIP list pending' };
     expect(ordinaryEventChanges(before, after)).toEqual([
@@ -36,14 +36,14 @@ describe('D1 SCRUM-111 ordinary event information', () => {
     expect(ordinaryEventChanges(before, { ...before, name: '  Partner Summit  ' })).toEqual([]);
   });
 
-  test('D1 TC4 contact details start from the organiser profile and an event contact overrides it', () => {
+  test('TC-453 D1 contact details start from the organiser profile and an event contact overrides it', () => {
     expect(ordinaryEventValues(event, organiser)).toMatchObject({ contact_name: 'Nadia Organiser', contact_email: 'nadia@smu.edu.sg' });
     const corrected = { ...event, contact_phone: '+65 8000 0000' };
     expect(ordinaryEventValues(corrected, organiser).contact_phone).toBe('+65 8000 0000');
     expect(contactDetails(organiser, corrected)).toEqual({ name: 'Nadia Organiser', email: 'nadia@smu.edu.sg', phone: '+65 8000 0000' });
   });
 
-  test('D1 TC5 name, purpose and description are required; a contact email must be valid', () => {
+  test('TC-454 D1 name, purpose and description are required; a contact email must be valid', () => {
     const values = ordinaryEventValues(event, organiser);
     expect(validateOrdinaryEventValues(values)).toBe('');
     expect(validateOrdinaryEventValues({ ...values, name: '  ' })).toBe('Event name is required.');
@@ -51,7 +51,7 @@ describe('D1 SCRUM-111 ordinary event information', () => {
     expect(validateOrdinaryEventValues({ ...values, contact_email: '' })).toBe('');
   });
 
-  test('D1 TC6 AC2 the activity log is newest first and names the actor, time, field, old and new value', () => {
+  test('TC-455 D1 AC2 the activity log is newest first and names the actor, time, field, old and new value', () => {
     const entries = activityEntries([
       { id: 'h1', action_type: 'EVENT_APPROVED', actor_id: 'c1', field_name: 'status', old_value: 'UNDER_REVIEW', new_value: 'APPROVED', created_at: '2026-10-01T01:00:00.000Z' },
       { id: 'h2', action_type: 'EVENT_DETAILS_UPDATED', actor_id: 'c1', field_name: 'name', old_value: 'Old', new_value: 'New', created_at: '2026-10-02T01:00:00.000Z' },

@@ -47,7 +47,9 @@ they can be read next to the acceptance criteria and move into the service layer
 | G1 | SCRUM-TBD | Record the equipment an event needs | TC-285 – TC-289 |
 | G2 | SCRUM-TBD | Know whether enough equipment is free | TC-290 – TC-297 |
 | G3 | SCRUM-TBD | Reserve equipment for an event | TC-298 – TC-306 |
-| G4 | SCRUM-TBD | Amend or refuse an equipment request | TC-307 – TC-312 |
+| G4 | SCRUM-136 | Amend or refuse an equipment request | TC-307 – TC-312, TC-477 – TC-490 |
+| D1 | SCRUM-111 | Update ordinary event information during planning | TC-450 – TC-459, TC-461, TC-465 – TC-469, TC-474, TC-475 |
+| D2 | SCRUM-112 | Be warned before making a significant change | TC-460 – TC-464, TC-470 – TC-473, TC-476 |
 
 Suites: `frontend/src/features/events/EventRequestForm.test.js` (TC-017 – TC-047, TC-064 – TC-070),
 `frontend/src/features/events/EventList.test.js` (TC-016, TC-058 – TC-063),
@@ -78,7 +80,12 @@ assertions),
 `backend/src/services/equipment/requests.test.js` (TC-307 – TC-310, TC-312),
 `frontend/src/features/equipment/equipmentApi.browser.test.js` (TC-307, TC-309),
 `frontend/src/features/equipment/EquipmentRequestsScreen.test.js` (TC-307, TC-309, TC-311) and
-`frontend/src/security/firestoreRules.test.js` (TC-311) — G4.
+`frontend/src/security/firestoreRules.test.js` (TC-311) — G4; the coordinator's view of it is
+`frontend/src/domain/eventEquipment.test.js` (TC-477 – TC-482), `features/events/reviewApi.test.js` (TC-483 – TC-485),
+`features/events/EventReviewScreen.test.js` (TC-486 – TC-488) and `features/equipment/EquipmentRequestsScreen.test.js`
+(TC-489, TC-490). D1/D2: `frontend/src/domain/ordinaryEventChanges.test.js` (TC-450 – TC-455),
+`features/events/reviewApi.test.js` (TC-456 – TC-464), `features/events/EventReviewScreen.test.js` (TC-465 – TC-473)
+and `frontend/src/security/firestoreRules.test.js` (TC-474 – TC-476).
 
 > **Gap, not an omission of E8:** stories E1–E6 (venue catalogue, availability, search and filters) are
 > implemented and tested — `domain/venueSearch.test.js`, `features/venues/VenueCatalogue.test.js`,
@@ -169,7 +176,7 @@ overall request becomes `ARRANGED` once every line is either `RESERVED` or `RESO
 | TC-308 | An amendment without a note is rejected | Request is Pending | Submit an amendment with an empty note | The amendment is refused and neither request nor history is written | As expected | Pass | AC1 |
 | TC-309 | An unable-to-fulfil resolution requires a reason | Request is Pending and the line is not fulfilled | Submit without a reason, then provide a reason | Empty reason is rejected; decision records its reason, actor and timestamp | As expected | Pass | AC2, AC3 |
 | TC-310 | A multi-line request is arranged only when all lines are reserved or resolved | Request has three lines, only one is reserved | Resolve one line, then resolve the final open line | It remains Pending while any line is open; once all lines are settled it becomes Arranged | As expected | Pass | AC4 |
-| TC-311 | Coordinator sees Technical Support changes and decisions | Assigned coordinator has an equipment request with support history | Open Equipment requests | Current amended/resolved lines and their notes, reasons, actor and time are visible; editing is locked once Support has acted | As expected | Pass | AC3 |
+| TC-311 | Coordinator sees Technical Support changes and decisions | Assigned coordinator has an equipment request with support history | Open Equipment requests, then Technical Support updates | Each line once with its status and reason; the request reads Unable to fulfil; updates (2) read as sentences, credited to Technical Support with their time, never a user id | As expected | Pass | AC3 |
 | TC-312 | Support cannot amend a line with an active reservation | Request line has an active reservation | Attempt to amend its equipment type or quantity | The amendment is rejected and neither request nor history is changed | As expected | Pass | Preserves the reservation; AC1, AC4 |
 
 ---
@@ -746,7 +753,7 @@ Pre-condition for the functional cases: an Event Coordinator is signed in and th
 
 | Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| TC-325 | The arranged message lists what was reserved and counts what was not | All reserved; one reserved and two refused; all refused | Call arrangedMessage | Quantities and types in words; "2 lines were" / "1 line was unable to be fulfilled"; "Your event" when unnamed | As expected | Pass | AC3 |
+| TC-325 | The arranged message lists what was reserved and counts what was not | All reserved; one reserved and two refused; all refused | Call arrangedMessage | "your equipment is reserved", "some of your equipment is reserved" or "none of your requested equipment could be reserved"; quantities and types in words; "2 lines were" / "1 line was unable to be fulfilled"; "Your event" when unnamed | As expected | Pass | AC3 |
 | TC-326 | The unable message names quantity, type and trimmed reason | A line of 3 visual, reason with spaces | Call unableMessage | "… cannot fulfil 3 × visual. Reason: Projector under repair."; "Your event" when unnamed | As expected | Pass | AC3 |
 | TC-327 | The notification goes to the current coordinator in the inbox's shape | Event with coordinator coord-2 | Call notifyCoordinator | One notifications document with every inbox field, unread, addressed to coord-2, plus the extra fields | As expected | Pass | AC3 |
 | TC-328 | No event or no coordinator, nothing written | Missing event; event with no or an empty coordinator; no snapshot | Call notifyCoordinator | Returns null and creates nothing; the event name falls back to its reference, then to empty | As expected | Pass | AC3 - boundary |
@@ -756,11 +763,11 @@ Pre-condition for the functional cases: an Event Coordinator is signed in and th
 | Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TC-314 | A line marked unable to be fulfilled tells the coordinator why | Two open lines; event coordinator coord-1 | Mark line 2 unable to fulfil with a reason | Exactly one EQUIPMENT_UNABLE_TO_FULFIL notification, to coord-1, unread, naming the event, quantity, type and reason, with the line index | As expected | Pass | AC3 |
-| TC-315 | Resolving the last open line also says the request is arranged | Line 1 reserved, line 2 open | Mark line 2 unable to fulfil | Two notifications, unable then arranged; the arranged one lists the reserved line and "1 line was unable to be fulfilled" | As expected | Pass | AC3 |
+| TC-315 | Resolving the last open line also says the request is arranged | Line 1 reserved, line 2 open | Mark line 2 unable to fulfil | Two notifications, unable then arranged; the second reads "some of your equipment is reserved", lists the reserved line and "1 line was unable to be fulfilled" | As expected | Pass | AC3 |
 | TC-316 | No coordinator, no notification | Event with no coordinator | Mark the only line unable to fulfil | The request is Arranged; no notification is written | As expected | Pass | AC3 - boundary |
 | TC-331 | An amendment is not an outcome | One open line | Amend it with a note | No notification | As expected | Pass | AC3 - negative |
 | TC-332 | A refused resolution writes nothing | Blank reason; request already Arranged; line already reserved; line with an active reservation; unknown line | Try to mark it unable to fulfil | Each is refused with its message; no notification and no update | As expected | Pass | AC3 - negative |
-| TC-333 | Several refused lines are counted in the plural | Line 1 resolved, line 2 open | Mark line 2 unable to fulfil | The arranged notification reads "2 lines were unable to be fulfilled." with no "Reserved:" part | As expected | Pass | AC3 |
+| TC-333 | Several refused lines are counted in the plural | Line 1 resolved, line 2 open | Mark line 2 unable to fulfil | The arranged notification reads "none of your requested equipment could be reserved. 2 lines were unable to be fulfilled." with no "Reserved:" part | As expected | Pass | AC3 |
 
 **Equipment outcomes — `backend/src/services/equipment/reservations.test.js`**
 
@@ -805,9 +812,9 @@ Pre-condition for the functional cases: an Event Coordinator is signed in and th
 
 | Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| TC-323 | The focused equipment request is open on arrival | Arranged request for event-1, 2 × audio reserved | Render Equipment requests focused on event-1 | Date and time read "2026-11-04 · 09:00–17:00"; request details and Technical Support updates are both open, each showing AUDIO · 2, the update marked Reserved | As expected | Pass | AC4 |
-| TC-341 | Only the named event's equipment request opens | Two events with arranged requests | Render Equipment requests focused on event-2 | event-2's disclosures are open; event-1's are closed | As expected | Pass | AC4 |
-| TC-342 | Without a named event nothing opens or scrolls | One arranged request with no times | Render Equipment requests with no focus | Both disclosures closed, nothing scrolled, the date shown alone | As expected | Pass | AC4 - boundary |
+| TC-323 | The focused equipment request is open on arrival | Arranged request for event-1, 2 × audio reserved | Render Equipment requests focused on event-1 | Date and time read "2026-11-04 · 09:00–17:00"; the line reads Audio × 2, Reserved; Technical Support updates is open | As expected | Pass | AC4 |
+| TC-341 | Only the named event's equipment request opens | Two events with arranged requests | Render Equipment requests focused on event-2 | event-2's updates are open; event-1's are closed | As expected | Pass | AC4 |
+| TC-342 | Without a named event nothing opens or scrolls | One arranged request with no times | Render Equipment requests with no focus | Updates closed, nothing scrolled, the date shown alone | As expected | Pass | AC4 - boundary |
 | TC-345 | The named event is scrolled into view | One arranged request | Render Equipment requests focused on event-1 | That record is scrolled into view after loading | As expected | Pass | AC4 |
 
 ---
@@ -1009,3 +1016,97 @@ An approved request used to vanish from the Venue Staff Booking requests screen,
 | TC-399 | An approved booking stays listed | One pending request | Approve it | It stays on the screen marked "Approved", with no Approve button | As expected | Pass | F4 |
 | TC-400 | Decided requests list after pending ones; Show filters them | One pending and one approved request | Open the screen; choose Show Decided, then Pending; then a list with nothing decided | All: pending first, one Approve button. Decided: only the approved one, with its Decided time. Pending: only the pending one. Empty Decided: "No decided requests for your venues yet." | As expected | Pass | F3 |
 | TC-401 | The queue returns decided bookings | One pending and one approved booking at an owned venue | Load the queue | Both returned, the approved one with its `decided_at` | As expected | Pass | F3 |
+
+## D1 / SCRUM-111 and D2 / SCRUM-112 — Edit event, and the Activity tab
+
+**Scope:** the coordinator's event page has one **Edit event** button (Approved, Planning and Confirmed only). Its form holds the ordinary details (D1: name, purpose, description, contact, internal notes), which save with no arrangement check, and the date, size and venue details (D2), which load the existing arrangements as soon as one changes and save only once that warning is acknowledged. Both go in one atomic save (`reviewApi.saveEventEdit`), guarded by one `firestore.rules` clause (`coordinatorEventDetailsUpdate`). Every ordinary field changed is its own `event_history` row; a significant change is one acknowledged row. A new **Activity** tab lists the event's history newest first.
+
+**AC coverage — D1:** AC1 — TC-450, TC-456, TC-465, TC-474. AC2 — TC-452, TC-455, TC-456, TC-467, TC-475, TC-485. AC3 — TC-451, TC-457, TC-466, TC-474. AC4 — TC-458. Validation and concurrency — TC-453, TC-454, TC-459, TC-468, TC-469.
+**AC coverage — D2:** AC1–AC2 (warning names every arrangement) — TC-470. AC3 (acknowledge to save; cancel leaves it untouched) — TC-460, TC-470, TC-471. AC4 (recorded with old/new values, actor, time) — TC-461, TC-464, TC-476. AC5 (no booking or reservation altered) — TC-464. Guards — TC-462, TC-463, TC-472, TC-473.
+
+**Unit test cases — `frontend/src/domain/ordinaryEventChanges.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-450 | The ordinary set is exactly the five D1 fields | — | Read ORDINARY_FIELD_NAMES | name, purpose, description, contact name/email/phone, internal notes; no pax, date, time, status or coordinator | As expected | Pass | AC1 |
+| TC-451 | Ordinary edits are allowed only in planning statuses, by the current coordinator | Event assigned to c1 | Call canEditOrdinaryDetails for each status, and for c2 | True for Approved, Planning, Confirmed; false for every other status and for another coordinator | As expected | Pass | AC3 |
+| TC-452 | Each changed field is listed with its old and new value | Form opened on an event | Change name and internal notes; then change only surrounding spaces | Two changes with old and new values; whitespace alone is no change | As expected | Pass | AC2 |
+| TC-453 | Contact details start from the organiser and an event contact overrides them | Organiser profile with name and email | Build the form values; then correct the phone on the event | Form shows the profile's contact; the corrected phone wins field by field on display | As expected | Pass | Contact |
+| TC-454 | Required fields and contact email are validated | Valid form values | Blank the name; enter a bad email; blank the email | "Event name is required."; "Enter a valid contact email."; a blank email is accepted | As expected | Pass | Validation |
+| TC-455 | The activity log reads newest first with actor, time and each field | An approval, an ordinary edit and a significant change | Call activityEntries | Newest first; actor's name or id; the significant change split into its fields | As expected | Pass | AC2 |
+
+**Functional test cases — `frontend/src/features/events/reviewApi.test.js` (the save)**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-456 | An ordinary edit writes only the event and one history row per field | Planning event | Save a new name and internal notes | One update to the event with just those fields and last_detail_change_id; two EVENT_DETAILS_UPDATED rows with field, old, new, actor, time; no arrangement read | As expected | Pass | AC1, AC2 |
+| TC-457 | A terminal event is refused | Event Completed, Cancelled or Rejected | Save a new name | Refused ("Approved, Planning or Confirmed"); nothing written | As expected | Pass | AC3 |
+| TC-458 | There is no limit on edits | Planning event | Save three renames in a row | Three updates and three history rows | As expected | Pass | AC4 |
+| TC-459 | Someone else's edit is not overwritten | Event renamed after the form opened | Save a new purpose | Refused as changed while editing; nothing written | As expected | Pass | Concurrency |
+| TC-460 | A significant change needs the acknowledgement | Planning event | Save a new pax without acknowledging | Refused; nothing written | As expected | Pass | D2 AC3 |
+| TC-461 | One save can carry both kinds of change | Planning event, warning acknowledged | Save a new name and a new pax | One event update with both, pointing at both rows; an ordinary row and an acknowledged significant row | As expected | Pass | D1 + D2 |
+| TC-462 | The warning must still be current | Arrangements differ from the warning the coordinator saw | Save a new pax | Refused as "existing arrangements changed"; nothing written | As expected | Pass | D2 AC2 |
+| TC-463 | An open clarification blocks only significant changes | Planning event with an open clarification | Save a new pax; then a new name | The pax change is refused; the rename saves | As expected | Pass | D2 |
+| TC-464 | A venue-requirement change rewrites its rows with the acknowledged record | Layout Theatre, facility WIFI | Change layout to Banquet and facility to STAGE | Requirement row updated, WIFI row deleted, STAGE row created; the history row carries old and new values and the acknowledged arrangements; the event points at it | As expected | Pass | D2 AC4, AC5 |
+
+**Functional test cases — `frontend/src/features/events/EventReviewScreen.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-465 | An ordinary edit saves with no warning | Coordinator opens a Planning event | 1. Edit event<br>2. Type internal notes<br>3. Save changes | Save enabled without a warning; sent with acknowledged false; arrangements never looked up | As expected | Pass | D1 AC1 |
+| TC-466 | A terminal event offers no Edit event | Completed event | Open the event | No Edit event button | As expected | Pass | D1 AC3 |
+| TC-467 | The Activity tab lists each edit | One recorded rename | Open Activity | "Updated event details", by the coordinator's name, the time, Event name: old → new | As expected | Pass | D1 AC2 |
+| TC-468 | Invalid values are named and cannot be saved | Planning event | 1. Edit event<br>2. Clear the name<br>3. Enter a bad contact email | Each error is announced; Save changes stays disabled; nothing sent | As expected | Pass | Validation |
+| TC-469 | Internal notes show on the request | Event with internal notes | Open the event | Internal notes and their text on the Event request tab | As expected | Pass | D1 AC1 |
+| TC-470 | A significant change shows every arrangement and needs acknowledging | Planning event with a booking, a reservation and 42 registrations | 1. Edit event<br>2. Change pax<br>3. Acknowledge<br>4. Save | Arrangements loaded only after the change; all three named; Save disabled until acknowledged; sent with the impact and acknowledged true | As expected | Pass | D2 AC1–AC3 |
+| TC-471 | Cancelling leaves the event untouched | Pax changed, warning shown | Cancel | Nothing saved; the form closes | As expected | Pass | D2 AC3 |
+| TC-472 | An open clarification locks only date, size and venue | Planning event with an open clarification | Edit event | Pax disabled with the reason shown; event name still editable | As expected | Pass | D2 |
+| TC-473 | A changed warning is reloaded and must be acknowledged again | Arrangements change between warning and save | Acknowledge and save | Message shown; the new booking appears in the warning; acknowledgement cleared; Save disabled | As expected | Pass | D2 AC2 |
+
+**Rules — `frontend/src/security/firestoreRules.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-474 | Only the current coordinator edits only these fields in planning statuses | — | Read the events update rule | coordinatorEventDetailsUpdate is in the update rule; status in Approved/Planning/Confirmed; affected keys limited to the ordinary and significant fields and their history pointers | As expected | Pass | D1 AC1, AC3 - server side |
+| TC-475 | An ordinary edit must point at its history row written now | — | Read the rule | EVENT_DETAILS_UPDATED row for this event, by this actor, created at request.time | As expected | Pass | D1 AC2 - server side |
+| TC-476 | An acknowledgement covers only the commit it was written in | — | Read significantChangeHistory | created_at == request.time, so an old acknowledgement cannot cover a later requirement write | As expected | Pass | D2 - server side |
+
+## G4 / SCRUM-136 — Technical Support's decisions, seen by the coordinator
+
+**Scope:** the coordinator's event page has an **Arrangements** tab holding its venue bookings and its equipment reservations. Each equipment line shows **Approved** once Technical Support reserves it, **Pending**, or **Unable to fulfil** with the reason. Technical Support's decisions (`equipment_request_history`, written by the equipment service) appear on the **Activity** tab, credited to Technical Support since a coordinator cannot read staff profiles. The coordinator's **Equipment requests** card lists each line once with its own badge, says **Reserved** / **Partly reserved** / **Unable to fulfil** instead of Arranged, and a finished request offers **View details**, which opens the event on its Arrangements tab. No rule or backend change: the coordinator could already read all three collections.
+
+**AC coverage — G4 AC3 (every decision visible to the coordinator):** TC-311, TC-477 – TC-490.
+
+**Unit test cases — `frontend/src/domain/eventEquipment.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-477 | A reserved line reads Approved, like a venue booking | — | Call equipmentLineStatus for each fulfilment status | Reserved → Approved (positive); Pending → Pending; Resolved → Unable to fulfil (danger) | As expected | Pass | AC3 |
+| TC-478 | Each line carries its status and an approved line its window | Three lines: reserved, pending, refused | Call equipmentArrangements | Labels in words with status; the reserved line has its reservation window and decision time; the refused one its reason | As expected | Pass | AC3 |
+| TC-479 | Technical Support's decisions become Activity entries | A reservation, a refusal and an unknown action | Call equipmentActivity, then activityEntries | Two entries, credited to Technical Support, old → new status, the refusal's reason | As expected | Pass | AC3 |
+| TC-480 | A venue approval with no readable name is credited to Venue Staff | VENUE_BOOKING_APPROVED row, no name | Call activityEntries | Actor reads Venue Staff, not the id | As expected | Pass | Activity |
+| TC-481 | A finished request never reads Arranged | Requests pending, all reserved, partly reserved, none reserved | Call equipmentRequestStatus | Pending; Reserved; Partly reserved; Unable to fulfil; Not submitted without a request | As expected | Pass | AC4 - wording |
+| TC-482 | Each decision reads as a sentence | Reserve, refuse, release, amend rows | Call equipmentUpdateText | "Reserved 1 × staging", "Unable to fulfil 3 × visual: None free", "Released …", "Amended 2 × audio → 3 × visual: …" | As expected | Pass | AC3 |
+
+**Functional test cases — `frontend/src/features/events/reviewApi.test.js` (the event detail)**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-483 | The detail carries equipment lines and their decisions | Reserved line, its reservation and its history row | Load the event detail | Line Approved with its window and decision time; the reservation in the activity history after the approval | As expected | Pass | AC3 |
+| TC-484 | A failed equipment read does not fail the page | Equipment request read refused | Load the event detail | Equipment section empty; the event still loads | As expected | Pass | Resilience |
+| TC-485 | Actor names are resolved where readable | History by the coordinator and by Venue Staff | Load the event detail | The coordinator is named; the unreadable Venue Staff id is left for the role fallback | As expected | Pass | Activity |
+
+**Functional test cases — `frontend/src/features/events/EventReviewScreen.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-486 | A reserved line shows Approved, and the decision is on Activity | One reserved and one pending line | 1. Open the event<br>2. Open Arrangements<br>3. Open Activity | Audio Approved (positive badge) with its window; Projector Pending, not reserved yet; Activity shows the approval by Technical Support | As expected | Pass | AC3 |
+| TC-487 | No equipment request says so | Event with no request | Open Arrangements | "No equipment request has been sent to Technical Support for this event." | As expected | Pass | AC3 - empty |
+| TC-488 | From Equipment requests the event opens on Arrangements | One booking, one equipment line | Render the event with initialTab arrangements | Arrangements selected, counting 2; both sections shown | As expected | Pass | Navigation |
+
+**Functional test cases — `frontend/src/features/equipment/EquipmentRequestsScreen.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-489 | A finished request offers View details | Arranged request, every line reserved | Click View details | Badge reads Reserved, never Arranged; no locked button; the event opens | As expected | Pass | AC3, AC4 - wording |
+| TC-490 | A request still in progress stays locked | Pending request with Support decisions | Open Equipment requests | "Technical Support is handling this request" disabled; no View details | As expected | Pass | AC3 |

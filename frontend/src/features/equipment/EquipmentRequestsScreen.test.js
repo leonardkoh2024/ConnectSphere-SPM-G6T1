@@ -347,7 +347,7 @@ test("TC-311 coordinator can see support amendment and decision history", async 
   expect(screen.getAllByText(/^Technical Support · /)).toHaveLength(2);
 });
 
-test("a request Technical Support has finished offers View details, which opens the event", async () => {
+test("TC-489 G4 a request Technical Support has finished offers View details, which opens the event", async () => {
   const onViewEvent = jest.fn();
   listCoordinatorEquipmentEvents.mockResolvedValue([{ ...event, equipment_request: arrangedRequest }]);
   render(<EquipmentRequestsScreen onViewEvent={onViewEvent} />);
@@ -359,7 +359,7 @@ test("a request Technical Support has finished offers View details, which opens 
   expect(onViewEvent).toHaveBeenCalledWith("event-1");
 });
 
-test("a request Technical Support is still working on stays locked", async () => {
+test("TC-490 G4 a request Technical Support is still working on stays locked", async () => {
   listCoordinatorEquipmentEvents.mockResolvedValue([{ ...event, equipment_request: { ...arrangedRequest, status: "PENDING" } }]);
   render(<EquipmentRequestsScreen onViewEvent={jest.fn()} />);
   expect(await screen.findByRole("button", { name: /technical support is handling this request/i })).toBeDisabled();

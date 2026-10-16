@@ -157,7 +157,7 @@ describe('D2 significant event details require an acknowledged audit record', ()
     expect(events).toContain("(!keys.hasAny(['last_significant_change_id']) || significantDetailsRecorded())");
   });
 
-  test('an acknowledgement covers only the commit it was written in', () => {
+  test('TC-476 D2 an acknowledgement covers only the commit it was written in', () => {
     expect(RULES).toContain('&& change.created_at == request.time;');
   });
 
@@ -802,7 +802,7 @@ describe('K5 SCRUM-186 a coordinator acts only on events currently assigned to t
 });
 
 describe('D1 SCRUM-111 ordinary event details are edited only with a recorded history row', () => {
-  test('D1 AC1/AC3 only the current coordinator, only in Approved, Planning or Confirmed, only the ordinary fields', () => {
+  test('TC-474 D1 AC1/AC3 only the current coordinator, only in Approved, Planning or Confirmed, only the ordinary fields', () => {
     const events = matchBlock('events');
     expect(events).toContain('|| coordinatorEventDetailsUpdate()');
     expect(events).toContain("resource.data.status in ['APPROVED', 'PLANNING', 'CONFIRMED']");
@@ -812,7 +812,7 @@ describe('D1 SCRUM-111 ordinary event details are edited only with a recorded hi
     expect(events).toContain("(!keys.hasAny(['last_detail_change_id']) || ordinaryDetailsRecorded())");
   });
 
-  test('D1 AC2 the event must point at an EVENT_DETAILS_UPDATED row by this actor, written in the same commit', () => {
+  test('TC-475 D1 AC2 the event must point at an EVENT_DETAILS_UPDATED row by this actor, written in the same commit', () => {
     const events = matchBlock('events');
     expect(events).toContain("change.action_type == 'EVENT_DETAILS_UPDATED'");
     expect(events).toContain('change.actor_id == request.auth.uid');

@@ -12,13 +12,13 @@ const request = {
 const reservations = [{ id: 'r1', reservation_id: 'r1', start_datetime: '2026-11-04T01:00:00.000Z', end_datetime: '2026-11-04T09:00:00.000Z', status: 'RESERVED' }];
 
 describe('equipment arrangements on the coordinator event page', () => {
-  test('a reserved line reads Approved, like an approved venue booking; others read Pending or Unable to fulfil', () => {
+  test('TC-477 G4 a reserved line reads Approved, like an approved venue booking; others read Pending or Unable to fulfil', () => {
     expect(equipmentLineStatus({ fulfillment_status: 'RESERVED' })).toEqual({ label: 'Approved', tone: 'positive' });
     expect(equipmentLineStatus({ fulfillment_status: 'PENDING' })).toEqual({ label: 'Pending', tone: 'warning' });
     expect(equipmentLineStatus({ fulfillment_status: 'RESOLVED' })).toEqual({ label: 'Unable to fulfil', tone: 'danger' });
   });
 
-  test('each request line carries its status, and an approved line its reservation window', () => {
+  test('TC-478 G4 each request line carries its status, and an approved line its reservation window', () => {
     const view = equipmentArrangements(request, reservations);
     expect(view.status.label).toBe('Pending');
     expect(view.lines.map((line) => [line.label, line.status.label])).toEqual([
@@ -30,7 +30,7 @@ describe('equipment arrangements on the coordinator event page', () => {
     expect(equipmentArrangements(null)).toBeNull();
   });
 
-  test('Technical Support decisions become Activity entries credited to Technical Support', () => {
+  test('TC-479 G4 Technical Support decisions become Activity entries credited to Technical Support', () => {
     const rows = equipmentActivity([
       { id: 'q1', action: 'LINE_RESERVED', actor_id: 'tech1', created_at: '2026-10-05T02:00:00.000Z', equipment_type: 'AUDIO_SYSTEM', quantity: 2 },
       { id: 'q2', action: 'LINE_UNABLE_TO_FULFILL', actor_id: 'tech1', created_at: '2026-10-06T02:00:00.000Z', equipment_type: 'STAGE_LIGHTING', quantity: 4, reason: 'None free that day' },
@@ -46,7 +46,7 @@ describe('equipment arrangements on the coordinator event page', () => {
     expect(unable).toMatchObject({ action: 'Marked equipment unable to fulfil', reason: 'None free that day' });
   });
 
-  test('a venue booking approval with no readable Venue Staff name is credited to Venue Staff', () => {
+  test('TC-480 a venue booking approval with no readable Venue Staff name is credited to Venue Staff', () => {
     const [entry] = activityEntries([{ id: 'h1', action_type: 'VENUE_BOOKING_APPROVED', actor_id: 'vs1', created_at: '2026-10-05T02:00:00.000Z' }], {});
     expect(entry.actor).toBe('Venue Staff');
   });
@@ -55,7 +55,7 @@ describe('equipment arrangements on the coordinator event page', () => {
 describe('the coordinator equipment requests screen wording', () => {
   const lines = (...statuses) => statuses.map((fulfillment_status) => ({ equipment_type: 'AUDIO', quantity: 1, fulfillment_status }));
 
-  test('a finished request reads Reserved, Partly reserved or Unable to fulfil, never Arranged', () => {
+  test('TC-481 G4 a finished request reads Reserved, Partly reserved or Unable to fulfil, never Arranged', () => {
     expect(equipmentRequestStatus(null).label).toBe('Not submitted');
     expect(equipmentRequestStatus({ status: 'PENDING', lines: lines('RESERVED', 'PENDING') }).label).toBe('Pending');
     expect(equipmentRequestStatus({ status: 'ARRANGED', lines: lines('RESERVED', 'RESERVED') })).toEqual({ label: 'Reserved', tone: 'positive' });
@@ -63,7 +63,7 @@ describe('the coordinator equipment requests screen wording', () => {
     expect(equipmentRequestStatus({ status: 'ARRANGED', lines: lines('RESOLVED') })).toEqual({ label: 'Unable to fulfil', tone: 'danger' });
   });
 
-  test('each Technical Support decision reads as a plain sentence', () => {
+  test('TC-482 G4 each Technical Support decision reads as a plain sentence', () => {
     expect(equipmentUpdateText({ action: 'LINE_RESERVED', equipment_type: 'STAGING', quantity: 1 })).toBe('Reserved 1 × staging');
     expect(equipmentUpdateText({ action: 'LINE_UNABLE_TO_FULFILL', equipment_type: 'VISUAL', quantity: 3, reason: 'None free' })).toBe('Unable to fulfil 3 × visual: None free');
     expect(equipmentUpdateText({ action: 'LINE_RESERVATION_RELEASED', equipment_type: 'AUDIO', quantity: 2, reason: 'Not needed' })).toBe('Released 2 × audio: Not needed');
