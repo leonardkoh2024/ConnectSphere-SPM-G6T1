@@ -958,3 +958,17 @@ One owner per venue: `firestore.rules` (`assignedVenueStaff`) honours only the `
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TC-397 | The booking queue reads only owned venues | Staff member owns V-OWN and has a second-staff record for V-OTHER | Load the Booking requests queue | `venue_bookings` queried for V-OWN only; its pending booking listed | As expected | Pass | — |
 | TC-398 | The catalogue marks only owned venues as the staff member's | Same assignments | Load the venue search context as Venue Staff | Only V-OWN is `is_assigned_to_user`; bookings read for V-OWN only | As expected | Pass | — |
+
+---
+
+## Venue Staff keep decided bookings on Booking requests
+
+An approved request used to vanish from the Venue Staff Booking requests screen, because the queue kept only Pending bookings. It now returns every booking for the staff member's own venues. Pending ones are listed first and keep the Approve button; decided ones carry their status and decision time. A Show filter (All requests, Pending, Decided) narrows the list.
+
+**Tests — `frontend/src/features/venues/VenueBookingQueue.test.js` and `venuesApi.workflow.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-399 | An approved booking stays listed | One pending request | Approve it | It stays on the screen marked "Approved", with no Approve button | As expected | Pass | F4 |
+| TC-400 | Decided requests list after pending ones; Show filters them | One pending and one approved request | Open the screen; choose Show Decided, then Pending; then a list with nothing decided | All: pending first, one Approve button. Decided: only the approved one, with its Decided time. Pending: only the pending one. Empty Decided: "No decided requests for your venues yet." | As expected | Pass | F3 |
+| TC-401 | The queue returns decided bookings | One pending and one approved booking at an owned venue | Load the queue | Both returned, the approved one with its `decided_at` | As expected | Pass | F3 |

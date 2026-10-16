@@ -16,8 +16,21 @@ const elapsed = (value, now = Date.now()) => {
   return `${days} day${days === 1 ? "" : "s"} ago`;
 };
 
+const STATUS_TONE = { PENDING: "info", APPROVED: "positive", REJECTED: "danger" };
+const statusLabel = (status) => {
+  const text = words(status);
+  return text ? text[0].toUpperCase() + text.slice(1) : "Unknown";
+};
+const isPending = (booking) => booking.status === "PENDING";
+const SHOW = {
+  all: { label: "All requests", keep: () => true, empty: "No booking requests for your venues." },
+  pending: { label: "Pending", keep: isPending, empty: "No pending requests for your venues." },
+  decided: { label: "Decided", keep: (booking) => !isPending(booking), empty: "No decided requests for your venues yet." }
+};
+
 export default function VenueBookingQueue({ user, onNotice }) {
   const [bookings, setBookings] = useState([]);
+  const [show, setShow] = useState("all");
   const [sortBy, setSortBy] = useState("submitted_at");
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState("");
@@ -34,10 +47,13 @@ export default function VenueBookingQueue({ user, onNotice }) {
     return () => { mounted = false; };
   }, [user]);
 
-  const sorted = useMemo(() => [...bookings].sort((left, right) => {
+  // Pending requests first — they are the ones waiting on this staff member —
+  // then each group by the chosen field.
+  const sorted = useMemo(() => bookings.filter(SHOW[show].keep).sort((left, right) => {
+    if (isPending(left) !== isPending(right)) return isPending(left) ? -1 : 1;
     const field = sortBy === "requested_date" ? "start_datetime" : "submitted_at";
     return asTime(left[field]) - asTime(right[field]);
-  }), [bookings, sortBy]);
+  }), [bookings, show, sortBy]);
 
   const approve = async (booking) => {
     setWorking(booking.booking_id);
@@ -60,6 +76,12 @@ export default function VenueBookingQueue({ user, onNotice }) {
       {error && <p className="cs-error" role="alert">{error}</p>}
       <div className="cs-list-actions">
         <label className="cs-field">
+          <span className="cs-field-name">Show</span>
+          <select value={show} onChange={(event) => setShow(event.target.value)}>
+            {Object.entries(SHOW).map(([value, option]) => <option key={value} value={value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="cs-field">
           <span className="cs-field-name">Sort by</span>
           <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
             <option value="submitted_at">Submission time</option>
@@ -67,7 +89,7 @@ export default function VenueBookingQueue({ user, onNotice }) {
           </select>
         </label>
       </div>
-      {!sorted.length ? <p className="cs-panel-note">No pending requests for your venues.</p> : (
+      {!sorted.length ? <p className="cs-panel-note">{SHOW[show].empty}</p> : (
         <div className="cs-record-list">
           {sorted.map((booking) => {
             const expanded = expandedBookingId === booking.booking_id;
@@ -78,8 +100,10 @@ export default function VenueBookingQueue({ user, onNotice }) {
               <div className="cs-record-title"><h2>{booking.event_name}</h2><p>{booking.venue_name}</p></div>
               <p className="cs-record-ref">{displayDateTime(booking.start_datetime)}–{new Date(booking.end_datetime).toLocaleTimeString()}</p>
               <div className="cs-record-modified">
-                <span className="cs-pill cs-pill-info">Pending</span>
-                <p className="cs-record-saved">Submitted {elapsed(booking.submitted_at)}</p>
+                <span className={`cs-pill cs-pill-${STATUS_TONE[booking.status] || "neutral"}`}>{statusLabel(booking.status)}</span>
+                <p className="cs-record-saved">{!isPending(booking) && booking.decided_at
+                  ? `Decided ${elapsed(booking.decided_at)}`
+                  : `Submitted ${elapsed(booking.submitted_at)}`}</p>
               </div>
               <div className="cs-record-actions">
                 <button
@@ -91,9 +115,11 @@ export default function VenueBookingQueue({ user, onNotice }) {
                 >
                   {expanded ? "Close" : "View request"}
                 </button>
-                <button type="button" className="cs-btn cs-btn-primary cs-record-btn" disabled={working === booking.booking_id} onClick={() => approve(booking)}>
-                  {working === booking.booking_id ? "Approving…" : "Approve"}
-                </button>
+                {isPending(booking) && (
+                  <button type="button" className="cs-btn cs-btn-primary cs-record-btn" disabled={working === booking.booking_id} onClick={() => approve(booking)}>
+                    {working === booking.booking_id ? "Approving…" : "Approve"}
+                  </button>
+                )}
               </div>
               {expanded && <div className="cs-record-expanded" id={detailsId}>
                 <dl className="cs-detail-grid">
@@ -104,6 +130,7 @@ export default function VenueBookingQueue({ user, onNotice }) {
                   <div><dt>Registration required</dt><dd>{booking.registration_required ? "Yes" : "No"}</dd></div>
                   <div><dt>Safety review required</dt><dd>{booking.safety_review_required ? "Yes" : "No"}</dd></div>
                   <div><dt>Submitted</dt><dd>{displayDateTime(booking.submitted_at)}</dd></div>
+                  {!isPending(booking) && <div><dt>Decided</dt><dd>{displayDateTime(booking.decided_at)}</dd></div>}
                   <div><dt>Occupied window</dt><dd>{displayDateTime(booking.occupied_start || booking.start_datetime)}–{displayDateTime(booking.occupied_end || booking.end_datetime)}</dd></div>
                   <div className="cs-detail-wide"><dt>Event description</dt><dd>{booking.event_description || "Not recorded"}</dd></div>
                   <div className="cs-detail-wide"><dt>Known suitability shortfalls</dt><dd>{acknowledgement?.acknowledged

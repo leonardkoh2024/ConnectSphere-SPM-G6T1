@@ -371,3 +371,24 @@ test('TC-398 the catalogue marks only owned venues as the staff member\'s, so th
   expect(context.venues.filter((venue) => venue.is_assigned_to_user).map((venue) => venue.venue_id)).toEqual(['V-OWN']);
   expect(bookingQueries().map((reference) => reference.constraints)).toEqual([[['venue_id', '==', 'V-OWN']]]);
 });
+
+// TC-401 — the queue keeps decided bookings, so an approved request does not
+// vanish from the Venue Staff screen; the screen filters by status.
+test('TC-401 the booking queue returns decided bookings with their decision time, not only pending ones', async () => {
+  mockGetDocs.mockImplementation((reference) => {
+    if (reference.path === 'venue_staff') return Promise.resolve(assignmentsFor());
+    if (reference.path === 'venue_bookings') return Promise.resolve(docsOf([
+      ['B-1', { venue_id: 'V-OWN', status: 'PENDING', submitted_at: '2026-10-02T00:00:00.000Z' }],
+      ['B-2', { venue_id: 'V-OWN', status: 'APPROVED', submitted_at: '2026-10-01T00:00:00.000Z', decided_at: '2026-10-03T00:00:00.000Z' }]
+    ]));
+    return Promise.resolve({ docs: [] });
+  });
+  mockGetDoc.mockResolvedValue({ exists: () => false, data: () => undefined });
+
+  const queue = await loadVenueBookingQueue({ user: { uid: 'STAFF-001' } });
+
+  expect(queue.map((booking) => [booking.booking_id, booking.status, booking.decided_at || null])).toEqual([
+    ['B-2', 'APPROVED', '2026-10-03T00:00:00.000Z'],
+    ['B-1', 'PENDING', null]
+  ]);
+});

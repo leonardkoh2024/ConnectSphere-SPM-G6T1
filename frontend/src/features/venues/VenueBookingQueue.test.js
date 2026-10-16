@@ -9,7 +9,7 @@ jest.mock('./venuesApi', () => ({
 }));
 
 const first = {
-  booking_id: 'BK-1', event_name: 'Later event', venue_name: 'Hall A', venue_id: 'VEN-1',
+  booking_id: 'BK-1', event_name: 'Later event', venue_name: 'Hall A', venue_id: 'VEN-1', status: 'PENDING',
   event_id: 'EVT-1', event_reference_no: 'EVT-2026-001', event_purpose: 'COMMUNITY_ENGAGEMENT',
   event_description: 'A community programme with talks and facilitated activities.', registration_required: true,
   start_datetime: '2026-11-21T02:00:00.000Z', end_datetime: '2026-11-21T04:00:00.000Z',
@@ -50,13 +50,17 @@ test('F3 shows only the supplied staff queue details and sorts by submission tim
 });
 
 test('F4 approval refreshes the queue and reports service-side conflict errors', async () => {
-  loadVenueBookingQueue.mockResolvedValueOnce([second]).mockResolvedValueOnce([]);
+  loadVenueBookingQueue.mockResolvedValueOnce([second])
+    .mockResolvedValueOnce([{ ...second, status: 'APPROVED', decided_at: '2026-10-03T00:00:00.000Z' }]);
   const notice = jest.fn();
   render(<VenueBookingQueue user={{ uid: 'staff' }} onNotice={notice} />);
   const row = (await screen.findByText('Earlier event')).closest('.cs-record');
   await userEvent.click(within(row).getByRole('button', { name: 'Approve' }));
   await waitFor(() => expect(notice).toHaveBeenCalledWith('Hall A booking approved.'));
-  expect(screen.getByText(/no pending requests/i)).toBeInTheDocument();
+  // TC-399 — the approved booking stays listed, marked Approved, with nothing left to approve.
+  const approved = screen.getByText('Earlier event').closest('.cs-record');
+  expect(within(approved).getByText('Approved')).toBeInTheDocument();
+  expect(within(approved).queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
 
   loadVenueBookingQueue.mockResolvedValue([second]);
   approveVenueBooking.mockRejectedValue(new Error('An earlier submitted request must be decided first.'));
@@ -69,4 +73,34 @@ test('F4 approval refreshes the queue and reports service-side conflict errors',
 
 test('elapsed provides the time since submission used in each queue entry', () => {
   expect(elapsed('2026-10-09T01:00:00Z', new Date('2026-10-09T03:30:00Z').getTime())).toBe('2 hours ago');
+});
+
+// TC-400 — decided requests stay on the screen. All lists pending first; the
+// Show filter narrows to Pending or Decided, each with its own empty message.
+test('TC-400 decided requests stay listed after pending ones, and Show narrows to Pending or Decided', async () => {
+  const approved = { ...first, booking_id: 'BK-3', event_name: 'Approved event', status: 'APPROVED',
+    submitted_at: '2026-09-01T00:00:00.000Z', decided_at: '2026-09-02T00:00:00.000Z' };
+  loadVenueBookingQueue.mockResolvedValue([approved, second]);
+  render(<VenueBookingQueue user={{ uid: 'staff' }} />);
+
+  await screen.findByText('Approved event');
+  const headings = () => screen.getAllByRole('heading', { level: 2 }).map((item) => item.textContent);
+  expect(headings()).toEqual(['Earlier event', 'Approved event']);
+  expect(screen.getAllByRole('button', { name: 'Approve' })).toHaveLength(1);
+
+  await userEvent.selectOptions(screen.getByLabelText(/^show/i), 'decided');
+  expect(headings()).toEqual(['Approved event']);
+  await userEvent.click(screen.getByRole('button', { name: /view request/i }));
+  expect(screen.getByText('Decided', { selector: 'dt' }).nextSibling).toHaveTextContent(new Date('2026-09-02T00:00:00.000Z').toLocaleString());
+
+  await userEvent.selectOptions(screen.getByLabelText(/^show/i), 'pending');
+  expect(headings()).toEqual(['Earlier event']);
+});
+
+test('TC-400 an empty Decided view says so', async () => {
+  loadVenueBookingQueue.mockResolvedValue([second]);
+  render(<VenueBookingQueue user={{ uid: 'staff' }} />);
+  await screen.findByText('Earlier event');
+  await userEvent.selectOptions(screen.getByLabelText(/^show/i), 'decided');
+  expect(screen.getByText('No decided requests for your venues yet.')).toBeInTheDocument();
 });

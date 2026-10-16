@@ -457,8 +457,9 @@ export const loadVenueBookingQueue = async ({ user }) => {
     Promise.all(venueIds.map((venueId) => getDoc(doc(db, "venues", venueId))))
   ]);
   const venueNames = new Map(venueSnapshots.filter((item) => item.exists()).map((item) => [item.id, item.data().name]));
+  // Every booking for the staff member's venues, decided ones included, so an
+  // approved request stays on the screen; the screen filters by status.
   return bookingSnapshots.flatMap((snapshot) => snapshot.docs)
-    .filter((item) => item.data().status === "PENDING")
     .map((item) => {
       const booking = item.data();
       return {
@@ -471,7 +472,8 @@ export const loadVenueBookingQueue = async ({ user }) => {
         end_datetime: asIso(booking.end_datetime),
         occupied_start: asIso(booking.occupied_start),
         occupied_end: asIso(booking.occupied_end),
-        submitted_at: asIso(booking.submitted_at)
+        submitted_at: asIso(booking.submitted_at),
+        decided_at: asIso(booking.decided_at)
       };
     })
     .sort((left, right) => String(left.submitted_at || "").localeCompare(String(right.submitted_at || "")));
