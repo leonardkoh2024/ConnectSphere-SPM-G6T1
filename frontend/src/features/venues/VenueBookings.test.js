@@ -107,3 +107,19 @@ describe('K5 SCRUM-186 withdrawing a booking is a coordinator action on an assig
     expect(loadVenueBookings).toHaveBeenCalledTimes(1);
   });
 });
+
+// E8 — TC-395. The details name the Venue Staff member who manages the venue,
+// or say it is not recorded.
+test('TC-395 the booking details name the venue\'s Venue Staff member, or say it is not recorded', async () => {
+  loadVenueBookings.mockResolvedValue([
+    booking('VB-1', { venue_staff_name: 'Priya Nair' }),
+    booking('VB-2', { status: 'PENDING', venue_staff_name: null })
+  ]);
+  render(<VenueBookings user={{ uid: 'coord-1' }} focusBookingId="VB-1" />);
+
+  await screen.findAllByRole('button', { name: /details/ });
+  expect(screen.getByText('Venue Staff').nextSibling).toHaveTextContent('Priya Nair');
+
+  await userEvent.click(screen.getAllByRole('button', { name: /details/ })[1]);
+  expect(screen.getByText('Venue Staff').nextSibling).toHaveTextContent('Not recorded');
+});

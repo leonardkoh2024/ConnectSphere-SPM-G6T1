@@ -397,6 +397,15 @@ export const requestVenueBooking = async ({
   });
 };
 
+// Who manages each venue, by name. A coordinator may get venue_staff/{venueId}
+// but not read Venue Staff profiles (TC-347), so the name is the staff_name
+// copied onto the assignment. An assignment that is missing or cannot be read
+// leaves the name blank rather than failing the list.
+const venueStaffNames = async (venueIds) => new Map(await Promise.all(venueIds.map((venueId) =>
+  getDoc(doc(db, "venue_staff", venueId))
+    .then((snapshot) => [venueId, snapshot.exists() ? snapshot.data().staff_name || null : null])
+    .catch(() => [venueId, null]))));
+
 // E8 — the coordinator's own booking requests, newest first. Venue Staff see the
 // same collection through their own queue; this view is scoped to the raiser.
 export const loadVenueBookings = async ({ user }) => {
@@ -409,6 +418,7 @@ export const loadVenueBookings = async ({ user }) => {
   const venueIds = [...new Set(bookingDocs.map((item) => item.data().venue_id).filter(Boolean))];
   const venueSnapshots = await Promise.all(venueIds.map((venueId) => getDoc(doc(db, "venues", venueId))));
   const venueNames = new Map(venueSnapshots.filter((item) => item.exists()).map((item) => [item.id, item.data().name]));
+  const staffNames = await venueStaffNames(venueIds);
   return bookingDocs
     .map((data) => ({
       booking_id: data.id,
@@ -416,6 +426,7 @@ export const loadVenueBookings = async ({ user }) => {
       event_name: events.get(data.data().event_id)?.name || events.get(data.data().event_id)?.reference_no || data.data().event_name || data.data().event_id,
       event_date: events.get(data.data().event_id)?.event_date || null,
       venue_name: venueNames.get(data.data().venue_id) || data.data().venue_id,
+      venue_staff_name: staffNames.get(data.data().venue_id) || null,
       start_datetime: asIso(data.data().start_datetime),
       end_datetime: asIso(data.data().end_datetime),
       occupied_start: asIso(data.data().occupied_start),

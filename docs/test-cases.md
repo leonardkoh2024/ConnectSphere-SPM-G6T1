@@ -36,7 +36,7 @@ they can be read next to the acceptance criteria and move into the service layer
 | — | — | The form marks what is compulsory | TC-070 |
 | — | — | Confirmations appear as toasts | TC-071 |
 | C1 | SCRUM-102 | Have submitted events assigned to a coordinator automatically | TC-072 – TC-080 |
-| E8 | SCRUM-124 | Be stopped before booking an unsuitable venue | TC-112 – TC-174 |
+| E8 | SCRUM-124 | Be stopped before booking an unsuitable venue | TC-112 – TC-174, TC-395 – TC-396 |
 | J4 | SCRUM-153 | Be told when work arrives for me (a booking request reaches its Venue Staff) | TC-392 – TC-394 |
 | E4 | SCRUM-120 | See when a venue is free | TC-200 – TC-249 |
 | J6 | SCRUM-155 | Be told the outcome of my booking and equipment requests (AC1: approval only — rejection awaits F5) | TC-313 – TC-346 |
@@ -932,3 +932,16 @@ Raising a booking failed with "Missing or insufficient permissions." Since J4 th
 | TC-392 | The venue assignment is read as one document | Planning event; venue managed by staff-1 | Raise a booking as the event's coordinator | `venue_staff/venue-1` read once in the transaction; no query on `venue_staff`; booking and notice to staff-1 written | As expected | Pass | E8 / J4 |
 | TC-393 | A venue with no Venue Staff member can still be requested | No `venue_staff` document for the venue | Raise a booking as the event's coordinator | Booking written as Pending; no notification written | As expected | Pass | E8 / J4 |
 | TC-394 | A coordinator may get one assignment but never list them | `firestore.rules` | Inspect the `venue_staff` rules granted to the coordinator role | Only `get` is granted, never `list` | As expected | Pass | A4 / J4 |
+
+---
+
+## Coordinators see who manages the venue they booked
+
+A coordinator's booking details name the Venue Staff member who looks after the venue. Coordinators may `get` one `venue_staff/{venueId}` document but may not read Venue Staff profiles (TC-347), so the name is copied onto the assignment as `staff_name` by `backend/scripts/backfillVenueStaffNames.mjs`; re-run it after a venue is reassigned or a staff member renamed. A missing or unreadable assignment shows "Not recorded" rather than failing the list.
+
+**Tests — `frontend/src/features/venues/VenueBookings.test.js` and `venuesApi.workflow.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-395 | The booking details name the venue's Venue Staff member | One booking whose venue is managed by Priya Nair; one with no recorded name | Open each booking's details | "Venue Staff: Priya Nair"; the other shows "Venue Staff: Not recorded" | As expected | Pass | E8 |
+| TC-396 | Each booking carries its Venue Staff name from the assignment | Three venues: one assignment with `staff_name`, one missing, one refused | Load the coordinator's bookings | Names Priya Nair, blank, blank; no Venue Staff profile is read | As expected | Pass | E8, TC-347 unchanged |

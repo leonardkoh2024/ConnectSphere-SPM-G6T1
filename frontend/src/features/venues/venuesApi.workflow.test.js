@@ -261,6 +261,33 @@ describe('K5 SCRUM-186 venue bookings follow the coordinator the event is assign
     expect(eventsQuery.constraints).toEqual([['coordinator_id', '==', 'COORD-1']]);
     expect(queries.filter((item) => item.path === 'venue_bookings')).toHaveLength(1);
   });
+
+  // E8 — TC-396. A coordinator may get venue_staff/{venueId} but not read Venue
+  // Staff profiles, so the name comes from the assignment's staff_name.
+  test('TC-396 each booking carries its venue\'s Venue Staff name from the assignment, blank when there is none', async () => {
+    mockGetDocs.mockImplementation((reference) => {
+      if (reference.path === 'events') return Promise.resolve({ docs: [{ id: 'EVT-1', data: () => ({ name: 'Mine', coordinator_id: 'COORD-1' }) }] });
+      if (reference.path === 'venue_bookings') return Promise.resolve({ docs: [
+        { id: 'VB-1', data: () => ({ event_id: 'EVT-1', venue_id: 'VEN-1', status: 'PENDING' }) },
+        { id: 'VB-2', data: () => ({ event_id: 'EVT-1', venue_id: 'VEN-2', status: 'PENDING' }) },
+        { id: 'VB-3', data: () => ({ event_id: 'EVT-1', venue_id: 'VEN-3', status: 'PENDING' }) }
+      ] });
+      return Promise.resolve({ docs: [] });
+    });
+    const reads = [];
+    mockGetDoc.mockImplementation((reference) => {
+      reads.push(reference.path);
+      if (reference.path === 'venue_staff/VEN-1') return Promise.resolve(snapshot('VEN-1', { venue_id: 'VEN-1', user_id: 'STAFF-1', staff_name: 'Priya Nair' }));
+      if (reference.path === 'venue_staff/VEN-3') return Promise.reject(new Error('Missing or insufficient permissions.'));
+      return Promise.resolve({ exists: () => false, data: () => undefined });
+    });
+
+    const bookings = await loadVenueBookings({ user: { uid: 'COORD-1' } });
+
+    expect(Object.fromEntries(bookings.map((item) => [item.booking_id, item.venue_staff_name])))
+      .toEqual({ 'VB-1': 'Priya Nair', 'VB-2': null, 'VB-3': null });
+    expect(reads.filter((path) => path.startsWith('users/'))).toEqual([]);
+  });
 });
 
 // Venue Staff may read bookings only for venues assigned to them (firestore.rules,

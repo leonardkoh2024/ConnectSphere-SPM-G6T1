@@ -191,6 +191,7 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
                       <dl className="cs-detail-grid">
                         <div><dt>Event</dt><dd>{bookingEventName(booking)}</dd></div>
                         <div><dt>Venue</dt><dd>{venueName(booking.venue_id)}</dd></div>
+                        <div><dt>Venue Staff</dt><dd>{booking.venue_staff_name || "Not recorded"}</dd></div>
                         <div><dt>Date</dt><dd>{bookingDate(booking)}</dd></div>
                         <div><dt>Time</dt><dd>{bookingWindow(booking)}</dd></div>
                         <div><dt>Expected attendance</dt><dd>{booking.expected_attendance ?? "Not set"}</dd></div>
