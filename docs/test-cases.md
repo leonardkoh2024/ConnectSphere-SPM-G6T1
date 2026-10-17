@@ -38,6 +38,7 @@ they can be read next to the acceptance criteria and move into the service layer
 | C1 | SCRUM-102 | Have submitted events assigned to a coordinator automatically | TC-072 – TC-080 |
 | E8 | SCRUM-124 | Be stopped before booking an unsuitable venue | TC-112 – TC-174, TC-395 – TC-396 |
 | J4 | SCRUM-153 | Be told when work arrives for me (a booking request reaches its Venue Staff) | TC-392 – TC-394 |
+| F12 | SCRUM-177 | Book more than one venue for an event | TC-491 – TC-511 |
 | E4 | SCRUM-120 | See when a venue is free | TC-200 – TC-249 |
 | J6 | SCRUM-155 | Be told the outcome of my booking and equipment requests (AC1: approval only — rejection awaits F5) | TC-313 – TC-346 |
 | A7 | SCRUM-170 | Use ConnectSphere as a Safety Officer | TC-348 – TC-385, TC-388 |
@@ -1111,3 +1112,55 @@ An approved request used to vanish from the Venue Staff Booking requests screen,
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TC-489 | A finished request offers View details | Arranged request, every line reserved | Click View details | Badge reads Reserved, never Arranged; no locked button; the event opens | As expected | Pass | AC3, AC4 - wording |
 | TC-490 | A request still in progress stays locked | Pending request with Support decisions | Open Equipment requests | "Technical Support is handling this request" disabled; no View details | As expected | Pass | AC3 |
+
+## F12 / SCRUM-177 — Book more than one venue for an event
+
+**Scope:** each booking request now carries its own **label**, **expected attendance** and **layout**, entered on the coordinator's booking form (defaulting to the venue's name and the event's pax and layout). The venue's suitability is judged on that booking's attendance and layout, so a breakout room is not refused for the whole event's pax. Rules live in `frontend/src/domain/venueBookingDetails.js`; `requestVenueBooking` enforces them, and the `venue_bookings` create rule in `firestore.rules` re-checks the attendance ceiling and the label.
+
+**AC coverage:** AC1 (several venues for one event) — TC-498, TC-496. AC2 (label, attendance, layout per booking) — TC-491, TC-494, TC-495, TC-497, TC-498, TC-500, TC-503, TC-505, TC-506, TC-510, TC-511. AC3 (whole number, > 0, ≤ the event's) — TC-492, TC-493, TC-499, TC-502, TC-504, TC-509. AC4 (same venue, overlapping time, same event refused) — TC-496, TC-501. AC5 (event view lists every booking with label, venue, window, status) — TC-507, TC-508.
+
+**Unit test cases — `frontend/src/domain/venueBookingDetails.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-491 | A booking needs a label | — | Call bookingDetailsErrors with a label of "", then "   " | A label error for each; none for "Breakout 1" | As expected | Pass | AC2 |
+| TC-492 | Attendance must be a whole number above zero | Event of 300 | Validate 0, -5, 2.5, "fifty" and "" | "Expected attendance must be a whole number greater than zero." for each | As expected | Pass | AC3 |
+| TC-493 | Attendance may equal the event's but not exceed it | Event of 300 | Validate 300 (text and number), then 301 | 300 accepted; 301 refused with "cannot be more than the event's 300" | As expected | Pass | AC3 |
+| TC-494 | A booking needs a layout | — | Validate a blank and a null layout | A layout error for each | As expected | Pass | AC2 |
+| TC-495 | A new booking starts from the venue and event | Event of 300, Theatre; venue Hall A | Call bookingDetailsDefaults; then with nothing stated | Hall A / 300 / THEATRE; blanks when nothing is stated | As expected | Pass | AC2 |
+| TC-496 | Only a live booking for the same event, venue and an overlapping time clashes | A Pending booking for EVT-1 in VEN-001, 09:00–12:00 | Call clashingEventBooking for overlapping, touching, other-venue, other-event and no-longer-live cases; and with occupied windows and Date values | Clash only for same event + venue + overlap while Pending/Approved; touching windows, another venue, another event, and Withdrawn/Rejected/Released/Cancelled do not | As expected | Pass | AC1, AC4 |
+| TC-497 | A venue is judged against its own booking | Event of 300, Theatre, WIFI, LIFT | Call bookingRequirements with a booking of 50, Classroom; then without | Attendance 50 and Classroom; facilities, access and date stay the event's; without a booking the event's figures | As expected | Pass | AC2 (with F13 AC1) |
+
+**Functional test cases — `frontend/src/features/venues/venuesApi.multiVenue.test.js` (the save)**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-498 | A second venue is accepted with its own details | Event of 300 already holds a Pending Main Hall booking | Request the Seminar Room as "Breakout 1", 50, Classroom | Pending booking written with that label, attendance and layout | As expected | Pass | AC1, AC2 |
+| TC-499 | Attendance above the event's is refused | Event of 300 | Request with 301, then 0, then 12.5 | Each refused with its message; nothing written | As expected | Pass | AC3 |
+| TC-500 | A blank label is refused; a label is stored trimmed | — | Request with "   "; then with "  Breakout 1  " | First refused, nothing written; second stored as "Breakout 1" | As expected | Pass | AC2 |
+| TC-501 | The same venue again at an overlapping time is refused | Event holds a Pending Main Hall booking "Main programme" | Request Main Hall again; then with that booking Withdrawn | Refused naming Main Hall and "Main programme", nothing written; once Withdrawn, accepted | As expected | Pass | AC4 |
+| TC-502 | Capacity is checked against the booking's attendance | Seminar Room holds 60; event of 300 | Request 50; then 61 | 50 accepted; 61 refused as over capacity | As expected | Pass | AC3 |
+
+**Functional test cases — `frontend/src/features/venues/MultiVenueBooking.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-503 | The form asks for this booking's details and sends them | Coordinator requests the Seminar Room for a 300-pax Theatre event | 1. Check the defaults<br>2. Enter Breakout 1, 50, Classroom<br>3. Request this venue | Defaults Seminar Room / 300 / Theatre; request sent with Breakout 1, 50, CLASSROOM | As expected | Pass | AC2 |
+| TC-504 | Attendance above the event's is named and cannot be sent | Venue large enough; event of 300 | Enter 301, then 0 | Each message shown; Request this venue disabled; nothing sent | As expected | Pass | AC3 |
+| TC-505 | The room is judged on this booking, not the whole event | 60-seat room, 300-pax event | Enter 50 and Classroom | Capacity alert gone; "50 pax" shown; Request this venue enabled | As expected | Pass | AC2 |
+| TC-506 | A blank label is named and cannot be sent | Suitable venue | Clear the label | "Give this booking a label" shown; Request this venue disabled | As expected | Pass | AC2 |
+| TC-511 | The coordinator's request list tells an event's venues apart | Two requests for one event | Open Venue bookings | "Main programme · Main Hall" and "Breakout 1 · Seminar Room" | As expected | Pass | AC2, AC5 |
+
+**Functional test cases — the event view (`reviewApi.test.js`, `EventReviewScreen.test.js`)**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-507 | The event detail carries every booking with its details | Event with an Approved Main Hall and a Pending Seminar Room booking | Load the event detail | Both bookings with label, venue name, window, status, attendance and layout | As expected | Pass | AC5 |
+| TC-508 | The Arrangements tab lists every booking | Planning event with two bookings | Open the event on Arrangements | Each booking shows its label as the heading, its venue, its start–end window and its status | As expected | Pass | AC5 |
+
+**Rules — `frontend/src/features/venues/venuesApi.multiVenue.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-509 | A booking cannot expect more people than its event | — | Read the venue_bookings create rule | expected_attendance <= the event's expected_attendance | As expected | Pass | AC3 - server side |
+| TC-510 | A booking must carry a label that is not blank | — | Read the create rule | booking_label is string and its trimmed size > 0 | As expected | Pass | AC2 - server side |

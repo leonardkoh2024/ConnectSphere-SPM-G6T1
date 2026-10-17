@@ -659,3 +659,41 @@ describe('the coordinator event detail carries its equipment arrangements', () =
     expect(detail.actorNames).toEqual({ c1: 'Joshua Chua' });
   });
 });
+
+// F12 / SCRUM-177 AC5 — TC-507 in docs/test-cases.md.
+describe('F12 SCRUM-177 the event detail carries every venue booking', () => {
+  test("TC-507 AC5 each booking comes back with its label, venue, window, status, attendance and layout", async () => {
+    const booking = (id, data) => [id, {
+      event_id: 'e1', status: 'PENDING',
+      start_datetime: '2026-11-20T01:00:00.000Z', end_datetime: '2026-11-20T09:00:00.000Z', ...data
+    }];
+    firestore.getDoc.mockImplementation(async (ref) => {
+      if (ref.path === 'users/c1') return snapshot('c1', { role: 'EVENT_COORDINATOR', name: 'Joshua Chua', is_active: true });
+      if (ref.path === 'events/e1') return snapshot('e1', event);
+      if (ref.path === 'venues/VEN-MAIN') return snapshot('VEN-MAIN', { name: 'Main Hall' });
+      if (ref.path === 'venues/VEN-SEM') return snapshot('VEN-SEM', { name: 'Seminar Room' });
+      return snapshot(ref.id, null);
+    });
+    firestore.getDocs.mockImplementation(async (q) => {
+      if (q.name === 'venue_bookings') return docs([
+        booking('BK-1', { venue_id: 'VEN-MAIN', booking_label: 'Main programme', status: 'APPROVED', expected_attendance: 300, layout_snapshot: 'THEATRE' }),
+        booking('BK-2', { venue_id: 'VEN-SEM', booking_label: 'Breakout 1', expected_attendance: 50, layout_snapshot: 'CLASSROOM' })
+      ]);
+      return docs([]);
+    });
+
+    const { venueBookings } = await reviewApi.detail('e1');
+
+    expect(venueBookings).toEqual([
+      expect.objectContaining({
+        booking_id: 'BK-1', booking_label: 'Main programme', venue_name: 'Main Hall', status: 'APPROVED',
+        start_datetime: '2026-11-20T01:00:00.000Z', end_datetime: '2026-11-20T09:00:00.000Z',
+        expected_attendance: 300, layout: 'THEATRE'
+      }),
+      expect.objectContaining({
+        booking_id: 'BK-2', booking_label: 'Breakout 1', venue_name: 'Seminar Room', status: 'PENDING',
+        expected_attendance: 50, layout: 'CLASSROOM'
+      })
+    ]);
+  });
+});

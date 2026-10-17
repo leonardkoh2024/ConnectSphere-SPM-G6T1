@@ -165,7 +165,8 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
                 <article className="cs-record" key={booking.booking_id} id={`venue-booking-${booking.booking_id}`}>
                   <div className="cs-record-title">
                     <h2>{bookingEventName(booking)}</h2>
-                    <p>{venueName(booking.venue_id)}</p>
+                    {/* F12 — an event may hold several venues; the label tells them apart. */}
+                    <p>{booking.booking_label ? `${booking.booking_label} · ${venueName(booking.venue_id)}` : venueName(booking.venue_id)}</p>
                   </div>
                   <p className="cs-record-ref">
                     {bookingDate(booking)}
@@ -333,6 +334,9 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
 
       {!loadingEvent && chosenEvent && venue && (
         <VenueBookingRequest
+          // Its label, attendance and layout start from this event and venue, so
+          // choosing another of either starts the form afresh.
+          key={`${eventId}-${venueId}`}
           venue={venue}
           event={chosenEvent}
           user={user}

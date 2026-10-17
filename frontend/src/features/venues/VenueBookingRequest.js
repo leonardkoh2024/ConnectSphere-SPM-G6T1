@@ -9,6 +9,8 @@ import {
   isBlocked,
   submissionBlockReason
 } from "../../domain/venueSuitability";
+import { bookingDetailsDefaults, bookingDetailsErrors } from "../../domain/venueBookingDetails";
+import { LAYOUTS } from "../../domain/events";
 import { requestVenueBooking } from "./venuesApi";
 
 const word = (value) => String(value || "").replaceAll("_", " ");
@@ -35,17 +37,27 @@ export default function VenueBookingRequest({ venue, event, user, onSubmitted, e
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
   const [saving, setSaving] = useState(false);
+  // F12 — this booking's own label, attendance and layout. The venue is judged
+  // on these, so a breakout room is not refused for the whole event's pax.
+  const [details, setDetails] = useState(() => bookingDetailsDefaults(event, venue));
+  const setDetail = (field) => (changeEvent) => setDetails((current) => ({ ...current, [field]: changeEvent.target.value }));
 
   // An event document stores its title as `name`; `event_name` is what a booking
   // carries. Accept either so the gate works on a real event and a booking alike.
   const eventName = event.event_name || event.name || "Untitled event";
-  const requirements = useMemo(() => bookingRequirements(event), [event]);
+  const detailErrors = useMemo(() => bookingDetailsErrors(details, event), [details, event]);
+  const detailsValid = Object.keys(detailErrors).length === 0;
+  const requirements = useMemo(() => bookingRequirements(event, {
+    expected_attendance: detailErrors.expected_attendance ? event.expected_attendance : details.expected_attendance,
+    layout: details.layout
+  }), [event, details, detailErrors]);
   const assessment = useMemo(() => assessVenue(venue, requirements), [venue, requirements]);
 
   const blocked = isBlocked(assessment);
   const duplicate = Boolean(existingBooking) && !sent;
-  const ready = canSubmitBooking({ assessment, acknowledged });
+  const ready = detailsValid && canSubmitBooking({ assessment, acknowledged });
   const blockReason = submissionBlockReason({ assessment, acknowledged });
+  const layoutOptions = [...new Set([...(details.layout ? [details.layout] : []), ...LAYOUTS])];
 
   const toggle = (criterion) => setAcknowledged((current) =>
     current.includes(criterion)
@@ -65,8 +77,9 @@ export default function VenueBookingRequest({ venue, event, user, onSubmitted, e
         event_date: event.event_date,
         start_time: event.start_time,
         end_time: event.end_time,
-        expected_attendance: requirements.expected_attendance,
-        required_layout: requirements.layout,
+        booking_label: details.label.trim(),
+        expected_attendance: Number(details.expected_attendance),
+        required_layout: details.layout,
         required_facilities: requirements.facilities,
         acknowledgement: acknowledgementRecord({
           assessment,
@@ -86,6 +99,49 @@ export default function VenueBookingRequest({ venue, event, user, onSubmitted, e
 
   return (
     <section className="cs-booking-request" aria-label="Request this venue">
+      <div className="cs-form-grid">
+        <label className="cs-field">
+          <span className="cs-field-name">Booking label</span>
+          <input
+            type="text"
+            value={details.label}
+            onChange={setDetail("label")}
+            aria-invalid={Boolean(detailErrors.label)}
+            aria-describedby={detailErrors.label ? "cs-booking-label-error" : undefined}
+            disabled={sent}
+          />
+          {detailErrors.label && <span className="cs-error" id="cs-booking-label-error">{detailErrors.label}</span>}
+        </label>
+        <label className="cs-field">
+          <span className="cs-field-name">Expected attendance for this venue</span>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={details.expected_attendance}
+            onChange={setDetail("expected_attendance")}
+            aria-invalid={Boolean(detailErrors.expected_attendance)}
+            aria-describedby={detailErrors.expected_attendance ? "cs-booking-attendance-error" : undefined}
+            disabled={sent}
+          />
+          {detailErrors.expected_attendance && <span className="cs-error" id="cs-booking-attendance-error">{detailErrors.expected_attendance}</span>}
+        </label>
+        <label className="cs-field">
+          <span className="cs-field-name">Layout for this venue</span>
+          <select
+            value={details.layout}
+            onChange={setDetail("layout")}
+            aria-invalid={Boolean(detailErrors.layout)}
+            aria-describedby={detailErrors.layout ? "cs-booking-layout-error" : undefined}
+            disabled={sent}
+          >
+            <option value="">Choose a layout</option>
+            {layoutOptions.map((layout) => <option value={layout} key={layout}>{word(layout)}</option>)}
+          </select>
+          {detailErrors.layout && <span className="cs-error" id="cs-booking-layout-error">{detailErrors.layout}</span>}
+        </label>
+      </div>
+
       <h3>Suitability for {eventName}</h3>
 
       <dl className="cs-suitability-criteria">

@@ -437,7 +437,8 @@ describe('E8 / SCRUM-124 functional — a shortfall warns and waits to be acknow
     // named again on the control that has to be ticked.
     expect(screen.getByText('WIFI')).toBeInTheDocument();
     expect(screen.getByText('KITCHEN PANTRY')).toBeInTheDocument();
-    expect(screen.getByText('BANQUET')).toBeInTheDocument();
+    // F12 — the layout picker also lists BANQUET, so look in the criteria list.
+    expect(screen.getByText('BANQUET', { selector: '.cs-requirement-label' })).toBeInTheDocument();
     expect(screen.getAllByText('Not met')).toHaveLength(2);
     // Capacity, WIFI, and the hours (Hall A states none, so it is open any time).
     expect(screen.getAllByText('Met')).toHaveLength(3);
@@ -503,8 +504,9 @@ describe('E8 / SCRUM-124 functional — a suitable venue goes straight through',
   test('TC-140 the criteria evaluated are shown even when all of them pass', () => {
     render(<VenueBookingRequest venue={hallA} event={event()} user={user} />);
 
-    expect(screen.getByText(/capacity/i)).toBeInTheDocument();
-    expect(screen.getByText(/layout/i)).toBeInTheDocument();
+    // F12 — the form's own "Layout for this venue" field is not a criterion.
+    expect(screen.getByText(/capacity/i, { selector: 'dt' })).toBeInTheDocument();
+    expect(screen.getByText(/layout/i, { selector: 'dt' })).toBeInTheDocument();
   });
 
   test('TC-141 a failed save is surfaced and does not claim success', async () => {

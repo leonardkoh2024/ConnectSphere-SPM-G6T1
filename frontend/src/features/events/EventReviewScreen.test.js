@@ -687,3 +687,32 @@ describe('equipment reservations on the coordinator event page', () => {
     expect(screen.getByRole('region', { name: /venue booking status/i })).toHaveTextContent('Harbour Hall');
   });
 });
+
+// F12 / SCRUM-177 AC5 — TC-508 in docs/test-cases.md.
+describe('F12 SCRUM-177 the event view lists every venue booking', () => {
+  test('TC-508 AC5 each booking shows its label, venue, window and status', async () => {
+    const planningEvent = { ...baseEvent, status: 'PLANNING' };
+    const window = { start_datetime: '2026-11-04T01:00:00.000Z', end_datetime: '2026-11-04T09:00:00.000Z' };
+    reviewApi.list.mockResolvedValue({ events: [planningEvent] });
+    reviewApi.detail.mockResolvedValue({
+      ...detail(planningEvent),
+      venueBookings: [
+        { booking_id: 'b1', booking_label: 'Main programme', venue_name: 'Harbour Hall', status: 'APPROVED', expected_attendance: 100, layout: 'THEATRE', ...window },
+        { booking_id: 'b2', booking_label: 'Breakout 1', venue_name: 'Seminar Room', status: 'PENDING', expected_attendance: 40, layout: 'CLASSROOM', ...window }
+      ]
+    });
+    render(<EventReviewScreen initialEventId="e1" initialTab="arrangements" />);
+
+    const section = await screen.findByRole('region', { name: /venue booking status/i });
+    const records = within(section).getAllByRole('article');
+    expect(records).toHaveLength(2);
+    const shown = (value) => new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    const expectations = [['Main programme', 'Harbour Hall', 'APPROVED'], ['Breakout 1', 'Seminar Room', 'PENDING']];
+    expectations.forEach(([label, venue, status], index) => {
+      expect(within(records[index]).getByRole('heading', { name: label })).toBeInTheDocument();
+      expect(within(records[index]).getByText(venue)).toBeInTheDocument();
+      expect(within(records[index]).getByText(status)).toBeInTheDocument();
+      expect(records[index]).toHaveTextContent(`${shown(window.start_datetime)}–${shown(window.end_datetime)}`);
+    });
+  });
+});

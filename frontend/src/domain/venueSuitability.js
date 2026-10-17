@@ -54,14 +54,16 @@ export const opensFor = (venue, requirements) => {
   return onDay.some((row) => requirements.start_time >= row.opens_at && requirements.end_time <= row.closes_at);
 };
 
-export const bookingRequirements = (event = {}) => ({
-  expected_attendance: Number(event.expected_attendance) || 0,
+// F12 — with a booking's own details, a venue is judged on that booking's
+// attendance and layout; facilities, accessibility and the date stay the event's.
+export const bookingRequirements = (event = {}, booking = null) => ({
+  expected_attendance: Number(booking ? booking.expected_attendance : event.expected_attendance) || 0,
   event_date: event.event_date || "",
   start_time: event.start_time || "",
   end_time: event.end_time || "",
   facilities: event.facilities || [],
   accessibility: event.accessibility || [],
-  layout: event.required_layout || null
+  layout: (booking ? booking.layout : event.required_layout) || null
 });
 
 const missingFrom = (required = [], available = []) =>

@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { notificationRecord } from "../../domain/eventReviewRecords";
+import { bookingDetailsErrors, clashingEventBooking } from "../../domain/venueBookingDetails";
 import { venueBookingOutcomeMessage } from "../../domain/notifications";
 import { ROLES } from "../../domain/roles";
 
@@ -302,10 +303,16 @@ export const saveVenueUnavailability = async ({ user, venueId, keepPeriodIds, ad
 // The acknowledgement travels with the request so Venue Staff assess it knowing
 // which shortfalls the coordinator accepted. firestore.rules re-checks capacity
 // and the acknowledgement shape, so a crafted request cannot skip the gate.
+//
+// F12 — an event may hold several bookings, each with its own label, expected
+// attendance and layout. A caller that sends no label or attendance gets the
+// event's, as before F12; one that sends them has them validated.
 export const requestVenueBooking = async ({
   user,
   venue_id,
   event_id,
+  booking_label,
+  expected_attendance,
   required_layout,
   required_facilities,
   acknowledgement
@@ -338,18 +345,33 @@ export const requestVenueBooking = async ({
       throw new Error("Venue requests are available only for Approved or Planning events.");
     }
     if (venue.is_active === false) throw new Error("This venue is inactive and cannot be requested.");
-    if (existing.some((item) => item.exists()
-      && item.data().venue_id === venue_id
-      && ["PENDING", "APPROVED"].includes(String(item.data().status || "").toUpperCase()))) {
-      throw new Error("This event already has an active request for that venue.");
-    }
+    const eventAttendance = Number(event.expected_attendance);
+    if (!Number.isInteger(eventAttendance) || eventAttendance <= 0) throw new Error("Expected attendance must be a positive whole number.");
+    const label = booking_label === undefined
+      ? `${event.name || event.reference_no || event_id} — ${venue.name || venue_id}`
+      : String(booking_label || "").trim();
+    const errors = bookingDetailsErrors({
+      label,
+      expected_attendance: expected_attendance === undefined ? eventAttendance : expected_attendance,
+      layout: layoutSnapshot
+    }, event);
+    const firstError = errors.label || errors.expected_attendance;
+    if (firstError) throw new Error(firstError);
+    const attendance = expected_attendance === undefined ? eventAttendance : Number(expected_attendance);
     const start = eventDateTime(event.event_date, event.start_time);
     const end = eventDateTime(event.event_date, event.end_time);
     if (!start || !end || end <= start) throw new Error("The event must have a valid date and time window.");
-    const attendance = Number(event.expected_attendance);
-    if (!Number.isInteger(attendance) || attendance <= 0) throw new Error("Expected attendance must be a positive whole number.");
-    if (Number(venue.max_capacity) < attendance) throw new Error("The venue cannot hold the expected attendance.");
     const occupied = occupiedWindow(start, end, venue);
+    // F12 AC4 — another venue for this event is fine; this venue again at an
+    // overlapping time is not.
+    const clash = clashingEventBooking(
+      existing.filter((item) => item.exists()).map((item) => item.data()),
+      { eventId: event_id, venueId: venue_id, start: occupied.start, end: occupied.end }
+    );
+    if (clash) {
+      throw new Error(`This event already has an active booking for ${venue.name || venue_id} at an overlapping time: ${clash.booking_label || clash.booking_id}.`);
+    }
+    if (Number(venue.max_capacity) < attendance) throw new Error("The venue cannot hold the expected attendance.");
     const bookingRef = doc(collection(db, "venue_bookings"));
     transaction.set(bookingRef, {
       booking_id: bookingRef.id,
@@ -371,7 +393,7 @@ export const requestVenueBooking = async ({
       requested_layout_id: layoutSnapshot,
       layout_snapshot: layoutSnapshot,
       required_facilities_snapshot: facilitySnapshot,
-      booking_label: `${event.name || event.reference_no || event_id} — ${venue.name || venue_id}`,
+      booking_label: label,
       submitted_at: serverTimestamp(),
       decided_at: null,
       decided_by: null,

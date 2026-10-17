@@ -586,6 +586,11 @@ service cloud.firestore {
         && request.resource.data.event_id is string
         && request.resource.data.expected_attendance is int
         && request.resource.data.expected_attendance > 0
+        // F12 AC2/AC3 — each of an event's bookings is labelled, and none may
+        // expect more people than the event itself.
+        && request.resource.data.expected_attendance <= get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.expected_attendance
+        && request.resource.data.booking_label is string
+        && request.resource.data.booking_label.trim().size() > 0
         && request.resource.data.layout_snapshot is string
         && request.resource.data.layout_snapshot.size() > 0
         && request.resource.data.required_facilities_snapshot is list

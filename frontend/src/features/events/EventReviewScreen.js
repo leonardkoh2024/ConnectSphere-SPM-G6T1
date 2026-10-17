@@ -229,12 +229,18 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
           <div className="cs-record-list">
             {detail.venueBookings.map((booking) => (
               <article className="cs-record" key={booking.booking_id}>
-                <div className="cs-record-title"><h4>{booking.venue_name}</h4></div>
+                {/* F12 AC5 — label, venue, window and status for every booking. */}
+                <div className="cs-record-title">
+                  <h4>{booking.booking_label || booking.venue_name}</h4>
+                  {booking.booking_label && <p>{booking.venue_name}</p>}
+                </div>
                 <p className="cs-record-ref">{shownTime(booking.start_datetime)}–{shownTime(booking.end_datetime)}</p>
                 <div className="cs-record-modified">
                   <span className={`cs-pill cs-pill-${statusTone(booking.status)}`}>{booking.status}</span>
                 </div>
                 <dl className="cs-detail-grid cs-record-expanded">
+                  {booking.expected_attendance != null && <div><dt>Expected attendance</dt><dd>{booking.expected_attendance}</dd></div>}
+                  {booking.layout && <div><dt>Layout</dt><dd>{booking.layout.replaceAll("_", " ")}</dd></div>}
                   <div><dt>Decision time</dt><dd>{booking.decided_at ? shownTime(booking.decided_at) : "Not decided"}</dd></div>
                   {booking.decision_reason && <div className="cs-detail-wide"><dt>Decision reason</dt><dd>{booking.decision_reason}</dd></div>}
                   {booking.release_reason && <div className="cs-detail-wide"><dt>Release reason</dt><dd>{booking.release_reason}</dd></div>}

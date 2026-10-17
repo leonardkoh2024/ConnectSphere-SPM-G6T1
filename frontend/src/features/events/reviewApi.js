@@ -223,6 +223,10 @@ const detail = async (eventId) => {
       const booking = item.data();
       return {
         booking_id: booking.booking_id || item.id,
+        // F12 AC5 — an event may hold several bookings; each is told apart by its label.
+        booking_label: booking.booking_label || null,
+        expected_attendance: booking.expected_attendance ?? null,
+        layout: booking.layout_snapshot || null,
         venue_id: booking.venue_id,
         venue_name: venueNames.get(booking.venue_id) || booking.venue_name || booking.venue_id,
         start_datetime: asIso(booking.start_datetime),
