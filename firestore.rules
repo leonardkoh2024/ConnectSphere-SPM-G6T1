@@ -492,6 +492,13 @@ service cloud.firestore {
               getAfter(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.get('coordinator_id', ''),
               get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.get('coordinator_id', ''),
               get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.get('organiser_id', '')])
+          // J2 AC1 — submission received. A new request has no coordinator yet, so the
+          // organiser records the notice in their own inbox: for their own event, one
+          // type only, and only while that event is Submitted.
+          || (ownsEvent(request.resource.data.event_id)
+            && request.resource.data.type == 'EVENT_SUBMITTED'
+            && request.resource.data.user_id == request.auth.uid
+            && get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.status == 'SUBMITTED')
           // Venue Staff are notified for the venue they manage when a booking
           // request opens or the venue details change for a related event.
           || (request.resource.data.get('venue_id', null) is string

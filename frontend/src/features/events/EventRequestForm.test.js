@@ -764,7 +764,9 @@ describe('J2 SCRUM-151 the organiser is told the request was received', () => {
   const received = () => setDoc.mock.calls.filter(([, data]) => data?.type === 'EVENT_SUBMITTED');
 
   beforeEach(() => {
-    doc.mockImplementation((first, name, id) => (name ? `${name}/${id}` : `${first}/auto-id`));
+    // doc(collection(db, 'notifications')) has no id of its own to give, so it returns a
+    // reference with one, as the real SDK does; every other doc() call keeps its path string.
+    doc.mockImplementation((first, name, id) => (name ? `${name}/${id}` : { id: 'auto-id', path: `${first}/auto-id` }));
   });
 
   test('J2-FT9 AC1 AC2 submitting writes one notice to the organiser, naming the event and the change', async () => {
@@ -775,7 +777,7 @@ describe('J2 SCRUM-151 the organiser is told the request was received', () => {
 
     await waitFor(() => expect(received()).toHaveLength(1));
     const [ref, data] = received()[0];
-    expect(ref).toBe('notifications/auto-id');
+    expect(ref.path).toBe('notifications/auto-id');
     expect(data).toMatchObject({
       notification_id: 'auto-id', user_id: 'u1', event_id: 'event-123', type: 'EVENT_SUBMITTED',
       message: 'Q4 Partner Summit was submitted and is waiting for a coordinator.',
@@ -820,7 +822,7 @@ describe('J2 SCRUM-151 the organiser is told the request was received', () => {
   });
 
   test('J2-FT13 AC1 if the notice cannot be written the request is still reported as submitted, not failed', async () => {
-    setDoc.mockImplementation(async (ref) => { if (String(ref).startsWith('notifications/')) throw new Error('permission-denied'); });
+    setDoc.mockImplementation(async (ref) => { if (ref?.path?.startsWith('notifications/')) throw new Error('permission-denied'); });
     jest.spyOn(console, 'error').mockImplementation(() => {});
     const onSaved = jest.fn();
     render(<EventRequestForm user={USER} onSaved={onSaved} />);

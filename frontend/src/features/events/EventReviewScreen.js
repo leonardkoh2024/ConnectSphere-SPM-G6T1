@@ -3,6 +3,7 @@ import { statusTone } from "../../domain/events";
 import { EVENT_TABS, buildRequestView, canFindVenues, clarificationSummary } from "../../domain/eventReview";
 import { ALL_STATUSES, buildAssignedView, statusOptions } from "../../domain/assignedEvents";
 import { reviewApi } from "./reviewApi";
+import { decisionReasonProblem } from "../../domain/notifications";
 import RecordLead from "../../components/RecordLead";
 import Icon from "../../app/Icon";
 import EventDetailTabs from "./components/EventDetailTabs";
@@ -83,28 +84,23 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
   };
 
   const act = async (action, success) => {
-    if (!message.trim()) { setError(`${mode === "reject" ? "Rejection reason" : "Clarification message"} is required.`); return; }
+    // J2 / SCRUM-151 AC3 — approve and reject each need a reason, worded by one function.
+    const problem = action === "clarify" ? (message.trim() ? null : "Clarification message is required.") : decisionReasonProblem(action, message);
+    if (problem) { setError(problem); return; }
     setBusy(true); setError("");
     try {
       if (action === "clarify") await reviewApi.clarify(selected, message);
       if (action === "reject") await reviewApi.reject(selected, message);
+      if (action === "approve") await reviewApi.approve(selected, message);
       await loadList(); await loadDetail(selected, false); onNotice?.(success); setMode(""); setMessage("");
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   };
 
-  // C6 / SCRUM-107 — approve moves an Under Review request to Approved. It needs no
-  // text from the coordinator, so it runs straight from the button (not via `act`).
-  // A failure keeps the event where it was and shows the reason above the actions.
-  const approve = async () => {
-    setBusy(true); setError("");
-    try {
-      await reviewApi.approve(selected);
-      await loadList(); await loadDetail(selected, false); onNotice?.("Event request approved.");
-    } catch (e) { setError(e.message); }
-    finally { setBusy(false); }
-  };
-
+  // C6 / SCRUM-107 — approve moves an Under Review request to Approved. J2 / SCRUM-151
+  // AC3 — it now needs a reason, so Approve opens the same Reason box as Reject and the
+  // decision is sent through `act`. A failure keeps the event where it was, and the reason
+  // typed, and shows the error in the box.
   if (loading) return <p className="cs-panel-note">Loading assigned events…</p>;
   if (detail) {
     const event = detail.event;
@@ -128,10 +124,10 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     // One form at a time, shown on the tab its action belongs to: Request
     // clarification on Clarifications, Reject on the request.
     const actionBox = mode && !editing && <section className="cs-form-section cs-action-box">
-      <h3>{mode === "clarify" ? "Request clarification" : "Reject request"}</h3>
-      <label className="cs-field"><span className="cs-field-name">{mode === "reject" ? "Reason" : "Message"}<span className="cs-required" aria-hidden="true">*</span></span><textarea rows="4" required value={message} aria-invalid={Boolean(error)} aria-describedby={error ? "cs-review-action-error" : undefined} onChange={(e) => { setMessage(e.target.value); if (error) setError(""); }} /></label>
+      <h3>{mode === "clarify" ? "Request clarification" : mode === "approve" ? "Approve request" : "Reject request"}</h3>
+      <label className="cs-field"><span className="cs-field-name">{mode === "clarify" ? "Message" : "Reason"}<span className="cs-required" aria-hidden="true">*</span></span><textarea rows="4" required value={message} aria-invalid={Boolean(error)} aria-describedby={error ? "cs-review-action-error" : undefined} onChange={(e) => { setMessage(e.target.value); if (error) setError(""); }} /></label>
       {error && <p id="cs-review-action-error" className="cs-error" role="alert">{error}</p>}
-      <div className="cs-form-actions"><button type="button" className="cs-btn cs-btn-ghost" onClick={() => { setMode(""); setError(""); }}>Cancel</button><button type="button" className={mode === "reject" ? "cs-btn cs-btn-ghost cs-record-danger" : "cs-btn cs-btn-primary"} disabled={busy} onClick={() => act(mode, mode === "clarify" ? "Clarification request sent." : "Event request rejected.")}>{busy ? "Saving…" : mode === "clarify" ? "Send request" : "Reject event"}</button></div>
+      <div className="cs-form-actions"><button type="button" className="cs-btn cs-btn-ghost" onClick={() => { setMode(""); setError(""); }}>Cancel</button><button type="button" className={mode === "reject" ? "cs-btn cs-btn-ghost cs-record-danger" : "cs-btn cs-btn-primary"} disabled={busy} onClick={() => act(mode, mode === "clarify" ? "Clarification request sent." : mode === "approve" ? "Event request approved." : "Event request rejected.")}>{busy ? "Saving…" : mode === "clarify" ? "Send request" : mode === "approve" ? "Approve event" : "Reject event"}</button></div>
     </section>;
 
     const requestTab = <>
@@ -197,7 +193,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
           aria-describedby={!canRequestVenue ? "cs-find-venues-reason" : undefined}
           onClick={() => { if (canRequestVenue) onFindVenues(event); }}
         >Find venues</button>}
-        {canApprove && <button className="cs-btn cs-btn-primary" type="button" disabled={busy} onClick={approve}>{busy && !mode ? "Approving…" : "Approve"}</button>}
+        {canApprove && <button className="cs-btn cs-btn-primary" type="button" disabled={busy} onClick={() => startMode("approve")}>Approve</button>}
         {canDecide && <button className="cs-btn cs-btn-ghost cs-record-danger" type="button" disabled={busy} onClick={() => startMode("reject")}>Reject request</button>}
         {canEdit && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => startMode("edit")}>Edit event</button>}
       </div>}

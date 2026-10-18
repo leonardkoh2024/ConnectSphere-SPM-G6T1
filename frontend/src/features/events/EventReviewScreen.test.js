@@ -251,6 +251,16 @@ test('TC-473 D2 when the arrangements changed during editing, the warning is rel
 // C6 — approve a request the coordinator has reviewed (Under Review -> Approved).
 // This is the UI that the venue merge dropped: reviewApi.approve and canApproveEvent
 // existed, but nothing on the screen called them. These tests guard the button.
+// J2 / SCRUM-151 AC3 changed TC1, TC2 and TC6 below: Approve now opens a Reason box and the
+// decision is sent from there, so each types a reason and confirms with "Approve event".
+// TC7 (locked while sending) is replaced by J2-FT7, which covers the same lock on the new
+// confirm button.
+const approveWith = async (reason = 'Looks complete.') => {
+  await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
+  await userEvent.type(screen.getByRole('textbox', { name: /reason/i }), reason);
+  await userEvent.click(screen.getByRole('button', { name: 'Approve event' }));
+};
+
 describe('C6 approve a submitted request', () => {
   test('C6 TC1 the assigned coordinator sees Approve on an Under Review request and it calls reviewApi.approve', async () => {
     const onNotice = jest.fn();
@@ -258,9 +268,9 @@ describe('C6 approve a submitted request', () => {
 
     const approve = screen.getByRole('button', { name: /^approve/i });
     expect(approve).toBeEnabled();
-    await userEvent.click(approve);
+    await approveWith();
 
-    await waitFor(() => expect(reviewApi.approve).toHaveBeenCalledWith('e1'));
+    await waitFor(() => expect(reviewApi.approve).toHaveBeenCalledWith('e1', 'Looks complete.'));
     expect(reviewApi.approve).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Event request approved.'));
   });
@@ -271,7 +281,7 @@ describe('C6 approve a submitted request', () => {
       .mockResolvedValue(detail({ status: 'APPROVED' }));
     await openRequest();
 
-    await userEvent.click(screen.getByRole('button', { name: /^approve/i }));
+    await approveWith();
 
     // The status pill is the signal that the refreshed detail has landed ("Approving…"
     // does not match /^approve/, so the button's absence alone would pass too early).
@@ -301,29 +311,14 @@ describe('C6 approve a submitted request', () => {
     reviewApi.approve.mockRejectedValueOnce(new Error('This event cannot be approved now.'));
     await openRequest({ onNotice });
 
-    await userEvent.click(screen.getByRole('button', { name: /^approve/i }));
+    await approveWith();
 
     expect(await screen.findByRole('alert')).toHaveTextContent('This event cannot be approved now.');
     expect(onNotice).not.toHaveBeenCalled();
     expect(screen.getByText('UNDER_REVIEW')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^approve/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
   });
 
-  test('C6 TC7 while approving, Approve and Reject are locked so the decision cannot be sent twice', async () => {
-    let finish;
-    reviewApi.approve.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
-    await openRequest();
-
-    await userEvent.click(screen.getByRole('button', { name: /^approve/i }));
-
-    const busy = await screen.findByRole('button', { name: /approving/i });
-    expect(busy).toBeDisabled();
-    expect(screen.getByRole('button', { name: /reject request/i })).toBeDisabled();
-    await userEvent.click(busy);
-    expect(reviewApi.approve).toHaveBeenCalledTimes(1);
-
-    await act(async () => { finish({ ok: true }); });
-  });
 });
 
 // C2 / SCRUM-103 — the coordinator's "Assigned events" list. The list is scoped to

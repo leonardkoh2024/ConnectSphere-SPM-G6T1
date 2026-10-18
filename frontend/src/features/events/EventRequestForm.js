@@ -10,6 +10,8 @@ import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimes
 import { db } from "../../lib/firebase";
 import { LAYOUTS, FACILITIES, ACCESSIBILITY_OPTIONS, PREFERRED_LOCATIONS, EQUIPMENT_TYPES } from "../../domain/events";
 import { NO, UNANSWERED, YES, createReferenceNo, equipmentLinesWithContent, todayIso, validateEventRequest } from "../../domain/eventRequest";
+import { notificationRecord } from "../../domain/eventReviewRecords";
+import { eventSubmittedMessage } from "../../domain/notifications";
 import ToggleList from "./components/ToggleList";
 import YesNo from "./components/YesNo";
 import Icon from "../../app/Icon";
@@ -252,6 +254,17 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
       // It is written with coordinator_id: null above and now waits in the Event
       // Coordinator Lead's unassigned queue, where the Lead assigns it (A6). The old
       // auto-assign call to /api/coordinator-assignment (C1) is deliberately removed.
+      // J2 / SCRUM-151 AC1 — submission received. Only a real submission tells the
+      // organiser (not a draft, and not an answer to a clarification), and only after the
+      // event itself is saved. If the notice cannot be written the request is still
+      // reported as submitted: the event exists, and an error here would invite a second
+      // submission of the same request.
+      if (submit && !isAmend) {
+        try {
+          const noticeRef = doc(collection(db, "notifications"));
+          await setDoc(noticeRef, notificationRecord({ notificationId: noticeRef.id, userId: user.uid, eventId: eventRef.id, type: "EVENT_SUBMITTED", message: eventSubmittedMessage({ eventName: fieldData.name || referenceNo }), createdAt: serverTimestamp() }));
+        } catch (noticeError) { console.error("Could not record the submission notice:", noticeError); }
+      }
       if (isAmend) {
         onSaved("Request details updated.", { ...draft, ...eventData, id: eventRef.id, status: draft.status, open_clarification_id: draft.open_clarification_id });
         return;
