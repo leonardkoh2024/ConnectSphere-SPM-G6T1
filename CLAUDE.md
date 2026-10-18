@@ -198,8 +198,11 @@ on real problems.
 
 - Registration screens are already built and merged, but Session 2 says release 1 needs no account creation.
   Decide: keep them as a convenience, or replace with seeded accounts. Backlog A1/A2 need rewording either way.
-- Hold length: F15's summary says a hold lasts 3 working days and F16 AC1 repeats it, but F15 AC1–2 have
-  Venue Staff enter an expiry date/time. Decide whether 3 working days is a default, a fixed rule, or dropped.
+- Hold length — **decided 19 Oct 2026: 3 working days is a fixed rule.** Venue Staff put a Pending request on
+  hold and the expiry is computed, never entered: Mon–Fri, Singapore time, the same clock time three working
+  days on (`domain/venueHolds.js`, repeated in `firestore.rules` as `holdExpiryIsThreeWorkingDays`). A hold
+  that would not end before the booking's occupied window is refused. Still open for Session 3: whether
+  public holidays count as working days — they currently do.
 - ADR 0001 / `coordinatorAssignment` (automatic rotation) are superseded by K1. Decide whether to retire the
   service and its `coordinators` / `assignment_cursor` collections or repurpose them for the Lead's queue,
   and mark the ADR superseded.

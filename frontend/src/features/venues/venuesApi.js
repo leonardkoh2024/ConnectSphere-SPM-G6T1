@@ -15,7 +15,8 @@ import {
 import { db } from "../../lib/firebase";
 import { notificationRecord } from "../../domain/eventReviewRecords";
 import { bookingDetailsErrors, clashingEventBooking } from "../../domain/venueBookingDetails";
-import { venueBookingOutcomeMessage } from "../../domain/notifications";
+import { venueBookingOutcomeMessage, venueHoldPlacedMessage } from "../../domain/notifications";
+import { activeHoldClash, holdExpiry, holdRefusal, isActiveHold, singaporeDateTime } from "../../domain/venueHolds";
 import { ROLES } from "../../domain/roles";
 
 const asIso = (value) => value?.toDate?.().toISOString?.() || value || null;
@@ -259,6 +260,7 @@ export const loadVenueSearchContext = async ({ userId, role } = {}) => {
       status: data.status,
       start_datetime: asIso(data.occupied_start || data.start_datetime),
       end_datetime: asIso(data.occupied_end || data.end_datetime),
+      hold_expires_at: asIso(data.hold_expires_at),
       start_time: data.start_time || null,
       end_time: data.end_time || null,
       suitability_acknowledgement: data.suitability_acknowledgement || null
@@ -315,7 +317,8 @@ export const requestVenueBooking = async ({
   expected_attendance,
   required_layout,
   required_facilities,
-  acknowledgement
+  acknowledgement,
+  now = new Date()
 }) => {
   const userId = requiredUser(user);
   if (!event_id || !venue_id) throw new Error("An event and venue are required.");
@@ -328,14 +331,23 @@ export const requestVenueBooking = async ({
   // venue_staff is keyed by venue id, and a coordinator may only get that one
   // document — a list query on the collection is refused by firestore.rules.
   const venueStaffRef = doc(db, "venue_staff", venue_id);
-  const existingSnapshot = await getDocs(query(collection(db, "venue_bookings"), where("event_id", "==", event_id)));
+  // F15 AC3 — the venue's holds, whichever event they keep it for.
+  const [existingSnapshot, venueBookingSnapshot] = await Promise.all([
+    getDocs(query(collection(db, "venue_bookings"), where("event_id", "==", event_id))),
+    getDocs(query(collection(db, "venue_bookings"), where("venue_id", "==", venue_id)))
+  ]);
+  const holdRefs = venueBookingSnapshot.docs.filter((item) => item.data().status === "HELD").map((item) => item.ref);
   return runTransaction(db, async (transaction) => {
-    const [eventSnapshot, venueSnapshot, venueStaffSnapshot, ...existing] = await Promise.all([
+    const [eventSnapshot, venueSnapshot, venueStaffSnapshot, ...rest] = await Promise.all([
       transaction.get(eventRef),
       transaction.get(venueRef),
       transaction.get(venueStaffRef),
-      ...existingSnapshot.docs.map((item) => transaction.get(item.ref))
+      ...existingSnapshot.docs.map((item) => transaction.get(item.ref)),
+      ...holdRefs.map((reference) => transaction.get(reference))
     ]);
+    const existing = rest.slice(0, existingSnapshot.docs.length);
+    const holds = rest.slice(existingSnapshot.docs.length).filter((item) => item.exists())
+      .map((item) => ({ booking_id: item.id, ...item.data() }));
     if (!eventSnapshot.exists()) throw new Error("Event not found.");
     if (!venueSnapshot.exists()) throw new Error("Venue not found.");
     const event = eventSnapshot.data();
@@ -370,6 +382,11 @@ export const requestVenueBooking = async ({
     );
     if (clash) {
       throw new Error(`This event already has an active booking for ${venue.name || venue_id} at an overlapping time: ${clash.booking_label || clash.booking_id}.`);
+    }
+    const hold = activeHoldClash(holds, { venueId: venue_id, start: occupied.start, end: occupied.end, now });
+    if (hold) {
+      throw new Error(`${venue.name || venue_id} is held for ${hold.booking_label || hold.booking_id} until `
+        + `${singaporeDateTime(hold.hold_expires_at)}, and cannot be requested for an overlapping time.`);
     }
     if (Number(venue.max_capacity) < attendance) throw new Error("The venue cannot hold the expected attendance.");
     const bookingRef = doc(collection(db, "venue_bookings"));
@@ -418,7 +435,8 @@ export const requestVenueBooking = async ({
           eventId: event_id,
           type: "VENUE_BOOKING_REQUESTED",
           message: `${event.name || event.reference_no || event_id}: a venue booking request was raised for ${venue.name || venue_id}.`,
-          createdAt: changedAt
+          createdAt: changedAt,
+          eventName: event.name || event.reference_no || event_id
         }),
         venue_id: venue_id
       });
@@ -464,6 +482,7 @@ export const loadVenueBookings = async ({ user }) => {
       submitted_at: asIso(data.data().submitted_at),
       decided_at: asIso(data.data().decided_at),
       released_at: asIso(data.data().released_at),
+      hold_expires_at: asIso(data.data().hold_expires_at),
       requested_at: asIso(data.data().submitted_at || data.data().requested_at),
       suitability_acknowledgement: data.data().suitability_acknowledgement || null
     }))
@@ -495,13 +514,19 @@ export const loadVenueBookingQueue = async ({ user }) => {
         occupied_start: asIso(booking.occupied_start),
         occupied_end: asIso(booking.occupied_end),
         submitted_at: asIso(booking.submitted_at),
-        decided_at: asIso(booking.decided_at)
+        decided_at: asIso(booking.decided_at),
+        held_at: asIso(booking.held_at),
+        hold_expires_at: asIso(booking.hold_expires_at)
       };
     })
     .sort((left, right) => String(left.submitted_at || "").localeCompare(String(right.submitted_at || "")));
 };
 
-export const approveVenueBooking = async ({ user, bookingId }) => {
+// F4 and F15 — what Venue Staff must be able to say before they approve or hold
+// a request: the venue is theirs, nothing approved, held or blocked overlaps it,
+// and no earlier request for the same time is still waiting. Read once outside
+// the transaction to find the documents, and again inside it to decide on them.
+const loadVenueDecision = async ({ user, bookingId }) => {
   const userId = requiredUser(user);
   if (!bookingId) throw new Error("That booking could not be identified.");
   const bookingRef = doc(db, "venue_bookings", bookingId);
@@ -515,47 +540,82 @@ export const approveVenueBooking = async ({ user, bookingId }) => {
   ]);
   const [owned] = ownedAssignments(assignments);
   if (!owned) throw new Error("You are not assigned to manage this venue.");
+  return {
+    userId,
+    bookingId,
+    bookingRef,
+    venueId,
+    assignmentRef: owned.ref,
+    otherBookingRefs: bookings.docs.filter((item) => item.id !== bookingId).map((item) => item.ref),
+    blockRefs: unavailable.docs.map((item) => item.ref)
+  };
+};
+
+const decideInTransaction = async (transaction, decision, { now, checkStatus }) => {
+  const { userId, bookingRef, venueId, assignmentRef, otherBookingRefs, blockRefs, bookingId } = decision;
+  const [bookingSnapshot, venueSnapshot, assignment, ...related] = await Promise.all([
+    transaction.get(bookingRef),
+    transaction.get(doc(db, "venues", venueId)),
+    transaction.get(assignmentRef),
+    ...otherBookingRefs.map((reference) => transaction.get(reference)),
+    ...blockRefs.map((reference) => transaction.get(reference))
+  ]);
+  if (!bookingSnapshot.exists()) throw new Error("Booking request not found.");
+  const booking = bookingSnapshot.data();
+  if (!venueSnapshot.exists()) throw new Error("Venue not found.");
+  if (!assignment.exists() || assignment.data().user_id !== userId) throw new Error("You are not assigned to manage this venue.");
+  const venue = venueSnapshot.data();
+  const start = asDate(booking.start_datetime);
+  const end = asDate(booking.end_datetime);
+  if (!start || !end || end <= start) throw new Error("The booking has an invalid date and time window.");
+  const occupied = occupiedWindow(start, end, venue);
+  checkStatus({ ...booking, occupied_start: occupied.start, occupied_end: occupied.end });
+  const competing = related.slice(0, otherBookingRefs.length).filter((item) => item.exists());
+  const blocks = related.slice(otherBookingRefs.length).filter((item) => item.exists());
+  const windowFor = (item) => {
+    const otherStart = asDate(item.data().start_datetime);
+    const otherEnd = asDate(item.data().end_datetime);
+    return otherStart && otherEnd ? occupiedWindow(otherStart, otherEnd, venue) : null;
+  };
+  const approvedConflict = competing.find((item) => {
+    const window = windowFor(item);
+    return item.data().status === "APPROVED" && window && overlaps(occupied.start, occupied.end, window.start, window.end);
+  });
+  if (approvedConflict) throw new Error(`This period clashes with approved booking ${approvedConflict.data().booking_label || approvedConflict.id}.`);
+  const block = blocks.find((item) => overlaps(occupied.start, occupied.end,
+    asDate(item.data().start_datetime), asDate(item.data().end_datetime)));
+  if (block) throw new Error(`The venue is unavailable during this period${block.data().reason ? `: ${block.data().reason}` : "."}`);
+  // F15 AC3 — while another event's hold is active, the venue is kept for it.
+  const hold = activeHoldClash(competing.map((item) => ({ booking_id: item.id, ...item.data() })), {
+    venueId, start: occupied.start, end: occupied.end, now, excludeBookingId: bookingId
+  });
+  if (hold) throw new Error(`This period is held for ${hold.booking_label || hold.booking_id} until ${singaporeDateTime(hold.hold_expires_at)}.`);
+  const submitted = asDate(booking.submitted_at) || new Date(0);
+  const earlier = competing.find((item) => {
+    const window = windowFor(item);
+    return item.data().status === "PENDING" && window
+      && overlaps(occupied.start, occupied.end, window.start, window.end)
+      && (asDate(item.data().submitted_at) || new Date(0)) < submitted;
+  });
+  if (earlier) throw new Error("An earlier submitted request for this venue and time must be decided first.");
+  return { booking, venue, occupied };
+};
+
+// F4 — approve a pending request. F15 AC7 — or convert an active hold into an
+// approved booking, which no longer expires. An expired hold cannot be.
+export const approveVenueBooking = async ({ user, bookingId, now = new Date() }) => {
+  const decision = await loadVenueDecision({ user, bookingId });
+  const { userId, bookingRef, venueId } = decision;
   return runTransaction(db, async (transaction) => {
-    const [bookingSnapshot, venueSnapshot, assignment, ...related] = await Promise.all([
-      transaction.get(bookingRef),
-      transaction.get(doc(db, "venues", venueId)),
-      transaction.get(owned.ref),
-      ...bookings.docs.filter((item) => item.id !== bookingId).map((item) => transaction.get(item.ref)),
-      ...unavailable.docs.map((item) => transaction.get(item.ref))
-    ]);
-    if (!bookingSnapshot.exists()) throw new Error("Booking request not found.");
-    const booking = bookingSnapshot.data();
-    if (booking.status !== "PENDING") throw new Error("Only Pending booking requests can be approved.");
-    if (!venueSnapshot.exists()) throw new Error("Venue not found.");
-    if (!assignment.exists() || assignment.data().user_id !== userId) throw new Error("You are not assigned to manage this venue.");
-    const venue = venueSnapshot.data();
-    const start = asDate(booking.start_datetime);
-    const end = asDate(booking.end_datetime);
-    if (!start || !end || end <= start) throw new Error("The booking has an invalid date and time window.");
-    const occupied = occupiedWindow(start, end, venue);
-    const competing = related.slice(0, Math.max(0, bookings.docs.length - 1)).filter((item) => item.exists());
-    const blocks = related.slice(Math.max(0, bookings.docs.length - 1)).filter((item) => item.exists());
-    const windowFor = (item) => {
-      const otherStart = asDate(item.data().start_datetime);
-      const otherEnd = asDate(item.data().end_datetime);
-      return otherStart && otherEnd ? occupiedWindow(otherStart, otherEnd, venue) : null;
-    };
-    const approvedConflict = competing.find((item) => {
-      const window = windowFor(item);
-      return item.data().status === "APPROVED" && window && overlaps(occupied.start, occupied.end, window.start, window.end);
+    const { booking, venue, occupied } = await decideInTransaction(transaction, decision, {
+      now,
+      checkStatus: (current) => {
+        if (current.status === "HELD" && !isActiveHold(current, now)) {
+          throw new Error(`This hold expired on ${singaporeDateTime(current.hold_expires_at)} and can no longer be converted.`);
+        }
+        if (!["PENDING", "HELD"].includes(current.status)) throw new Error("Only Pending booking requests can be approved.");
+      }
     });
-    if (approvedConflict) throw new Error(`This period clashes with approved booking ${approvedConflict.data().booking_label || approvedConflict.id}.`);
-    const block = blocks.find((item) => overlaps(occupied.start, occupied.end,
-      asDate(item.data().start_datetime), asDate(item.data().end_datetime)));
-    if (block) throw new Error(`The venue is unavailable during this period${block.data().reason ? `: ${block.data().reason}` : "."}`);
-    const submitted = asDate(booking.submitted_at) || new Date(0);
-    const earlier = competing.find((item) => {
-      const window = windowFor(item);
-      return item.data().status === "PENDING" && window
-        && overlaps(occupied.start, occupied.end, window.start, window.end)
-        && (asDate(item.data().submitted_at) || new Date(0)) < submitted;
-    });
-    if (earlier) throw new Error("An earlier submitted request for this venue and time must be decided first.");
     const decidedAt = serverTimestamp();
     transaction.update(bookingRef, {
       status: "APPROVED",
@@ -581,7 +641,7 @@ export const approveVenueBooking = async ({ user, bookingId }) => {
       actor_id: userId,
       action_type: "VENUE_BOOKING_APPROVED",
       field_name: "venue_booking_status",
-      old_value: "PENDING",
+      old_value: booking.status,
       new_value: "APPROVED",
       description: `Venue booking ${booking.booking_label || bookingId} approved.`,
       created_at: decidedAt
@@ -608,6 +668,67 @@ export const approveVenueBooking = async ({ user, bookingId }) => {
       });
     }
     return { booking_id: bookingId, status: "APPROVED" };
+  });
+};
+
+// F15 — Venue Staff hold a pending request for three working days while its
+// coordinator finalises the event (AC1, AC2). The hold meets the same clashes
+// an approval does, and the coordinator who raised it is told the expiry (AC6).
+// firestore.rules repeats the expiry count, so a crafted write cannot stretch it.
+export const holdVenueBooking = async ({ user, bookingId, now = new Date() }) => {
+  const decision = await loadVenueDecision({ user, bookingId });
+  const { userId, bookingRef, venueId } = decision;
+  return runTransaction(db, async (transaction) => {
+    const { booking, venue, occupied } = await decideInTransaction(transaction, decision, {
+      now,
+      checkStatus: (current) => {
+        const refusal = holdRefusal({ booking: current, now });
+        if (refusal) throw new Error(refusal);
+      }
+    });
+    const expiresAt = holdExpiry(now);
+    const heldAt = serverTimestamp();
+    transaction.update(bookingRef, {
+      status: "HELD",
+      assigned_staff_id: userId,
+      held_by: userId,
+      held_at: heldAt,
+      hold_expires_at: expiresAt,
+      occupied_start: occupied.start,
+      occupied_end: occupied.end
+    });
+    const historyRef = doc(collection(db, "event_history"));
+    transaction.set(historyRef, {
+      history_id: historyRef.id,
+      event_id: booking.event_id,
+      booking_id: bookingId,
+      venue_id: venueId,
+      actor_id: userId,
+      action_type: "VENUE_BOOKING_HELD",
+      field_name: "venue_booking_status",
+      old_value: "PENDING",
+      new_value: "HELD",
+      description: `Venue booking ${booking.booking_label || bookingId} held until ${singaporeDateTime(expiresAt)}.`,
+      created_at: heldAt
+    });
+    if (booking.requested_by) {
+      const notificationRef = doc(collection(db, "notifications"));
+      transaction.set(notificationRef, {
+        ...notificationRecord({
+          notificationId: notificationRef.id,
+          userId: booking.requested_by,
+          eventId: booking.event_id,
+          type: "VENUE_BOOKING_HELD",
+          message: venueHoldPlacedMessage({ eventName: booking.event_name, venueName: venue.name, expiresAt }),
+          createdAt: heldAt,
+          eventName: booking.event_name
+        }),
+        booking_id: bookingId,
+        venue_id: venueId,
+        hold_expires_at: expiresAt
+      });
+    }
+    return { booking_id: bookingId, status: "HELD", hold_expires_at: expiresAt.toISOString() };
   });
 };
 

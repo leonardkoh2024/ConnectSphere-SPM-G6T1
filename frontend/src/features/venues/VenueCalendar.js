@@ -38,13 +38,14 @@ const CHIPS_PER_DAY = 3;
 const BADGE = {
   [SLOT.FREE]: "Free",
   [SLOT.BOOKED]: "Booked",
+  [SLOT.HELD]: "Held",
   [SLOT.PENDING]: "Pending",
   [SLOT.BLOCKED]: "Blocked",
   [SLOT.CLOSED]: "Closed",
   [SLOT.UNKNOWN]: "No data"
 };
 
-const LEGEND = [SLOT.FREE, SLOT.BOOKED, SLOT.PENDING, SLOT.BLOCKED, SLOT.CLOSED];
+const LEGEND = [SLOT.FREE, SLOT.BOOKED, SLOT.HELD, SLOT.PENDING, SLOT.BLOCKED, SLOT.CLOSED];
 
 const shortDay = (date) => {
   const value = parseDay(date);

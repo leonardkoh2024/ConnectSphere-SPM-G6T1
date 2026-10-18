@@ -27,8 +27,9 @@ export const markNotificationRead = (notificationId) => updateDoc(doc(db, "notif
 });
 
 // AC1 — the related events, for their names and for View. Each is read on its
-// own so one that is gone, or no longer related to this user, is just null. The
-// record is returned as stored, the shape the event screens already open.
+// own so one that is gone is just null. J4 — one the rules refuse is false, not
+// null: Venue Staff are told about events they may not read, and that event is
+// not gone. The record is returned as stored, the shape the event screens open.
 export const eventsFor = async (eventIds) => {
   const unique = [...new Set(eventIds.filter(Boolean))];
   const entries = await Promise.all(unique.map(async (eventId) => {
@@ -36,7 +37,7 @@ export const eventsFor = async (eventIds) => {
       const snapshot = await getDoc(doc(db, "events", eventId));
       return [eventId, snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null];
     } catch (error) {
-      return [eventId, null];
+      return [eventId, error?.code === "permission-denied" ? false : null];
     }
   }));
   return Object.fromEntries(entries);

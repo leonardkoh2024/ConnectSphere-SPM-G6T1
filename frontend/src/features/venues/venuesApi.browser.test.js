@@ -81,7 +81,9 @@ describe('venue booking browser SDK persistence', () => {
       event_id: 'event-1',
       user_id: 'staff-1',
       venue_id: 'venue-1',
-      message: expect.stringContaining('venue booking request')
+      message: expect.stringContaining('venue booking request'),
+      // J4 / SCRUM-153 TC-540 — Venue Staff cannot read the event, so the notice names it.
+      event_name: 'Community Innovation Forum'
     });
     expect(mockTransactionSet.mock.calls[0][1].occupied_start.toISOString()).toBe('2026-11-10T01:30:00.000Z');
     expect(mockTransactionSet.mock.calls[0][1].occupied_end.toISOString()).toBe('2026-11-10T04:15:00.000Z');

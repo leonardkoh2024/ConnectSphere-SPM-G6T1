@@ -1581,6 +1581,15 @@ a.cs-btn-ghost:hover {
   gap: 8px;
 }
 
+/* Venue Staff's booking requests carry up to three actions; one per line, all
+   the same width, reads as a menu rather than a ragged wrap. */
+.cs-record-actions-stacked {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  min-width: 132px;
+}
+
 .cs-record-danger { color: var(--cs-danger); }
 .cs-record-danger:hover:enabled { border-color: var(--cs-danger); background: var(--cs-danger-faded); }
 
@@ -1637,6 +1646,7 @@ a.cs-btn-ghost:hover {
   }
 
   .cs-record-actions { justify-content: flex-start; }
+  .cs-record-actions-stacked { align-self: start; }
 }
 
 /* A row action is a real button, so it needs a smaller footprint than the
@@ -2405,6 +2415,7 @@ a.cs-btn-ghost:hover {
 .cs-month-chip-time { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-weight: 600; }
 .cs-month-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cs-month-chip-booked { --cs-tone: var(--cs-warning); --cs-tone-faded: var(--cs-warning-faded); }
+.cs-month-chip-held { --cs-tone: var(--cs-warning); --cs-tone-faded: var(--cs-warning-faded); border-left-style: dashed; }
 .cs-month-chip-pending { --cs-tone: var(--cs-info); --cs-tone-faded: var(--cs-info-faded); border-left-style: dashed; }
 .cs-month-chip-blocked { --cs-tone: var(--cs-danger); --cs-tone-faded: var(--cs-danger-faded); }
 .cs-month-more { display: block; margin-top: 4px; color: var(--cs-muted); font-size: 12px; font-weight: 600; }
@@ -2445,6 +2456,8 @@ a.cs-btn-ghost:hover {
 
 .cs-calendar-free { background: var(--cs-positive-faded); }
 .cs-calendar-booked { background: var(--cs-warning); }
+/* F15 — a tentative hold: the booked colour, faded and dashed, as it may yet lapse. */
+.cs-calendar-held { background: var(--cs-warning-faded); border: 1px dashed var(--cs-warning); }
 .cs-calendar-blocked { background: var(--cs-danger); }
 .cs-calendar-closed,
 .cs-calendar-unknown { background: var(--cs-surface-alt); }
@@ -2477,6 +2490,7 @@ a.cs-btn-ghost:hover {
 }
 .cs-calendar-badge-free { --cs-tone: var(--cs-positive); --cs-tone-faded: var(--cs-positive-faded); }
 .cs-calendar-badge-booked { --cs-tone: var(--cs-warning); --cs-tone-faded: var(--cs-warning-faded); }
+.cs-calendar-badge-held { --cs-tone: var(--cs-warning); --cs-tone-faded: var(--cs-warning-faded); }
 .cs-calendar-badge-pending { --cs-tone: var(--cs-info); --cs-tone-faded: var(--cs-info-faded); }
 .cs-calendar-badge-blocked { --cs-tone: var(--cs-danger); --cs-tone-faded: var(--cs-danger-faded); }
 

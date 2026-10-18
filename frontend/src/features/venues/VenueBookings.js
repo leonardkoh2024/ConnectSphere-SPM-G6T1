@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { PREFERRED_LOCATIONS } from "../../domain/events";
 import { assessVenue, bookingRequirements, existingBookingFor, isBlocked } from "../../domain/venueSuitability";
+import { singaporeDateTime } from "../../domain/venueHolds";
 import { reviewApi } from "../events/reviewApi";
 import VenueBookingRequest, { BookingAcknowledgementNotice } from "./VenueBookingRequest";
 import Icon from "../../app/Icon";
@@ -200,6 +201,8 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
                         <div><dt>Status</dt><dd>{word(booking.status)}</dd></div>
                         <div><dt>Requested</dt><dd>{booking.requested_at ? new Date(booking.requested_at).toLocaleString() : "Not recorded"}</dd></div>
                         <div><dt>Decision time</dt><dd>{booking.decided_at ? new Date(booking.decided_at).toLocaleString() : "Not decided"}</dd></div>
+                        {/* F15 — a hold keeps the venue only until this time. */}
+                        {booking.hold_expires_at && <div><dt>Hold expires</dt><dd>{singaporeDateTime(booking.hold_expires_at)}</dd></div>}
                         {booking.decision_reason && <div className="cs-detail-wide"><dt>Decision reason</dt><dd>{booking.decision_reason}</dd></div>}
                         {booking.release_reason && <div className="cs-detail-wide"><dt>Release reason</dt><dd>{booking.release_reason}</dd></div>}
                         {booking.replaced_by_booking_id && <div><dt>Replacement booking</dt><dd>{booking.replaced_by_booking_id}</dd></div>}
