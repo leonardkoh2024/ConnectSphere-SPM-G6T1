@@ -29,10 +29,10 @@ jobs:
         env:
           CI: true
 
-      # The integration file refuses to run unless FIRESTORE_EMULATOR_HOST is set.
+      # That file throws on import unless FIRESTORE_EMULATOR_HOST is set, so it cannot be skipped by name.
       - name: Backend tests
         working-directory: backend
-        run: node --test --test-skip-pattern "integration\\.test"
+        run: node --test $(find src -name '*.test.js' ! -name '*.integration.test.js')
 
       - name: Functional tests
         run: node --test test.js
