@@ -697,3 +697,97 @@ describe('F12 SCRUM-177 the event detail carries every venue booking', () => {
     ]);
   });
 });
+
+// J2 / SCRUM-151 — what a coordinator's decision writes, and what the organiser is told.
+// A fake transaction records the writes, as in K3 above. AC1: approval and rejection each
+// notify the organiser in the same transaction as the status change. AC2: the notice names
+// the event and the change. AC3: both carry the decision reason, and neither can be made
+// without one.
+describe('J2 SCRUM-151 the organiser is told how a decision went', () => {
+  const stored = {
+    'users/c1': { role: 'EVENT_COORDINATOR', name: 'Joshua Chua', is_active: true },
+    'events/e3': { organiser_id: 'org1', coordinator_id: 'c1', name: 'Partner Summit', reference_no: 'EVT-100234', status: 'UNDER_REVIEW' }
+  };
+  let writes;
+
+  beforeEach(() => {
+    auth.currentUser = { uid: 'c1' };
+    writes = { updates: [], sets: [] };
+    firestore.runTransaction.mockImplementation(async (db, work) => work({
+      get: async (ref) => snapshot(ref.id, stored[ref.path]),
+      update: (ref, data) => writes.updates.push([ref.path, data]),
+      set: (ref, data) => writes.sets.push([ref.path, data])
+    }));
+  });
+
+  const setsAt = (prefix) => writes.sets.filter(([path]) => path.startsWith(prefix)).map(([, data]) => data);
+
+  test('J2-TC10 AC1 AC3 approving records the reason in the history entry instead of a fixed sentence', async () => {
+    await reviewApi.approve('e3', ' Venue and equipment are confirmed. ');
+
+    expect(writes.updates).toEqual([['events/e3', { status: 'APPROVED', updated_at: 'TS' }]]);
+    expect(setsAt('event_history')).toHaveLength(1);
+    expect(setsAt('event_history')[0]).toMatchObject({
+      event_id: 'e3', action_type: 'EVENT_APPROVED', actor_id: 'c1', new_value: 'APPROVED',
+      description: 'Venue and equipment are confirmed.'
+    });
+  });
+
+  test('J2-TC11 AC1 AC2 AC3 approving tells the organiser, once, naming the event, the change and the reason', async () => {
+    await reviewApi.approve('e3', 'Venue and equipment are confirmed.');
+
+    const notices = setsAt('notifications');
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({
+      user_id: 'org1', event_id: 'e3', type: 'EVENT_APPROVED', is_read: false, created_at: 'TS',
+      message: 'Partner Summit was approved — Venue and equipment are confirmed.'
+    });
+    expect(notices[0].notification_id).toBe('auto');
+  });
+
+  test.each([[''], ['   '], [undefined]])('J2-TC12 AC3 approving with the reason %p is refused and writes nothing', async (reason) => {
+    await expect(reviewApi.approve('e3', reason)).rejects.toThrow('Approval reason is required.');
+
+    expect(firestore.runTransaction).not.toHaveBeenCalled();
+    expect(writes).toEqual({ updates: [], sets: [] });
+  });
+
+  test('J2-TC13 AC1 AC2 AC3 rejecting still tells the organiser, with the event, the change and the reason', async () => {
+    await reviewApi.reject('e3', 'No suitable venue can be secured.');
+
+    expect(writes.updates).toEqual([['events/e3', { status: 'REJECTED', updated_at: 'TS' }]]);
+    expect(setsAt('event_history')[0]).toMatchObject({ action_type: 'EVENT_REJECTED', description: 'No suitable venue can be secured.' });
+    const notices = setsAt('notifications');
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({
+      user_id: 'org1', event_id: 'e3', type: 'EVENT_REJECTED',
+      message: 'Partner Summit was rejected — No suitable venue can be secured.'
+    });
+  });
+
+  test('J2-TC14 AC3 rejecting without a reason is refused and writes nothing', async () => {
+    await expect(reviewApi.reject('e3', '   ')).rejects.toThrow('Rejection reason is required.');
+
+    expect(firestore.runTransaction).not.toHaveBeenCalled();
+  });
+
+  test('J2-TC15 AC1 AC2 returning a request for clarification tells the organiser what was asked', async () => {
+    await reviewApi.clarify('e3', 'Please confirm attendance.');
+
+    const notices = setsAt('notifications');
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({
+      user_id: 'org1', event_id: 'e3', type: 'CLARIFICATION_REQUESTED',
+      message: 'Partner Summit: clarification requested — Please confirm attendance.'
+    });
+  });
+
+  test('J2-TC16 AC1 an event with no name is still named, by its reference', async () => {
+    stored['events/e4'] = { organiser_id: 'org1', coordinator_id: 'c1', reference_no: 'EVT-100999', status: 'UNDER_REVIEW' };
+
+    await reviewApi.approve('e4', 'Fine.');
+
+    expect(setsAt('notifications')[0].message).toBe('EVT-100999 was approved — Fine.');
+    delete stored['events/e4'];
+  });
+});

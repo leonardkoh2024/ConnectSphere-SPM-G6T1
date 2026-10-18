@@ -752,3 +752,87 @@ describe('compulsory questions are marked (TC-070)', () => {
     expect(container.querySelector('form')).toHaveAttribute('novalidate');
   });
 });
+
+// ---------------------------------------------------------------------------
+// J2 / SCRUM-151 AC1 — "submission received". Submitting tells the organiser, in their
+// own inbox, that the request was received. AC2: it names the event and the change.
+// ---------------------------------------------------------------------------
+
+describe('J2 SCRUM-151 the organiser is told the request was received', () => {
+  // A notification is written with setDoc under its own id, because firestore.rules
+  // requires notification_id to equal the document id (so addDoc cannot be used).
+  const received = () => setDoc.mock.calls.filter(([, data]) => data?.type === 'EVENT_SUBMITTED');
+
+  beforeEach(() => {
+    // doc(collection(db, 'notifications')) has no id of its own to give, so it returns a
+    // reference with one, as the real SDK does; every other doc() call keeps its path string.
+    doc.mockImplementation((first, name, id) => (name ? `${name}/${id}` : { id: 'auto-id', path: `${first}/auto-id` }));
+  });
+
+  test('J2-FT9 AC1 AC2 submitting writes one notice to the organiser, naming the event and the change', async () => {
+    render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
+
+    fillValidRequest();
+    await submit();
+
+    await waitFor(() => expect(received()).toHaveLength(1));
+    const [ref, data] = received()[0];
+    expect(ref.path).toBe('notifications/auto-id');
+    expect(data).toMatchObject({
+      notification_id: 'auto-id', user_id: 'u1', event_id: 'event-123', type: 'EVENT_SUBMITTED',
+      message: 'Q4 Partner Summit was submitted and is waiting for a coordinator.',
+      is_read: false, created_at: 'server-ts', read_at: null
+    });
+  });
+
+  test('J2-FT10 AC1 the notice is written only after the event itself has been saved', async () => {
+    addDoc.mockRejectedValue(new Error('network down'));
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
+
+    fillValidRequest();
+    await submit();
+
+    expect(await screen.findByText(/could not save your event request/i)).toBeInTheDocument();
+    expect(received()).toHaveLength(0);
+    console.error.mockRestore();
+  });
+
+  test('J2-FT11 AC1 saving a draft is not a submission, so nothing is sent', async () => {
+    const onSaved = jest.fn();
+    render(<EventRequestForm user={USER} onSaved={onSaved} />);
+
+    fillCoreDetails();
+    await userEvent.click(screen.getByRole('button', { name: /save draft/i }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(eventWrite()).toMatchObject({ status: 'DRAFT' });
+    expect(received()).toHaveLength(0);
+  });
+
+  test('J2-FT12 AC1 answering a clarification is not a new submission, so nothing is sent', async () => {
+    const onSaved = jest.fn();
+    const draft = { id: 'event-123', status: 'UNDER_REVIEW', reference_no: 'EVT-100234', name: 'Q4 Partner Summit', open_clarification_id: 'CLR-001' };
+    render(<EventRequestForm user={USER} draft={draft} onSaved={onSaved} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /save changes/i }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(received()).toHaveLength(0);
+  });
+
+  test('J2-FT13 AC1 if the notice cannot be written the request is still reported as submitted, not failed', async () => {
+    setDoc.mockImplementation(async (ref) => { if (ref?.path?.startsWith('notifications/')) throw new Error('permission-denied'); });
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    const onSaved = jest.fn();
+    render(<EventRequestForm user={USER} onSaved={onSaved} />);
+
+    fillValidRequest();
+    await submit();
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(onSaved.mock.calls[0][0]).toMatch(/submitted for coordinator review/);
+    expect(screen.queryByText(/could not save your event request/i)).not.toBeInTheDocument();
+    console.error.mockRestore();
+  });
+});

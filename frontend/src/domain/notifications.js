@@ -12,6 +12,12 @@ export const NOTIFICATION_TYPE_LABEL = {
   CLARIFICATION_RESPONDED: "Clarification answered",
   EVENT_REJECTED: "Request rejected",
   COORDINATOR_REASSIGNED: "Coordinator reassigned",
+  // J2 / SCRUM-151 — the organiser's progress notices, each in its own words.
+  EVENT_SUBMITTED: "Request received",
+  COORDINATOR_ASSIGNED: "Coordinator assigned",
+  EVENT_APPROVED: "Request approved",
+  SAFETY_CHECK_APPROVED: "Event confirmed",
+  EVENT_CANCELLED: "Event cancelled",
   VENUE_BOOKING_REQUESTED: "Booking request raised",
   VENUE_BOOKING_REQUEST: "Booking request raised",
   VENUE_BOOKING_RAISED: "Booking request raised",
@@ -63,6 +69,39 @@ export const EVENT_VIEW_SCREEN = {
 };
 
 export const eventViewScreen = (role) => EVENT_VIEW_SCREEN[role] || null;
+
+// J2 / SCRUM-151 AC1 — the seven moves of a request that the organiser is told about,
+// in the order they happen. "Confirmed" is the safety check passing (A7); "cancelled"
+// is told by D4 (Cancel an event), which is not built yet.
+export const ORGANISER_PROGRESS_TYPES = [
+  "EVENT_SUBMITTED", "COORDINATOR_ASSIGNED", "CLARIFICATION_REQUESTED", "EVENT_APPROVED",
+  "EVENT_REJECTED", "SAFETY_CHECK_APPROVED", "EVENT_CANCELLED"
+];
+
+const named = (eventName) => eventName || "Your event";
+const trimmed = (value) => String(value || "").trim();
+
+// AC2 — names the event and the change.
+export const eventSubmittedMessage = ({ eventName } = {}) =>
+  `${named(eventName)} was submitted and is waiting for a coordinator.`;
+
+// AC2 + AC3 — an approval or a rejection names the event and carries its reason.
+export const eventDecisionMessage = ({ eventName, approved, reason } = {}) =>
+  `${named(eventName)} was ${approved ? "approved" : "rejected"} — ${trimmed(reason)}`;
+
+// AC3 — neither decision can be sent without a reason; the same words are used by the
+// screen and by the adapter, so the two cannot disagree.
+export const decisionReasonProblem = (decision, reason) => {
+  if (trimmed(reason)) return null;
+  return decision === "approve" ? "Approval reason is required." : "Rejection reason is required.";
+};
+
+// AC1 — used by D4 (Cancel an event) when it is built; the guard test in
+// notifications.test.js fails until a cancel writes this notice.
+export const eventCancelledMessage = ({ eventName, reason } = {}) => {
+  const why = trimmed(reason);
+  return `${named(eventName)} was cancelled${why ? ` — ${why}` : "."}`;
+};
 
 // J6 / SCRUM-155 — the outcome of a coordinator's own booking or equipment
 // request. Each is written in the same transaction as the decision it reports,

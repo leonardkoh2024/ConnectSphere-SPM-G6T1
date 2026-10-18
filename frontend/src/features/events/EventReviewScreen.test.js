@@ -251,6 +251,16 @@ test('TC-473 D2 when the arrangements changed during editing, the warning is rel
 // C6 — approve a request the coordinator has reviewed (Under Review -> Approved).
 // This is the UI that the venue merge dropped: reviewApi.approve and canApproveEvent
 // existed, but nothing on the screen called them. These tests guard the button.
+// J2 / SCRUM-151 AC3 changed TC1, TC2 and TC6 below: Approve now opens a Reason box and the
+// decision is sent from there, so each types a reason and confirms with "Approve event".
+// TC7 (locked while sending) is replaced by J2-FT7, which covers the same lock on the new
+// confirm button.
+const approveWith = async (reason = 'Looks complete.') => {
+  await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
+  await userEvent.type(screen.getByRole('textbox', { name: /reason/i }), reason);
+  await userEvent.click(screen.getByRole('button', { name: 'Approve event' }));
+};
+
 describe('C6 approve a submitted request', () => {
   test('C6 TC1 the assigned coordinator sees Approve on an Under Review request and it calls reviewApi.approve', async () => {
     const onNotice = jest.fn();
@@ -258,9 +268,9 @@ describe('C6 approve a submitted request', () => {
 
     const approve = screen.getByRole('button', { name: /^approve/i });
     expect(approve).toBeEnabled();
-    await userEvent.click(approve);
+    await approveWith();
 
-    await waitFor(() => expect(reviewApi.approve).toHaveBeenCalledWith('e1'));
+    await waitFor(() => expect(reviewApi.approve).toHaveBeenCalledWith('e1', 'Looks complete.'));
     expect(reviewApi.approve).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Event request approved.'));
   });
@@ -271,7 +281,7 @@ describe('C6 approve a submitted request', () => {
       .mockResolvedValue(detail({ status: 'APPROVED' }));
     await openRequest();
 
-    await userEvent.click(screen.getByRole('button', { name: /^approve/i }));
+    await approveWith();
 
     // The status pill is the signal that the refreshed detail has landed ("Approving…"
     // does not match /^approve/, so the button's absence alone would pass too early).
@@ -301,29 +311,14 @@ describe('C6 approve a submitted request', () => {
     reviewApi.approve.mockRejectedValueOnce(new Error('This event cannot be approved now.'));
     await openRequest({ onNotice });
 
-    await userEvent.click(screen.getByRole('button', { name: /^approve/i }));
+    await approveWith();
 
     expect(await screen.findByRole('alert')).toHaveTextContent('This event cannot be approved now.');
     expect(onNotice).not.toHaveBeenCalled();
     expect(screen.getByText('UNDER_REVIEW')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^approve/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
   });
 
-  test('C6 TC7 while approving, Approve and Reject are locked so the decision cannot be sent twice', async () => {
-    let finish;
-    reviewApi.approve.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
-    await openRequest();
-
-    await userEvent.click(screen.getByRole('button', { name: /^approve/i }));
-
-    const busy = await screen.findByRole('button', { name: /approving/i });
-    expect(busy).toBeDisabled();
-    expect(screen.getByRole('button', { name: /reject request/i })).toBeDisabled();
-    await userEvent.click(busy);
-    expect(reviewApi.approve).toHaveBeenCalledTimes(1);
-
-    await act(async () => { finish({ ok: true }); });
-  });
 });
 
 // C2 / SCRUM-103 — the coordinator's "Assigned events" list. The list is scoped to
@@ -714,5 +709,122 @@ describe('F12 SCRUM-177 the event view lists every venue booking', () => {
       expect(within(records[index]).getByText(status)).toBeInTheDocument();
       expect(records[index]).toHaveTextContent(`${shown(window.start_datetime)}–${shown(window.end_datetime)}`);
     });
+  });
+});
+
+// J2 / SCRUM-151 AC3 — an approval carries its reason, as a rejection already does, so
+// Approve now opens the same Reason box instead of sending at once. These replace the
+// one-click behaviour pinned by C6 TC1, TC2, TC6 and TC7 above, which are updated to the
+// two-step flow with the code.
+describe('J2 SCRUM-151 approving needs a reason', () => {
+  const approveButton = () => screen.getByRole('button', { name: 'Approve' });
+  const confirmButton = () => screen.getByRole('button', { name: 'Approve event' });
+  const reasonBox = () => screen.getByRole('textbox', { name: /reason/i });
+
+  test('J2-FT1 AC3 Approve opens a required Reason box and sends nothing yet', async () => {
+    await openRequest();
+
+    await userEvent.click(approveButton());
+
+    expect(screen.getByRole('heading', { name: 'Approve request' })).toBeInTheDocument();
+    expect(reasonBox()).toBeRequired();
+    expect(confirmButton()).toBeEnabled();
+    expect(reviewApi.approve).not.toHaveBeenCalled();
+  });
+
+  test('J2-FT2 AC3 confirming with no reason is refused beside the box, and typing clears the message', async () => {
+    await openRequest();
+    await userEvent.click(approveButton());
+
+    await userEvent.click(confirmButton());
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Approval reason is required.');
+    expect(reasonBox()).toHaveAttribute('aria-invalid', 'true');
+    expect(reviewApi.approve).not.toHaveBeenCalled();
+    await userEvent.type(reasonBox(), 'Venue and equipment are confirmed.');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(reasonBox()).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  test('J2-FT3 AC3 a reason made only of spaces is refused too', async () => {
+    await openRequest();
+    await userEvent.click(approveButton());
+    await userEvent.type(reasonBox(), '   ');
+
+    await userEvent.click(confirmButton());
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Approval reason is required.');
+    expect(reviewApi.approve).not.toHaveBeenCalled();
+  });
+
+  test('J2-FT4 AC3 confirming with a reason approves the event and sends the reason with it', async () => {
+    const onNotice = jest.fn();
+    await openRequest({ onNotice });
+    await userEvent.click(approveButton());
+    await userEvent.type(reasonBox(), 'Venue and equipment are confirmed.');
+
+    await userEvent.click(confirmButton());
+
+    await waitFor(() => expect(reviewApi.approve).toHaveBeenCalledWith('e1', 'Venue and equipment are confirmed.'));
+    expect(reviewApi.approve).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Event request approved.'));
+  });
+
+  test('J2-FT5 Cancel closes the box without approving, and Approve is offered again', async () => {
+    await openRequest();
+    await userEvent.click(approveButton());
+    await userEvent.type(reasonBox(), 'Half-written reason');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByRole('textbox', { name: /reason/i })).not.toBeInTheDocument();
+    expect(reviewApi.approve).not.toHaveBeenCalled();
+    expect(approveButton()).toBeEnabled();
+  });
+
+  test('J2-FT6 a failed approval shows its error in the box and keeps the reason that was typed', async () => {
+    reviewApi.approve.mockRejectedValueOnce(new Error('This event cannot be approved now.'));
+    const onNotice = jest.fn();
+    await openRequest({ onNotice });
+    await userEvent.click(approveButton());
+    await userEvent.type(reasonBox(), 'Venue and equipment are confirmed.');
+
+    await userEvent.click(confirmButton());
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('This event cannot be approved now.');
+    expect(onNotice).not.toHaveBeenCalled();
+    expect(reasonBox()).toHaveValue('Venue and equipment are confirmed.');
+    expect(confirmButton()).toBeEnabled();
+  });
+
+  test('J2-FT7 while the approval is being sent, confirm and Reject are locked so it cannot go twice', async () => {
+    let finish;
+    reviewApi.approve.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    await openRequest();
+    await userEvent.click(approveButton());
+    await userEvent.type(reasonBox(), 'Venue and equipment are confirmed.');
+
+    await userEvent.click(confirmButton());
+
+    const busy = await screen.findByRole('button', { name: /saving/i });
+    expect(busy).toBeDisabled();
+    expect(screen.getByRole('button', { name: /reject request/i })).toBeDisabled();
+    await userEvent.click(busy);
+    expect(reviewApi.approve).toHaveBeenCalledTimes(1);
+
+    await act(async () => { finish({ ok: true }); });
+  });
+
+  test('J2-FT8 switching from Approve to Reject starts the Reason box afresh, under the right heading', async () => {
+    await openRequest();
+    await userEvent.click(approveButton());
+    await userEvent.type(reasonBox(), 'Venue and equipment are confirmed.');
+
+    await userEvent.click(screen.getByRole('button', { name: /reject request/i }));
+
+    expect(screen.getByRole('heading', { name: 'Reject request' })).toBeInTheDocument();
+    expect(reasonBox()).toHaveValue('');
+    expect(screen.getByRole('button', { name: /reject event/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Approve event' })).not.toBeInTheDocument();
   });
 });

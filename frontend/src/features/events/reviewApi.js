@@ -7,6 +7,7 @@ import { auth, db } from "../../lib/firebase";
 import { EVENT_STATUS, canApproveEvent, assignEvent, reassignEvent, canOpenReview, canRejectEvent, canRequestClarification, canRespondToClarification, cleanRequiredText, leadVisibleEvents, supervisesAllEvents } from "../../domain/eventReview";
 import { clarificationRecord, clarificationResponseRecord, coordinatorAssignmentRecord, eventHistoryRecord, notificationRecord } from "../../domain/eventReviewRecords";
 import { ROLES } from "../../domain/roles";
+import { decisionReasonProblem, eventDecisionMessage } from "../../domain/notifications";
 import {
   editableEventStatuses,
   significantEventChanges,
@@ -518,8 +519,9 @@ const clarify = async (eventId, value) => {
 
 const reject = async (eventId, value) => {
   const user = requireUser();
+  const problem = decisionReasonProblem("reject", value);
+  if (problem) throw new Error(problem);
   const reason = cleanRequiredText(value);
-  if (!reason) throw new Error("Rejection reason is required.");
   const eventRef = doc(db, "events", eventId);
   const historyRef = doc(collection(db, "event_history"));
   const notificationRef = doc(collection(db, "notifications"));
@@ -530,7 +532,7 @@ const reject = async (eventId, value) => {
     const changedAt = serverTimestamp();
     tx.update(eventRef, { status: EVENT_STATUS.REJECTED, updated_at: changedAt });
     tx.set(historyRef, eventHistoryRecord({ historyId: historyRef.id, eventId, actorId: user.uid, actionType: "EVENT_REJECTED", fieldName: "status", oldValue: event.status, newValue: EVENT_STATUS.REJECTED, description: reason, createdAt: changedAt }));
-    tx.set(notificationRef, notificationRecord({ notificationId: notificationRef.id, userId: event.organiser_id, eventId, type: "EVENT_REJECTED", message: `${event.name || event.reference_no} was rejected — ${reason}`, createdAt: changedAt }));
+    tx.set(notificationRef, notificationRecord({ notificationId: notificationRef.id, userId: event.organiser_id, eventId, type: "EVENT_REJECTED", message: eventDecisionMessage({ eventName: event.name || event.reference_no, approved: false, reason }), createdAt: changedAt }));
   });
   return { ok: true };
 };
@@ -564,17 +566,24 @@ const respond = async (eventId, clarificationId, value) => {
 // canApproveEvent (AC1 under review, AC3 assigned coordinator, AC4 no open
 // clarification), set the event Approved (AC2), and write an EVENT_APPROVED history
 // entry (AC5) whose actor_id + created_at are the deciding coordinator + timestamp.
-const approve = async (eventId) => {
+// J2 / SCRUM-151 — an approval now needs a reason (AC3), which is kept in the history
+// entry and told to the organiser in the same transaction (AC1, AC2).
+const approve = async (eventId, value) => {
   const user = requireUser();
+  const problem = decisionReasonProblem("approve", value);
+  if (problem) throw new Error(problem);
+  const reason = cleanRequiredText(value);
   const eventRef = doc(db, "events", eventId);
   const historyRef = doc(collection(db, "event_history"));
+  const notificationRef = doc(collection(db, "notifications"));
   await runTransaction(db, async (tx) => {
     const snapshot = await tx.get(eventRef);
     if (!snapshot.exists() || !canApproveEvent(snapshot.data(), user.uid)) throw new Error("This event cannot be approved now.");
     const event = snapshot.data();
     const changedAt = serverTimestamp();
     tx.update(eventRef, { status: EVENT_STATUS.APPROVED, updated_at: changedAt });
-    tx.set(historyRef, eventHistoryRecord({ historyId: historyRef.id, eventId, actorId: user.uid, actionType: "EVENT_APPROVED", fieldName: "status", oldValue: event.status, newValue: EVENT_STATUS.APPROVED, description: "Coordinator approved the request.", createdAt: changedAt }));
+    tx.set(historyRef, eventHistoryRecord({ historyId: historyRef.id, eventId, actorId: user.uid, actionType: "EVENT_APPROVED", fieldName: "status", oldValue: event.status, newValue: EVENT_STATUS.APPROVED, description: reason, createdAt: changedAt }));
+    tx.set(notificationRef, notificationRecord({ notificationId: notificationRef.id, userId: event.organiser_id, eventId, type: "EVENT_APPROVED", message: eventDecisionMessage({ eventName: event.name || event.reference_no, approved: true, reason }), createdAt: changedAt }));
   });
   return { ok: true };
 };

@@ -1,7 +1,12 @@
 // J1 / SCRUM-150 — the inbox's ordering, counting and labelling rules.
 // TC-250 – TC-254 and TC-263 in docs/test-cases.md.
 
-import { badgeText, eventLabel, eventViewScreen, newestFirst, notificationTypeLabel, notificationViewScreen, unreadCount, venueBookingOutcomeMessage } from './notifications';
+import fs from 'fs';
+import path from 'path';
+import {
+  badgeText, decisionReasonProblem, eventCancelledMessage, eventDecisionMessage, eventLabel, eventSubmittedMessage, eventViewScreen,
+  newestFirst, notificationTypeLabel, notificationViewScreen, ORGANISER_PROGRESS_TYPES, unreadCount, venueBookingOutcomeMessage
+} from './notifications';
 import { ROLES } from './roles';
 
 describe('J1 inbox rules', () => {
@@ -83,5 +88,91 @@ describe('J6 outcome notifications', () => {
     expect(notificationViewScreen(ROLES.COORDINATOR)).toBe('Assigned events');
     expect(notificationViewScreen(ROLES.ORGANISER, { type: 'EQUIPMENT_ARRANGED' })).toBe('New event request');
     expect(notificationViewScreen(ROLES.VENUE_STAFF, { type: 'VENUE_BOOKING_APPROVED', booking_id: 'VB-1' })).toBeNull();
+  });
+});
+
+// J2 / SCRUM-151 — the organiser is told when their request moves. Each notice names
+// the event and the change (AC2), and an approval or rejection carries its reason (AC3).
+describe('J2 SCRUM-151 what the organiser is told', () => {
+  test('J2-TC1 AC1 AC2 a received submission names the event and says it is waiting for a coordinator', () => {
+    expect(eventSubmittedMessage({ eventName: 'Partner Summit' }))
+      .toBe('Partner Summit was submitted and is waiting for a coordinator.');
+    expect(eventSubmittedMessage({})).toBe('Your event was submitted and is waiting for a coordinator.');
+  });
+
+  test('J2-TC2 AC1 AC3 an approval names the event and carries the coordinator\'s reason', () => {
+    expect(eventDecisionMessage({ eventName: 'Partner Summit', approved: true, reason: ' Venue and equipment are confirmed. ' }))
+      .toBe('Partner Summit was approved — Venue and equipment are confirmed.');
+  });
+
+  test('J2-TC3 AC1 AC3 a rejection keeps the wording it already had, with its reason', () => {
+    expect(eventDecisionMessage({ eventName: 'Partner Summit', approved: false, reason: 'No suitable venue can be secured.' }))
+      .toBe('Partner Summit was rejected — No suitable venue can be secured.');
+  });
+
+  test('J2-TC4 AC1 AC2 a cancellation names the event and the reason, and reads sensibly with none', () => {
+    expect(eventCancelledMessage({ eventName: 'Partner Summit', reason: ' Speaker withdrew ' }))
+      .toBe('Partner Summit was cancelled — Speaker withdrew');
+    expect(eventCancelledMessage({ eventName: 'Partner Summit' })).toBe('Partner Summit was cancelled.');
+  });
+
+  test('J2-TC5 AC3 an approval or a rejection cannot be sent without a reason, and each says which is missing', () => {
+    expect(decisionReasonProblem('approve', '')).toBe('Approval reason is required.');
+    expect(decisionReasonProblem('approve', '   ')).toBe('Approval reason is required.');
+    expect(decisionReasonProblem('approve', undefined)).toBe('Approval reason is required.');
+    expect(decisionReasonProblem('reject', '  ')).toBe('Rejection reason is required.');
+    expect(decisionReasonProblem('approve', 'Looks good.')).toBeNull();
+    expect(decisionReasonProblem('reject', 'No venue.')).toBeNull();
+  });
+
+  test('J2-TC6 AC2 each of the seven moves has its own words in the inbox, not the generic Update', () => {
+    expect(ORGANISER_PROGRESS_TYPES).toEqual([
+      'EVENT_SUBMITTED', 'COORDINATOR_ASSIGNED', 'CLARIFICATION_REQUESTED', 'EVENT_APPROVED',
+      'EVENT_REJECTED', 'SAFETY_CHECK_APPROVED', 'EVENT_CANCELLED'
+    ]);
+    const labels = ORGANISER_PROGRESS_TYPES.map(notificationTypeLabel);
+    expect(labels).toEqual([
+      'Request received', 'Coordinator assigned', 'Clarification requested', 'Request approved',
+      'Request rejected', 'Event confirmed', 'Event cancelled'
+    ]);
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  test('J2-TC7 AC2 the organiser can open the event from each of the seven notices', () => {
+    ORGANISER_PROGRESS_TYPES.forEach((type) => expect(notificationViewScreen(ROLES.ORGANISER, { type })).toBe('New event request'));
+  });
+});
+
+// J2 / SCRUM-151 AC1 — "cancelled" is notified by D4 (Cancel an event), which is not
+// built yet. This guard turns red the day any source file sets an event to Cancelled
+// without also telling the organiser, so the dependency cannot be forgotten.
+describe('J2 SCRUM-151 hand-off to D4: cancelling an event tells the organiser', () => {
+  const SRC = path.resolve(__dirname, '..');
+  const WRITES_CANCELLED = /(status|newValue|new_value)\s*:\s*(EVENT_STATUS\.CANCELLED|["']CANCELLED["'])/;
+  const sources = (dir = SRC) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) return entry.name === 'node_modules' ? [] : sources(full);
+    return /\.js$/.test(entry.name) && !/\.test\.js$/.test(entry.name) ? [full] : [];
+  });
+
+  test('J2-TC8 the guard recognises a write that cancels an event, and ignores a comparison', () => {
+    expect(WRITES_CANCELLED.test('tx.update(eventRef, { status: EVENT_STATUS.CANCELLED, updated_at: at });')).toBe(true);
+    expect(WRITES_CANCELLED.test('eventHistoryRecord({ newValue: "CANCELLED" })')).toBe(true);
+    expect(WRITES_CANCELLED.test('if (event.status === EVENT_STATUS.CANCELLED) return;')).toBe(false);
+    expect(WRITES_CANCELLED.test('const TERMINAL = new Set([EVENT_STATUS.COMPLETED, EVENT_STATUS.CANCELLED]);')).toBe(false);
+  });
+
+  test('J2-TC9 AC1 every source file that sets an event to Cancelled also sends the organiser eventCancelledMessage as EVENT_CANCELLED', () => {
+    const offenders = sources()
+      .filter((file) => WRITES_CANCELLED.test(fs.readFileSync(file, 'utf8')))
+      .filter((file) => {
+        const text = fs.readFileSync(file, 'utf8');
+        return !(text.includes('eventCancelledMessage(') && text.includes('EVENT_CANCELLED'));
+      })
+      .map((file) => path.relative(SRC, file));
+
+    // When this fails: D4's cancel must write a notification to the event's organiser,
+    // in the same transaction as the status change (SCRUM-151 / J2 AC1).
+    expect(offenders).toEqual([]);
   });
 });

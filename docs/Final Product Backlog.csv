@@ -196,7 +196,8 @@ Acceptance Criteria:
 2. On cancellation the status becomes Cancelled, approved bookings are released, pending booking requests are withdrawn, and equipment reservations are released.
 3. Released venue windows and equipment quantities become available to other events immediately.
 4. Registered attendees are notified.
-5. A cancelled event is retained and remains viewable; it is never deleted.",5
+5. A cancelled event is retained and remains viewable; it is never deleted.
+6. The event's organiser is notified (J2 / SCRUM-151 AC1), naming the event and the cancellation reason, in the same transaction as the status change. J2 supplies eventCancelledMessage and a guard test that fails until this is done.",5
 Story,D5,D — Event Status and Information Management,Close out an event after it has taken place,"As an Event Coordinator, I want to mark an event completed so that finished events leave my active workload without losing their record.
 
 Acceptance Criteria:
