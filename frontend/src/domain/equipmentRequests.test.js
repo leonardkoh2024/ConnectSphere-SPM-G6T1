@@ -1,5 +1,6 @@
 import {
   equipmentRequestLines,
+  onSiteSupportProblem,
   validateEquipmentRequestLines
 } from "./equipmentRequests";
 
@@ -29,5 +30,21 @@ describe("G1 equipment requests", () => {
         { equipment_type: "AUDIO", quantity, technical_requirements: "" }
       ])).toMatch(/whole number greater than zero/i);
     }
+  });
+});
+
+// J5 / SCRUM-154 AC2 / AC4 — on-site support is recorded on the equipment request: a box
+// to tick, and once ticked, what is needed. Technical Support are told from that.
+describe("J5 SCRUM-154 on-site support on an equipment request", () => {
+  test("J5-TC19 AC2 not needing on-site support asks for nothing more", () => {
+    expect(onSiteSupportProblem(false, "")).toBe("");
+    expect(onSiteSupportProblem(false, "left over from before")).toBe("");
+  });
+
+  test("J5-TC20 AC2 needing on-site support asks what is needed, and blank words do not count", () => {
+    for (const details of ["", "   ", undefined]) {
+      expect(onSiteSupportProblem(true, details)).toBe("Describe the on-site support needed.");
+    }
+    expect(onSiteSupportProblem(true, "Two technicians for setup")).toBe("");
   });
 });

@@ -857,3 +857,32 @@ describe('J2 SCRUM-151 the organiser may send themselves the submission notice a
     expect(coordinatorBranch).toContain('.data.organiser_id');
   });
 });
+
+// J5 / SCRUM-154 — Technical Support notices. A coordinator's browser cannot list Technical
+// Support accounts, so the equipment service (Admin SDK, which these rules do not bind)
+// writes them and remembers what it last told them. The rules only need to let the
+// coordinator save the on-site fields, and to keep every browser away from the rest.
+describe('J5 SCRUM-154 Technical Support notices come only from the equipment service', () => {
+  const notices = () => matchBlock('notifications').match(/allow create:\s*if(.*)\);\s*$/)[1];
+
+  test('J5-RT1 AC2 AC4 the assigned coordinator may save the on-site support fields on their own request', () => {
+    const update = matchBlock('equipment_requests').match(/allow update:(.*)$/)[1];
+    expect(update).toMatch(/affectedKeys\(\)\.hasOnly\(\[[^\]]*'on_site_support'[^\]]*'on_site_support_details'[^\]]*\]\)/);
+    // Still only while Pending and before Technical Support have decided anything.
+    expect(update).toContain("resource.data.status == 'PENDING'");
+    expect(update).toContain("resource.data.get('has_support_decisions', false) == false");
+  });
+
+  test('J5-RT2 AC1 AC2 AC3 AC4 no browser may create a Technical Support notice of any of the four types', () => {
+    const refuse = "!(request.resource.data.get('type', '') in ['EQUIPMENT_REQUEST_RAISED', 'EQUIPMENT_REQUEST_AMENDED', 'ON_SITE_SUPPORT_REQUIRED', 'ON_SITE_SUPPORT_CHANGED'])";
+    expect(notices()).toContain(refuse);
+    // A conjunct of the whole rule: it comes before the clauses open.
+    expect(notices().indexOf(refuse)).toBeLessThan(notices().indexOf('venueBookingOutcomeNotice('));
+    // And no clause grants any of them: the type appears nowhere but in the refusal.
+    expect(notices().split(refuse).join('')).not.toMatch(/EQUIPMENT_REQUEST_RAISED|ON_SITE_SUPPORT/);
+  });
+
+  test('J5-RT3 AC3 what the service last told Technical Support is not reachable from any browser', () => {
+    expect(RULES).not.toContain('equipment_request_notices');
+  });
+});

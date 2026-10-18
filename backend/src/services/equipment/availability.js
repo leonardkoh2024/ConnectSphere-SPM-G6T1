@@ -13,6 +13,14 @@ export class EquipmentValidationError extends Error {
   }
 }
 
+export class EquipmentForbiddenError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "EquipmentForbiddenError";
+    this.statusCode = 403;
+  }
+}
+
 export class EquipmentNotFoundError extends Error {
   constructor(message) {
     super(message);

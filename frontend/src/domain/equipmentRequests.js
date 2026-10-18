@@ -8,6 +8,11 @@ export const equipmentRequestLines = (lines = []) => lines.map((line) => ({
   technical_requirements: String(line.technical_requirements || line.technical_note || line.technicalNote || "")
 }));
 
+// J5 / SCRUM-154 AC2 / AC4 — on-site support is a tick box on the request; once ticked,
+// the coordinator says what is needed. Not ticked asks for nothing.
+export const onSiteSupportProblem = (onSiteSupport, details) =>
+  onSiteSupport && !String(details ?? "").trim() ? "Describe the on-site support needed." : "";
+
 export const validateEquipmentRequestLines = (lines) => {
   if (!Array.isArray(lines) || lines.length === 0) {
     return "Add at least one equipment line before submitting.";

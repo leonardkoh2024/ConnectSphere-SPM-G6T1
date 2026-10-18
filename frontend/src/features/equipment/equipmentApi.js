@@ -3,6 +3,7 @@ import { auth, db } from "../../lib/firebase";
 import { EQUIPMENT_TYPES } from "../../domain/events";
 import {
   equipmentRequestLines,
+  onSiteSupportProblem,
   terminalEquipmentEventStatuses,
   validateEquipmentRequestLines
 } from "../../domain/equipmentRequests";
@@ -117,8 +118,10 @@ export const loadCoordinatorEquipmentEditor = async (eventId) => {
   };
 };
 
-export const submitEquipmentRequest = async ({ eventId, lines }) => {
+export const submitEquipmentRequest = async ({ eventId, lines, onSiteSupport = false, onSiteSupportDetails = "" }) => {
   if (!eventId) throw new Error("Choose an event before submitting an equipment request.");
+  const onSiteProblem = onSiteSupportProblem(onSiteSupport, onSiteSupportDetails);
+  if (onSiteProblem) throw new Error(onSiteProblem);
   const user = currentUser();
   const userProfile = await profile(user.uid);
   if (userProfile.role !== ROLES.COORDINATOR) throw new Error("Only an Event Coordinator can submit an equipment request.");
@@ -159,6 +162,10 @@ export const submitEquipmentRequest = async ({ eventId, lines }) => {
       end_time: event.end_time || null,
       expected_attendance: event.expected_attendance ?? null,
       lines: normalizedLines,
+      // J5 / SCRUM-154 — whether the event needs on-site support, and what. Details
+      // are kept only while the box is ticked.
+      on_site_support: Boolean(onSiteSupport),
+      on_site_support_details: onSiteSupport ? String(onSiteSupportDetails).trim() : "",
       status: "PENDING",
       submitted_at: existingRequest.exists() && existingRequest.data().submitted_at
         ? existingRequest.data().submitted_at
@@ -167,7 +174,24 @@ export const submitEquipmentRequest = async ({ eventId, lines }) => {
       created_at: existingRequest.exists() ? existingRequest.data().created_at : submittedAt
     });
   });
-  return { ok: true, status: "PENDING" };
+  // J5 / SCRUM-154 — now the request is saved, ask the equipment service to tell
+  // Technical Support. It compares the saved request with what they were last told
+  // and speaks only if it changed. If it cannot be reached the request stays saved,
+  // and the coordinator is told it was not announced; saving again retries.
+  let notified = true;
+  try {
+    await callEquipmentService(
+      user,
+      `/api/equipment/requests/${encodeURIComponent(eventId)}/notify-technical-support`,
+      "POST",
+      {},
+      "Technical Support could not be notified."
+    );
+  } catch (notifyError) {
+    console.error("Technical Support could not be notified about the equipment request.", notifyError);
+    notified = false;
+  }
+  return { ok: true, status: "PENDING", notified };
 };
 
 export const listPendingEquipmentRequests = async () => {

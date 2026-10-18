@@ -493,7 +493,10 @@ Acceptance Criteria:
 1. Technical Support Staff are notified when an equipment request is raised for the event that they are responsible for.
 2. Technical Support Staff are notified when there is a need for on-site support for the event that they are responsible for. 
 2. Technical Support Staff are notified when amendments to the equipment request for the event that they are responsible for has changes.
-2. Technical Support Staff are notified when there is a need for on-site support for the event that they are responsible for has changes.",3
+2. Technical Support Staff are notified when there is a need for on-site support for the event that they are responsible for has changes.
+5. (Clarified for J5 / SCRUM-154) 'Responsible for the event' means every active Technical Support Staff member: no Technical Support member is attached to an individual event, and all of them work one shared queue.
+6. (Clarified for J5 / SCRUM-154) On-site support is recorded on the equipment request as a tick box ('On-site support needed') with required details of what is needed; it is told as needed when first asked for, and as changed when withdrawn or reworded.
+7. (Clarified for J5 / SCRUM-154) A notice is sent only when the request or its on-site support actually changed since Technical Support were last told, so saving the same request again sends nothing.",3
 Story,J6,J — Notifications,Be told the outcome of my booking and equipment requests,"As an Event Coordinator, I want the outcomes pushed to me so that I know whether the event can be confirmed without polling two queues.
 
 Acceptance Criteria:

@@ -38,10 +38,14 @@ export default function EquipmentRequestsScreen({ onNotice, focusEventId = null,
     document.getElementById(`equipment-request-${focusEventId}`)?.scrollIntoView?.({ block: "start" });
   }, [loading, focusEventId]);
 
-  const submitted = async () => {
+  // J5 / SCRUM-154 — `notified: false` means the request is saved but the equipment
+  // service could not be asked to tell Technical Support; saving again retries.
+  const submitted = async ({ notified = true } = {}) => {
     await loadEvents();
     setSelectedEventId(null);
-    onNotice?.("Equipment request submitted to Technical Support.");
+    onNotice?.(notified
+      ? "Equipment request submitted to Technical Support."
+      : "Equipment request saved, but Technical Support could not be notified. Open it and submit again to retry.");
   };
 
   if (loading) return <p className="cs-panel-note">Loading assigned events…</p>;

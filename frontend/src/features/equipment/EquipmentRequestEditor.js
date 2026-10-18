@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { EQUIPMENT_TYPES } from "../../domain/events";
-import { validateEquipmentRequestLines } from "../../domain/equipmentRequests";
+import { onSiteSupportProblem, validateEquipmentRequestLines } from "../../domain/equipmentRequests";
 import Icon from "../../app/Icon";
 import { loadCoordinatorEquipmentEditor, submitEquipmentRequest } from "./equipmentApi";
 
@@ -10,6 +10,9 @@ export default function EquipmentRequestEditor({ eventId, onCancel, onSubmitted 
   const [event, setEvent] = useState(null);
   const [request, setRequest] = useState(null);
   const [lines, setLines] = useState([]);
+  // J5 / SCRUM-154 — on-site support is asked for on the request itself.
+  const [onSiteSupport, setOnSiteSupport] = useState(false);
+  const [onSiteSupportDetails, setOnSiteSupportDetails] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -21,6 +24,8 @@ export default function EquipmentRequestEditor({ eventId, onCancel, onSubmitted 
         if (!mounted) return;
         setEvent(result.event);
         setRequest(result.request);
+        setOnSiteSupport(Boolean(result.request?.on_site_support));
+        setOnSiteSupportDetails(String(result.request?.on_site_support_details || ""));
         setLines(result.lines.length ? result.lines : [blankLine()]);
       })
       .catch((loadError) => { if (mounted) setError(loadError.message); })
@@ -36,13 +41,18 @@ export default function EquipmentRequestEditor({ eventId, onCancel, onSubmitted 
   };
 
   const submit = async () => {
-    const validationError = validateEquipmentRequestLines(lines);
+    const validationError = validateEquipmentRequestLines(lines) || onSiteSupportProblem(onSiteSupport, onSiteSupportDetails);
     if (validationError) { setError(validationError); return; }
     setBusy(true);
     setError("");
     try {
-      await submitEquipmentRequest({ eventId, lines });
-      await onSubmitted();
+      const result = await submitEquipmentRequest({
+        eventId,
+        lines,
+        onSiteSupport,
+        onSiteSupportDetails: onSiteSupport ? onSiteSupportDetails : ""
+      });
+      await onSubmitted({ notified: result?.notified !== false });
     } catch (submitError) {
       setError(submitError.message);
     } finally {
@@ -95,6 +105,18 @@ export default function EquipmentRequestEditor({ eventId, onCancel, onSubmitted 
         onClick={() => setLines((current) => [...current, blankLine()])}>
         <Icon name="plus" />Add equipment line
       </button>
+      <label className="cs-check">
+        <input type="checkbox" checked={onSiteSupport}
+          onChange={(e) => { setOnSiteSupport(e.target.checked); setError(""); }} />
+        On-site support needed
+      </label>
+      {onSiteSupport && <div className="cs-form-grid">
+        <label className="cs-field cs-field-wide">
+          <span className="cs-field-name">On-site support details</span>
+          <textarea aria-label="On-site support details" rows="2" value={onSiteSupportDetails}
+            onChange={(e) => { setOnSiteSupportDetails(e.target.value); setError(""); }} />
+        </label>
+      </div>}
       {error && <p className="cs-error" role="alert">{error}</p>}
       <div className="cs-form-actions">
         <button type="button" className="cs-btn cs-btn-ghost" disabled={busy} onClick={onCancel}>Cancel</button>

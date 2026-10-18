@@ -3,6 +3,7 @@ import express from "express";
 import { createEquipmentCatalogue } from "./catalogue.js";
 import { createEquipmentRequestActions } from "./requests.js";
 import { createEquipmentReservations } from "./reservations.js";
+import { createSupportNotifier } from "./supportNotifications.js";
 
 export const createEquipmentService = ({
   firestore,
@@ -18,8 +19,11 @@ export const createEquipmentService = ({
   });
   const requestActions = createEquipmentRequestActions({ firestore, serverTimestamp });
   const catalogue = createEquipmentCatalogue({ firestore });
+  const supportNotifier = createSupportNotifier({ firestore, serverTimestamp });
 
-  const authenticateTechnicalSupport = async (request, response) => {
+  // Signs the caller in and checks their profile holds `role`; otherwise answers the
+  // request itself (401 or 403) and returns null.
+  const authenticate = async (request, response, role, refusal) => {
     const token = request.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
     if (!token) {
       response.status(401).json({ error: "Sign in is required." });
@@ -33,12 +37,43 @@ export const createEquipmentService = ({
       return null;
     }
     const profile = await firestore.collection("users").doc(user.uid).get();
-    if (!profile.exists || profile.data().role !== "TECHNICAL_SUPPORT_STAFF") {
-      response.status(403).json({ error: "Only Technical Support Staff can manage equipment reservations." });
+    if (!profile.exists || profile.data().role !== role) {
+      response.status(403).json({ error: refusal });
       return null;
     }
     return user;
   };
+
+  const authenticateTechnicalSupport = (request, response) => authenticate(
+    request, response, "TECHNICAL_SUPPORT_STAFF", "Only Technical Support Staff can manage equipment reservations."
+  );
+
+  // J5 / SCRUM-154 — the coordinator who has just saved an equipment request asks for
+  // Technical Support to be told. The service itself checks they coordinate the event.
+  const authenticateCoordinator = (request, response) => authenticate(
+    request, response, "EVENT_COORDINATOR", "Only an Event Coordinator can notify Technical Support."
+  );
+
+  router.post("/requests/:eventId/notify-technical-support", async (request, response, next) => {
+    let user;
+    try {
+      user = await authenticateCoordinator(request, response);
+    } catch (error) {
+      next(error);
+      return;
+    }
+    if (!user) return;
+
+    try {
+      response.json(await supportNotifier.notifyTechnicalSupport({
+        eventId: request.params.eventId,
+        userId: user.uid
+      }));
+    } catch (error) {
+      if (error.statusCode) response.status(error.statusCode).json({ error: error.message });
+      else next(error);
+    }
+  });
 
   router.get("/catalogue", async (request, response, next) => {
     try {
