@@ -3,6 +3,7 @@ import express from "express";
 import { admin, db } from "../../lib/firebaseAdmin.js";
 import {
   ApprovedBookingConflictError,
+  ConfirmationRequiredError,
   createSaveVenueUnavailability,
   VenueAssignmentError,
   VenueNotFoundError,
@@ -61,11 +62,13 @@ export function createVenueService({ firestore, verifyIdToken, serverTimestamp }
         venueId: venueId.trim(),
         userId: user.uid,
         keepPeriodIds,
-        additions: additions.map(({ start_datetime, end_datetime, reason }) => ({
+        additions: additions.map(({ start_datetime, end_datetime, reason, note }) => ({
           startDateTime: start_datetime,
           endDateTime: end_datetime,
-          reason
-        }))
+          reason,
+          note
+        })),
+        confirmOverlaps: request.body?.confirm_overlaps === true
       });
       response.json({ periods: result.periods.map((period) => ({
         id: period.id,
@@ -77,6 +80,7 @@ export function createVenueService({ firestore, verifyIdToken, serverTimestamp }
     } catch (error) {
       if (error instanceof VenueNotFoundError) response.status(404).json({ error: error.message });
       else if (error instanceof VenueAssignmentError) response.status(403).json({ error: error.message });
+      else if (error instanceof ConfirmationRequiredError) response.status(409).json({ error: error.message, confirmation_required: true, affected: error.affected });
       else if (error instanceof ApprovedBookingConflictError) response.status(409).json({ error: error.message });
       else if (error instanceof TypeError) response.status(400).json({ error: error.message });
       else if (error instanceof UnavailabilityNotFoundError) response.status(409).json({ error: error.message });

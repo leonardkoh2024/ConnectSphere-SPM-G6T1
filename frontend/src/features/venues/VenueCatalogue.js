@@ -120,8 +120,8 @@ export default function VenueCatalogue({ user, role, showCalendar = false, onClo
     }
   };
 
-  const saveUnavailabilityChanges = async ({ venueId, keepPeriodIds, additions }) => {
-    const result = await saveVenueUnavailability({ user, venueId, keepPeriodIds, additions });
+  const saveUnavailabilityChanges = async ({ venueId, keepPeriodIds, additions, confirmOverlaps }) => {
+    const result = await saveVenueUnavailability({ user, venueId, keepPeriodIds, additions, confirmOverlaps });
     setUnavailability((current) => [
       ...current.filter((period) => period.venue_id !== venueId),
       ...result.periods
@@ -210,6 +210,7 @@ export default function VenueCatalogue({ user, role, showCalendar = false, onClo
             venue={venue}
             periods={unavailability.filter((period) => period.venue_id === venue.venue_id)}
             canEdit={canEditVenue(venue)}
+            bookings={bookings.filter((booking) => booking.venue_id === venue.venue_id)}
             onSave={saveUnavailabilityChanges}
           />
         </>}

@@ -2,20 +2,23 @@ import React, { useEffect, useState } from "react";
 import { BookingAcknowledgementNotice } from "./VenueBookingRequest";
 import { loadVenueSearchContext } from "./venuesApi";
 import Icon from "../../app/Icon";
+import { UNAVAILABILITY_REASONS, affectedApprovedBookings, calendarSegments } from "../../domain/venueBooking";
 
 const formatDateTime = (value) => {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Time not set" : date.toLocaleString();
 };
 
-export function VenueUnavailabilityManager({ venue, periods = [], canEdit = false, onSave }) {
+export function VenueUnavailabilityManager({ venue, periods = [], bookings = [], canEdit = false, onSave }) {
   const [startDateTime, setStartDateTime] = useState("");
   const [endDateTime, setEndDateTime] = useState("");
   const [reason, setReason] = useState("");
+  const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [stagedAdditions, setStagedAdditions] = useState([]);
   const [releasedIds, setReleasedIds] = useState([]);
+  const [pendingConfirm, setPendingConfirm] = useState(null);
   const persistedPeriodIds = periods.map((period) => period.id).join("|");
 
   useEffect(() => {
@@ -32,21 +35,47 @@ export function VenueUnavailabilityManager({ venue, periods = [], canEdit = fals
       setError("Choose an end date and time after the start.");
       return;
     }
-    if (!reason.trim()) {
-      setError("Enter a reason for blocking this venue.");
+    if (!UNAVAILABILITY_REASONS.includes(reason)) {
+      setError("Choose a reason for blocking this venue.");
+      return;
+    }
+    if (reason === "Other" && !note.trim()) {
+      setError("Enter a note when the reason is Other.");
       return;
     }
 
-    setError("");
-    setStagedAdditions((current) => [...current, {
-      id: `draft-${Date.now()}-${current.length}`,
+    const draft = {
       start_datetime: start.toISOString(),
       end_datetime: end.toISOString(),
-      reason: reason.trim()
+      reason,
+      note: note.trim()
+    };
+    const affected = affectedApprovedBookings({
+      venueId: venue.venue_id,
+      start: draft.start_datetime,
+      end: draft.end_datetime,
+      bookings
+    });
+    if (affected.length) {
+      setPendingConfirm({ draft, affected });
+      setError("");
+      return;
+    }
+    stageAddition(draft, false);
+  };
+
+  const stageAddition = (draft, confirmed) => {
+    setError("");
+    setPendingConfirm(null);
+    setStagedAdditions((current) => [...current, {
+      id: `draft-${Date.now()}-${current.length}`,
+      ...draft,
+      confirmed
     }]);
     setStartDateTime("");
     setEndDateTime("");
     setReason("");
+    setNote("");
   };
 
   const toggleRelease = (periodId) => {
@@ -67,7 +96,13 @@ export function VenueUnavailabilityManager({ venue, periods = [], canEdit = fals
       await onSave({
         venueId: venue.venue_id,
         keepPeriodIds: periods.filter((period) => !releasedIds.includes(period.id)).map((period) => period.id),
-        additions: stagedAdditions.map(({ start_datetime, end_datetime, reason }) => ({ start_datetime, end_datetime, reason }))
+        additions: stagedAdditions.map(({ start_datetime, end_datetime, reason: periodReason, note: periodNote }) => ({
+          start_datetime,
+          end_datetime,
+          reason: periodReason,
+          note: periodNote || ""
+        })),
+        confirmOverlaps: stagedAdditions.some((period) => period.confirmed)
       });
       setStagedAdditions([]);
       setReleasedIds([]);
@@ -107,9 +142,30 @@ export function VenueUnavailabilityManager({ venue, periods = [], canEdit = fals
           <div className="cs-form-grid">
             <label className="cs-field"><span className="cs-field-name">Starts</span><input required type="datetime-local" value={startDateTime} onChange={(event) => setStartDateTime(event.target.value)} /></label>
             <label className="cs-field"><span className="cs-field-name">Ends</span><input required type="datetime-local" value={endDateTime} onChange={(event) => setEndDateTime(event.target.value)} /></label>
-            <label className="cs-field cs-field-wide"><span className="cs-field-name">Reason</span><textarea required rows="2" value={reason} onChange={(event) => setReason(event.target.value)} /></label>
+            <label className="cs-field cs-field-wide"><span className="cs-field-name">Reason</span>
+              <select required value={reason} onChange={(event) => setReason(event.target.value)}>
+                <option value="">Choose a reason</option>
+                {UNAVAILABILITY_REASONS.map((item) => <option value={item} key={item}>{item}</option>)}
+              </select>
+            </label>
+            {reason === "Other" && (
+              <label className="cs-field cs-field-wide"><span className="cs-field-name">Note</span>
+                <textarea required rows="2" value={note} onChange={(event) => setNote(event.target.value)} />
+              </label>
+            )}
           </div>
           <button type="submit" className="cs-btn cs-btn-secondary"><Icon name="plus" />Add period</button>
+          {pendingConfirm && (
+            <div className="cs-panel-note" role="alert">
+              <p>This period overlaps approved bookings. Confirm to take the venue out of use. Bookings stay in place and are marked for replacement.</p>
+              <ul>
+                {pendingConfirm.affected.map((booking) => (
+                  <li key={booking.booking_id || booking.reference_no}>{booking.event_name || booking.reference_no || booking.booking_id}</li>
+                ))}
+              </ul>
+              <button type="button" className="cs-btn cs-btn-primary" onClick={() => stageAddition(pendingConfirm.draft, true)}>Confirm and add period</button>
+            </div>
+          )}
         </form>
       )}
       {canEdit && <div className="cs-form-actions cs-availability-save-actions">
@@ -143,13 +199,24 @@ export default function VenueAvailabilityCalendar({ user, role }) {
   if (error) return <p className="cs-error">{error}</p>;
 
   const venue = context.venues.find((item) => item.venue_id === venueId);
+  const bookingEntries = context.bookings.filter((item) => item.venue_id === venueId).flatMap((item) => {
+    const approved = String(item.status || "").toUpperCase() === "APPROVED";
+    const label = item.event_name || item.reference_no || item.booking_id || "Venue booking";
+    if (!approved) {
+      return [{ ...item, kind: "pending", label }];
+    }
+    return calendarSegments(item, venue || {}).map((segment) => ({
+      ...item,
+      id: `${item.booking_id || item.id}-${segment.kind}`,
+      kind: segment.kind === "event" ? "booked" : segment.kind,
+      start_datetime: new Date(segment.start).toISOString(),
+      end_datetime: new Date(segment.end).toISOString(),
+      label: segment.kind === "setup" ? `Setup · ${label}` : segment.kind === "turnaround" ? `Turnaround · ${label}` : label
+    }));
+  });
   const entries = [
     ...context.unavailability.filter((item) => item.venue_id === venueId).map((item) => ({ ...item, kind: "blocked", label: item.reason })),
-    ...context.bookings.filter((item) => item.venue_id === venueId).map((item) => ({
-      ...item,
-      kind: String(item.status || "").toUpperCase() === "APPROVED" ? "booked" : "pending",
-      label: item.event_name || item.reference_no || item.booking_id || "Venue booking"
-    }))
+    ...bookingEntries
   ].sort((left, right) => new Date(left.start_datetime) - new Date(right.start_datetime));
 
   return (
@@ -169,7 +236,7 @@ export default function VenueAvailabilityCalendar({ user, role }) {
                 {/* E8 AC3 — the shortfalls the coordinator accepted, where Venue Staff assess the booking. */}
                 <BookingAcknowledgementNotice acknowledgement={item.suitability_acknowledgement} />
               </div>
-              <span className={`cs-availability-${item.kind}`}>{item.kind === "blocked" ? "Blocked" : item.kind === "booked" ? "Approved booking" : "Pending booking"}</span>
+              <span className={`cs-availability-${item.kind}`}>{item.kind === "blocked" ? "Blocked" : item.kind === "booked" ? "Approved booking" : item.kind === "setup" ? "Setup" : item.kind === "turnaround" ? "Turnaround" : "Pending booking"}</span>
             </li>
           ))}
         </ol> : <p className="cs-panel-note">No availability data recorded for this venue.</p>}

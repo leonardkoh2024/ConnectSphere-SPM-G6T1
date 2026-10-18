@@ -1,0 +1,38 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Root scripts load this with dotenv-cli. Values stay empty; service tests mock Firestore.
+      - name: Provide env file
+        run: cp .env.example .env
+
+      - name: Frontend tests
+        run: npm test --workspace frontend -- --watchAll=false
+        env:
+          CI: true
+
+      # The integration file refuses to run unless FIRESTORE_EMULATOR_HOST is set.
+      - name: Backend tests
+        working-directory: backend
+        run: node --test --test-skip-pattern "integration\\.test"
+
+      - name: Functional tests
+        run: node --test test.js

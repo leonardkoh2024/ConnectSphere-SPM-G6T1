@@ -31,14 +31,14 @@ test("assigned staff can stage multiple periods and save them together", async (
 
   fireEvent.change(screen.getByLabelText("Starts"), { target: { value: "2026-10-12T09:00" } });
   fireEvent.change(screen.getByLabelText("Ends"), { target: { value: "2026-10-12T12:00" } });
-  fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Electrical maintenance" } });
+  fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Maintenance" } });
   await userEvent.click(screen.getByRole("button", { name: /add period/i }));
   expect(onSave).not.toHaveBeenCalled();
   expect(screen.getByText("Pending save")).toBeInTheDocument();
 
   fireEvent.change(screen.getByLabelText("Starts"), { target: { value: "2026-10-13T09:00" } });
   fireEvent.change(screen.getByLabelText("Ends"), { target: { value: "2026-10-13T12:00" } });
-  fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Floor repairs" } });
+  fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Renovation" } });
   await userEvent.click(screen.getByRole("button", { name: /add period/i }));
   expect(onSave).not.toHaveBeenCalled();
 
@@ -47,9 +47,10 @@ test("assigned staff can stage multiple periods and save them together", async (
     venueId: "VEN-001",
     keepPeriodIds: [],
     additions: [
-      { start_datetime: new Date("2026-10-12T09:00").toISOString(), end_datetime: new Date("2026-10-12T12:00").toISOString(), reason: "Electrical maintenance" },
-      { start_datetime: new Date("2026-10-13T09:00").toISOString(), end_datetime: new Date("2026-10-13T12:00").toISOString(), reason: "Floor repairs" }
-    ]
+      { start_datetime: new Date("2026-10-12T09:00").toISOString(), end_datetime: new Date("2026-10-12T12:00").toISOString(), reason: "Maintenance", note: "" },
+      { start_datetime: new Date("2026-10-13T09:00").toISOString(), end_datetime: new Date("2026-10-13T12:00").toISOString(), reason: "Renovation", note: "" }
+    ],
+    confirmOverlaps: false
   }));
 });
 
@@ -66,7 +67,7 @@ test("assigned staff stage a release and persist it only on save", async () => {
   expect(screen.getByText("Pending release")).toBeInTheDocument();
   expect(onSave).not.toHaveBeenCalled();
   await userEvent.click(screen.getByRole("button", { name: /save changes/i }));
-  await waitFor(() => expect(onSave).toHaveBeenCalledWith({ venueId: "VEN-001", keepPeriodIds: [], additions: [] }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledWith({ venueId: "VEN-001", keepPeriodIds: [], additions: [], confirmOverlaps: false }));
 });
 
 test("an approved venue block appears in the availability calendar", async () => {

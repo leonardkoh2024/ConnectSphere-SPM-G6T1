@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  ApprovedBookingConflictError,
+  ConfirmationRequiredError,
   createSaveVenueUnavailability,
   VenueAssignmentError,
   UnavailabilityNotFoundError
@@ -50,7 +50,11 @@ class FakeTransaction {
       const docs = Object.entries(this.store)
         .filter(([path]) => path.startsWith(`${reference.collection}/`))
         .filter(([, data]) => reference.filters.every(([field, operator, value]) => operator === "==" && data[field] === value))
-        .map(([path, data]) => ({ id: path.split("/")[1], data: () => data }));
+        .map(([path, data]) => ({
+          id: path.split("/")[1],
+          ref: { path },
+          data: () => data
+        }));
       return { docs };
     }
     const data = this.store[reference.path];
@@ -58,6 +62,9 @@ class FakeTransaction {
   }
   set(reference, data) {
     this.store[reference.path] = data;
+  }
+  update(reference, data) {
+    this.store[reference.path] = { ...this.store[reference.path], ...data };
   }
   delete(reference) {
     delete this.store[reference.path];
@@ -130,24 +137,58 @@ test("allows assigned staff when the assignment document ID differs from the ven
   }));
 });
 
-test("refuses an overlap with an approved booking and names that booking", async () => {
+test("asks for confirmation before a period overlaps an approved booking", async () => {
   const firestore = fakeFirestore(seedAssignedVenue({
     "venue_bookings/book-42": {
       venue_id: "VEN-001",
       status: "APPROVED",
       reference_no: "BK-042",
+      event_id: "EVT-001",
       start_datetime: new Date("2026-10-12T11:00:00.000Z"),
       end_datetime: new Date("2026-10-12T13:00:00.000Z")
-    }
+    },
+    "events/EVT-001": { coordinator_id: "coordinator-1", status: "PLANNING" }
   }));
   const save = createSaveVenueUnavailability({ firestore, serverTimestamp: () => "STAMP" });
 
   await assert.rejects(save({ venueId: "VEN-001", userId: "staff-1", keepPeriodIds: [], additions: [{ startDateTime: periodInput.startDateTime, endDateTime: periodInput.endDateTime, reason: periodInput.reason }] }), (error) => {
-    assert.ok(error instanceof ApprovedBookingConflictError);
-    assert.match(error.message, /BK-042/);
+    assert.ok(error instanceof ConfirmationRequiredError);
+    assert.equal(error.affected[0].label, "BK-042");
     return true;
   });
   assert.equal(Object.keys(firestore.store).some((path) => path.startsWith("venue_unavailability/")), false);
+});
+
+test("a confirmed period is saved, the booking is marked for replacement, and the coordinator is notified", async () => {
+  const firestore = fakeFirestore(seedAssignedVenue({
+    "venue_bookings/book-42": {
+      venue_id: "VEN-001",
+      status: "APPROVED",
+      reference_no: "BK-042",
+      event_id: "EVT-001",
+      start_datetime: new Date("2026-10-12T11:00:00.000Z"),
+      end_datetime: new Date("2026-10-12T13:00:00.000Z")
+    },
+    "events/EVT-001": { coordinator_id: "coordinator-1", status: "PLANNING" }
+  }));
+  const save = createSaveVenueUnavailability({ firestore, serverTimestamp: () => "STAMP" });
+
+  const result = await save({
+    venueId: "VEN-001",
+    userId: "staff-1",
+    keepPeriodIds: [],
+    confirmOverlaps: true,
+    additions: [{ startDateTime: periodInput.startDateTime, endDateTime: periodInput.endDateTime, reason: "Maintenance" }]
+  });
+
+  assert.equal(result.periods[0].reason, "Maintenance");
+  assert.equal(firestore.store["venue_bookings/book-42"].status, "APPROVED");
+  assert.equal(firestore.store["venue_bookings/book-42"].replacement_status, "Venue unavailable - replacement needed");
+  assert.equal(firestore.store["events/EVT-001"].status, "PLANNING");
+  const notice = Object.entries(firestore.store).find(([path]) => path.startsWith("notifications/"));
+  assert.equal(notice[1].user_id, "coordinator-1");
+  assert.equal(notice[1].event_id, "EVT-001");
+  assert.equal(notice[1].reason, "Maintenance");
 });
 
 test("allows touching periods and ignores non-approved bookings", async () => {

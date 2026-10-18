@@ -105,8 +105,8 @@ export const isOccupied = (venue, window, bookings = [], unavailability = []) =>
   return blocks.some((block) => {
     const requestedStart = asDate(`${window.event_date || ""}T${window.start_time || ""}`);
     const requestedEnd = asDate(`${window.event_date || ""}T${window.end_time || ""}`);
-    const blockStart = asDate(block.start_datetime);
-    const blockEnd = asDate(block.end_datetime);
+    const blockStart = asDate(block.occupied_start || block.start_datetime);
+    const blockEnd = asDate(block.occupied_end || block.end_datetime);
     if (requestedStart && requestedEnd && blockStart && blockEnd) {
       return requestedStart < blockEnd && blockStart < requestedEnd;
     }
