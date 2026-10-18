@@ -377,14 +377,15 @@ describe('TC-284 notifications are only ever addressed to people related to the 
 
   test("every branch ties the recipient to the event's organiser or coordinator", () => {
     // The coordinator, organiser, safety-officer and (A6) Lead branches, in order,
-    // then (J4) Venue Staff for their own venue.
+    // then (J2) the organiser's own submission notice, then (J4) Venue Staff for their
+    // own venue. J2 added the fifth of these six, so the count was 5 before it.
     const branches = ordinary().split(/\|\| \(/);
-    expect(branches).toHaveLength(5);
+    expect(branches).toHaveLength(6);
     branches.slice(0, 4).forEach((branch) => {
       expect(branch).toMatch(/request\.resource\.data\.user_id (==|in)/);
       expect(branch).toMatch(/organiser_id|coordinator_id/);
     });
-    expect(branches[4]).toMatch(/venue_staff\/.*\.data\.user_id == request\.resource\.data\.user_id/);
+    expect(branches[5]).toMatch(/venue_staff\/.*\.data\.user_id == request\.resource\.data\.user_id/);
   });
 
   // J6 / SCRUM-155 AC1 — TC-313. A booking's outcome goes only to the coordinator
@@ -818,5 +819,41 @@ describe('D1 SCRUM-111 ordinary event details are edited only with a recorded hi
     expect(events).toContain('change.actor_id == request.auth.uid');
     expect(events).toContain('change.created_at == request.time');
     expect(events).toContain('change.event_id == eventId');
+  });
+});
+
+// J2 / SCRUM-151 AC1 — "submission received". The event has no coordinator yet, so the
+// only person it can be told to is the organiser, and the organiser is the one writing
+// it. The rule is as narrow as it can be made: their own event, their own inbox, one type,
+// and only while the event is Submitted.
+describe('J2 SCRUM-151 the organiser may send themselves the submission notice and nothing else', () => {
+  const notices = () => matchBlock('notifications').match(/allow create:\s*if(.*)\);\s*$/)[1];
+  const submissionBranch = () => {
+    const found = notices().split(/\|\| \(/).filter((branch) => branch.includes("'EVENT_SUBMITTED'"));
+    expect(found).toHaveLength(1);
+    return found[0];
+  };
+
+  test('J2-RT1 AC1 the branch is the event\'s owner, writing to their own inbox, while the event is Submitted', () => {
+    expect(submissionBranch()).toContain('ownsEvent(request.resource.data.event_id)');
+    expect(submissionBranch()).toContain('request.resource.data.user_id == request.auth.uid');
+    expect(submissionBranch()).toContain("get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.status == 'SUBMITTED'");
+  });
+
+  test('J2-RT2 AC1 the type is pinned, so an organiser cannot write any other kind of notice to themselves', () => {
+    expect(submissionBranch()).toContain("request.resource.data.type == 'EVENT_SUBMITTED'");
+    expect(submissionBranch()).not.toMatch(/'type', ''\) in|\.type in /);
+  });
+
+  test('J2-RT3 AC1 sweep: every notification clause an organiser can use names the event they own', () => {
+    const organiserBranches = notices().split(/\|\| \(/).filter((branch) => branch.includes('ownsEvent('));
+    expect(organiserBranches.length).toBeGreaterThanOrEqual(2);
+    organiserBranches.forEach((branch) => expect(branch).toContain('ownsEvent(request.resource.data.event_id)'));
+  });
+
+  test('J2-RT4 AC1 AC3 the coordinator may still tell the event\'s organiser about a decision', () => {
+    const coordinatorBranch = notices().split(/\|\| \(/).find((branch) => branch.includes('currentCoordinator(request.resource.data.event_id)'));
+    expect(coordinatorBranch).toBeDefined();
+    expect(coordinatorBranch).toContain('.data.organiser_id');
   });
 });
