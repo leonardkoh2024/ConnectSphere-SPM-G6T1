@@ -28,6 +28,11 @@ export const NOTIFICATION_TYPE_LABEL = {
   VENUE_BOOKING_APPROVED: "Venue booking approved",
   VENUE_BOOKING_REJECTED: "Venue booking rejected",
   EQUIPMENT_ARRANGED: "Equipment reserved",
+  // J5 / SCRUM-154 — what Technical Support are told, written by the equipment service.
+  EQUIPMENT_REQUEST_RAISED: "Equipment request raised",
+  EQUIPMENT_REQUEST_AMENDED: "Equipment request amended",
+  ON_SITE_SUPPORT_REQUIRED: "On-site support needed",
+  ON_SITE_SUPPORT_CHANGED: "On-site support changed",
   EQUIPMENT_UNABLE_TO_FULFIL: "Equipment unavailable"
 };
 

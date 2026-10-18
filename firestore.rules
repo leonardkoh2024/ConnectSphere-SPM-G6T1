@@ -464,6 +464,9 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.notification_id == notificationId
         && !(request.resource.data.get('type', '') in ['EQUIPMENT_ARRANGED', 'EQUIPMENT_UNABLE_TO_FULFIL'])
+        // J5 AC1-AC4 — Technical Support's notices are written only by the equipment
+        // service (Admin SDK), which these rules do not bind, so no browser may create one.
+        && !(request.resource.data.get('type', '') in ['EQUIPMENT_REQUEST_RAISED', 'EQUIPMENT_REQUEST_AMENDED', 'ON_SITE_SUPPORT_REQUIRED', 'ON_SITE_SUPPORT_CHANGED'])
         && (
           (request.resource.data.get('type', '') in ['VENUE_BOOKING_APPROVED', 'VENUE_BOOKING_REJECTED']
             && request.resource.data.get('booking_id', null) is string
@@ -691,7 +694,8 @@ service cloud.firestore {
         && request.resource.data.updated_at is timestamp
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'event_name', 'reference_no', 'event_date', 'start_time', 'end_time',
-          'expected_attendance', 'coordinator_id', 'lines', 'updated_at'
+          'expected_attendance', 'coordinator_id', 'lines', 'on_site_support',
+          'on_site_support_details', 'updated_at'
         ]);
     }
     match /equipment_request_history/{historyId} {

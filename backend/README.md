@@ -79,6 +79,15 @@ Both write an `equipment_request_history` audit record with the actor and server
 can read that history only for currently assigned events; the request moves to `ARRANGED` only when every
 line is reserved or explicitly resolved.
 
+J5 adds `POST /api/equipment/requests/{eventId}/notify-technical-support`, called by the coordinator's browser
+after it saves an equipment request. It requires an Event Coordinator Firebase ID token and checks the caller
+coordinates the event. A coordinator's browser cannot list Technical Support accounts, so this service writes
+the notices (`EQUIPMENT_REQUEST_RAISED`, `EQUIPMENT_REQUEST_AMENDED`, `ON_SITE_SUPPORT_REQUIRED`,
+`ON_SITE_SUPPORT_CHANGED`) to every active Technical Support user. It keeps what it last told them in
+`equipment_request_notices/{eventId}` (no browser rule; Admin SDK only) and sends only what changed since, so
+asking twice sends once. See `src/services/equipment/supportNotifications.js`. Like `outcomeNotifications.js`,
+it creates `notifications` documents and reads `users` and `events`; revisit once `notification` exists.
+
 **Week 7 changes affect the mounted services.** K1 replaces C1's automatic assignment with an unassigned
 queue that the Event Coordinator Lead assigns from, so `coordinatorAssignment`'s rotation (ADR 0001) is no
 longer the release 1 behaviour. E11 replaces E3 criterion 3, so the venue service's refusal of unavailability
