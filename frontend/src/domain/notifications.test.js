@@ -176,3 +176,12 @@ describe('J2 SCRUM-151 hand-off to D4: cancelling an event tells the organiser',
     expect(offenders).toEqual([]);
   });
 });
+
+describe('J5 SCRUM-154 Technical Support notices read in words, not constants', () => {
+  test('J5-TC21 AC1 AC2 AC3 AC4 each notice type the equipment service writes has its own label', () => {
+    expect(notificationTypeLabel('EQUIPMENT_REQUEST_RAISED')).toBe('Equipment request raised');
+    expect(notificationTypeLabel('EQUIPMENT_REQUEST_AMENDED')).toBe('Equipment request amended');
+    expect(notificationTypeLabel('ON_SITE_SUPPORT_REQUIRED')).toBe('On-site support needed');
+    expect(notificationTypeLabel('ON_SITE_SUPPORT_CHANGED')).toBe('On-site support changed');
+  });
+});

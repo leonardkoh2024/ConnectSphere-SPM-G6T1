@@ -17,7 +17,7 @@ jest.mock("../../lib/firebase", () => ({
   db: { name: "test-firestore" }
 }));
 
-import { getDocs } from "firebase/firestore";
+import { getDocs, runTransaction, serverTimestamp } from "firebase/firestore";
 import { auth } from "../../lib/firebase";
 import {
   amendEquipmentRequestLine,
@@ -25,7 +25,8 @@ import {
   loadEquipmentCatalogue,
   markEquipmentLineUnableToFulfill,
   releaseEquipmentReservation,
-  reserveEquipmentForEvent
+  reserveEquipmentForEvent,
+  submitEquipmentRequest
 } from "./equipmentApi";
 
 const originalFetch = global.fetch;
@@ -229,4 +230,89 @@ test("TC-389 pending requests carry their coordinator's name, and a profile that
   // One profile read per coordinator, however many events they hold.
   expect(mockGetDoc.mock.calls.map(([reference]) => reference.path).filter((path) => path !== "users/tech-1"))
     .toEqual(["users/coord-1", "users/coord-gone"]);
+});
+
+// J5 / SCRUM-154 — what the coordinator's browser saves, and how it asks the equipment
+// service to tell Technical Support. The request is saved here (G1, unchanged); the
+// service compares it with what Technical Support were last told and speaks only if it
+// differs, so a failed ask never loses the request and a repeated ask never repeats.
+describe("J5 SCRUM-154 saving an equipment request and telling Technical Support", () => {
+  const submitted = {
+    eventId: "event-1",
+    lines: [{ equipment_type: "AUDIO", quantity: "2", technical_requirements: "Wireless" }]
+  };
+
+  const asCoordinator = ({ event = { coordinator_id: "tech-1", name: "Partner Summit", reference_no: "EVT-001", status: "APPROVED" } } = {}) => {
+    const writes = [];
+    mockGetDoc.mockResolvedValue(snapshot({ role: "EVENT_COORDINATOR" }));
+    serverTimestamp.mockReturnValue("now");
+    runTransaction.mockImplementation(async (_database, callback) => callback({
+      get: async (reference) => reference.path === "events/event-1"
+        ? { exists: () => true, data: () => event }
+        : { exists: () => false, data: () => undefined },
+      set: (reference, data) => writes.push([reference.path, data])
+    }));
+    return writes;
+  };
+
+  test("J5-TC22 AC2 the request records that on-site support is needed, with its details trimmed", async () => {
+    const writes = asCoordinator();
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ sent: 2 }) });
+    await submitEquipmentRequest({ ...submitted, onSiteSupport: true, onSiteSupportDetails: "  Two technicians for setup  " });
+
+    expect(writes).toHaveLength(1);
+    expect(writes[0][0]).toBe("equipment_requests/event-1");
+    expect(writes[0][1]).toMatchObject({ on_site_support: true, on_site_support_details: "Two technicians for setup" });
+  });
+
+  test("J5-TC23 AC2 a request that does not need on-site support stores false and no details, even if some were typed", async () => {
+    const writes = asCoordinator();
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ sent: 2 }) });
+    await submitEquipmentRequest({ ...submitted, onSiteSupport: false, onSiteSupportDetails: "typed, then unticked" });
+    expect(writes[0][1]).toMatchObject({ on_site_support: false, on_site_support_details: "" });
+
+    writes.length = 0;
+    await submitEquipmentRequest(submitted);
+    expect(writes[0][1]).toMatchObject({ on_site_support: false, on_site_support_details: "" });
+  });
+
+  test("J5-TC24 AC1 AC3 once saved, the browser asks the equipment service to tell Technical Support", async () => {
+    asCoordinator();
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ eventId: "event-1", sent: 2 }) });
+
+    await expect(submitEquipmentRequest(submitted)).resolves.toEqual({ ok: true, status: "PENDING", notified: true });
+    expect(mockFetch).toHaveBeenCalledWith("/api/equipment/requests/event-1/notify-technical-support", expect.any(Object));
+    const [, options] = mockFetch.mock.calls[0];
+    expect(options.method).toBe("POST");
+    expect(options.headers.Authorization).toMatch(/^Bearer /);
+    // Asked after the save, never before: the service reads the saved request.
+    expect(runTransaction.mock.invocationCallOrder[0]).toBeLessThan(mockFetch.mock.invocationCallOrder[0]);
+  });
+
+  test("J5-TC25 AC1 when the service cannot be reached the request stays saved, and the coordinator is told it was not announced", async () => {
+    const writes = asCoordinator();
+    mockFetch.mockRejectedValue(new Error("connect ECONNREFUSED"));
+    await expect(submitEquipmentRequest(submitted)).resolves.toEqual({ ok: true, status: "PENDING", notified: false });
+    expect(writes).toHaveLength(1);
+
+    mockFetch.mockResolvedValue({ ok: false, json: async () => ({ error: "Only the event's coordinator can do this." }) });
+    await expect(submitEquipmentRequest(submitted)).resolves.toEqual({ ok: true, status: "PENDING", notified: false });
+  });
+
+  test("J5-TC26 AC2 on-site support without details is refused before anything is saved or announced", async () => {
+    const writes = asCoordinator();
+    for (const onSiteSupportDetails of ["", "   ", undefined]) {
+      await expect(submitEquipmentRequest({ ...submitted, onSiteSupport: true, onSiteSupportDetails }))
+        .rejects.toThrow("Describe the on-site support needed.");
+    }
+    expect(runTransaction).not.toHaveBeenCalled();
+    expect(writes).toHaveLength(0);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test("J5-TC27 AC1 a request that could not be saved is never announced", async () => {
+    asCoordinator({ event: { coordinator_id: "someone-else", status: "APPROVED" } });
+    await expect(submitEquipmentRequest(submitted)).rejects.toThrow(/only the assigned event coordinator/i);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
 });

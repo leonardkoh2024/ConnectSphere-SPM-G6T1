@@ -86,13 +86,16 @@ test("G1 coordinator can amend the prefilled organiser lines and submit them", a
   await userEvent.type(requirement, "Two wireless handheld microphones");
   await userEvent.click(screen.getByRole("button", { name: /submit equipment request/i }));
 
+  // J5 / SCRUM-154 changed this call: it now also says whether on-site support is needed.
   await waitFor(() => expect(submitEquipmentRequest).toHaveBeenCalledWith({
     eventId: "event-1",
     lines: [{
       equipment_type: "AUDIO",
       quantity: "2",
       technical_requirements: "Two wireless handheld microphones"
-    }]
+    }],
+    onSiteSupport: false,
+    onSiteSupportDetails: ""
   }));
   expect(onSubmitted).toHaveBeenCalledTimes(1);
 });
@@ -466,4 +469,86 @@ test("TC-391 the Availability check names each event's coordinator, or says it i
   render(<EquipmentAvailabilityScreen />);
   const card = (await screen.findByRole("heading", { name: "Partner Summit" })).closest("article");
   expect(card).toHaveTextContent("Coordinator: Not recorded");
+});
+
+// J5 / SCRUM-154 AC2 / AC4 — on-site support is asked for on the equipment request, and the
+// service tells Technical Support from what is saved there.
+describe("J5 SCRUM-154 on-site support on the equipment request editor", () => {
+  const openEditor = async ({ request = null } = {}) => {
+    loadCoordinatorEquipmentEditor.mockResolvedValue({
+      event,
+      request,
+      lines: [{ equipment_type: "AUDIO", quantity: "2", technical_requirements: "Wireless microphones" }]
+    });
+    const onSubmitted = jest.fn();
+    await act(async () => {
+      render(<EquipmentRequestEditor eventId="event-1" onCancel={jest.fn()} onSubmitted={onSubmitted} />);
+      await Promise.resolve();
+    });
+    await screen.findByLabelText("Technical requirements 1");
+    return onSubmitted;
+  };
+  const tick = () => screen.getByRole("checkbox", { name: /on-site support needed/i });
+  const submit = async () => userEvent.click(await screen.findByRole("button", { name: /submit (amended )?(equipment )?request/i }));
+
+  test("J5-FT1 AC2 the editor offers an unticked On-site support needed box, and asks for details only once it is ticked", async () => {
+    await openEditor();
+    expect(tick()).not.toBeChecked();
+    expect(screen.queryByLabelText(/on-site support details/i)).not.toBeInTheDocument();
+
+    await userEvent.click(tick());
+    expect(tick()).toBeChecked();
+    expect(screen.getByLabelText(/on-site support details/i)).toHaveValue("");
+
+    await userEvent.click(tick());
+    expect(screen.queryByLabelText(/on-site support details/i)).not.toBeInTheDocument();
+  });
+
+  test("J5-FT2 AC2 on-site support cannot be submitted without saying what is needed", async () => {
+    await openEditor();
+    await userEvent.click(tick());
+    await submit();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Describe the on-site support needed.");
+    expect(submitEquipmentRequest).not.toHaveBeenCalled();
+
+    await userEvent.type(screen.getByLabelText(/on-site support details/i), "Two technicians for setup");
+    await submit();
+    await waitFor(() => expect(submitEquipmentRequest).toHaveBeenCalledWith({
+      eventId: "event-1",
+      lines: [{ equipment_type: "AUDIO", quantity: "2", technical_requirements: "Wireless microphones" }],
+      onSiteSupport: true,
+      onSiteSupportDetails: "Two technicians for setup"
+    }));
+  });
+
+  test("J5-FT3 AC4 an amended request opens with its on-site support as last saved, and unticking it sends none", async () => {
+    await openEditor({ request: { status: "PENDING", on_site_support: true, on_site_support_details: "Two technicians for setup" } });
+    expect(tick()).toBeChecked();
+    expect(screen.getByLabelText(/on-site support details/i)).toHaveValue("Two technicians for setup");
+
+    await userEvent.click(tick());
+    await submit();
+    await waitFor(() => expect(submitEquipmentRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ onSiteSupport: false, onSiteSupportDetails: "" })
+    ));
+  });
+
+  test("J5-FT4 AC1 the coordinator is told when Technical Support could not be notified, and when they were", async () => {
+    const onNotice = jest.fn();
+    render(<EquipmentRequestsScreen onNotice={onNotice} />);
+
+    submitEquipmentRequest.mockResolvedValue({ ok: true, status: "PENDING", notified: false });
+    await screen.findByRole("heading", { name: "Partner Summit" });
+    await userEvent.click(screen.getByRole("button", { name: /create equipment request/i }));
+    await submit();
+    await waitFor(() => expect(onNotice).toHaveBeenCalledTimes(1));
+    expect(onNotice.mock.calls[0][0]).toMatch(/saved/i);
+    expect(onNotice.mock.calls[0][0]).toMatch(/could not be notified/i);
+
+    submitEquipmentRequest.mockResolvedValue({ ok: true, status: "PENDING", notified: true });
+    await userEvent.click(await screen.findByRole("button", { name: /create equipment request/i }));
+    await submit();
+    await waitFor(() => expect(onNotice).toHaveBeenCalledTimes(2));
+    expect(onNotice.mock.calls[1][0]).toBe("Equipment request submitted to Technical Support.");
+  });
 });
