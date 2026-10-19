@@ -169,7 +169,7 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
     }
     return <>
       {topError}
-      <div className="cs-record-list">{queue.map((event) => <article className="cs-record cs-review-record" key={event.id}>
+      <div className="cs-record-list">{queue.map((event) => <article className="cs-record cs-review-record cs-lead-record" key={event.id}>
         {eventHeader(event)}
         <p className="cs-record-ref">{event.reference_no}</p>
         <div className="cs-record-status"><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div>
@@ -186,7 +186,7 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
 
   return <>
     {topError}
-    <section className="cs-request-section" aria-label="Active events per coordinator">
+    <section className="cs-request-section cs-lead-summary" aria-label="Active events per coordinator">
       <div className="cs-review-heading"><div><h2>Active events per coordinator</h2></div></div>
       {summary.length
         ? <ul className="cs-record-list">{summary.map((item) => <li key={item.id}>
@@ -214,7 +214,7 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
     {rows.length
       ? <div className="cs-record-list">{rows.map((row) => {
           const event = eventById.get(row.id);
-          return <article className="cs-record cs-review-record" key={row.id}>
+          return <article className="cs-record cs-review-record cs-lead-record" key={row.id}>
             {eventHeader(event)}
             <p className="cs-record-ref">{row.reference}</p>
             <div className="cs-record-status"><span className={`cs-pill cs-pill-${statusTone(row.status)}`}>{row.status}</span></div>
