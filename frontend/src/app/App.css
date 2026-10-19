@@ -1429,6 +1429,16 @@ a.cs-btn-ghost:hover {
 
 .cs-list-actions { display: flex; justify-content: flex-end; margin-top: 24px; }
 
+.cs-collapsible-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cs-collapsible-heading h2 { margin: 0; }
+.cs-collapsible-content { display: grid; gap: 20px; }
+
 .cs-record-list { display: grid; gap: 8px; margin-top: 16px; }
 /* A titled group of records on one screen, e.g. current and past reservations. */
 .cs-group-heading { margin: 28px 0 0; font-size: 16px; }
@@ -1509,6 +1519,35 @@ a.cs-btn-ghost:hover {
 .cs-record-status { justify-self: start; }
 .cs-record-modified p { margin: 0; }
 .cs-record-saved { font-size: 13px; }
+
+/* Venue catalogue rows can contain user-managed names, locations and many
+   facilities. Keep each column bounded so one verbose venue cannot distort the
+   entire list; the full values remain available through their title text and
+   in the expanded venue details. */
+.cs-record.cs-venue-record {
+  grid-template-columns: minmax(160px, 1fr) auto minmax(140px, 280px) auto;
+}
+
+.cs-venue-record-title,
+.cs-venue-record .cs-record-modified { min-width: 0; }
+
+.cs-venue-record-title h2,
+.cs-venue-record-title p,
+.cs-venue-record-facilities {
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+}
+
+.cs-venue-record-title h2,
+.cs-venue-record-title p { white-space: nowrap; }
+
+.cs-venue-record-facilities {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
 
 .cs-record-expanded {
   grid-column: 1 / -1;
@@ -1647,6 +1686,7 @@ a.cs-btn-ghost:hover {
 
   .cs-record-actions { justify-content: flex-start; }
   .cs-record-actions-stacked { align-self: start; }
+  .cs-record.cs-venue-record { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* A row action is a real button, so it needs a smaller footprint than the
