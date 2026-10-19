@@ -142,3 +142,30 @@ describe('J6 booking and equipment outcomes in the inbox', () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 });
+
+// J4 / SCRUM-153 — TC-538, TC-539 in docs/test-cases.md. Venue Staff cannot
+// read events, so a booking notice names its event itself.
+describe('an event this role may not read', () => {
+  const notice = (fields) => ({
+    id: 'n9', user_id: 'staff', event_id: 'e9', type: 'VENUE_BOOKING_REQUESTED',
+    message: 'Christy Test: a venue booking request was raised for Queenstown Community Theatre.',
+    is_read: false, created_at: '2026-10-19T00:39:00.000Z', read_at: null, ...fields
+  });
+
+  test('TC-538 the event name stored on the notification is shown, with no View', async () => {
+    eventsFor.mockResolvedValue({ e9: false });
+    render(<NotificationInbox notifications={[notice({ event_name: 'Christy Test' })]} loading={false} error="" onOpen={jest.fn()} onViewEvent={jest.fn()} />);
+
+    expect(await screen.findByText('Christy Test')).toBeInTheDocument();
+    expect(screen.queryByText('Event no longer available')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^View/ })).not.toBeInTheDocument();
+  });
+
+  test('TC-539 an older notice with no stored name says the event is not shared, not that it is gone', async () => {
+    eventsFor.mockResolvedValue({ e9: false });
+    render(<NotificationInbox notifications={[notice()]} loading={false} error="" onOpen={jest.fn()} />);
+
+    expect(await screen.findByText('Event details not shared with your role')).toBeInTheDocument();
+    expect(screen.queryByText('Event no longer available')).not.toBeInTheDocument();
+  });
+});

@@ -39,6 +39,8 @@ they can be read next to the acceptance criteria and move into the service layer
 | E8 | SCRUM-124 | Be stopped before booking an unsuitable venue | TC-112 – TC-174, TC-395 – TC-396 |
 | J4 | SCRUM-153 | Be told when work arrives for me (a booking request reaches its Venue Staff) | TC-392 – TC-394 |
 | F12 | SCRUM-177 | Book more than one venue for an event | TC-491 – TC-511 |
+| F15 | SCRUM-180 | Place a tentative hold on a venue | TC-512 – TC-536 |
+| J4 | SCRUM-153 | Be told when work arrives for me (Venue Staff see which event) | TC-537 – TC-540 |
 | E4 | SCRUM-120 | See when a venue is free | TC-200 – TC-249 |
 | J6 | SCRUM-155 | Be told the outcome of my booking and equipment requests (AC1: approval only — rejection awaits F5) | TC-313 – TC-346 |
 | A7 | SCRUM-170 | Use ConnectSphere as a Safety Officer | TC-348 – TC-385, TC-388 |
@@ -1164,3 +1166,67 @@ An approved request used to vanish from the Venue Staff Booking requests screen,
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TC-509 | A booking cannot expect more people than its event | — | Read the venue_bookings create rule | expected_attendance <= the event's expected_attendance | As expected | Pass | AC3 - server side |
 | TC-510 | A booking must carry a label that is not blank | — | Read the create rule | booking_label is string and its trimmed size > 0 | As expected | Pass | AC2 - server side |
+
+## F15 / SCRUM-180 — Place a tentative hold on a venue
+
+**Scope:** on Booking requests, Venue Staff can **Place hold** on a Pending request. The booking becomes **Held** with an expiry computed as a fixed **3 working days** later (Mon–Fri, Singapore time, same clock time; decided 19 Oct 2026). Public holidays are not counted out (Session 3). A hold that would not end before the booking's occupied window is refused. While a hold is active, the venue is kept for it: overlapping requests and approvals are refused, and it shows as Held on the availability calendar. Venue Staff convert an active hold with **Convert to booking**, which approves it. The coordinator who raised the request is notified with the expiry. Rules live in `frontend/src/domain/venueHolds.js`; `firestore.rules` repeats the expiry count (`holdExpiryIsThreeWorkingDays`) and allows the Held transition only to the venue's own staff.
+
+**AC coverage:** AC1 (venue, event, occupied window, expiry) — TC-512, TC-513, TC-521, TC-528. AC2 (expiry required, future, before the occupied window) — TC-514, TC-522, TC-528. AC3 (overlapping request refused, naming hold and expiry) — TC-516, TC-525, TC-527. AC4 (Held on the calendar) — TC-519, TC-520, TC-534. AC5 (not an approved booking for confirming) — TC-517. AC6 (coordinator notified with expiry) — TC-518, TC-521, TC-530, TC-535. AC7 (convert; no longer expires) — TC-515, TC-526, TC-529, TC-532. Guards — TC-523, TC-524, TC-531, TC-533, TC-536.
+
+**Unit test cases — `frontend/src/domain/venueHolds.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-512 | A hold lasts exactly three working days | — | Call holdExpiry for Mon–Sun placements | Mon→Thu, Tue→Fri, Wed→Mon, Fri→Wed, Sat→Wed, Sun→Wed, all at the same clock time | As expected | Pass | AC1 |
+| TC-513 | The weekday is Singapore's | — | Place at Tue 01:00 and Sat 07:00 Singapore time | Counted from Tuesday and Saturday, not the UTC day | As expected | Pass | AC1 |
+| TC-514 | Only a pending request with time to spare can be held | Mon 10:00; a hold would expire Thu 10:00 | holdRefusal for an event in November; one needing the venue Wed; one at exactly Thu 10:00; one whose setup starts first; non-pending statuses | November accepted; the others refused, naming both times; non-pending refused | As expected | Pass | AC2 |
+| TC-515 | A hold is active only while Held and unexpired | Hold expiring Thu 10:00 | isActiveHold before, at and after expiry; for Approved and Pending | Active only before Thu 10:00 and only when Held | As expected | Pass | AC7 |
+| TC-516 | An overlapping request for the venue meets the active hold | Active hold 08:30–17:30 | activeHoldClash for overlap, touching, other venue, after expiry, own booking | Clash only for an overlapping window at that venue while active, excluding itself | As expected | Pass | AC3 |
+| TC-517 | A held booking does not confirm an event | One Approved and one Held booking | safetyApprovalBlocker | Refused, naming the held booking | As expected | Pass | AC5 |
+| TC-518 | The notice carries the expiry in Singapore time | — | Format the expiry and the message; resolve View | "Thu 22 Oct 2026, 10:00"; message names event, venue and expiry; View opens Venue bookings | As expected | Pass | AC6 |
+| TC-519 | An active hold shows as Held on the day view | One booking, one active hold, one expired hold | buildVenueCalendar | Held segment over the occupied window; expired hold absent | As expected | Pass | AC4 |
+| TC-520 | The month view lists active holds | Same data | buildMonthCalendar as coordinator, then as organiser | Held entry with the event name for staff; "Held" for organisers | As expected | Pass | AC4 |
+
+**Functional test cases — `frontend/src/features/venues/venuesApi.holds.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-521 | Placing a hold records it, logs it and notifies the coordinator | Pending request, Mon 10:00 | holdVenueBooking | Booking Held with held_by, server held_at, expiry Thu 10:00 and occupied window; VENUE_BOOKING_HELD history row; notice to the requester with the expiry | As expected | Pass | AC1, AC6 |
+| TC-522 | An event too soon to hold is refused | Event on Wed | holdVenueBooking | Refused naming both times; nothing written | As expected | Pass | AC2 |
+| TC-523 | Only the venue's staff hold, and only pending requests | — | Hold as other staff; hold an approved booking | Both refused; nothing written | As expected | Pass | Guard |
+| TC-524 | A hold meets the approval clashes | Approved booking, earlier pending request, or block | holdVenueBooking for each | Each refused with its reason | As expected | Pass | Guard |
+| TC-525 | A request over an active hold is refused until it lapses | Another event's active hold | requestVenueBooking now; then at expiry | Refused naming the hold and its expiry; accepted once expired | As expected | Pass | AC3 |
+| TC-526 | An active hold converts to an approved booking; an expired one cannot | Active hold | approveVenueBooking before and after expiry | Approved with HELD → APPROVED in history; after expiry refused | As expected | Pass | AC7 |
+| TC-527 | Another request over an active hold cannot be approved | Active hold on the venue | approveVenueBooking for the other request | Refused naming the hold and its expiry | As expected | Pass | AC3 |
+
+**Functional test cases — `frontend/src/features/venues/VenueHolds.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-531 | Venue Staff place a hold | Pending request | Click Place hold | holdVenueBooking called; notice names venue, event and expiry | As expected | Pass | AC1 |
+| TC-532 | An active hold offers conversion | Held request | Open Booking requests; click Convert to booking | "Held" and "Held until …" shown; no Place hold; approveVenueBooking called | As expected | Pass | AC7 |
+| TC-533 | A lapsed hold offers nothing | Held request past its expiry | Open Booking requests | "Hold expired"; no actions | As expected | Pass | Guard |
+| TC-534 | The calendar has a Held key and filter | — | Open the calendar | Legend Free, Booked, Held, Pending, Blocked, Closed; Held filter ticked | As expected | Pass | AC4 |
+| TC-535 | The coordinator sees when the hold ends | Held request | Open Venue bookings, view details | "Hold expires" with the Singapore time | As expected | Pass | AC6 |
+| TC-536 | Holds have their own filter | One pending, one active hold, one lapsed hold, one approved | Show All, then On hold, then Decided | All: pending, held, then decided; On hold: the active hold only; Decided: the lapsed hold and the approved one | As expected | Pass | Guard |
+
+**Rules — `frontend/src/features/venues/venuesApi.holds.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-528 | Only the venue's staff hold a pending request, for exactly three working days | — | Read the venue_bookings update rule | PENDING → HELD by assigned staff; held_at == request.time; holdExpiryIsThreeWorkingDays; expiry before occupied_start; affected keys limited | As expected | Pass | AC1, AC2 - server side |
+| TC-529 | A hold converts only before it expires | — | Read the approve clause | HELD accepted only while hold_expires_at > request.time | As expected | Pass | AC7 - server side |
+| TC-530 | The hold's history row and notice need the hold itself | — | Read event_history and notifications rules | VENUE_BOOKING_HELD row and notice only in the hold's commit, by its holder | As expected | Pass | AC6 - server side |
+
+## J4 / SCRUM-153 — Venue Staff see which event a notice is about
+
+**Scope:** Venue Staff may not read events (A4), so their inbox showed "Event no longer available" on every booking notice even though the event still exists. A refused read is now told apart from a missing event, and the booking-request and hold notices carry the event's name (`event_name`) so the inbox can name it without reading the event.
+
+**Test cases — `notificationsApi.test.js`, `NotificationInbox.test.js`, `venuesApi.browser.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-537 | A refused read is not a missing event | One readable, one refused, one deleted event | eventsFor | Readable: the record; refused: false; deleted: null | As expected | Pass | |
+| TC-538 | A notice names its event for a role that cannot read it | Refused event; notice carries event_name | Open Notifications | The stored event name; no "no longer available"; no View | As expected | Pass | |
+| TC-539 | An older notice says the event is not shared | Refused event; no stored name | Open Notifications | "Event details not shared with your role" | As expected | Pass | |
+| TC-540 | The booking-request notice to Venue Staff carries the event name | Coordinator raises a request | requestVenueBooking | Notice has event_name (the hold notice, TC-521, likewise) | As expected | Pass | |

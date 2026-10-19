@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { approveVenueBooking, loadVenueBookingQueue } from "./venuesApi";
+import { isActiveHold, singaporeDateTime } from "../../domain/venueHolds";
+import { approveVenueBooking, holdVenueBooking, loadVenueBookingQueue } from "./venuesApi";
 
 const asTime = (value) => new Date(value).getTime();
 const displayDateTime = (value) => value ? new Date(value).toLocaleString() : "Not recorded";
@@ -16,17 +17,26 @@ const elapsed = (value, now = Date.now()) => {
   return `${days} day${days === 1 ? "" : "s"} ago`;
 };
 
-const STATUS_TONE = { PENDING: "info", APPROVED: "positive", REJECTED: "danger" };
+const STATUS_TONE = { PENDING: "info", HELD: "warning", APPROVED: "positive", REJECTED: "danger" };
 const statusLabel = (status) => {
   const text = words(status);
   return text ? text[0].toUpperCase() + text.slice(1) : "Unknown";
 };
 const isPending = (booking) => booking.status === "PENDING";
+// F15 — a hold is still awaiting its decision until it is converted or lapses.
+// One that has lapsed keeps nothing, whatever its stored status still says.
+const isHeld = (booking) => isActiveHold(booking);
+const isLapsedHold = (booking) => booking.status === "HELD" && !isActiveHold(booking);
+// A lapsed hold is finished, so it is listed with the decided requests.
+const isDecided = (booking) => !isPending(booking) && !isHeld(booking);
 const SHOW = {
   all: { label: "All requests", keep: () => true, empty: "No booking requests for your venues." },
   pending: { label: "Pending", keep: isPending, empty: "No pending requests for your venues." },
-  decided: { label: "Decided", keep: (booking) => !isPending(booking), empty: "No decided requests for your venues yet." }
+  held: { label: "On hold", keep: isHeld, empty: "No requests on hold for your venues." },
+  decided: { label: "Decided", keep: isDecided, empty: "No decided requests for your venues yet." }
 };
+// Pending first, then holds — both still waiting on this staff member — then decided.
+const waitingRank = (booking) => (isPending(booking) ? 0 : isHeld(booking) ? 1 : 2);
 
 export default function VenueBookingQueue({ user, onNotice }) {
   const [bookings, setBookings] = useState([]);
@@ -47,28 +57,33 @@ export default function VenueBookingQueue({ user, onNotice }) {
     return () => { mounted = false; };
   }, [user]);
 
-  // Pending requests first — they are the ones waiting on this staff member —
-  // then each group by the chosen field.
+  // Requests still waiting on this staff member first, then each group by the
+  // chosen field.
   const sorted = useMemo(() => bookings.filter(SHOW[show].keep).sort((left, right) => {
-    if (isPending(left) !== isPending(right)) return isPending(left) ? -1 : 1;
+    if (waitingRank(left) !== waitingRank(right)) return waitingRank(left) - waitingRank(right);
     const field = sortBy === "requested_date" ? "start_datetime" : "submitted_at";
     return asTime(left[field]) - asTime(right[field]);
   }), [bookings, show, sortBy]);
 
-  const approve = async (booking) => {
+  const decide = async (booking, action, notice, failureMessage) => {
     setWorking(booking.booking_id);
     setError("");
     try {
-      await approveVenueBooking({ user, bookingId: booking.booking_id });
+      const result = await action({ user, bookingId: booking.booking_id });
       await reload();
       setExpandedBookingId("");
-      onNotice?.(`${booking.venue_name} booking approved.`);
+      onNotice?.(notice(result));
     } catch (failure) {
-      setError(failure.message || "The booking could not be approved.");
+      setError(failure.message || failureMessage);
     } finally {
       setWorking("");
     }
   };
+  const approve = (booking) => decide(booking, approveVenueBooking,
+    () => `${booking.venue_name} booking approved.`, "The booking could not be approved.");
+  const hold = (booking) => decide(booking, holdVenueBooking,
+    (result) => `${booking.venue_name} held for ${booking.event_name} until ${singaporeDateTime(result.hold_expires_at)}.`,
+    "The venue could not be held.");
 
   if (loading) return <p className="cs-panel-note">Loading booking requests…</p>;
   return (
@@ -100,12 +115,16 @@ export default function VenueBookingQueue({ user, onNotice }) {
               <div className="cs-record-title"><h2>{booking.event_name}</h2><p>{booking.venue_name}</p></div>
               <p className="cs-record-ref">{displayDateTime(booking.start_datetime)}–{new Date(booking.end_datetime).toLocaleTimeString()}</p>
               <div className="cs-record-modified">
-                <span className={`cs-pill cs-pill-${STATUS_TONE[booking.status] || "neutral"}`}>{statusLabel(booking.status)}</span>
-                <p className="cs-record-saved">{!isPending(booking) && booking.decided_at
-                  ? `Decided ${elapsed(booking.decided_at)}`
-                  : `Submitted ${elapsed(booking.submitted_at)}`}</p>
+                {isLapsedHold(booking)
+                  ? <span className="cs-pill cs-pill-neutral">Hold expired</span>
+                  : <span className={`cs-pill cs-pill-${STATUS_TONE[booking.status] || "neutral"}`}>{statusLabel(booking.status)}</span>}
+                <p className="cs-record-saved">{isHeld(booking)
+                  ? `Held until ${singaporeDateTime(booking.hold_expires_at)}`
+                  : !isPending(booking) && booking.decided_at
+                    ? `Decided ${elapsed(booking.decided_at)}`
+                    : `Submitted ${elapsed(booking.submitted_at)}`}</p>
               </div>
-              <div className="cs-record-actions">
+              <div className="cs-record-actions cs-record-actions-stacked">
                 <button
                   type="button"
                   className="cs-btn cs-btn-ghost cs-record-btn"
@@ -116,8 +135,18 @@ export default function VenueBookingQueue({ user, onNotice }) {
                   {expanded ? "Close" : "View request"}
                 </button>
                 {isPending(booking) && (
+                  <button type="button" className="cs-btn cs-btn-secondary cs-record-btn" disabled={working === booking.booking_id} onClick={() => hold(booking)}>
+                    Place hold
+                  </button>
+                )}
+                {isPending(booking) && (
                   <button type="button" className="cs-btn cs-btn-primary cs-record-btn" disabled={working === booking.booking_id} onClick={() => approve(booking)}>
                     {working === booking.booking_id ? "Approving…" : "Approve"}
+                  </button>
+                )}
+                {isHeld(booking) && (
+                  <button type="button" className="cs-btn cs-btn-primary cs-record-btn" disabled={working === booking.booking_id} onClick={() => approve(booking)}>
+                    {working === booking.booking_id ? "Converting…" : "Convert to booking"}
                   </button>
                 )}
               </div>
@@ -130,7 +159,8 @@ export default function VenueBookingQueue({ user, onNotice }) {
                   <div><dt>Registration required</dt><dd>{booking.registration_required ? "Yes" : "No"}</dd></div>
                   <div><dt>Safety review required</dt><dd>{booking.safety_review_required ? "Yes" : "No"}</dd></div>
                   <div><dt>Submitted</dt><dd>{displayDateTime(booking.submitted_at)}</dd></div>
-                  {!isPending(booking) && <div><dt>Decided</dt><dd>{displayDateTime(booking.decided_at)}</dd></div>}
+                  {!isPending(booking) && booking.decided_at && <div><dt>Decided</dt><dd>{displayDateTime(booking.decided_at)}</dd></div>}
+                  {booking.hold_expires_at && <div><dt>Hold expires</dt><dd>{singaporeDateTime(booking.hold_expires_at)}</dd></div>}
                   <div><dt>Occupied window</dt><dd>{displayDateTime(booking.occupied_start || booking.start_datetime)}–{displayDateTime(booking.occupied_end || booking.end_datetime)}</dd></div>
                   <div className="cs-detail-wide"><dt>Event description</dt><dd>{booking.event_description || "Not recorded"}</dd></div>
                   <div className="cs-detail-wide"><dt>Known suitability shortfalls</dt><dd>{acknowledgement?.acknowledged

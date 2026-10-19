@@ -4,6 +4,7 @@
 // Firebase, like the rest of domain/.
 
 import { ROLES } from "./roles";
+import { singaporeDateTime } from "./venueHolds";
 
 // The `type` each writer stores, in words. A type nobody has named yet still
 // reads as something rather than as a constant.
@@ -27,6 +28,7 @@ export const NOTIFICATION_TYPE_LABEL = {
   VENUE_CHANGE: "Venue details updated",
   VENUE_BOOKING_APPROVED: "Venue booking approved",
   VENUE_BOOKING_REJECTED: "Venue booking rejected",
+  VENUE_BOOKING_HELD: "Venue held",
   EQUIPMENT_ARRANGED: "Equipment reserved",
   // J5 / SCRUM-154 — what Technical Support are told, written by the equipment service.
   EQUIPMENT_REQUEST_RAISED: "Equipment request raised",
@@ -111,7 +113,8 @@ export const eventCancelledMessage = ({ eventName, reason } = {}) => {
 // J6 / SCRUM-155 — the outcome of a coordinator's own booking or equipment
 // request. Each is written in the same transaction as the decision it reports,
 // so the coordinator never has to poll Venue bookings and Equipment requests.
-export const VENUE_BOOKING_OUTCOMES = ["VENUE_BOOKING_APPROVED", "VENUE_BOOKING_REJECTED"];
+// F15 AC6 — a hold is not an outcome, but its notice opens the booking the same way.
+export const VENUE_BOOKING_OUTCOMES = ["VENUE_BOOKING_APPROVED", "VENUE_BOOKING_REJECTED", "VENUE_BOOKING_HELD"];
 export const EQUIPMENT_OUTCOMES = ["EQUIPMENT_ARRANGED", "EQUIPMENT_UNABLE_TO_FULFIL"];
 
 // AC1 — approved or rejected, and on rejection the reason. F5 (reject a booking)
@@ -122,6 +125,10 @@ export const venueBookingOutcomeMessage = ({ eventName, venueName, approved, rea
   const why = String(reason || "").trim();
   return `${subject} was rejected.${why ? ` Reason: ${why}` : ""}`;
 };
+
+// F15 AC6 — the coordinator is told a venue is held for them, and until when.
+export const venueHoldPlacedMessage = ({ eventName, venueName, expiresAt }) =>
+  `${eventName || "Your event"}: ${venueName || "the venue"} is held for this event until ${singaporeDateTime(expiresAt)}.`;
 
 // AC2 / AC4 — View on an outcome opens that booking or that equipment request,
 // where its date, time and quantities can be checked, rather than the event.

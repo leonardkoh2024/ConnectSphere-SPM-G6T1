@@ -9,10 +9,13 @@
 // Monday, and every booking is entered in the same local time.
 
 import { ROLES } from "./roles";
+import { isActiveHold } from "./venueHolds";
 
 export const SLOT = {
   FREE: "free",
   BOOKED: "booked",
+  // F15 AC4 — an active tentative hold: kept for an event, not yet booked.
+  HELD: "held",
   PENDING: "pending",
   BLOCKED: "blocked",
   CLOSED: "closed",
@@ -21,7 +24,7 @@ export const SLOT = {
 };
 
 // The kinds of entry a month cell can list, and the order the filter offers them.
-export const ENTRY_KINDS = [SLOT.BOOKED, SLOT.PENDING, SLOT.BLOCKED];
+export const ENTRY_KINDS = [SLOT.BOOKED, SLOT.HELD, SLOT.PENDING, SLOT.BLOCKED];
 
 // AC5 — a booked period spans the event plus its setup and teardown. How long
 // those are is still an open customer question (CLAUDE.md: setup/turnaround
@@ -128,8 +131,9 @@ const status = (item) => String(item.status || "").toUpperCase();
 // Every booking, request and block for the given venues, as absolute windows.
 // Rejected and withdrawn requests are not entries at all (AC1). A pending request
 // is an entry but never occupies the venue: it may yet be rejected, and FCFS is
-// applied at approval (AC2).
-const collectEntries = ({ venues, bookings, unavailability, role, setupMinutes, teardownMinutes }) => {
+// applied at approval (AC2). F15 AC4 — an active hold occupies its recorded
+// occupied window as Held; once expired it is nothing (F16 AC3).
+const collectEntries = ({ venues, bookings, unavailability, role, setupMinutes, teardownMinutes, now }) => {
   const internal = isInternalRole(role);
   const named = new Map(venues.map((venue) => [venue.venue_id, venue.name]));
   const eventLabel = (item, fallback) => (internal ? item.event_name || item.reference_no || fallback : fallback);
@@ -155,11 +159,25 @@ const collectEntries = ({ venues, bookings, unavailability, role, setupMinutes, 
       };
     });
 
+  const held = bookings
+    .filter((item) => named.has(item.venue_id) && isActiveHold(item, now))
+    .map((item) => {
+      const start = asDate(item.occupied_start);
+      const end = asDate(item.occupied_end);
+      return {
+        ...venueOf(item),
+        kind: SLOT.HELD,
+        key: `held-${item.booking_id || item.id}`,
+        label: eventLabel(item, "Held"),
+        window: start && end ? { start, end } : entryWindow(item)
+      };
+    });
+
   const pending = bookings
     .filter((item) => named.has(item.venue_id) && status(item) === "PENDING")
     .map((item) => ({ ...venueOf(item), kind: SLOT.PENDING, key: `pending-${item.booking_id || item.id}`, label: eventLabel(item, "Pending request"), window: entryWindow(item) }));
 
-  return [...blocked, ...booked, ...pending].filter((item) => item.window);
+  return [...blocked, ...booked, ...held, ...pending].filter((item) => item.window);
 };
 
 // Clips an absolute window to one day, as minutes from that day's midnight.
@@ -185,7 +203,8 @@ export const buildMonthCalendar = ({
   role,
   filters = {},
   setupMinutes = SETUP_MINUTES,
-  teardownMinutes = TEARDOWN_MINUTES
+  teardownMinutes = TEARDOWN_MINUTES,
+  now = new Date()
 }) => {
   const { venueIds = [], location = "", kinds = ENTRY_KINDS } = filters;
   const shown = venues
@@ -199,7 +218,7 @@ export const buildMonthCalendar = ({
   const single = shown.length === 1 ? shown[0] : null;
   const hasAvailabilityData = single ? (single.operating_hours || []).length > 0 : true;
 
-  const entries = collectEntries({ venues: shown, bookings, unavailability, role, setupMinutes, teardownMinutes })
+  const entries = collectEntries({ venues: shown, bookings, unavailability, role, setupMinutes, teardownMinutes, now })
     .filter((entry) => kinds.includes(entry.kind));
   const inMonth = monthOf(monthStart(month));
 
@@ -240,7 +259,7 @@ export const calendarRange = (from, to) => {
 // Where two things claim the same minute, the stronger one is shown: a block
 // outranks a booking (the booking is the anomaly worth seeing, but the venue is
 // unusable either way) and anything occupied outranks closed hours.
-const RANK = { [SLOT.BLOCKED]: 3, [SLOT.BOOKED]: 2 };
+const RANK = { [SLOT.BLOCKED]: 3, [SLOT.BOOKED]: 2, [SLOT.HELD]: 1 };
 
 const buildDay = ({ date, hours, hasAvailabilityData, occupied, pending }) => {
   const dayStart = parseDay(date);
@@ -301,7 +320,8 @@ export const buildVenueCalendar = ({
   unavailability = [],
   role,
   setupMinutes = SETUP_MINUTES,
-  teardownMinutes = TEARDOWN_MINUTES
+  teardownMinutes = TEARDOWN_MINUTES,
+  now = new Date()
 }) => {
   const venue = venues.find((item) => item.venue_id === venueId);
   const range = calendarRange(from, to);
@@ -309,7 +329,7 @@ export const buildVenueCalendar = ({
 
   const operatingHours = venue.operating_hours || [];
   const hasAvailabilityData = operatingHours.length > 0;
-  const entries = collectEntries({ venues: [venue], bookings, unavailability, role, setupMinutes, teardownMinutes });
+  const entries = collectEntries({ venues: [venue], bookings, unavailability, role, setupMinutes, teardownMinutes, now });
   const occupied = entries.filter((entry) => entry.kind !== SLOT.PENDING);
   const pending = entries.filter((entry) => entry.kind === SLOT.PENDING);
 

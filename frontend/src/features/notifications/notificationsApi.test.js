@@ -58,3 +58,17 @@ test('TC-281 an event the user can no longer read comes back empty, not as an er
   });
   expect(getDoc).toHaveBeenCalledTimes(3);
 });
+
+// J4 / SCRUM-153 — TC-537 in docs/test-cases.md. Venue Staff are told about
+// events they may not read; a refused read is not the same as a deleted event.
+test('TC-537 an event the rules refuse comes back as not shared (false), a missing one as gone (null)', async () => {
+  getDoc.mockImplementation(async (ref) => {
+    if (ref === 'events/refused') throw Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' });
+    if (ref === 'events/gone') return { exists: () => false };
+    return { id: 'e1', exists: () => true, data: () => ({ name: 'Partner Summit' }) };
+  });
+
+  await expect(eventsFor(['e1', 'refused', 'gone'])).resolves.toEqual({
+    e1: { id: 'e1', name: 'Partner Summit' }, refused: false, gone: null
+  });
+});

@@ -30,6 +30,18 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/venue_staff/$(venueId))
         && get(/databases/$(database)/documents/venue_staff/$(venueId)).data.user_id == request.auth.uid;
     }
+    // F15 — a hold lasts exactly three working days (Mon–Fri, Singapore time),
+    // the same count domain/venueHolds.js makes. Whole days since 1 Jan 1970 (a
+    // Thursday) in Singapore time, UTC+8, give the weekday: 0 Thu, 1 Fri, 2 Sat,
+    // 3 Sun, 4 Mon, 5 Tue, 6 Wed. From Sun, Mon or Tue the expiry is 3 days on;
+    // from Sat, 4; from Wed, Thu or Fri, 5. The device placing the hold computes
+    // it from its own clock, so five minutes either side of this count is allowed.
+    function holdExpiryIsThreeWorkingDays(expiresAt) {
+      let weekday = math.floor((request.time.toMillis() + 28800000) / 86400000) % 7;
+      let days = weekday in [0, 1, 6] ? 5 : (weekday == 2 ? 4 : 3);
+      return expiresAt is timestamp
+        && math.abs(expiresAt.toMillis() - (request.time.toMillis() + days * 86400000)) <= 300000;
+    }
     // A7 — a Safety Officer is related to an event only while it awaits its
     // Operational Safety Check (L1). Once the check is recorded the event leaves
     // Safety Review and drops out of their reach again.
@@ -367,6 +379,14 @@ service cloud.firestore {
             && request.resource.data.warning_acknowledged == true
             && request.resource.data.created_at is timestamp
             && getAfter(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.last_significant_change_id == historyId)
+          // F15 — the hold's row, by the staff member holding it, in the same commit.
+          || (request.resource.data.action_type == 'VENUE_BOOKING_HELD'
+            && request.resource.data.booking_id is string
+            && request.resource.data.venue_id is string
+            && assignedVenueStaff(request.resource.data.venue_id)
+            && getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data.event_id == request.resource.data.event_id
+            && getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data.status == 'HELD'
+            && getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data.held_at == request.time)
           || (request.resource.data.action_type == 'VENUE_BOOKING_APPROVED'
             && request.resource.data.booking_id is string
             && request.resource.data.venue_id is string
@@ -449,6 +469,18 @@ service cloud.firestore {
             || (request.resource.data.type == 'VENUE_BOOKING_REJECTED' && booking.status == 'REJECTED'))
           && assignedVenueStaff(booking.venue_id);
       }
+      // F15 AC6 — the coordinator who raised the request is told it is held, by
+      // the staff member holding it and in the same commit as the hold.
+      function venueBookingHoldNotice(booking) {
+        return booking.event_id == request.resource.data.event_id
+          && booking.venue_id == request.resource.data.venue_id
+          && booking.requested_by == request.resource.data.user_id
+          && booking.status == 'HELD'
+          && booking.held_by == request.auth.uid && booking.held_at == request.time
+          && request.resource.data.created_at == request.time
+          && request.resource.data.type == 'VENUE_BOOKING_HELD'
+          && assignedVenueStaff(booking.venue_id);
+      }
       // J1 AC2 — a user reads only notifications addressed to them. AC3/AC4 — the
       // one change they may make is marking one read: it cannot be re-addressed,
       // reworded or marked unread, and with no delete rule it stays in the list.
@@ -472,7 +504,11 @@ service cloud.firestore {
             && request.resource.data.get('booking_id', null) is string
             && venueBookingOutcomeNotice(
               getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data))
-          || (!(request.resource.data.get('type', '') in ['VENUE_BOOKING_APPROVED', 'VENUE_BOOKING_REJECTED'])
+          || (request.resource.data.get('type', '') == 'VENUE_BOOKING_HELD'
+            && request.resource.data.get('booking_id', null) is string
+            && venueBookingHoldNotice(
+              getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data))
+          || (!(request.resource.data.get('type', '') in ['VENUE_BOOKING_APPROVED', 'VENUE_BOOKING_REJECTED', 'VENUE_BOOKING_HELD'])
             && (
           (currentCoordinator(request.resource.data.event_id)
             && request.resource.data.user_id in [request.auth.uid,
@@ -618,8 +654,23 @@ service cloud.firestore {
           && request.resource.data.status == 'WITHDRAWN'
           && request.resource.data.suitability_acknowledgement == resource.data.suitability_acknowledgement
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'withdrawn_at']))
+        // F15 AC1/AC2 — the venue's own staff hold a pending request, stamped now,
+        // for exactly three working days, ending before the venue is first needed.
         || (assignedVenueStaff(resource.data.venue_id)
-          && resource.data.status == 'PENDING'
+          && resource.data.status == 'PENDING' && request.resource.data.status == 'HELD'
+          && request.resource.data.assigned_staff_id == request.auth.uid
+          && request.resource.data.held_by == request.auth.uid
+          && request.resource.data.held_at == request.time
+          && holdExpiryIsThreeWorkingDays(request.resource.data.hold_expires_at)
+          && request.resource.data.occupied_start is timestamp
+          && request.resource.data.occupied_end is timestamp
+          && request.resource.data.hold_expires_at < request.resource.data.occupied_start
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'assigned_staff_id', 'held_by', 'held_at', 'hold_expires_at', 'occupied_start', 'occupied_end'
+          ]))
+        // F4 — approve a pending request, or (F15 AC7) convert a hold that has not expired.
+        || (assignedVenueStaff(resource.data.venue_id)
+          && (resource.data.status == 'PENDING' || (resource.data.status == 'HELD' && resource.data.hold_expires_at > request.time))
           && request.resource.data.status == 'APPROVED'
           && request.resource.data.assigned_staff_id == request.auth.uid
           && request.resource.data.decided_by == request.auth.uid
