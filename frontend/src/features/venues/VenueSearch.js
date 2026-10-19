@@ -39,6 +39,7 @@ export default function VenueSearch({ event, onBookVenue, role = ROLES.COORDINAT
   // for; opened from the sidebar, it starts as the whole catalogue.
   const [filters, setFilters] = useState(() => (event ? prefillFilters(event) : emptyFilters()));
   const [selected, setSelected] = useState(null);
+  const [requirementsOpen, setRequirementsOpen] = useState(true);
   const [error, setError] = useState("");
   const [bookingNotice, setBookingNotice] = useState("");
   // E7 as a filter: the window the venue has to be open for. Prefilled from the
@@ -158,9 +159,21 @@ export default function VenueSearch({ event, onBookVenue, role = ROLES.COORDINAT
       )}
       {/* E6 and E7 in one card: the requirements are stated once, they narrow the
           shortlist, and the same values are what a named venue is assessed against. */}
-      <section className="cs-form-section" aria-label="Venue requirements">
-        <h2>Requirements</h2>
-        <div className="cs-form-grid">
+      <section className="cs-form-section cs-collapsible-section" aria-label="Venue requirements">
+        <div className="cs-collapsible-heading">
+          <h2>Requirements</h2>
+          <button
+            type="button"
+            className="cs-btn cs-btn-ghost cs-record-btn"
+            aria-expanded={requirementsOpen}
+            aria-controls="venue-requirements-fields"
+            onClick={() => setRequirementsOpen((open) => !open)}
+          >
+            {requirementsOpen ? "Close requirements" : "Open requirements"}
+          </button>
+        </div>
+        {requirementsOpen && <div id="venue-requirements-fields" className="cs-collapsible-content">
+          <div className="cs-form-grid">
           <label className="cs-field">
             <span className="cs-field-name">Event date</span>
             <input type="date" value={assessWindow.event_date} onChange={(e) => updateWindow("event_date", e.target.value)} />
@@ -195,13 +208,14 @@ export default function VenueSearch({ event, onBookVenue, role = ROLES.COORDINAT
               {LAYOUTS.map((item) => <option value={item} key={item}>{item.replaceAll("_", " ")}</option>)}
             </select>
           </label>
-        </div>
-        <ToggleList label="Required facilities" options={FACILITIES} values={filters.facilities} onChange={(value) => updateFilter("facilities", value)} />
-        <ToggleList label="Accessibility features" options={ACCESSIBILITY_OPTIONS} values={filters.accessibility} onChange={(value) => updateFilter("accessibility", value)} />
-        <div className="cs-filter-chips">
-          {chips.map((item) => <span className="cs-chip" key={item.key}>{chipLabel(item)}</span>)}
-          {(chips.length > 0 || windowSet) && <button type="button" className="cs-btn cs-btn-ghost" onClick={clearAll}>Clear filters</button>}
-        </div>
+          </div>
+          <ToggleList label="Required facilities" options={FACILITIES} values={filters.facilities} onChange={(value) => updateFilter("facilities", value)} />
+          <ToggleList label="Accessibility features" options={ACCESSIBILITY_OPTIONS} values={filters.accessibility} onChange={(value) => updateFilter("accessibility", value)} />
+          <div className="cs-filter-chips">
+            {chips.map((item) => <span className="cs-chip" key={item.key}>{chipLabel(item)}</span>)}
+            {(chips.length > 0 || windowSet) && <button type="button" className="cs-btn cs-btn-ghost" onClick={clearAll}>Clear filters</button>}
+          </div>
+        </div>}
       </section>
       <p className="cs-result-count" aria-live="polite">{listed.length} venue{listed.length === 1 ? "" : "s"}</p>
       {windowPrefill && shortlist.count === 0 && chips.length === 0 && (
@@ -217,7 +231,7 @@ export default function VenueSearch({ event, onBookVenue, role = ROLES.COORDINAT
       <VenueRows
         venues={listed}
         selectedId={selected?.venue_id}
-        onSelect={setSelected}
+        onSelect={(venue) => setSelected((current) => current?.venue_id === venue.venue_id ? null : venue)}
         /* E8 — the shortlist only offers venues that already fit, so booking one
            from here carries both choices straight to the booking screen. The
            suitability gate still runs there; this route simply never trips it. */

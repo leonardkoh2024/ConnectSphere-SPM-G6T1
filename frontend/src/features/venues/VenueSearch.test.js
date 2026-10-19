@@ -45,6 +45,22 @@ test('TC-109 one action clears the active filters', async () => {
   expect(screen.queryByRole('button', { name: /clear filters/i })).not.toBeInTheDocument();
 });
 
+test('the requirements section can close and reopen without losing its filters', async () => {
+  render(<VenueSearch />);
+  await screen.findAllByRole('button', { name: /view venue/i });
+  await userEvent.selectOptions(screen.getByLabelText(/^location$/i), 'EAST');
+
+  const close = screen.getByRole('button', { name: /close requirements/i });
+  expect(close).toHaveAttribute('aria-expanded', 'true');
+  await userEvent.click(close);
+  expect(screen.queryByLabelText(/^location$/i)).not.toBeInTheDocument();
+
+  const open = screen.getByRole('button', { name: /open requirements/i });
+  expect(open).toHaveAttribute('aria-expanded', 'false');
+  await userEvent.click(open);
+  expect(screen.getByLabelText(/^location$/i)).toHaveValue('EAST');
+});
+
 // E4 / SCRUM-120 — the coordinator's catalogue opens the calendar too, and
 // keeps its filters when the coordinator comes back.
 test('TC-230 the coordinator returns from the shared calendar to the same filters', async () => {
@@ -75,6 +91,47 @@ test('TC-110 viewing a venue displays its details in that venue result', async (
   expect(within(details).getByText(/THEATRE/i)).toBeInTheDocument();
   expect(screen.getAllByLabelText(/venue record/i)).toHaveLength(1);
   expect(details.closest('.cs-record')).toBe(venue);
+});
+
+test('an open venue can be closed to minimise its details', async () => {
+  render(<VenueSearch />);
+  const [viewButton] = await screen.findAllByRole('button', { name: /view venue/i });
+  const venue = viewButton.closest('.cs-record');
+
+  await userEvent.click(viewButton);
+  expect(within(venue).getByLabelText(/venue record/i)).toBeInTheDocument();
+  await userEvent.click(within(venue).getByRole('button', { name: /^close$/i }));
+
+  expect(within(venue).queryByLabelText(/venue record/i)).not.toBeInTheDocument();
+  expect(within(venue).getByRole('button', { name: /view venue/i })).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('long venue list values use bounded text containers while retaining their full text', async () => {
+  const longName = 'International Convention and Multidisciplinary Collaboration Auditorium';
+  getDocs.mockReset();
+  getDocs
+    .mockResolvedValueOnce(snap([{ id: 'VEN-LONG', venue_id: 'VEN-LONG', name: longName, location: 'NORTH_EAST', max_capacity: 500 }]))
+    .mockResolvedValueOnce(empty)
+    .mockResolvedValueOnce(snap([
+      { id: 'f1', venue_id: 'VEN-LONG', facility_id: 'AIR_CONDITIONING' },
+      { id: 'f2', venue_id: 'VEN-LONG', facility_id: 'TABLES_AND_CHAIRS' },
+      { id: 'f3', venue_id: 'VEN-LONG', facility_id: 'REGISTRATION_AREA' },
+      { id: 'f4', venue_id: 'VEN-LONG', facility_id: 'KITCHEN_PANTRY' }
+    ]))
+    .mockResolvedValueOnce(empty)
+    .mockResolvedValueOnce(empty)
+    .mockResolvedValueOnce(empty)
+    .mockResolvedValueOnce(empty);
+
+  render(<VenueSearch />);
+  const heading = await screen.findByRole('heading', { name: longName });
+  const row = heading.closest('.cs-record');
+  const facilities = row.querySelector('.cs-venue-record-facilities');
+
+  expect(row).toHaveClass('cs-venue-record');
+  expect(heading).toHaveAttribute('title', longName);
+  expect(facilities).toHaveAttribute('title', expect.stringContaining('AIR CONDITIONING'));
+  expect(facilities).toHaveTextContent(/KITCHEN PANTRY/i);
 });
 
 // E7 as a filter — a blank requirement is no constraint, not a failure, and a

@@ -42,16 +42,16 @@ export function VenueRows({ venues, selectedId, onSelect, onUpdate = onSelect, c
   return (
     <div className="cs-record-list">
       {rows.map((venue) => (
-        <article className="cs-record" key={venue.venue_id}>
+        <article className="cs-record cs-venue-record" key={venue.venue_id}>
           <div className="cs-record-title">
-            <div>
-              <h2>{venue.name}</h2>
-              <p>{locationLabel(venue.location)}</p>
+            <div className="cs-venue-record-title">
+              <h2 title={venue.name}>{venue.name}</h2>
+              <p title={locationLabel(venue.location)}>{locationLabel(venue.location)}</p>
             </div>
           </div>
           <p className="cs-record-ref">Capacity {venue.max_capacity}</p>
           <div className="cs-record-modified">
-            <p className="cs-record-saved">{facilitiesLabel(venue.facilities)}</p>
+            <p className="cs-record-saved cs-venue-record-facilities" title={facilitiesLabel(venue.facilities)}>{facilitiesLabel(venue.facilities)}</p>
           </div>
           <div className="cs-record-actions">
             <button
