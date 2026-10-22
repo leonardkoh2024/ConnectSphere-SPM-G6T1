@@ -367,3 +367,17 @@ export const releaseEquipmentReservation = async ({ reservationId, reason = "No 
     { reason }
   );
 };
+
+export const releaseCancelledEventReservations = async ({ eventId, reason }) => {
+  const user = currentUser();
+  const userProfile = await profile(user.uid);
+  if (userProfile.role !== ROLES.COORDINATOR) {
+    throw new Error("Only an Event Coordinator can release equipment for a cancelled event.");
+  }
+  return equipmentAction(
+    user,
+    `/api/equipment/events/${encodeURIComponent(eventId)}/cancel-reservations`,
+    "POST",
+    { reason }
+  );
+};

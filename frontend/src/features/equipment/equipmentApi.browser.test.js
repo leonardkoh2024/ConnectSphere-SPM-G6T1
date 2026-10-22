@@ -25,6 +25,7 @@ import {
   loadEquipmentCatalogue,
   markEquipmentLineUnableToFulfill,
   releaseEquipmentReservation,
+  releaseCancelledEventReservations,
   reserveEquipmentForEvent,
   submitEquipmentRequest
 } from "./equipmentApi";
@@ -106,6 +107,24 @@ test("TC-305 releasing a reservation uses the authenticated equipment service en
   });
   expect(options.headers["Content-Type"]).toBe("application/json");
   expect(options.headers.Authorization).toMatch(/^Bearer /);
+});
+
+test("D4 cancellation releases equipment through the coordinator-authenticated service", async () => {
+  mockGetDoc.mockResolvedValue(snapshot({ role: "EVENT_COORDINATOR" }));
+  mockFetch.mockResolvedValue({ ok: true, json: async () => ({ released: 2 }) });
+
+  await expect(releaseCancelledEventReservations({
+    eventId: "event-1",
+    reason: "Speaker unavailable"
+  })).resolves.toEqual({ released: 2 });
+
+  expect(mockFetch).toHaveBeenCalledWith(
+    "/api/equipment/events/event-1/cancel-reservations",
+    expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ reason: "Speaker unavailable" })
+    })
+  );
 });
 
 test("TC-307 amendment calls the authenticated equipment service with the note and changed values", async () => {

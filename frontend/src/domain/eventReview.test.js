@@ -4,6 +4,7 @@ import {
   canApproveEvent,
   canOpenReview,
   canRejectEvent,
+  canCancelEvent,
   canRequestClarification,
   canRespondToClarification,
   chronologicalClarifications,
@@ -79,6 +80,16 @@ describe('C7 and C9 workflow boundaries', () => {
   test('K3-TC11 (replaces C9 criterion 5) a coordinator, even the one in charge, has no reassign guard', () => {
     expect(eventReviewModule.canReassignEvent).toBeUndefined();
     expect(canLeadReassign(event(), ROLES.COORDINATOR, { id: 'c2', active: true })).toBe(false);
+  });
+});
+
+describe('D4 cancellation workflow', () => {
+  test('only the assigned coordinator can cancel a non-terminal event', () => {
+    ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PLANNING', 'SAFETY_REVIEW', 'CONFIRMED']
+      .forEach((status) => expect(canCancelEvent(event({ status }), 'c1')).toBe(true));
+    ['DRAFT', 'COMPLETED', 'CANCELLED', 'REJECTED']
+      .forEach((status) => expect(canCancelEvent(event({ status }), 'c1')).toBe(false));
+    expect(canCancelEvent(event(), 'c2')).toBe(false);
   });
 });
 

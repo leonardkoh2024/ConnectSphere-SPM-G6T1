@@ -16,6 +16,7 @@ export const equipmentTypeLabel = (type) => {
 export const equipmentLineStatus = (line = {}) => {
   if (line.fulfillment_status === "RESERVED") return { label: "Approved", tone: "positive" };
   if (line.fulfillment_status === "RESOLVED") return { label: "Unable to fulfil", tone: "danger" };
+  if (line.fulfillment_status === "RELEASED") return { label: "Released", tone: "neutral" };
   return { label: "Pending", tone: "warning" };
 };
 
@@ -25,6 +26,7 @@ export const equipmentLineStatus = (line = {}) => {
 // when none could be reserved.
 export const equipmentRequestStatus = (request) => {
   if (!request) return { label: "Not submitted", tone: "neutral" };
+  if (request.status === "CANCELLED") return { label: "Cancelled", tone: "neutral" };
   if (request.status !== "ARRANGED") return { label: "Pending", tone: "warning" };
   const lines = request.lines || [];
   const reserved = lines.filter((line) => line.fulfillment_status === "RESERVED").length;
@@ -96,7 +98,7 @@ export const equipmentActivity = (rows = []) => rows
   .map((row) => ({
     id: `equipment-${row.id}`,
     actor_id: row.actor_id,
-    actor_role: "Technical Support",
+    actor_role: row.actor_role || "Technical Support",
     created_at: row.created_at,
     ...EQUIPMENT_ACTIVITY[row.action](row)
   }));

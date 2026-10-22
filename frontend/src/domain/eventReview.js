@@ -32,6 +32,18 @@ export const canRequestClarification = (event, userId) =>
 
 export const canRejectEvent = canRequestClarification;
 
+const CANCELLABLE = new Set([
+  EVENT_STATUS.SUBMITTED,
+  EVENT_STATUS.UNDER_REVIEW,
+  EVENT_STATUS.APPROVED,
+  EVENT_STATUS.PLANNING,
+  EVENT_STATUS.SAFETY_REVIEW,
+  EVENT_STATUS.CONFIRMED
+]);
+
+export const canCancelEvent = (event, userId) =>
+  isCurrentCoordinator(event, userId) && CANCELLABLE.has(event.status);
+
 // C6 / SCRUM-107 — approve is offered only to the assigned coordinator (AC3),
 // only while the event is Under Review (AC1), and not while a clarification is
 // open (AC4). Same boundary as reject/clarify.

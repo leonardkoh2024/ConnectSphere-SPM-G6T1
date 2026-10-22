@@ -94,6 +94,7 @@ const ACTION_LABELS = {
   CLARIFICATION_RESPONDED: "Responded to clarification",
   EVENT_APPROVED: "Approved the request",
   EVENT_REJECTED: "Rejected the request",
+  EVENT_CANCELLED: "Cancelled the event",
   COORDINATOR_ASSIGNED: "Assigned a coordinator",
   COORDINATOR_REASSIGNED: "Reassigned the coordinator",
   SAFETY_PLANNING_NOTES_UPDATED: "Updated safety planning notes",
