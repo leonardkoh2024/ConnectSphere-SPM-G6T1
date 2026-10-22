@@ -99,6 +99,15 @@ describe('TC-016 events are readable only by the roles related to them', () => {
     expect(matchBlock('events')).not.toContain(ROLES.ATTENDEE);
   });
 
+  // H2 AC3 — attendees find open events through the registration service, which
+  // sends only the public fields of events open now. Neither the events nor the
+  // registrations rules may hand an attendee a direct read instead.
+  test('TC-572 the open-events list is not a browser read of events or registrations', () => {
+    expect(matchBlock('events')).not.toContain(ROLES.ATTENDEE);
+    expect(matchBlock('registrations')).not.toContain(ROLES.ATTENDEE);
+    expect(matchBlock('registrations')).not.toMatch(/allow\s+[a-z,\s]*list[a-z,\s]*:\s*if\s+signedIn\(\)\s*;/);
+  });
+
   test('event writes are limited to the owning organiser or assigned coordinator workflow', () => {
     const events = matchBlock('events');
 

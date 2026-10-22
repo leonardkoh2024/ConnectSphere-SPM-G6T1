@@ -2,7 +2,8 @@
 
 Express service layer, on **:4000**. Started together with the frontend by `npm start` at the repo root.
 
-Three services are mounted: `coordinatorAssignment` (C1 / SCRUM-102), `venue` (E3) and `equipment` (G3). Catalogue reads remain
+Four services are mounted: `coordinatorAssignment` (C1 / SCRUM-102), `venue` (E3), `equipment` (G3) and `registration`
+(H2 / SCRUM-140). Catalogue reads remain
 in the browser through `frontend/src/lib/firebase.js`; the venue service authenticates staff and transactionally
 records unavailability after checking approved bookings.
 
@@ -37,7 +38,7 @@ services write to the same collection. The epics in Jira are the natural boundar
 | `coordinatorAssignment` | `coordinators`, `assignment_cursor`                        | C (C1 only) — superseded by K |
 | `venue`                 | venue catalogue, availability, bookings                    | E–F  |
 | `equipment`             | equipment counts, reservations                             | G    |
-| `registration`          | attendee registrations, waiting list                       | —    |
+| `registration`          | attendee registrations, waiting list                       | H    |
 | `notification`          | inbox items                                                | —    |
 
 They share one process for now, which is what lets `npm start` bring the whole system up. Because no service
@@ -57,6 +58,15 @@ written in the same transaction as that decision so the two never disagree. `not
 yet, so `equipment` reads `coordinator_id` and `name` from `events/{eventId}` and creates `notifications`
 documents in the inbox's shape, and nothing else on either collection. See
 `src/services/equipment/outcomeNotifications.js`. Revisit once `notification` exists.
+
+**Scoped exception — `registration` reads `events`.** H2 (SCRUM-140) lists the events an Attendee can
+register for, but an Attendee's browser has no read on `events` (A4/A5) and an event document holds far more
+than an Attendee should see. `GET /api/registrations/open-events` (Attendee ID token required) therefore reads
+the events with `registration_required == true`, keeps those open now by the shared rules in
+`frontend/src/domain/openRegistration.mjs`, and returns only their public fields with the remaining places
+(capacity less `REGISTERED` registrations). Venue names come through the venue service's
+`getApprovedEventVenueNames` read contract in `src/services/venue/approvedEventBookings.js`, not a query of
+its own. It writes nothing. Revisit once `event` exists.
 
 `firestore.rules` stays at the repo root. Authorisation is enforced there regardless of what lives in this
 folder, because the browser can still reach Firestore directly.
