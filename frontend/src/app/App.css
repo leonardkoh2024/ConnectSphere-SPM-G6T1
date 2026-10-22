@@ -1520,6 +1520,16 @@ a.cs-btn-ghost:hover {
 .cs-record-modified p { margin: 0; }
 .cs-record-saved { font-size: 13px; }
 
+/* H2 — an open event's description under its date, held to two lines so one
+   long description does not stretch its row past the others. */
+.cs-record p.cs-browse-description {
+  margin-top: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* Venue catalogue rows can contain user-managed names, locations and many
    facilities. Keep each column bounded so one verbose venue cannot distort the
    entire list; the full values remain available through their title text and

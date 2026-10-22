@@ -22,12 +22,14 @@
 
 import coordinatorAssignmentService from "./coordinatorAssignment/index.js";
 import equipmentService from "./equipment/index.js";
+import registrationService from "./registration/index.js";
 import venueService from "./venue/index.js";
 
 const SERVICES = [
   { name: "coordinatorAssignment", prefix: "/api/coordinator-assignment", router: coordinatorAssignmentService },
   { name: "venue", prefix: "/api/venues", router: venueService },
-  { name: "equipment", prefix: "/api/equipment", router: equipmentService }
+  { name: "equipment", prefix: "/api/equipment", router: equipmentService },
+  { name: "registration", prefix: "/api/registrations", router: registrationService }
 ];
 
 /** Mount every registered service onto the app. Called once at startup. */

@@ -41,6 +41,7 @@ they can be read next to the acceptance criteria and move into the service layer
 | F12 | SCRUM-177 | Book more than one venue for an event | TC-491 – TC-511 |
 | F15 | SCRUM-180 | Place a tentative hold on a venue | TC-512 – TC-536 |
 | J4 | SCRUM-153 | Be told when work arrives for me (Venue Staff see which event) | TC-537 – TC-540 |
+| H2 | SCRUM-140 | Find events I can register for | TC-541 – TC-572 |
 | E4 | SCRUM-120 | See when a venue is free | TC-200 – TC-249 |
 | J6 | SCRUM-155 | Be told the outcome of my booking and equipment requests (AC1: approval only — rejection awaits F5) | TC-313 – TC-346 |
 | A7 | SCRUM-170 | Use ConnectSphere as a Safety Officer | TC-348 – TC-385, TC-388 |
@@ -1230,3 +1231,56 @@ An approved request used to vanish from the Venue Staff Booking requests screen,
 | TC-538 | A notice names its event for a role that cannot read it | Refused event; notice carries event_name | Open Notifications | The stored event name; no "no longer available"; no View | As expected | Pass | |
 | TC-539 | An older notice says the event is not shared | Refused event; no stored name | Open Notifications | "Event details not shared with your role" | As expected | Pass | |
 | TC-540 | The booking-request notice to Venue Staff carries the event name | Coordinator raises a request | requestVenueBooking | Notice has event_name (the hold notice, TC-521, likewise) | As expected | Pass | |
+
+## H2 / SCRUM-140 — Find events I can register for
+
+**Scope:** an Attendee's **Browse events** screen lists the events open for registration right now. An event is open when registration is on, it has a whole-number capacity above zero, its status is Approved, Planning, Safety Review or Confirmed (H1 AC1 — "Approved or later", less Completed), and the current time is inside its registration window, read in Singapore time from the opening minute up to but not including the closing minute. Attendees have no Firestore read on `events`, so the list comes from the new **registration** service (`GET /api/registrations/open-events`, Attendee ID token required). It filters with the shared rules in `frontend/src/domain/openRegistration.mjs` and returns only the public fields. Remaining places are the capacity less the count of `REGISTERED` registrations. Venues are the event's approved bookings, read through the venue service's `getApprovedEventVenueNames` contract.
+
+**AC coverage:** AC1 (only events open at the current date and time) — TC-541 – TC-550, TC-556, TC-557. AC2 (name, description, date, window, venue, remaining places) — TC-551 – TC-554, TC-558, TC-566 – TC-568. AC3 (no Draft, Cancelled, Rejected or otherwise unopen event; enforced server side) — TC-543, TC-555, TC-559 – TC-562, TC-571, TC-572. Guards — TC-563 – TC-565, TC-569, TC-570.
+
+**Unit test cases — `frontend/src/domain/openRegistration.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-541 | An event taking registrations, in an open status, inside its window is open | Confirmed event; window 1 Nov 09:00 – 10 Nov 17:00 | isOpenForRegistration at 5 Nov 12:00 | true | As expected | Pass | AC1 |
+| TC-542 | Approved, Planning, Safety Review and Confirmed can be open | Same event | Check REGISTRATION_OPEN_STATUSES; isOpenForRegistration for each | Exactly those four, each open | As expected | Pass | AC1 |
+| TC-543 | Draft, Submitted, Under Review, Completed, Cancelled and Rejected are never open | Same event inside its window | isOpenForRegistration for each; lower-case variants | false for each; case ignored | As expected | Pass | AC3 |
+| TC-544 | An event not taking registrations is not open | registration_required false, null, "true" | isOpenForRegistration | false for each | As expected | Pass | AC1 |
+| TC-545 | The window opens at its opening minute | — | Check at 08:59:59 and 09:00 on 1 Nov | Closed, then open | As expected | Pass | AC1 - boundary |
+| TC-546 | The window closes at its closing minute | — | Check at 16:59:59 and 17:00 on 10 Nov, and the day after | Open, closed, closed | As expected | Pass | AC1 - boundary |
+| TC-547 | The window is read in Singapore time | — | registrationWindow | Opens 01:00Z, closes 09:00Z | As expected | Pass | AC1 |
+| TC-548 | An incomplete or impossible window is never open | Missing date, blank time, malformed time, close before open | isOpenForRegistration | false for each | As expected | Pass | Guard |
+| TC-549 | An event without a usable capacity is not open | Capacity null, 0, 12.5 | isOpenForRegistration | false for each | As expected | Pass | Guard |
+| TC-550 | A missing event is not open | — | isOpenForRegistration(null / undefined) | false | As expected | Pass | Guard |
+| TC-551 | Remaining places are capacity less registered, never negative | — | remainingPlaces for 0, 149, 150, 151 registered of 150 | 150, 1, 0, 0 | As expected | Pass | AC2 |
+| TC-552 | Places read as a count, or Full | — | placesLabel for 150, 1, 0 | "150 places left", "1 place left", "Full" | As expected | Pass | AC2 |
+| TC-553 | Every approved venue is named, or the venue is to be confirmed | — | venueLabel for one, two, none | Name; both names comma-separated; "Venue to be confirmed" | As expected | Pass | AC2 |
+| TC-554 | An entry carries exactly the attendee-facing fields | Event with one venue, 40 registered | openEventListing | id, name, description, date, start, end, venues, capacity, 110 remaining, closing instant | As expected | Pass | AC2 |
+| TC-555 | Internal fields never reach the attendee | — | openEventListing | No organiser_id, coordinator_id, reference_no, purpose, expected_attendance or status | As expected | Pass | AC3 |
+| TC-556 | The list keeps only open events, soonest first | Eight events, five not open | listOpenEvents | Morning, Afternoon, Later; counts and venues attached; empty input gives [] | As expected | Pass | AC1 |
+
+**Service test cases — `backend/src/services/registration/service.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-557 | An attendee is given only the open events, soonest first | Seven events: two open, one each Draft, Cancelled, Rejected, closed window, registration off | GET /api/registrations/open-events as an Attendee | 200 with the two open events, in date order | As expected | Pass | AC1, AC3 - server side |
+| TC-558 | Venues come from approved bookings; places count only Registered | Approved, rejected and pending bookings; registered, withdrawn and waitlisted registrations | Same request | Approved venue names only; remaining places 1 and 2 | As expected | Pass | AC2 |
+| TC-559 | No internal event field is sent | — | Same request | No organiser_id, coordinator_id, reference_no, status or registration_required in any entry | As expected | Pass | AC3 - server side |
+| TC-560 | Venues and registrations are read only for open events | — | Same request; count reads | Two booking lookups and two counts | As expected | Pass | Efficiency |
+| TC-561 | No token, or an invalid one, is refused | — | Request with no Authorization; with a rejected token | 401 before anything is read | As expected | Pass | AC3 - server side |
+| TC-562 | Only Attendees are served | Organiser, coordinator, unknown user | Request as each | 403 "Only attendees …"; events not read | As expected | Pass | AC3 - server side |
+| TC-563 | A failed read is a server error, not an empty list | events read throws | Request | 500 | As expected | Pass | Guard |
+
+**Screen and client test cases — `BrowseEvents.test.js`, `registrationsApi.test.js`, `Workspace.test.js`, `firestoreRules.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-564 | The list is fetched from the registration service with the ID token | Signed-in attendee | loadOpenEvents | GET /api/registrations/open-events with Bearer token; events returned | As expected | Pass | AC3 |
+| TC-565 | Failures are explained | 403 reply; non-JSON reply; signed out | loadOpenEvents | Service's message; "registration service is not responding"; "Sign in is required" with no request sent | As expected | Pass | Guard |
+| TC-566 | Each event shows name, description, date, window, venue and remaining places | One open event at two venues | Open Browse events | "Thu, 12 Nov 2026 · 09:00 – 17:00", description, "Harbour Hall, Pier Room", "110 places left", "Registration closes 10 Nov 2026, 17:00" | As expected | Pass | AC2 |
+| TC-567 | A full event shows Full; no venue yet says so; no blank description line | Remaining 0, no venues; empty description | Open Browse events | "Full", "Venue to be confirmed"; no description paragraph | As expected | Pass | AC2 |
+| TC-568 | The service's order is kept | Two events | Open Browse events | Listed in the order given | As expected | Pass | AC1 |
+| TC-569 | Nothing open is said plainly | Empty list | Open Browse events | "No events are open for registration right now." | As expected | Pass | AC1 |
+| TC-570 | Loading and failure are shown | Pending, then rejected load | Open Browse events | "Loading events…"; failure in an alert, no empty-list message | As expected | Pass | Guard |
+| TC-571 | An attendee lands on Browse events; no other role reaches it | Attendee; organiser with the attendee hash | Render the workspace | List shown to the attendee; organiser told "not authorised" | As expected | Pass | AC3 |
+| TC-572 | Attendees get no browser read of events or registrations | — | Read the events and registrations rules | Neither names ATTENDEE; registrations not open to any signed-in user | As expected | Pass | AC3 - server side |
