@@ -658,6 +658,18 @@ describe('the coordinator event detail carries its equipment arrangements', () =
     const detail = await reviewApi.detail('e1');
     expect(detail.actorNames).toEqual({ c1: 'Joshua Chua' });
   });
+
+  test('D6 resolves actor display names from supported profile name fields', async () => {
+    const getDoc = firestore.getDoc.getMockImplementation();
+    firestore.getDoc.mockImplementation(async (ref) => {
+      if (ref.path === 'users/c1') return snapshot('c1', { role: 'EVENT_COORDINATOR', full_name: 'Joshua Chua' });
+      return getDoc(ref);
+    });
+
+    const detail = await reviewApi.detail('e1');
+
+    expect(detail.actorNames).toEqual({ c1: 'Joshua Chua' });
+  });
 });
 
 // F12 / SCRUM-177 AC5 — TC-507 in docs/test-cases.md.

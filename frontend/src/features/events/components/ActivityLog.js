@@ -16,7 +16,8 @@ export default function ActivityLog({ history = [], actorNames = {} }) {
       <strong>{entry.action}</strong>
       <time dateTime={entry.at || undefined}>{shownTime(entry.at)}</time>
       <p className="cs-activity-actor">by {entry.actor}</p>
-      {entry.reason && <p>{entry.reason}</p>}
+      {entry.description && <p>{entry.description}</p>}
+      {entry.reason && entry.reason !== entry.description && <p>{entry.reason}</p>}
       {entry.changes.length > 0 && <dl className="cs-activity-changes">
         {entry.changes.map((change) => <div key={change.field}>
           <dt>{change.label}</dt>

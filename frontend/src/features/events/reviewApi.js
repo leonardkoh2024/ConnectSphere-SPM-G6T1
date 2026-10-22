@@ -186,7 +186,7 @@ const detail = async (eventId) => {
   const actorSnapshots = await Promise.all(actorIds.map((id) => getDoc(doc(db, "users", id)).catch(() => null)));
   const actorNames = Object.fromEntries(actorSnapshots.filter((item) => item && item.exists?.()).map((item) => {
     const data = item.data();
-    return [item.id, data.name || data.email || item.id];
+    return [item.id, data.name || data.full_name || data.display_name || data.staff_name].filter(([, name]) => name);
   }));
   const decisions = historyRecords.filter((item) => ["EVENT_APPROVED", "EVENT_REJECTED"].includes(item.action_type));
   const decision = decisions.length ? decisions[decisions.length - 1] : null;

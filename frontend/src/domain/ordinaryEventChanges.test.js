@@ -64,8 +64,51 @@ describe('D1 SCRUM-111 ordinary event information', () => {
       action: 'Updated event details', actor: 'Sam Coordinator', at: '2026-10-02T01:00:00.000Z',
       changes: [{ field: 'name', label: 'Event name', oldValue: 'Old', newValue: 'New' }]
     });
-    // A significant change is split into its fields; an unknown actor falls back to the id.
-    expect(entries[0]).toMatchObject({ actor: 'c9', changes: [{ label: 'Expected attendance', oldValue: '100', newValue: '125' }] });
+    // A significant change is split into its fields; an unknown actor ID is not exposed.
+    expect(entries[0]).toMatchObject({ actor: 'Unknown user', changes: [{ label: 'Expected attendance', oldValue: '100', newValue: '125' }] });
     expect(activityEntries([{ id: 'h4', action_type: 'X', field_name: 'internal_notes', old_value: '', new_value: 'n' }])[0].changes[0].oldValue).toBe('(blank)');
+  });
+
+  test('D6 displays recorded clarification and decision descriptions and identifies staff actors by role', () => {
+    const entries = activityEntries([
+      {
+        id: 'h1', action_type: 'CLARIFICATION_REQUESTED', actor_id: 'c1',
+        description: 'Please confirm attendance.', created_at: '2026-10-01T01:00:00.000Z'
+      },
+      {
+        id: 'h2', action_type: 'VENUE_BOOKING_HELD', actor_id: 'venue-staff-1',
+        description: 'Venue booking VB-1 held until 2026-10-06.', created_at: '2026-10-02T01:00:00.000Z'
+      },
+      {
+        id: 'h3', action_type: 'SAFETY_CHECK_REJECTED', actor_id: 'safety-officer-1',
+        description: 'Emergency access must remain clear.', created_at: '2026-10-03T01:00:00.000Z'
+      }
+    ]);
+
+    expect(entries.map((entry) => entry.id)).toEqual(['h3', 'h2', 'h1']);
+    expect(entries.map((entry) => entry.actor)).toEqual(['Safety Officer', 'Venue Staff', 'Unknown user']);
+    expect(entries.map((entry) => entry.description)).toEqual([
+      'Emergency access must remain clear.',
+      'Venue booking VB-1 held until 2026-10-06.',
+      'Please confirm attendance.'
+    ]);
+    expect(entries.map((entry) => entry.action)).toEqual([
+      'Rejected the safety check',
+      'Placed a venue booking on hold',
+      'Requested clarification'
+    ]);
+  });
+
+  test('D6 uses the resolved name instead of exposing an actor user ID', () => {
+    const [named] = activityEntries([
+      { id: 'h1', action_type: 'EVENT_DETAILS_UPDATED', actor_id: 'uid-123' }
+    ], { 'uid-123': 'Jordan Tan' });
+    const [unreadable] = activityEntries([
+      { id: 'h2', action_type: 'EVENT_DETAILS_UPDATED', actor_id: 'uid-456' }
+    ]);
+
+    expect(named.actor).toBe('Jordan Tan');
+    expect(unreadable.actor).toBe('Unknown user');
+    expect(unreadable.actor).not.toBe('uid-456');
   });
 });

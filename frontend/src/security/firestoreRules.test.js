@@ -515,6 +515,13 @@ describe('C6 the assigned coordinator may approve a reviewed request', () => {
     expect(history).toContain('request.resource.data.actor_id == request.auth.uid');
     expect(history).toContain('currentCoordinator(request.resource.data.event_id)');
   });
+
+  test('D6 history entries can be created but have no update or delete rule', () => {
+    const history = matchBlock('event_history');
+    expect(history).toContain('allow create:');
+    expect(history).not.toMatch(/allow\s+update\b/);
+    expect(history).not.toMatch(/allow\s+delete\b/);
+  });
 });
 
 describe('C2/C3 a coordinator can read an organiser profile, one at a time', () => {

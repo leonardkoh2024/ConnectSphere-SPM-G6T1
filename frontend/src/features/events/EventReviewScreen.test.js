@@ -595,6 +595,31 @@ describe('D1 SCRUM-111 ordinary event details and the Activity tab', () => {
     expect(within(log).getByText('Partner Summit')).toBeInTheDocument();
     expect(within(log).getByText(/2026/)).toBeInTheDocument();
   });
+
+  test.each(['COMPLETED', 'CANCELLED', 'REJECTED'])(
+    'D6 keeps event history available when the event is %s',
+    async (status) => {
+      reviewApi.list.mockResolvedValue({ events: [{ ...baseEvent, status }] });
+      reviewApi.detail.mockResolvedValue({
+        ...detail({ status }),
+        history: [{
+          id: 'h1', action_type: 'EVENT_REJECTED', actor_id: 'c1',
+          description: 'No suitable venue can be secured.',
+          created_at: '2026-10-02T01:00:00.000Z'
+        }],
+        actorNames: { c1: 'Sam Coordinator' }
+      });
+
+      await openRequest();
+      await userEvent.click(screen.getByRole('tab', { name: /^Activity/ }));
+
+      const log = screen.getByRole('region', { name: /event activity/i });
+      expect(within(log).getByText('Rejected the request')).toBeInTheDocument();
+      expect(within(log).getByText('No suitable venue can be secured.')).toBeInTheDocument();
+      expect(within(log).getByText(/by Sam Coordinator/)).toBeInTheDocument();
+    }
+  );
+
   test('TC-468 an invalid ordinary value is named and cannot be saved', async () => {
     reviewApi.list.mockResolvedValue({ events: [planningEvent] });
     reviewApi.detail.mockResolvedValue(detail(planningEvent));
