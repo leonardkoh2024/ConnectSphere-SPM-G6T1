@@ -2,12 +2,12 @@
 // Firebase attaches the signed-in user and firestore.rules is the permission
 // boundary for every read and atomic workflow write.
 
-import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where, writeBatch } from "firebase/firestore";
 import { auth, db } from "../../lib/firebase";
-import { EVENT_STATUS, canApproveEvent, assignEvent, reassignEvent, canOpenReview, canRejectEvent, canRequestClarification, canRespondToClarification, cleanRequiredText, leadVisibleEvents, supervisesAllEvents } from "../../domain/eventReview";
+import { EVENT_STATUS, canApproveEvent, assignEvent, reassignEvent, canOpenReview, canRejectEvent, canRequestClarification, canRespondToClarification, canCancelEvent, cleanRequiredText, leadVisibleEvents, supervisesAllEvents } from "../../domain/eventReview";
 import { clarificationRecord, clarificationResponseRecord, coordinatorAssignmentRecord, eventHistoryRecord, notificationRecord } from "../../domain/eventReviewRecords";
 import { ROLES } from "../../domain/roles";
-import { decisionReasonProblem, eventDecisionMessage } from "../../domain/notifications";
+import { decisionReasonProblem, eventCancelledMessage, eventDecisionMessage } from "../../domain/notifications";
 import {
   editableEventStatuses,
   significantEventChanges,
@@ -186,7 +186,7 @@ const detail = async (eventId) => {
   const actorSnapshots = await Promise.all(actorIds.map((id) => getDoc(doc(db, "users", id)).catch(() => null)));
   const actorNames = Object.fromEntries(actorSnapshots.filter((item) => item && item.exists?.()).map((item) => {
     const data = item.data();
-    return [item.id, data.name || data.email || item.id];
+    return [item.id, data.name || data.full_name || data.display_name || data.staff_name].filter(([, name]) => name);
   }));
   const decisions = historyRecords.filter((item) => ["EVENT_APPROVED", "EVENT_REJECTED"].includes(item.action_type));
   const decision = decisions.length ? decisions[decisions.length - 1] : null;
@@ -537,6 +537,93 @@ const reject = async (eventId, value) => {
   return { ok: true };
 };
 
+const cancel = async (eventId, value) => {
+  const user = requireUser();
+  const reason = cleanRequiredText(value);
+  if (!reason) throw new Error("Cancellation reason is required.");
+
+  const eventRef = doc(db, "events", eventId);
+  const currentEvent = await getDoc(eventRef);
+  if (!currentEvent.exists() || !canCancelEvent(currentEvent.data(), user.uid)) {
+    throw new Error("Only the current coordinator may cancel an active event.");
+  }
+  const registrationSnapshot = await getDocs(query(
+    collection(db, "registrations"),
+    where("event_id", "==", eventId)
+  ));
+  const attendees = registrationSnapshot.docs
+    .filter((item) => String(item.data().status || "").toUpperCase() === "REGISTERED")
+    .map((item) => ({
+      registrationId: item.id,
+      userId: item.data().user_id || item.data().attendee_id
+    }))
+    .filter((item) => item.userId);
+
+  const historyRef = doc(collection(db, "event_history"));
+  const notificationRef = doc(collection(db, "notifications"));
+  let eventName = "Your event";
+  await runTransaction(db, async (tx) => {
+    const snapshot = await tx.get(eventRef);
+    if (!snapshot.exists() || !canCancelEvent(snapshot.data(), user.uid)) {
+      throw new Error("Only the current coordinator may cancel an active event.");
+    }
+    const event = snapshot.data();
+    eventName = event.name || event.reference_no || eventName;
+    const cancelledAt = serverTimestamp();
+    tx.update(eventRef, {
+      status: EVENT_STATUS.CANCELLED,
+      cancellation_reason: reason,
+      cancelled_at: cancelledAt,
+      last_cancellation_id: historyRef.id,
+      updated_at: cancelledAt
+    });
+    tx.set(historyRef, eventHistoryRecord({
+      historyId: historyRef.id,
+      eventId,
+      actorId: user.uid,
+      actionType: "EVENT_CANCELLED",
+      fieldName: "status",
+      oldValue: event.status,
+      newValue: EVENT_STATUS.CANCELLED,
+      description: reason,
+      createdAt: cancelledAt
+    }));
+    tx.set(notificationRef, notificationRecord({
+      notificationId: notificationRef.id,
+      userId: event.organiser_id,
+      eventId,
+      type: "EVENT_CANCELLED",
+      message: eventCancelledMessage({ eventName, reason }),
+      createdAt: cancelledAt
+    }));
+  });
+  return { eventId, eventName, reason, attendees };
+};
+
+const notifyCancelledAttendees = async ({ eventId, eventName, reason, attendees = [] }) => {
+  const uniqueAttendees = [...new Map(attendees.map((attendee) => [attendee.registrationId, attendee])).values()];
+  const chunkSize = 400;
+  for (let offset = 0; offset < uniqueAttendees.length; offset += chunkSize) {
+    const batch = writeBatch(db);
+    uniqueAttendees.slice(offset, offset + chunkSize).forEach(({ registrationId, userId }) => {
+      const notificationId = `cancel-${eventId}-${registrationId}`;
+      const notificationRef = doc(db, "notifications", notificationId);
+      batch.set(notificationRef, notificationRecord({
+        notificationId,
+        userId,
+        eventId,
+        type: "EVENT_CANCELLED",
+        message: eventCancelledMessage({ eventName, reason }),
+        createdAt: serverTimestamp(),
+        eventName,
+        registrationId
+      }));
+    });
+    await batch.commit();
+  }
+  return { notified: uniqueAttendees.length };
+};
+
 const respond = async (eventId, clarificationId, value) => {
   const user = requireUser();
   const message = cleanRequiredText(value);
@@ -722,7 +809,7 @@ const leadReassign = async (eventId, coordinatorId) => {
 };
 
 export const reviewApi = {
-  list, detail, openReview, clarify, reject, respond, approve,
+  list, detail, openReview, clarify, reject, respond, approve, cancel, notifyCancelledAttendees,
   leadBoard, assign, leadReassign,
   significantChangeImpact, saveEventEdit
 };

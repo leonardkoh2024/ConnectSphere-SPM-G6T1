@@ -132,6 +132,21 @@ service cloud.firestore {
         return hasRole('EVENT_COORDINATOR')
           && resource.data.coordinator_id == request.auth.uid
           && (
+            (resource.data.status in ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PLANNING', 'SAFETY_REVIEW', 'CONFIRMED']
+              && request.resource.data.status == 'CANCELLED'
+              && request.resource.data.cancellation_reason is string
+              && request.resource.data.cancellation_reason.size() > 0
+              && request.resource.data.cancelled_at == request.time
+              && request.resource.data.updated_at == request.time
+              && request.resource.data.last_cancellation_id is string
+              && getAfter(/databases/$(database)/documents/event_history/$(request.resource.data.last_cancellation_id)).data.event_id == eventId
+              && getAfter(/databases/$(database)/documents/event_history/$(request.resource.data.last_cancellation_id)).data.actor_id == request.auth.uid
+              && getAfter(/databases/$(database)/documents/event_history/$(request.resource.data.last_cancellation_id)).data.action_type == 'EVENT_CANCELLED'
+              && getAfter(/databases/$(database)/documents/event_history/$(request.resource.data.last_cancellation_id)).data.created_at == request.time
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'status', 'cancellation_reason', 'cancelled_at', 'last_cancellation_id', 'updated_at'
+              ]))
+            ||
             (resource.data.status == 'SUBMITTED'
               && request.resource.data.status == 'UNDER_REVIEW'
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updated_at']))
@@ -470,6 +485,38 @@ service cloud.firestore {
     }
 
     match /notifications/{notificationId} {
+      function eventCancellationRecord() {
+        let event = getAfter(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data;
+        let cancellation = getAfter(/databases/$(database)/documents/event_history/$(event.get('last_cancellation_id', ''))).data;
+        return hasRole('EVENT_COORDINATOR')
+          && event.status == 'CANCELLED'
+          && event.coordinator_id == request.auth.uid
+          && event.last_cancellation_id is string
+          && cancellation.event_id == request.resource.data.event_id
+          && cancellation.actor_id == request.auth.uid
+          && cancellation.action_type == 'EVENT_CANCELLED'
+          && cancellation.created_at == event.cancelled_at
+          && request.resource.data.created_at == request.time;
+      }
+      function registeredAttendeeCancellationNotice() {
+        let event = get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data;
+        let registration = get(/databases/$(database)/documents/registrations/$(request.resource.data.get('registration_id', ''))).data;
+        let cancellation = get(/databases/$(database)/documents/event_history/$(event.get('last_cancellation_id', ''))).data;
+        return hasRole('EVENT_COORDINATOR')
+          && event.status == 'CANCELLED'
+          && event.coordinator_id == request.auth.uid
+          && request.resource.data.type == 'EVENT_CANCELLED'
+          && request.resource.data.registration_id is string
+          && registration.event_id == request.resource.data.event_id
+          && registration.status == 'REGISTERED'
+          && (registration.user_id == request.resource.data.user_id
+            || registration.attendee_id == request.resource.data.user_id)
+          && cancellation.event_id == request.resource.data.event_id
+          && cancellation.actor_id == request.auth.uid
+          && cancellation.action_type == 'EVENT_CANCELLED'
+          && cancellation.new_value == 'CANCELLED'
+          && request.resource.data.created_at == request.time;
+      }
       // J6 AC1 — a booking's outcome, told by the Venue Staff member deciding it
       // to the coordinator who raised it. `booking` is read after the write, and
       // both timestamps must be this request's, so the notice can only be written
@@ -524,7 +571,13 @@ service cloud.firestore {
             && request.resource.data.get('booking_id', null) is string
             && venueBookingHoldNotice(
               getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data))
+          || (request.resource.data.get('type', '') == 'EVENT_CANCELLED'
+            && eventCancellationRecord()
+            && request.resource.data.user_id == getAfter(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.organiser_id)
+          || (request.resource.data.get('type', '') == 'EVENT_CANCELLED'
+            && registeredAttendeeCancellationNotice())
           || (!(request.resource.data.get('type', '') in ['VENUE_BOOKING_APPROVED', 'VENUE_BOOKING_REJECTED', 'VENUE_BOOKING_HELD'])
+            && request.resource.data.get('type', '') != 'EVENT_CANCELLED'
             && (
           (currentCoordinator(request.resource.data.event_id)
             && request.resource.data.user_id in [request.auth.uid,
@@ -662,9 +715,8 @@ service cloud.firestore {
         && request.resource.data.suitability_acknowledgement.criteria is list;
       allow update: if
         // K5 / SCRUM-186 AC2 — withdrawing is for the coordinator the event is assigned to
-        // now, not for whoever raised the request before it was reassigned.
+        // now. The request may have been raised by the previous coordinator.
         (hasRole('EVENT_COORDINATOR')
-          && resource.data.requested_by == request.auth.uid
           && currentCoordinator(resource.data.event_id)
           && resource.data.status == 'PENDING'
           && request.resource.data.status == 'WITHDRAWN'

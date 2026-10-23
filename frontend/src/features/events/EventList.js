@@ -37,7 +37,7 @@ const whenText = (event) => {
 
 const sortKey = (event) => event.updated_at?.toMillis?.() ?? event.created_at?.toMillis?.() ?? 0;
 
-const VIEWABLE = ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "PLANNING", "CONFIRMED", "COMPLETED", "REJECTED"];
+const VIEWABLE = ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "PLANNING", "CONFIRMED", "COMPLETED", "CANCELLED", "REJECTED"];
 
 export default function EventList({ user, role, onEdit, onView, onCreate, onDeleted, headerHosted = false }) {
   const [events, setEvents] = useState([]);

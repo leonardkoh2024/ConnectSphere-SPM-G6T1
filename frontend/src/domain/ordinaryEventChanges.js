@@ -94,13 +94,18 @@ const ACTION_LABELS = {
   CLARIFICATION_RESPONDED: "Responded to clarification",
   EVENT_APPROVED: "Approved the request",
   EVENT_REJECTED: "Rejected the request",
+  EVENT_CANCELLED: "Cancelled the event",
   COORDINATOR_ASSIGNED: "Assigned a coordinator",
   COORDINATOR_REASSIGNED: "Reassigned the coordinator",
+  SAFETY_PLANNING_NOTES_UPDATED: "Updated safety planning notes",
   SAFETY_CHECK_REQUESTED: "Sent for safety check",
   SAFETY_CHECK_APPROVED: "Approved the safety check",
   SAFETY_CHECK_REJECTED: "Rejected the safety check",
   SAFETY_CHANGES_REQUESTED: "Requested safety changes",
+  VENUE_BOOKING_HELD: "Placed a venue booking on hold",
   VENUE_BOOKING_APPROVED: "Approved a venue booking",
+  VENUE_BOOKING_RELEASED: "Released a venue booking",
+  VENUE_BOOKING_WITHDRAWN: "Withdrew a venue booking",
   // Technical Support's decisions, from domain/eventEquipment.equipmentActivity.
   EQUIPMENT_RESERVED: "Approved an equipment reservation",
   EQUIPMENT_RESERVATION_RELEASED: "Released an equipment reservation",
@@ -110,7 +115,13 @@ const ACTION_LABELS = {
 
 // A coordinator may not read Venue Staff or Technical Support profiles, so an
 // entry whose actor has no readable name is credited to the role instead.
-const ROLE_BY_ACTION = { VENUE_BOOKING_APPROVED: "Venue Staff" };
+const ROLE_BY_ACTION = {
+  VENUE_BOOKING_HELD: "Venue Staff",
+  VENUE_BOOKING_APPROVED: "Venue Staff",
+  SAFETY_CHECK_APPROVED: "Safety Officer",
+  SAFETY_CHECK_REJECTED: "Safety Officer",
+  SAFETY_CHANGES_REQUESTED: "Safety Officer"
+};
 
 const ORDINARY_LABELS = Object.fromEntries(ORDINARY_FIELDS.map((item) => [item.field, item.label]));
 
@@ -149,7 +160,7 @@ export const activityEntries = (history = [], names = {}) => [...history]
   .map((entry) => ({
     id: entry.id || entry.history_id,
     action: actionLabel(entry.action_type),
-    actor: names[entry.actor_id] || entry.actor_role || ROLE_BY_ACTION[entry.action_type] || entry.actor_id || "Unknown user",
+    actor: names[entry.actor_id] || entry.actor_role || ROLE_BY_ACTION[entry.action_type] || "Unknown user",
     at: entry.created_at || null,
     description: entry.description || null,
     reason: entry.reason || null,

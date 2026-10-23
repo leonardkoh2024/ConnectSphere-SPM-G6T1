@@ -99,12 +99,51 @@ describe('TC-016 events are readable only by the roles related to them', () => {
     expect(matchBlock('events')).not.toContain(ROLES.ATTENDEE);
   });
 
+  // H2 AC3 — attendees find open events through the registration service, which
+  // sends only the public fields of events open now. Neither the events nor the
+  // registrations rules may hand an attendee a direct read instead.
+  test('TC-572 the open-events list is not a browser read of events or registrations', () => {
+    expect(matchBlock('events')).not.toContain(ROLES.ATTENDEE);
+    // H2: an attendee has no browser read of registrations. (H1 gives attendees one
+    // write, a window-gated create, so the role may appear — but never on a read.)
+    const readClauses = matchBlock('registrations').match(/allow\s+(?:get|list|read)[^;]*;/g) || [];
+    expect(readClauses.length).toBeGreaterThan(0);
+    readClauses.forEach((clause) => expect(clause).not.toContain(ROLES.ATTENDEE));
+    expect(matchBlock('registrations')).not.toMatch(/allow\s+[a-z,\s]*list[a-z,\s]*:\s*if\s+signedIn\(\)\s*;/);
+  });
+
   test('event writes are limited to the owning organiser or assigned coordinator workflow', () => {
     const events = matchBlock('events');
 
     expect(events).toMatch(/allow create:\s*if hasRole\('EVENT_ORGANISER'\) && request\.resource\.data\.organiser_id == request\.auth\.uid/);
     expect(events).toContain("hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid");
     expect(events).toContain('coordinatorWorkflowUpdate()');
+  });
+
+  test('D4 cancellation is restricted to the assigned coordinator and retained on the event', () => {
+    const events = matchBlock('events');
+    const workflow = events.slice(
+      events.indexOf('function coordinatorWorkflowUpdate'),
+      events.indexOf('function leadAssignmentUpdate')
+    );
+
+    expect(workflow).toContain("resource.data.coordinator_id == request.auth.uid");
+    expect(workflow).toContain("request.resource.data.status == 'CANCELLED'");
+    expect(workflow).toContain('request.resource.data.cancellation_reason.size() > 0');
+    expect(workflow).toContain('last_cancellation_id');
+    expect(workflow).toContain("action_type == 'EVENT_CANCELLED'");
+    expect(workflow).toContain("'status', 'cancellation_reason', 'cancelled_at', 'last_cancellation_id', 'updated_at'");
+    expect(events).toContain("allow delete: if hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid && resource.data.status == 'DRAFT'");
+  });
+
+  test('cancellation notifications are tied to the event and registered attendees', () => {
+    const notifications = matchBlock('notifications');
+
+    expect(notifications).toContain('function eventCancellationRecord()');
+    expect(notifications).toContain('function registeredAttendeeCancellationNotice()');
+    expect(notifications).toContain("registration.status == 'REGISTERED'");
+    expect(notifications).toContain("registrations/$(request.resource.data.get('registration_id', ''))");
+    expect(notifications).toContain('request.resource.data.registration_id');
   });
 });
 
@@ -371,7 +410,7 @@ describe('TC-284 notifications are only ever addressed to people related to the 
   // F15 — a hold's notice (VENUE_BOOKING_HELD) has its own clause too, so the
   // ordinary clauses are closed to it as well.
   const VENUE_NOTICES = "['VENUE_BOOKING_APPROVED', 'VENUE_BOOKING_REJECTED', 'VENUE_BOOKING_HELD']";
-  const ORDINARY = `!(request.resource.data.get('type', '') in ${VENUE_NOTICES}) && (`;
+  const ORDINARY = "request.resource.data.get('type', '') != 'EVENT_CANCELLED' && (";
   const DECIDED = `(request.resource.data.get('type', '') in ${VENUE_OUTCOMES}`;
   const ordinary = () => {
     const at = create().indexOf(ORDINARY);
@@ -520,6 +559,13 @@ describe('C6 the assigned coordinator may approve a reviewed request', () => {
     const history = matchBlock('event_history');
     expect(history).toContain('request.resource.data.actor_id == request.auth.uid');
     expect(history).toContain('currentCoordinator(request.resource.data.event_id)');
+  });
+
+  test('D6 history entries can be created but have no update or delete rule', () => {
+    const history = matchBlock('event_history');
+    expect(history).toContain('allow create:');
+    expect(history).not.toMatch(/allow\s+update\b/);
+    expect(history).not.toMatch(/allow\s+delete\b/);
   });
 });
 
@@ -765,13 +811,16 @@ describe('K5 SCRUM-186 a coordinator acts only on events currently assigned to t
     expect(ruleFunctions().canReadEvent).toBe('return ownsEvent(eventId) || currentCoordinator(eventId);');
   });
 
-  test('K5-RT3 AC2 a coordinator who raised a booking cannot withdraw it once the event is no longer theirs', () => {
+  test('K5-RT3 AC2 the current coordinator can withdraw a pending booking even if another coordinator raised it', () => {
     const update = blockOf('venue_bookings').match(/allow update: if (.*?);/)[1];
-    const withdraw = alternatives(update).find((clause) => clause.includes('requested_by == request.auth.uid'));
+    const withdraw = alternatives(update).find((clause) =>
+      clause.includes("request.resource.data.status == 'WITHDRAWN'")
+      && clause.includes("resource.data.status == 'PENDING'")
+    );
 
     expect(withdraw).toBeDefined();
-    expect(withdraw).toContain("request.resource.data.status == 'WITHDRAWN'");
     expect(withdraw).toContain('currentCoordinator(resource.data.event_id)');
+    expect(withdraw).not.toContain('requested_by');
   });
 
   test('K5-RT4 AC2 sweep: every write the coordinator role is granted outside the events collection names the current coordinator', () => {

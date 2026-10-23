@@ -39,6 +39,8 @@ jest.mock('../features/equipment/EquipmentQueueScreen', () => ({ __esModule: tru
 // G2 / G3 — Technical Support's catalogue and reservation list report only that they were opened.
 jest.mock('../features/equipment/EquipmentCatalogueScreen', () => ({ __esModule: true, default: () => 'equipment catalogue' }));
 jest.mock('../features/equipment/EquipmentReservationsScreen', () => ({ __esModule: true, default: () => 'equipment reservations' }));
+// H2 — the attendee's list of open events reports only that it was opened.
+jest.mock('../features/registrations/BrowseEvents', () => ({ __esModule: true, default: () => 'open events list' }));
 // J1 — the live inbox is stubbed so the badge can be driven by hand.
 jest.mock('../features/notifications/useNotifications', () => ({ __esModule: true, default: jest.fn() }));
 // The stub offers View only when the shell hands it somewhere to go.
@@ -154,6 +156,21 @@ describe('TC-014 role-specific navigation', () => {
     render(<Workspace user={USER} role={ROLES.VENUE_STAFF} />);
 
     expect(screen.getByText('Venue Staff')).toBeInTheDocument();
+  });
+});
+
+describe('H2 an attendee finds events they can register for', () => {
+  test('TC-571 an attendee lands on Browse events, which lists the open events', () => {
+    render(<Workspace user={USER} role={ROLES.ATTENDEE} />);
+    expect(screen.getByRole('heading', { level: 1, name: 'Browse events' })).toBeInTheDocument();
+    expect(screen.getByText('open events list')).toBeInTheDocument();
+  });
+
+  test('TC-571 no other role is shown the attendee list', () => {
+    window.location.hash = screenHash(ROLES.ATTENDEE, 'Browse events');
+    render(<Workspace user={USER} role={ROLES.ORGANISER} />);
+    expect(screen.queryByText('open events list')).not.toBeInTheDocument();
+    expect(screen.getByText('You are not authorised to access this function.')).toBeInTheDocument();
   });
 });
 

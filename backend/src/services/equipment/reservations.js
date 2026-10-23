@@ -234,5 +234,92 @@ export const createEquipmentReservations = ({ firestore, serverTimestamp, getApp
     });
   };
 
-  return { reserve, release };
+  const releaseCancelledEventReservations = async ({ eventId, reason, userId }) => {
+    if (typeof eventId !== "string" || !eventId.trim()) {
+      throw new EquipmentValidationError("Choose an event before releasing its equipment.");
+    }
+    const eventRef = firestore.collection("events").doc(eventId);
+    const requestRef = firestore.collection("equipment_requests").doc(eventId);
+    const reservationQuery = firestore.collection("equipment_reservations")
+      .where("event_id", "==", eventId);
+
+    return firestore.runTransaction(async (transaction) => {
+      const [eventSnapshot, requestSnapshot, reservationSnapshot] = await Promise.all([
+        transaction.get(eventRef),
+        transaction.get(requestRef),
+        transaction.get(reservationQuery)
+      ]);
+      if (!eventSnapshot.exists || eventSnapshot.data().coordinator_id !== userId) {
+        throw new EquipmentConflictError("Only the current event coordinator may release its equipment.");
+      }
+      if (eventSnapshot.data().status !== "CANCELLED") {
+        throw new EquipmentConflictError("Equipment can be released automatically only after the event is Cancelled.");
+      }
+
+      const activeReservations = reservationSnapshot.docs.filter((item) =>
+        ["RESERVED", "APPROVED"].includes(String(item.data().status || "").toUpperCase())
+      );
+      const inventoryTypes = [...new Set(activeReservations.map((item) => item.data().equipment_type))];
+      const inventorySnapshots = await Promise.all(inventoryTypes.map((type) =>
+        transaction.get(firestore.collection("equipment_inventory").doc(type))
+      ));
+      const inventoryByType = new Map(inventoryTypes.map((type, index) => [type, inventorySnapshots[index]]));
+      const now = serverTimestamp();
+      const releaseReason = String(reason || "").trim() || "Event cancelled";
+      const lines = requestSnapshot.exists ? requestSnapshot.data().lines || [] : [];
+
+      activeReservations.forEach((item) => {
+        const reservation = item.data();
+        const inventorySnapshot = inventoryByType.get(reservation.equipment_type);
+        if (!inventorySnapshot?.exists) {
+          throw new EquipmentNotFoundError(`The inventory record for ${reservation.equipment_type} could not be found.`);
+        }
+        transaction.update(item.ref, {
+          status: "RELEASED",
+          released_at: now,
+          released_by: userId,
+          release_reason: releaseReason,
+          updated_at: now
+        });
+        const historyRef = firestore.collection("equipment_request_history").doc();
+        transaction.create(historyRef, {
+          event_id: eventId,
+          request_id: eventId,
+          line_index: reservation.line_index ?? null,
+          action: "LINE_RESERVATION_RELEASED",
+          actor_id: userId,
+          actor_role: "Event Coordinator",
+          created_at: now,
+          equipment_type: reservation.equipment_type,
+          quantity: reservation.quantity,
+          reservation_id: reservation.reservation_id || item.id,
+          reason: releaseReason
+        });
+      });
+
+      if (requestSnapshot.exists) {
+        const releasedIds = new Set(activeReservations.map((item) => item.data().reservation_id || item.id));
+        const updatedLines = lines.map((line) => releasedIds.has(line.reservation_id)
+          ? { ...line, fulfillment_status: "RELEASED" }
+          : line);
+        transaction.update(requestRef, {
+          lines: updatedLines,
+          status: "CANCELLED",
+          updated_at: now
+        });
+      }
+
+      inventoryTypes.forEach((type) => {
+        const inventory = inventoryByType.get(type).data();
+        transaction.update(firestore.collection("equipment_inventory").doc(type), {
+          availability_revision: revisionOf(inventory) + 1,
+          updated_at: now
+        });
+      });
+
+      return { released: activeReservations.length };
+    });
+  };
+
+  return { reserve, release, releaseCancelledEventReservations };
 };

@@ -2,13 +2,19 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import EventReviewScreen from './EventReviewScreen';
 import { reviewApi } from './reviewApi';
+import { releaseCancelledEventBookings } from '../venues/venuesApi';
+import { releaseCancelledEventReservations } from '../equipment/equipmentApi';
 
 // A7 — the safety planning notes section saves through its own API.
 jest.mock('../safety/safetyApi', () => ({ savePlanningNotes: jest.fn(() => Promise.resolve({ ok: true })) }));
+jest.mock('../../lib/firebase', () => ({ auth: { currentUser: { uid: 'c1' } } }));
 jest.mock('./reviewApi', () => ({ reviewApi: {
   list: jest.fn(), detail: jest.fn(), openReview: jest.fn(), clarify: jest.fn(), approve: jest.fn(), reject: jest.fn(),
+  cancel: jest.fn(), notifyCancelledAttendees: jest.fn(),
   significantChangeImpact: jest.fn(), saveEventEdit: jest.fn()
 } }));
+jest.mock('../venues/venuesApi', () => ({ releaseCancelledEventBookings: jest.fn() }));
+jest.mock('../equipment/equipmentApi', () => ({ releaseCancelledEventReservations: jest.fn() }));
 
 const baseEvent = { id: 'e1', name: 'Partner Summit', reference_no: 'EVT-001', event_date: '2026-11-04', start_time: '09:00', end_time: '17:00', expected_attendance: 100, purpose: 'Partners', description: 'Annual summit', status: 'UNDER_REVIEW', coordinator_id: 'c1', editable: true };
 const detail = (changes = {}) => ({
@@ -24,6 +30,10 @@ beforeEach(() => {
   reviewApi.clarify.mockResolvedValue({ ok: true });
   reviewApi.approve.mockResolvedValue({ ok: true });
   reviewApi.reject.mockResolvedValue({ ok: true });
+  reviewApi.cancel.mockResolvedValue({ eventId: 'e1', eventName: 'Partner Summit', reason: 'Speaker unavailable', attendees: [] });
+  reviewApi.notifyCancelledAttendees.mockResolvedValue({ notified: 0 });
+  releaseCancelledEventBookings.mockResolvedValue([]);
+  releaseCancelledEventReservations.mockResolvedValue({ released: 0 });
   reviewApi.significantChangeImpact.mockResolvedValue({
     venueBookings: [{ id: 'b1', label: 'Main Hall', status: 'APPROVED' }],
     equipmentReservations: [{ id: 'r1', label: 'Audio', status: 'RESERVED' }],
@@ -87,6 +97,56 @@ test('TC-072/073 requires a rejection reason and sends the recorded reason', asy
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: /reject event/i }));
   await waitFor(() => expect(reviewApi.reject).toHaveBeenCalledWith('e1', 'No suitable venue can be secured.'));
+});
+
+test('D4 cancellation requires a reason and explicit confirmation, then releases arrangements', async () => {
+  const onNotice = jest.fn();
+  reviewApi.detail.mockResolvedValue(detail({ status: 'PLANNING' }));
+  await openRequest({ onNotice });
+  await userEvent.click(screen.getByRole('button', { name: /^cancel event$/i }));
+
+  const confirm = screen.getByRole('button', { name: /confirm cancellation/i });
+  expect(confirm).toBeDisabled();
+  await userEvent.type(screen.getByLabelText(/^reason/i), 'Speaker unavailable');
+  expect(confirm).toBeDisabled();
+  await userEvent.click(screen.getByRole('checkbox'));
+  expect(confirm).toBeEnabled();
+  await userEvent.click(confirm);
+
+  await waitFor(() => expect(reviewApi.cancel).toHaveBeenCalledWith('e1', 'Speaker unavailable'));
+  expect(reviewApi.notifyCancelledAttendees).toHaveBeenCalledWith(expect.objectContaining({
+    eventId: 'e1', reason: 'Speaker unavailable'
+  }));
+  expect(releaseCancelledEventBookings).toHaveBeenCalledWith(expect.objectContaining({
+    eventId: 'e1', reason: 'Speaker unavailable'
+  }));
+  expect(releaseCancelledEventReservations).toHaveBeenCalledWith({
+    eventId: 'e1', reason: 'Speaker unavailable'
+  });
+  expect(onNotice).toHaveBeenCalledWith('Event cancelled and arrangements released.');
+});
+
+test('D4 cancellation cleanup failures are reported after retaining the cancellation', async () => {
+  const onNotice = jest.fn();
+  reviewApi.detail.mockResolvedValue(detail({ status: 'PLANNING' }));
+  releaseCancelledEventReservations
+    .mockRejectedValueOnce(new Error('Equipment service unavailable.'))
+    .mockResolvedValueOnce({ released: 1 });
+  await openRequest({ onNotice });
+  await userEvent.click(screen.getByRole('button', { name: /^cancel event$/i }));
+  await userEvent.type(screen.getByLabelText(/^reason/i), 'Speaker unavailable');
+  await userEvent.click(screen.getByRole('checkbox'));
+  await userEvent.click(screen.getByRole('button', { name: /confirm cancellation/i }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(/event was cancelled, but cleanup is incomplete/i);
+  expect(screen.getByRole('alert')).toHaveTextContent(/equipment service unavailable/i);
+  expect(releaseCancelledEventBookings).toHaveBeenCalled();
+
+  await userEvent.click(screen.getByRole('button', { name: /retry incomplete cleanup/i }));
+
+  await waitFor(() => expect(releaseCancelledEventReservations).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Cancellation cleanup completed.'));
+  expect(screen.queryByRole('button', { name: /retry incomplete cleanup/i })).not.toBeInTheDocument();
 });
 
 // K3 / SCRUM-184 — this replaces C9's old TC-077 (the coordinator reassigning their own
@@ -595,6 +655,31 @@ describe('D1 SCRUM-111 ordinary event details and the Activity tab', () => {
     expect(within(log).getByText('Partner Summit')).toBeInTheDocument();
     expect(within(log).getByText(/2026/)).toBeInTheDocument();
   });
+
+  test.each(['COMPLETED', 'CANCELLED', 'REJECTED'])(
+    'D6 keeps event history available when the event is %s',
+    async (status) => {
+      reviewApi.list.mockResolvedValue({ events: [{ ...baseEvent, status }] });
+      reviewApi.detail.mockResolvedValue({
+        ...detail({ status }),
+        history: [{
+          id: 'h1', action_type: 'EVENT_REJECTED', actor_id: 'c1',
+          description: 'No suitable venue can be secured.',
+          created_at: '2026-10-02T01:00:00.000Z'
+        }],
+        actorNames: { c1: 'Sam Coordinator' }
+      });
+
+      await openRequest();
+      await userEvent.click(screen.getByRole('tab', { name: /^Activity/ }));
+
+      const log = screen.getByRole('region', { name: /event activity/i });
+      expect(within(log).getByText('Rejected the request')).toBeInTheDocument();
+      expect(within(log).getByText('No suitable venue can be secured.')).toBeInTheDocument();
+      expect(within(log).getByText(/by Sam Coordinator/)).toBeInTheDocument();
+    }
+  );
+
   test('TC-468 an invalid ordinary value is named and cannot be saved', async () => {
     reviewApi.list.mockResolvedValue({ events: [planningEvent] });
     reviewApi.detail.mockResolvedValue(detail(planningEvent));

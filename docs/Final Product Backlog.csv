@@ -685,3 +685,20 @@ Story,L4,L — Operational Safety Check,Return an event to planning after a safe
  3. Only the identified arrangements are flagged ""Review required"" and the responsible Venue Staff or Technical Support Staff are notified; unaffected arrangements retain their current approval status.
  4.The event cannot be sent for a new safety check until every arrangement marked ""Review required"" has been reviewed and returned to an acceptable state.
  5. The event must undergo and pass a new Operational Safety Check before it can become Confirmed.",5
+Story,J8,J — Notifications,Be told when an event is waiting for a coordinator,"As an Event Coordinator Lead, I want to be told when a newly submitted event enters the unassigned queue so that no request waits unnoticed for a coordinator.
+
+Acceptance Criteria:
+1. Every active Event Coordinator Lead is notified when a submitted event enters the unassigned queue.
+2. The notification names the event, organiser, proposed date and submission time, and links to the event's read-only summary in the queue.
+3. Opening the notification for an event that has since been assigned shows its current coordinator; it does not offer the initial assignment action again.
+4. The Lead is notified when an event still in the unassigned queue is cancelled by its organiser, and the event leaves the queue.
+5. Notifications are delivered to the Lead's inbox with an unread indicator and badge count; opening one marks it read and decrements the count.",3
+Story,J9,J — Notifications,Be told when an event is waiting for its safety check,"As a Safety Officer, I want to be told when an event is sent for its Operational Safety Check so that events do not sit in Safety Review unnoticed.
+
+Acceptance Criteria:
+1. Every active Safety Officer is notified when an event's status becomes Safety Review, including an event resent after being returned to Planning.
+2. The notification names the event, its date, venue(s) and expected attendance, and links to the event's safety review view.
+3. For an event resent after a return to Planning, the notification says it has been checked before, so that the previous outcomes and comments are reviewed.
+4. A Safety Officer is notified when an event in Safety Review is cancelled, and the event leaves the safety review queue.
+5. Opening a notification for an event no longer in Safety Review states that it has left the queue; it does not reveal the event's details or offer an outcome.
+6. Notifications are delivered to the Safety Officer's inbox with an unread indicator and badge count; opening one marks it read and decrements the count.",5
