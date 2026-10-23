@@ -945,6 +945,34 @@ describe('J5 SCRUM-154 Technical Support notices come only from the equipment se
   });
 });
 
+// I3 / SCRUM-149 — re-request after a significant change. The arrangements service (Admin
+// SDK, which these rules do not bind) marks the bookings, reservations and equipment request,
+// writes the Venue Staff, Technical Support and Event Organiser notices, flags the registration
+// for review and remembers what it did. No browser may do any of it, so the rules gain nothing:
+// they only have to refuse the two new notice types and keep the new fields and state closed.
+describe('I3 SCRUM-149 re-request marks and notices come only from the arrangements service', () => {
+  const notices = () => matchBlock('notifications').match(/allow create:\s*if(.*)\);\s*$/)[1];
+
+  test('I3-RT1 AC2 AC5 no browser may create a re-request or registration-review notice', () => {
+    const refuse = "!(request.resource.data.get('type', '') in ['ARRANGEMENT_REREQUEST_REQUIRED', 'REGISTRATION_NEEDS_REVIEW'])";
+    expect(notices()).toContain(refuse);
+    // A conjunct of the whole rule: it comes before the clauses open.
+    expect(notices().indexOf(refuse)).toBeLessThan(notices().indexOf('venueBookingOutcomeNotice('));
+    // And no clause grants either type: they appear nowhere but in the refusal.
+    expect(notices().split(refuse).join('')).not.toMatch(/ARRANGEMENT_REREQUEST_REQUIRED|REGISTRATION_NEEDS_REVIEW/);
+  });
+
+  test('I3-RT2 AC3 what the service last applied is not reachable from any browser', () => {
+    expect(RULES).not.toContain('arrangement_rerequests');
+  });
+
+  test('I3-RT3 AC1 AC3 AC5 no rule lets a browser set the re-request marker or the registration-review flag', () => {
+    expect(RULES).not.toContain('rerequest_');
+    expect(RULES).not.toContain('registration_needs_review');
+    expect(RULES).not.toContain('registration_review_');
+  });
+});
+
 // H1 / SCRUM-139 — an organiser opens registration for an approved event. The capacity
 // and window are written by the registration service (Admin SDK, which these rules do not
 // bind), because AC3 needs the venue capacity of the event's approved bookings and an

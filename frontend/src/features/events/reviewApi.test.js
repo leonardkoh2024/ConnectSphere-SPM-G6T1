@@ -893,3 +893,194 @@ describe('J2 SCRUM-151 the organiser is told how a decision went', () => {
     delete stored['events/e4'];
   });
 });
+
+// I3 SCRUM-149 — after a significant change is saved, the browser asks the arrangements
+// service to put the affected arrangements back into re-request. The browser cannot write
+// venue bookings, reservations or Venue Staff / Technical Support notices itself, so the
+// save stays in Firestore and the service does the rest. A lower registration capacity goes
+// through the same service (it counts who is registered), after an explicit acknowledgement.
+describe('I3 SCRUM-149 saving a significant change asks the arrangements service to re-request', () => {
+  let stored;
+  let writes;
+  let order;
+  let fetchMock;
+  const organiser = { name: 'Nadia Organiser', email: 'nadia@smu.edu.sg', phone: null };
+  const confirmed = {
+    organiser_id: 'org1', coordinator_id: 'c1', name: 'Partner Summit', purpose: 'Partners', description: 'Annual summit', status: 'CONFIRMED',
+    expected_attendance: 100, event_date: '2026-11-04', start_time: '09:00', end_time: '17:00',
+    registration_required: true, registration_capacity: 100
+  };
+  const formFor = (event) => ({ ...ordinaryEventValues(event, organiser), ...significantEventValues(event), registration_capacity: event.registration_capacity });
+  const noImpact = { venueBookings: [], equipmentReservations: [], registrationsCount: 0 };
+  const save = (overrides = {}) => reviewApi.saveEventEdit({
+    eventId: 'e1', before: confirmed, organiser, impact: noImpact, acknowledged: true,
+    values: { ...formFor(confirmed), expected_attendance: 125 },
+    ...overrides
+  });
+  const serviceCalls = () => fetchMock.mock.calls.map(([path, options]) => ({ path, options, body: JSON.parse(options.body) }));
+
+  beforeEach(() => {
+    stored = { ...confirmed };
+    writes = { updates: [], sets: [], deletes: [] };
+    order = [];
+    auth.currentUser = { uid: 'c1', getIdToken: async () => 'id-token' };
+    fetchMock = jest.fn(async () => { order.push('service'); return { ok: true, json: async () => ({ applied: true, status: 'PLANNING' }) }; });
+    global.fetch = fetchMock;
+    firestore.getDocs.mockResolvedValue({ docs: [], size: 0 });
+    let historyCount = 0;
+    firestore.doc.mockImplementation((first, name, id) => {
+      if (name) return { path: `${name}/${id}`, id };
+      historyCount += 1;
+      return { path: `${first.name}/h${historyCount}`, id: `h${historyCount}` };
+    });
+    firestore.getDoc.mockImplementation(async (ref) => {
+      if (ref.path === 'users/c1') return snapshot('c1', { role: 'EVENT_COORDINATOR', name: 'Joshua Chua', is_active: true });
+      if (ref.path === 'events/e1') return snapshot('e1', stored);
+      return snapshot(ref.id, null);
+    });
+    firestore.runTransaction.mockImplementation(async (db, work) => {
+      const result = await work({
+        get: async (ref) => (ref.path === 'events/e1' ? snapshot('e1', stored) : snapshot(ref.id, null)),
+        update: (ref, data) => writes.updates.push([ref.path, data]),
+        set: (ref, data) => writes.sets.push([ref.path, data]),
+        delete: (ref) => writes.deletes.push(ref.path)
+      });
+      order.push('transaction');
+      return result;
+    });
+  });
+
+  test('I3-TC77 AC1 AC2 once a significant change is saved, the service is asked to re-request with that change\'s id', async () => {
+    const result = await save();
+
+    expect(result).toMatchObject({ ok: true, rerequest: { sent: true } });
+    const [call] = serviceCalls();
+    expect(serviceCalls()).toHaveLength(1);
+    expect(call.path).toBe('/api/events/e1/rerequest-arrangements');
+    expect(call.options.method).toBe('POST');
+    expect(call.options.headers.Authorization).toBe('Bearer id-token');
+    const significant = writes.sets.find(([, data]) => data.action_type === 'SIGNIFICANT_EVENT_DETAILS_CHANGED');
+    expect(call.body).toEqual({ source: 'EVENT_EDIT', change_id: significant[1].history_id });
+  });
+
+  test('I3-TC78 the service is asked after the save is committed, never before', async () => {
+    await save();
+    expect(order).toEqual(['transaction', 'service']);
+  });
+
+  test('I3-TC79 an ordinary-only edit does not ask the service to re-request', async () => {
+    const result = await save({ values: { ...formFor(confirmed), name: 'Renamed' } });
+
+    expect(result).toMatchObject({ ok: true, changed: 1 });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.rerequest).toBeUndefined();
+  });
+
+  test('I3-TC80 an edit that changes nothing writes nothing and calls nothing', async () => {
+    await save({ values: formFor(confirmed) });
+    expect(writes.updates).toHaveLength(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('I3-TC81 AC1 when the service cannot be reached the save stays committed and the result says the re-request did not go through', async () => {
+    fetchMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
+    const result = await save();
+
+    expect(writes.updates).toHaveLength(1);
+    expect(result).toMatchObject({ ok: true, rerequest: { sent: false, changeId: expect.any(String) } });
+    expect(result.rerequest.error).toBeTruthy();
+  });
+
+  test('I3-TC82 a refusal from the service is reported the same way, with its message, and the save is not undone', async () => {
+    fetchMock.mockResolvedValue({ ok: false, json: async () => ({ error: 'Only the event\'s coordinator can do this.' }) });
+    const result = await save();
+
+    expect(writes.updates).toHaveLength(1);
+    expect(result.rerequest).toMatchObject({ sent: false, error: 'Only the event\'s coordinator can do this.' });
+  });
+
+  test('I3-TC83 AC1 retryRerequest asks the service again for the same change', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('connect ECONNREFUSED'));
+    const { rerequest } = await save();
+
+    await expect(reviewApi.retryRerequest({ eventId: 'e1', changeId: rerequest.changeId })).resolves.toMatchObject({ sent: true });
+    expect(serviceCalls().at(-1)).toMatchObject({ path: '/api/events/e1/rerequest-arrangements', body: { source: 'EVENT_EDIT', change_id: rerequest.changeId } });
+  });
+
+  test('I3-TC84 retryRerequest throws the service\'s message when it still fails, so the screen can keep the Retry button', async () => {
+    fetchMock.mockResolvedValue({ ok: false, json: async () => ({ error: 'That change is no longer the latest.' }) });
+    await expect(reviewApi.retryRerequest({ eventId: 'e1', changeId: 'h2' })).rejects.toThrow('That change is no longer the latest.');
+  });
+
+  test('I3-TC85 only an assigned coordinator may retry: a signed-out user is refused before any call', async () => {
+    auth.currentUser = null;
+    await expect(reviewApi.retryRerequest({ eventId: 'e1', changeId: 'h2' })).rejects.toThrow();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // ---- AC4 -------------------------------------------------------------------------------------
+
+  test('I3-TC86 AC4 a capacity below the registered count is refused before any write or call unless it is acknowledged', async () => {
+    await expect(save({ values: { ...formFor(confirmed), registration_capacity: 40 }, registeredCount: 60 }))
+      .rejects.toThrow(/below the 60 people already registered/i);
+    await expect(save({ values: { ...formFor(confirmed), registration_capacity: 40 }, registeredCount: 60, capacityAcknowledged: false }))
+      .rejects.toThrow(/acknowledge/i);
+
+    expect(writes.updates).toHaveLength(0);
+    expect(writes.sets).toHaveLength(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('I3-TC87 AC4 an acknowledged lower capacity is sent to the service with the acknowledgement, before the event is saved', async () => {
+    const result = await save({ values: { ...formFor(confirmed), registration_capacity: 40 }, registeredCount: 60, capacityAcknowledged: true });
+
+    const capacityCall = serviceCalls().find(({ path }) => path === '/api/events/e1/registration-capacity');
+    expect(capacityCall.body).toEqual({ capacity: 40, acknowledged: true });
+    expect(capacityCall.options.headers.Authorization).toBe('Bearer id-token');
+    expect(order.indexOf('service')).toBeLessThan(order.indexOf('transaction'));
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  test('I3-TC88 AC4 a capacity the service refuses stops the whole save: nothing is written', async () => {
+    fetchMock.mockResolvedValue({ ok: false, json: async () => ({ error: 'The capacity cannot exceed the venue capacity of 120.' }) });
+    await expect(save({ values: { ...formFor(confirmed), registration_capacity: 500 }, registeredCount: 60 }))
+      .rejects.toThrow('The capacity cannot exceed the venue capacity of 120.');
+    expect(writes.updates).toHaveLength(0);
+    expect(writes.sets).toHaveLength(0);
+  });
+
+  test('I3-TC89 AC4 a capacity at or above the registered count needs no acknowledgement', async () => {
+    await save({ values: { ...formFor(confirmed), registration_capacity: 60 }, registeredCount: 60, capacityAcknowledged: false });
+    expect(serviceCalls().find(({ path }) => path.endsWith('/registration-capacity')).body).toEqual({ capacity: 60, acknowledged: false });
+  });
+
+  test('I3-TC90 an unchanged capacity is not sent to the service at all', async () => {
+    await save();
+    expect(serviceCalls().map(({ path }) => path)).toEqual(['/api/events/e1/rerequest-arrangements']);
+  });
+
+  test('I3-TC91 a capacity-only save sends the capacity and writes no significant-change record', async () => {
+    const result = await save({ values: { ...formFor(confirmed), expected_attendance: 100, registration_capacity: 80 }, impact: undefined, acknowledged: false, registeredCount: 10 });
+
+    expect(serviceCalls().map(({ path }) => path)).toEqual(['/api/events/e1/registration-capacity']);
+    expect(writes.sets.some(([, data]) => data.action_type === 'SIGNIFICANT_EVENT_DETAILS_CHANGED')).toBe(false);
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  test('I3-TC92 the capacity is never written to the event by the browser', async () => {
+    await save({ values: { ...formFor(confirmed), registration_capacity: 40 }, registeredCount: 60, capacityAcknowledged: true });
+    writes.updates.forEach(([, data]) => expect(data).not.toHaveProperty('registration_capacity'));
+  });
+
+  test('I3-TC93 registeredCount counts only the people holding a place', async () => {
+    firestore.getDocs.mockResolvedValue({
+      size: 5,
+      docs: ['REGISTERED', 'REGISTERED', 'WAITLISTED', 'WITHDRAWN', 'CANCELLED'].map((status, index) => snapshot(`r${index}`, { event_id: 'e1', status }))
+    });
+    await expect(reviewApi.registeredCount('e1')).resolves.toBe(2);
+  });
+
+  test('I3-TC94 registeredCount is zero when nobody has registered', async () => {
+    await expect(reviewApi.registeredCount('e1')).resolves.toBe(0);
+  });
+});

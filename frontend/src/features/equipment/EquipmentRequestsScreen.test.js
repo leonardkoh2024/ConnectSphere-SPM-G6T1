@@ -551,4 +551,24 @@ describe("J5 SCRUM-154 on-site support on the equipment request editor", () => {
     await waitFor(() => expect(onNotice).toHaveBeenCalledTimes(2));
     expect(onNotice.mock.calls[1][0]).toBe("Equipment request submitted to Technical Support.");
   });
+
+  test("I3-FT1 AC1 the coordinator is told when the arrangements could not be marked for re-request, and the usual notice stays when they could", async () => {
+    const onNotice = jest.fn();
+    render(<EquipmentRequestsScreen onNotice={onNotice} />);
+
+    submitEquipmentRequest.mockResolvedValue({ ok: true, status: "PENDING", notified: true, rerequested: false });
+    await screen.findByRole("heading", { name: "Partner Summit" });
+    await userEvent.click(screen.getByRole("button", { name: /create equipment request/i }));
+    await submit();
+    await waitFor(() => expect(onNotice).toHaveBeenCalledTimes(1));
+    expect(onNotice.mock.calls[0][0]).toMatch(/saved/i);
+    expect(onNotice.mock.calls[0][0]).toMatch(/could not be marked for re-request/i);
+    expect(onNotice.mock.calls[0][0]).toMatch(/submit again to retry/i);
+
+    submitEquipmentRequest.mockResolvedValue({ ok: true, status: "PENDING", notified: true, rerequested: true });
+    await userEvent.click(await screen.findByRole("button", { name: /create equipment request/i }));
+    await submit();
+    await waitFor(() => expect(onNotice).toHaveBeenCalledTimes(2));
+    expect(onNotice.mock.calls[1][0]).toBe("Equipment request submitted to Technical Support.");
+  });
 });

@@ -299,7 +299,7 @@ describe("J5 SCRUM-154 saving an equipment request and telling Technical Support
     asCoordinator();
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({ eventId: "event-1", sent: 2 }) });
 
-    await expect(submitEquipmentRequest(submitted)).resolves.toEqual({ ok: true, status: "PENDING", notified: true });
+    await expect(submitEquipmentRequest(submitted)).resolves.toEqual({ ok: true, status: "PENDING", notified: true, rerequested: true });
     expect(mockFetch).toHaveBeenCalledWith("/api/equipment/requests/event-1/notify-technical-support", expect.any(Object));
     const [, options] = mockFetch.mock.calls[0];
     expect(options.method).toBe("POST");
@@ -311,11 +311,11 @@ describe("J5 SCRUM-154 saving an equipment request and telling Technical Support
   test("J5-TC25 AC1 when the service cannot be reached the request stays saved, and the coordinator is told it was not announced", async () => {
     const writes = asCoordinator();
     mockFetch.mockRejectedValue(new Error("connect ECONNREFUSED"));
-    await expect(submitEquipmentRequest(submitted)).resolves.toEqual({ ok: true, status: "PENDING", notified: false });
+    await expect(submitEquipmentRequest(submitted)).resolves.toEqual({ ok: true, status: "PENDING", notified: false, rerequested: false });
     expect(writes).toHaveLength(1);
 
     mockFetch.mockResolvedValue({ ok: false, json: async () => ({ error: "Only the event's coordinator can do this." }) });
-    await expect(submitEquipmentRequest(submitted)).resolves.toEqual({ ok: true, status: "PENDING", notified: false });
+    await expect(submitEquipmentRequest(submitted)).resolves.toEqual({ ok: true, status: "PENDING", notified: false, rerequested: false });
   });
 
   test("J5-TC26 AC2 on-site support without details is refused before anything is saved or announced", async () => {
@@ -333,5 +333,53 @@ describe("J5 SCRUM-154 saving an equipment request and telling Technical Support
     asCoordinator({ event: { coordinator_id: "someone-else", status: "APPROVED" } });
     await expect(submitEquipmentRequest(submitted)).rejects.toThrow(/only the assigned event coordinator/i);
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  // I3 SCRUM-149 — a saved equipment request is also a change to the event's equipment
+  // arrangements, so the browser asks the arrangements service to re-request after it.
+  const rerequestCalls = () => mockFetch.mock.calls.filter(([path]) => path === "/api/events/event-1/rerequest-arrangements");
+
+  test("I3-TC95 AC1 AC2 once the request is saved and Technical Support told, the arrangements service is asked to re-request", async () => {
+    asCoordinator();
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ applied: true, status: "PLANNING" }) });
+
+    await submitEquipmentRequest(submitted);
+
+    expect(rerequestCalls()).toHaveLength(1);
+    const [, options] = rerequestCalls()[0];
+    expect(options.method).toBe("POST");
+    expect(options.headers.Authorization).toBe("Bearer test-id-token");
+    expect(JSON.parse(options.body)).toEqual({ source: "EQUIPMENT" });
+    expect(runTransaction.mock.invocationCallOrder[0]).toBeLessThan(mockFetch.mock.invocationCallOrder[1]);
+    expect(mockFetch.mock.calls.map(([path]) => path)).toEqual([
+      "/api/equipment/requests/event-1/notify-technical-support",
+      "/api/events/event-1/rerequest-arrangements"
+    ]);
+  });
+
+  test("I3-TC96 AC1 when only the re-request fails the request stays saved, Technical Support is still told, and the result says it was not re-requested", async () => {
+    const writes = asCoordinator();
+    mockFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ sent: 2 }) })
+      .mockResolvedValueOnce({ ok: false, json: async () => ({ error: "Only the event's coordinator can do this." }) });
+
+    await expect(submitEquipmentRequest(submitted)).resolves.toEqual({ ok: true, status: "PENDING", notified: true, rerequested: false });
+    expect(writes).toHaveLength(1);
+  });
+
+  test("I3-TC97 AC1 a failed Technical Support notice does not stop the re-request being asked for", async () => {
+    asCoordinator();
+    mockFetch
+      .mockRejectedValueOnce(new Error("connect ECONNREFUSED"))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ applied: false }) });
+
+    await expect(submitEquipmentRequest(submitted)).resolves.toEqual({ ok: true, status: "PENDING", notified: false, rerequested: true });
+    expect(rerequestCalls()).toHaveLength(1);
+  });
+
+  test("I3-TC98 a request that could not be saved asks for no re-request", async () => {
+    asCoordinator({ event: { coordinator_id: "someone-else", status: "APPROVED" } });
+    await expect(submitEquipmentRequest(submitted)).rejects.toThrow(/only the assigned event coordinator/i);
+    expect(rerequestCalls()).toHaveLength(0);
   });
 });

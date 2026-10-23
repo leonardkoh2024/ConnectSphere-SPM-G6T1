@@ -11,7 +11,7 @@ jest.mock('../../lib/firebase', () => ({ auth: { currentUser: { uid: 'c1' } } })
 jest.mock('./reviewApi', () => ({ reviewApi: {
   list: jest.fn(), detail: jest.fn(), openReview: jest.fn(), clarify: jest.fn(), approve: jest.fn(), reject: jest.fn(),
   cancel: jest.fn(), notifyCancelledAttendees: jest.fn(),
-  significantChangeImpact: jest.fn(), saveEventEdit: jest.fn()
+  significantChangeImpact: jest.fn(), saveEventEdit: jest.fn(), registeredCount: jest.fn(), retryRerequest: jest.fn()
 } }));
 jest.mock('../venues/venuesApi', () => ({ releaseCancelledEventBookings: jest.fn() }));
 jest.mock('../equipment/equipmentApi', () => ({ releaseCancelledEventReservations: jest.fn() }));
@@ -40,6 +40,8 @@ beforeEach(() => {
     registrationsCount: 42
   });
   reviewApi.saveEventEdit.mockResolvedValue({ ok: true, changed: 1 });
+  reviewApi.registeredCount.mockResolvedValue(0);
+  reviewApi.retryRerequest.mockResolvedValue({ sent: true });
 });
 
 async function openRequest(props = {}) {
@@ -911,5 +913,193 @@ describe('J2 SCRUM-151 approving needs a reason', () => {
     expect(reasonBox()).toHaveValue('');
     expect(screen.getByRole('button', { name: /reject event/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Approve event' })).not.toBeInTheDocument();
+  });
+});
+
+// I3 SCRUM-149 — the Edit event form. A significant change to a Confirmed event moves it back
+// to Planning (the service does that after the save), a lower registration capacity needs an
+// explicit acknowledgement, and a re-request that did not go through can be retried.
+describe('I3 SCRUM-149 the Edit event form and re-requesting arrangements', () => {
+  const confirmedEvent = { ...baseEvent, status: 'CONFIRMED', registration_required: true, registration_capacity: 100 };
+  const planningEvent = { ...confirmedEvent, status: 'PLANNING' };
+  const openEditor = async (event = confirmedEvent, props = {}) => {
+    reviewApi.list.mockResolvedValue({ events: [event] });
+    reviewApi.detail.mockResolvedValue(detail(event));
+    await openRequest(props);
+    await userEvent.click(screen.getByRole('button', { name: /^edit event$/i }));
+  };
+  const changeAttendance = async (value = '125') => {
+    await userEvent.clear(screen.getByLabelText(/expected attendance/i));
+    await userEvent.type(screen.getByLabelText(/expected attendance/i), value);
+  };
+  const setCapacity = async (value) => {
+    const field = await screen.findByLabelText(/registration capacity/i);
+    await userEvent.clear(field);
+    await userEvent.type(field, value);
+  };
+
+  test('I3-FT1 AC4 the registration capacity field appears only when the event takes registrations', async () => {
+    await openEditor(confirmedEvent);
+    expect(await screen.findByLabelText(/registration capacity/i)).toHaveValue(100);
+  });
+
+  test('I3-FT2 AC4 an event without registration has no capacity field and never asks for the registered count', async () => {
+    await openEditor({ ...confirmedEvent, registration_required: false, registration_capacity: undefined });
+    expect(screen.queryByLabelText(/registration capacity/i)).not.toBeInTheDocument();
+    expect(reviewApi.registeredCount).not.toHaveBeenCalled();
+  });
+
+  test('I3-FT3 AC4 a capacity below the registered count shows a warning and keeps Save off until acknowledged', async () => {
+    reviewApi.registeredCount.mockResolvedValue(60);
+    await openEditor(planningEvent);
+    await setCapacity('40');
+
+    expect(await screen.findByText(/below the 60 people already registered/i)).toBeInTheDocument();
+    const save = screen.getByRole('button', { name: /save changes/i });
+    expect(save).toBeDisabled();
+    await userEvent.click(screen.getByLabelText(/below the number already registered/i));
+    expect(save).toBeEnabled();
+    await userEvent.click(save);
+
+    await waitFor(() => expect(reviewApi.saveEventEdit).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: 'e1',
+      values: expect.objectContaining({ registration_capacity: 40 }),
+      registeredCount: 60,
+      capacityAcknowledged: true
+    })));
+  });
+
+  test('I3-FT4 AC4 un-ticking the acknowledgement, or raising the capacity again, takes the gate away or puts it back', async () => {
+    reviewApi.registeredCount.mockResolvedValue(60);
+    await openEditor(planningEvent);
+    await setCapacity('40');
+    const save = screen.getByRole('button', { name: /save changes/i });
+    const box = await screen.findByLabelText(/below the number already registered/i);
+    await userEvent.click(box);
+    expect(save).toBeEnabled();
+    await userEvent.click(box);
+    expect(save).toBeDisabled();
+
+    await setCapacity('70');
+    expect(screen.queryByText(/below the 60 people already registered/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/below the number already registered/i)).not.toBeInTheDocument();
+    expect(save).toBeEnabled();
+  });
+
+  test('I3-FT5 AC4 a capacity change that does not go below the registered count needs no acknowledgement', async () => {
+    reviewApi.registeredCount.mockResolvedValue(60);
+    await openEditor(planningEvent);
+    await setCapacity('80');
+
+    expect(screen.queryByLabelText(/below the number already registered/i)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    await waitFor(() => expect(reviewApi.saveEventEdit).toHaveBeenCalledWith(expect.objectContaining({
+      values: expect.objectContaining({ registration_capacity: 80 }),
+      capacityAcknowledged: false
+    })));
+  });
+
+  test('I3-FT6 AC4 a capacity the person never touched leaves Save off, as for any other untouched form', async () => {
+    reviewApi.registeredCount.mockResolvedValue(150);
+    await openEditor(planningEvent);
+    expect(await screen.findByLabelText(/registration capacity/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /save changes/i })).toBeDisabled();
+    expect(screen.queryByText(/already registered/i)).not.toBeInTheDocument();
+  });
+
+  test('I3-FT7 AC1 AC3 the impact warning for a Confirmed event says it goes back to Planning and that bookings are kept as a reference', async () => {
+    await openEditor(confirmedEvent);
+    await changeAttendance();
+
+    const warning = await screen.findByRole('complementary', { name: 'Significant change impact' });
+    expect(within(warning).getByText(/moved back to planning/i)).toBeInTheDocument();
+    expect(within(warning).getByText(/re-request/i)).toBeInTheDocument();
+    expect(within(warning).getByText(/kept as a reference/i)).toBeInTheDocument();
+    expect(within(warning).getByText(/not cancelled/i)).toBeInTheDocument();
+  });
+
+  test('I3-FT8 AC1 the warning for an event already in Planning still says to re-request but not that the status moves', async () => {
+    await openEditor(planningEvent);
+    await changeAttendance();
+
+    const warning = await screen.findByRole('complementary', { name: 'Significant change impact' });
+    expect(within(warning).getByText(/re-request/i)).toBeInTheDocument();
+    expect(within(warning).queryByText(/moved back to planning/i)).not.toBeInTheDocument();
+  });
+
+  test('I3-FT9 AC1 AC2 after a significant save the screen waits for the re-request, then reports the change as saved', async () => {
+    const onNotice = jest.fn();
+    reviewApi.saveEventEdit.mockResolvedValue({ ok: true, changed: 1, rerequest: { sent: true, changeId: 'h1' } });
+    await openEditor(confirmedEvent, { onNotice });
+    await changeAttendance();
+    await userEvent.click(await screen.findByLabelText(/reviewed and acknowledge/i));
+    await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+    await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Event changes saved.'));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  test('I3-FT10 AC1 when the re-request did not go through the screen says so, offers Retry, and does not report plain success', async () => {
+    const onNotice = jest.fn();
+    reviewApi.saveEventEdit.mockResolvedValue({ ok: true, changed: 1, rerequest: { sent: false, changeId: 'h1', error: 'Could not reach the service.' } });
+    await openEditor(confirmedEvent, { onNotice });
+    await changeAttendance();
+    await userEvent.click(await screen.findByLabelText(/reviewed and acknowledge/i));
+    await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/saved/i);
+    expect(alert).toHaveTextContent(/could not be marked for re-request/i);
+    expect(screen.getByRole('button', { name: /^retry$/i })).toBeInTheDocument();
+    expect(onNotice).not.toHaveBeenCalledWith('Event changes saved.');
+  });
+
+  test('I3-FT11 AC1 Retry asks again for the same change and, once it works, reports the change as saved', async () => {
+    const onNotice = jest.fn();
+    reviewApi.saveEventEdit.mockResolvedValue({ ok: true, changed: 1, rerequest: { sent: false, changeId: 'h1', error: 'Could not reach the service.' } });
+    await openEditor(confirmedEvent, { onNotice });
+    await changeAttendance();
+    await userEvent.click(await screen.findByLabelText(/reviewed and acknowledge/i));
+    await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /^retry$/i }));
+
+    await waitFor(() => expect(reviewApi.retryRerequest).toHaveBeenCalledWith({ eventId: 'e1', changeId: 'h1' }));
+    await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Event changes saved.'));
+    expect(reviewApi.saveEventEdit).toHaveBeenCalledTimes(1);
+  });
+
+  test('I3-FT12 AC1 a Retry that fails again keeps the message and the button, and says why', async () => {
+    reviewApi.saveEventEdit.mockResolvedValue({ ok: true, changed: 1, rerequest: { sent: false, changeId: 'h1', error: 'Could not reach the service.' } });
+    reviewApi.retryRerequest.mockRejectedValue(new Error('That change is no longer the latest.'));
+    await openEditor(confirmedEvent);
+    await changeAttendance();
+    await userEvent.click(await screen.findByLabelText(/reviewed and acknowledge/i));
+    await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /^retry$/i }));
+
+    expect(await screen.findByText(/that change is no longer the latest/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^retry$/i })).toBeInTheDocument();
+  });
+
+  test('I3-FT13 an ordinary save carries no re-request and reports success straight away', async () => {
+    const onNotice = jest.fn();
+    await openEditor(confirmedEvent, { onNotice });
+    await userEvent.type(screen.getByLabelText(/internal notes/i), 'Keynote TBC');
+    await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+    await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Event changes saved.'));
+    expect(screen.queryByRole('button', { name: /^retry$/i })).not.toBeInTheDocument();
+  });
+
+  test('I3-FT14 AC4 a refusal from the capacity check is shown and nothing is reported as saved', async () => {
+    const onNotice = jest.fn();
+    reviewApi.registeredCount.mockResolvedValue(10);
+    reviewApi.saveEventEdit.mockRejectedValue(new Error('The capacity cannot exceed the venue capacity of 120.'));
+    await openEditor(planningEvent, { onNotice });
+    await setCapacity('500');
+    await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The capacity cannot exceed the venue capacity of 120.');
+    expect(onNotice).not.toHaveBeenCalledWith('Event changes saved.');
   });
 });
