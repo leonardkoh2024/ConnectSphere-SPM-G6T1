@@ -12,6 +12,9 @@ jest.mock('./EventRequestForm', () => ({
   __esModule: true,
   default: (props) => require('react').createElement('p', null, props.readOnly ? 'form read-only' : 'form editable')
 }));
+// H1's Registration tab is its own story (RegistrationPanel.test.js); mocked so this page's tests
+// never load the real Firebase client.
+jest.mock('./RegistrationPanel', () => ({ __esModule: true, default: () => null }));
 
 const USER = { uid: 'u1', email: 'nadia.organiser@connectsphere.com' };
 const submitted = { id: 'e1', name: 'Partner Summit', status: 'UNDER_REVIEW', open_clarification_id: null };

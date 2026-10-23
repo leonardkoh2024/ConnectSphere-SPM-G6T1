@@ -382,7 +382,8 @@ Ensure that Event Organiser can:
 1. Open registration only for events that have the registration flag on and are in the ""Approved"" status or later.
 2. Set the capacity and the open/close date and time, and edit them as long as the registration window has not yet closed.
 3. Be prevented from setting a capacity that exceeds the venue capacity of the approved booking.
-4. Rely on the system to automatically reject any registrations attempted outside the defined open window.",3
+4. Rely on the system to automatically reject any registrations attempted outside the defined open window.
+5. Be prevented from setting a capacity lower than the number of attendees currently registered.",3
 Story,H2,H — Attendee Registration,Find events I can register for,"As an Attendee, I want to browse events open for registration so that I can find ones to attend.
 
 Acceptance Criteria:

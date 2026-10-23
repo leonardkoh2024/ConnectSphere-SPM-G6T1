@@ -1,7 +1,8 @@
 import express from "express";
 
 import { isOpenForRegistration, listOpenEvents } from "../../../../frontend/src/domain/openRegistration.mjs";
-import { getApprovedEventVenueNames } from "../venue/approvedEventBookings.js";
+import { getApprovedEventBookings as readApprovedEventBookings, getApprovedEventVenueNames } from "../venue/approvedEventBookings.js";
+import { createRegistrationSettings } from "./settings.js";
 
 // The registration service owns `registrations` (and, with H6, the waiting list).
 //
@@ -11,15 +12,26 @@ import { getApprovedEventVenueNames } from "../venue/approvedEventBookings.js";
 // filtered by the shared domain rules, and only their public fields are returned.
 // Like `equipment`, this service reads `events` without owning it; venue names
 // come through the venue service's read contract.
+//
+// H1 / SCRUM-139 — the Event Organiser's registration settings (capacity and window)
+// are saved here too, in one transaction that also reads the approved venue bookings
+// and the registered count. Each feature has its own role check; neither can reach
+// the other's routes.
 export function createRegistrationService({
   firestore,
   verifyIdToken,
   now = () => new Date(),
-  venueNamesFor = (eventId) => getApprovedEventVenueNames({ firestore, eventId })
+  venueNamesFor = (eventId) => getApprovedEventVenueNames({ firestore, eventId }),
+  serverTimestamp,
+  getApprovedEventBookings = ({ transaction, eventId }) =>
+    readApprovedEventBookings({ firestore, transaction, eventId })
 }) {
   const router = express.Router();
+  const settings = createRegistrationSettings({ firestore, serverTimestamp, getApprovedEventBookings, now });
 
-  const authenticateAttendee = async (request, response) => {
+  // Signs the caller in and checks their profile holds `role`; otherwise answers the
+  // request itself (401 or 403 with `forbidden`) and returns null.
+  const authenticate = async (request, response, { role, forbidden }) => {
     const token = request.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
     if (!token) {
       response.status(401).json({ error: "Sign in is required." });
@@ -33,12 +45,18 @@ export function createRegistrationService({
       return null;
     }
     const profile = await firestore.collection("users").doc(user.uid).get();
-    if (!profile.exists || profile.data().role !== "ATTENDEE") {
-      response.status(403).json({ error: "Only attendees can browse events open for registration." });
+    if (!profile.exists || profile.data().role !== role) {
+      response.status(403).json({ error: forbidden });
       return null;
     }
     return user;
   };
+
+  const authenticateAttendee = (request, response) =>
+    authenticate(request, response, { role: "ATTENDEE", forbidden: "Only attendees can browse events open for registration." });
+
+  const authenticateOrganiser = (request, response) =>
+    authenticate(request, response, { role: "EVENT_ORGANISER", forbidden: "Only an Event Organiser can manage registration." });
 
   const registeredCount = async (eventId) => {
     const snapshot = await firestore.collection("registrations")
@@ -74,6 +92,27 @@ export function createRegistrationService({
       next(error);
     }
   });
+
+  const answerOrganiser = (action) => async (request, response, next) => {
+    let user;
+    try {
+      user = await authenticateOrganiser(request, response);
+    } catch (error) {
+      next(error);
+      return;
+    }
+    if (!user) return;
+
+    try {
+      response.json(await action({ eventId: request.params.eventId, userId: user.uid, body: request.body }));
+    } catch (error) {
+      if (error.statusCode) response.status(error.statusCode).json({ error: error.message, ...(error.fields ? { fields: error.fields } : {}) });
+      else next(error);
+    }
+  };
+
+  router.get("/events/:eventId/settings", answerOrganiser(({ eventId, userId }) => settings.load({ eventId, userId })));
+  router.put("/events/:eventId/settings", answerOrganiser(({ eventId, userId, body }) => settings.save({ eventId, userId, settings: body || {} })));
 
   return router;
 }
