@@ -2692,3 +2692,21 @@ a.cs-btn-ghost:hover {
   font-weight: 600;
   color: var(--cs-ink);
 }
+
+/* ---------- H1 / SCRUM-139 — the Registration tab ---------- */
+
+.cs-registration { display: grid; gap: 20px; max-width: 720px; }
+.cs-registration-head { display: flex; align-items: center; gap: 12px; }
+.cs-registration-head h2 { margin: 0; font-size: 18px; }
+.cs-registration .cs-panel-note { margin-top: 0; }
+.cs-registration .cs-btn { justify-self: start; }
+
+/* A field's label sits above its control; hints and errors sit below it, outside the label,
+   so a screen reader announces the label as the name and the rest as the description. */
+.cs-field-hint { color: var(--cs-muted); font-size: 13px; font-weight: 400; margin: 0; }
+.cs-field-error { color: var(--cs-danger); font-size: 13px; font-weight: 600; }
+.cs-field input[aria-invalid="true"] { border-color: var(--cs-danger); }
+.cs-field input:disabled { background: var(--cs-surface-alt); color: var(--cs-disabled-ink); }
+
+.cs-registration-window { min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: 12px; }
+.cs-registration-window legend { padding: 0; font-size: 14px; font-weight: 600; color: var(--cs-ink); }

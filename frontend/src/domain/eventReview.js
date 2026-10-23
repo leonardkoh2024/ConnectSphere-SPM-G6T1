@@ -288,7 +288,7 @@ export const chronologicalClarifications = (clarifications = [], responses = [])
 // flagged when the organiser owes an answer — the one case where the viewer has
 // something to do there. The organiser lands on it in that case; everyone else
 // starts on the request.
-export const EVENT_TABS = { REQUEST: "request", ARRANGEMENTS: "arrangements", CLARIFICATIONS: "clarifications", ACTIVITY: "activity" };
+export const EVENT_TABS = { REQUEST: "request", ARRANGEMENTS: "arrangements", CLARIFICATIONS: "clarifications", ACTIVITY: "activity", REGISTRATION: "registration" };
 
 export const clarificationSummary = (detail) => ({
   requests: (detail?.clarifications || []).length,
