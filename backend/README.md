@@ -66,6 +66,10 @@ the events with `registration_required == true`, keeps those open now by the sha
 `getApprovedEventVenueNames` read contract in `src/services/venue/approvedEventBookings.js`, not a query of
 its own. It writes nothing.
 
+**Scoped exception — `venue` writes `event_history` and `notifications`.** F5 rejection commits the
+booking decision, audit entry and notification together. The venue endpoint uses Admin Firestore for
+this transaction so the outcome cannot be partially applied by a browser write.
+
 `firestore.rules` stays at the repo root. Authorisation is enforced there regardless of what lives in this
 folder, because the browser can still reach Firestore directly.
 
@@ -75,9 +79,11 @@ event's Singapore end instant against the server clock, then updates only the ev
 status/timestamps and appends an event-history row atomically. It does not modify or
 delete bookings, reservations, registrations or other event records.
 
-The venue service exposes `PUT /api/venues/unavailability`. It requires a Firebase ID token from a Venue
-Staff account assigned through `venue_staff/{venueId}` and saves staged additions and releases together,
-refusing additions that overlap an approved booking.
+The venue service exposes `PUT /api/venues/unavailability` and
+`POST /api/venues/bookings/{bookingId}/reject`. Both require a Firebase ID token from Venue Staff.
+Rejection verifies the caller owns the venue assignment and atomically records the terminal
+reasoned decision, event history and coordinator notification through the Admin SDK, without
+changing the venue's occupied window.
 
 The equipment service exposes `POST /api/equipment/reservations` and
 `POST /api/equipment/reservations/{reservationId}/release`. Both require a Technical Support Staff Firebase ID
