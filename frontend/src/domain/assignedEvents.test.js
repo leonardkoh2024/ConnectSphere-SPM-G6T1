@@ -1,5 +1,6 @@
 import {
   ALL_STATUSES,
+  ACTIVE_EVENTS,
   assignedRow,
   buildAssignedView,
   filterByStatus,
@@ -114,5 +115,16 @@ describe('C2 / SCRUM-103 see the events I am responsible for', () => {
     ];
     const rows = buildAssignedView(events, { coordinatorId: 'c1', status: 'SUBMITTED', sort: 'asc', now: NOW });
     expect(rows.map((r) => r.id)).toEqual(['mine-early', 'mine-late']);
+  });
+
+  test('D5 AC2 completed events leave the active list but remain available in all statuses', () => {
+    const events = [
+      event({ id: 'active', status: 'CONFIRMED' }),
+      event({ id: 'completed', status: 'COMPLETED' })
+    ];
+
+    expect(buildAssignedView(events, { status: ACTIVE_EVENTS, now: NOW }).map((row) => row.id)).toEqual(['active']);
+    expect(buildAssignedView(events, { status: ALL_STATUSES, now: NOW }).map((row) => row.id)).toEqual(['active', 'completed']);
+    expect(buildAssignedView(events, { status: 'COMPLETED', now: NOW }).map((row) => row.id)).toEqual(['completed']);
   });
 });

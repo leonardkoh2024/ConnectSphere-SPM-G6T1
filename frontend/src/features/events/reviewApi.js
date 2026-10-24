@@ -600,6 +600,18 @@ const cancel = async (eventId, value) => {
   return { eventId, eventName, reason, attendees };
 };
 
+const complete = async (eventId) => {
+  const user = requireUser();
+  const token = await user.getIdToken();
+  const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/complete`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "The event could not be marked completed.");
+  return result;
+};
+
 const notifyCancelledAttendees = async ({ eventId, eventName, reason, attendees = [] }) => {
   const uniqueAttendees = [...new Map(attendees.map((attendee) => [attendee.registrationId, attendee])).values()];
   const chunkSize = 400;
@@ -809,7 +821,7 @@ const leadReassign = async (eventId, coordinatorId) => {
 };
 
 export const reviewApi = {
-  list, detail, openReview, clarify, reject, respond, approve, cancel, notifyCancelledAttendees,
+  list, detail, openReview, clarify, reject, respond, approve, cancel, complete, notifyCancelledAttendees,
   leadBoard, assign, leadReassign,
   significantChangeImpact, saveEventEdit
 };

@@ -2,7 +2,7 @@
 
 Express service layer, on **:4000**. Started together with the frontend by `npm start` at the repo root.
 
-Four services are mounted: `coordinatorAssignment` (C1 / SCRUM-102), `venue` (E3), `equipment` (G3) and `registration`
+Five services are mounted: `coordinatorAssignment` (C1 / SCRUM-102), `event` (D5), `venue` (E3), `equipment` (G3) and `registration`
 (H2 / SCRUM-140). Catalogue reads remain
 in the browser through `frontend/src/lib/firebase.js`; the venue service authenticates staff and transactionally
 records unavailability after checking approved bookings.
@@ -14,9 +14,9 @@ npm run test:backend   # from the repo root — node's built-in test runner, no 
 curl localhost:4000/api/health
 ```
 
-Both `coordinatorAssignment` and `venue` use the Firebase **Admin** SDK (`firebase-admin`), not the client SDK
+The `coordinatorAssignment`, `event` and `venue` services use the Firebase **Admin** SDK (`firebase-admin`), not the client SDK
 the frontend uses — see `src/lib/firebaseAdmin.js`. Their tests run against mocked Firestore, so no credentials
-are needed to run them. To exercise either service against a live project, point `GOOGLE_APPLICATION_CREDENTIALS`
+are needed to run them. To exercise these services against a live project, point `GOOGLE_APPLICATION_CREDENTIALS`
 at a service-account key from Firebase console > Project settings > Service accounts — see `.env.example`.
 `backend/scripts/seedCoordinators.js` seeds
 the `coordinators` and `assignment_cursor` documents it needs; read that file before running it, since it
@@ -46,11 +46,9 @@ touches another's routes or collections, splitting them into separate processes 
 rather than a rewrite — so keep that separation even when it would be quicker not to.
 
 **Scoped exception — `coordinatorAssignment` also writes two fields on `events`.** Epic C has no service of
-its own in the table above, and `event` (the collection's actual owner) is not built yet. Rather than stub out
-an `event` service just to host one write, `coordinatorAssignment` is allowed to write exactly
-`coordinator_id` and `assigned_at` on an `events` document it does not otherwise own — nothing else on that
-collection. Revisit this once the `event` service exists; the natural move then is for `event` to own the
-write and `coordinatorAssignment` to expose only the rotation decision.
+its own in the table above. The `event` service now handles D5 completion;
+`coordinatorAssignment` continues to write exactly `coordinator_id` and `assigned_at` on an `events`
+document, and no other event fields. Move that write when the C1 rotation is retired.
 
 **Scoped exception — `equipment` reads `events` and creates `notifications`.** J6 (SCRUM-155) tells the
 coordinator when an equipment request is arranged or a line cannot be fulfilled, and the notification is
@@ -66,10 +64,16 @@ the events with `registration_required == true`, keeps those open now by the sha
 `frontend/src/domain/openRegistration.mjs`, and returns only their public fields with the remaining places
 (capacity less `REGISTERED` registrations). Venue names come through the venue service's
 `getApprovedEventVenueNames` read contract in `src/services/venue/approvedEventBookings.js`, not a query of
-its own. It writes nothing. Revisit once `event` exists.
+its own. It writes nothing.
 
 `firestore.rules` stays at the repo root. Authorisation is enforced there regardless of what lives in this
 folder, because the browser can still reach Firestore directly.
+
+The `event` service handles completion (`POST /api/events/:eventId/complete`).
+It verifies the caller's coordinator role and current assignment, checks the confirmed
+event's Singapore end instant against the server clock, then updates only the event's
+status/timestamps and appends an event-history row atomically. It does not modify or
+delete bookings, reservations, registrations or other event records.
 
 The venue service exposes `PUT /api/venues/unavailability`. It requires a Firebase ID token from a Venue
 Staff account assigned through `venue_staff/{venueId}` and saves staged additions and releases together,
