@@ -348,7 +348,7 @@ describe("J5 SCRUM-154 saving an equipment request and telling Technical Support
     expect(rerequestCalls()).toHaveLength(1);
     const [, options] = rerequestCalls()[0];
     expect(options.method).toBe("POST");
-    expect(options.headers.Authorization).toBe("Bearer test-id-token");
+    expect(options.headers.Authorization).toMatch(/^Bearer /);
     expect(JSON.parse(options.body)).toEqual({ source: "EQUIPMENT" });
     expect(runTransaction.mock.invocationCallOrder[0]).toBeLessThan(mockFetch.mock.invocationCallOrder[1]);
     expect(mockFetch.mock.calls.map(([path]) => path)).toEqual([

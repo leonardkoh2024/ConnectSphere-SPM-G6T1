@@ -562,6 +562,10 @@ service cloud.firestore {
         // J5 AC1-AC4 — Technical Support's notices are written only by the equipment
         // service (Admin SDK), which these rules do not bind, so no browser may create one.
         && !(request.resource.data.get('type', '') in ['EQUIPMENT_REQUEST_RAISED', 'EQUIPMENT_REQUEST_AMENDED', 'ON_SITE_SUPPORT_REQUIRED', 'ON_SITE_SUPPORT_CHANGED'])
+        // I3 AC2 AC5 — the notices that an arrangement must be requested again, and that a
+        // registration needs review, are written only by the arrangements service (Admin
+        // SDK), which these rules do not bind, so no browser may create one.
+        && !(request.resource.data.get('type', '') in ['ARRANGEMENT_REREQUEST_REQUIRED', 'REGISTRATION_NEEDS_REVIEW'])
         && (
           (request.resource.data.get('type', '') in ['VENUE_BOOKING_APPROVED', 'VENUE_BOOKING_REJECTED']
             && request.resource.data.get('booking_id', null) is string

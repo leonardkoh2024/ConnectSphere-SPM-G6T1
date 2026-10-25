@@ -191,7 +191,24 @@ export const submitEquipmentRequest = async ({ eventId, lines, onSiteSupport = f
     console.error("Technical Support could not be notified about the equipment request.", notifyError);
     notified = false;
   }
-  return { ok: true, status: "PENDING", notified };
+  // I3 / SCRUM-149 — a saved equipment request is a change to the event's equipment
+  // arrangements. Ask the arrangements service to re-request them (it compares the request
+  // with what it last applied, so an unchanged save re-requests nothing). Like the notice
+  // above, a failure leaves the request saved; saving again retries.
+  let rerequested = true;
+  try {
+    await callEquipmentService(
+      user,
+      `/api/events/${encodeURIComponent(eventId)}/rerequest-arrangements`,
+      "POST",
+      { source: "EQUIPMENT" },
+      "The arrangements could not be marked for re-request."
+    );
+  } catch (rerequestError) {
+    console.error("The arrangements could not be marked for re-request after the equipment request.", rerequestError);
+    rerequested = false;
+  }
+  return { ok: true, status: "PENDING", notified, rerequested };
 };
 
 export const listPendingEquipmentRequests = async () => {

@@ -977,7 +977,7 @@ describe('I3 SCRUM-149 saving a significant change asks the arrangements service
   });
 
   test('I3-TC80 an edit that changes nothing writes nothing and calls nothing', async () => {
-    await save({ values: formFor(confirmed) });
+    await expect(save({ values: formFor(confirmed) })).rejects.toThrow(/no changes to save/i);
     expect(writes.updates).toHaveLength(0);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -1032,7 +1032,7 @@ describe('I3 SCRUM-149 saving a significant change asks the arrangements service
   });
 
   test('I3-TC87 AC4 an acknowledged lower capacity is sent to the service with the acknowledgement, before the event is saved', async () => {
-    const result = await save({ values: { ...formFor(confirmed), registration_capacity: 40 }, registeredCount: 60, capacityAcknowledged: true });
+    const result = await save({ values: { ...formFor(confirmed), expected_attendance: 125, registration_capacity: 40 }, registeredCount: 60, capacityAcknowledged: true });
 
     const capacityCall = serviceCalls().find(({ path }) => path === '/api/events/e1/registration-capacity');
     expect(capacityCall.body).toEqual({ capacity: 40, acknowledged: true });

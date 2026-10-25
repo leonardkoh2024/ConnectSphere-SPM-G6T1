@@ -40,12 +40,18 @@ export default function EquipmentRequestsScreen({ onNotice, focusEventId = null,
 
   // J5 / SCRUM-154 — `notified: false` means the request is saved but the equipment
   // service could not be asked to tell Technical Support; saving again retries.
-  const submitted = async ({ notified = true } = {}) => {
+  // I3 / SCRUM-149 — `rerequested: false` means it is saved but the arrangements service
+  // could not be asked to put the affected arrangements back into re-request; saving again retries.
+  const submitted = async ({ notified = true, rerequested = true } = {}) => {
     await loadEvents();
     setSelectedEventId(null);
-    onNotice?.(notified
-      ? "Equipment request submitted to Technical Support."
-      : "Equipment request saved, but Technical Support could not be notified. Open it and submit again to retry.");
+    if (notified && rerequested) {
+      onNotice?.("Equipment request submitted to Technical Support.");
+    } else if (!rerequested) {
+      onNotice?.(`Equipment request saved, but ${notified ? "" : "Technical Support could not be notified and "}the affected arrangements could not be marked for re-request. Open it and submit again to retry.`);
+    } else {
+      onNotice?.("Equipment request saved, but Technical Support could not be notified. Open it and submit again to retry.");
+    }
   };
 
   if (loading) return <p className="cs-panel-note">Loading assigned events…</p>;

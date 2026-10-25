@@ -139,3 +139,46 @@ export const validateRegistrationSettings = (input = {}, { event = {}, ceiling =
     }
   };
 };
+
+// I3 / SCRUM-149 AC4 — lowering the registration capacity below the number of attendees
+// already registered is allowed, but only with an explicit acknowledgement. Nobody is
+// unregistered: the capacity only limits new places. A capacity that was never set has
+// nothing to reduce.
+export const capacityReductionNeedsAcknowledgement = ({ oldCapacity, newCapacity, registeredCount = 0 } = {}) => {
+  if (oldCapacity === null || oldCapacity === undefined || oldCapacity === "") return false;
+  const before = Number(oldCapacity);
+  const after = Number(newCapacity);
+  if (!Number.isFinite(before) || !Number.isFinite(after)) return false;
+  return after < before && after < Number(registeredCount);
+};
+
+// I3 / SCRUM-149 AC5 — the registration window and capacity are re-checked when an applied
+// change alters the date, start time, expected attendance or venue. (The venue is the
+// preferred location and the layout the venue must offer.)
+const REGISTRATION_RECHECK_FIELDS = ["event_date", "start_time", "expected_attendance", "preferred_location", "required_layout"];
+
+export const registrationRecheckApplies = (significantChanges = {}) =>
+  REGISTRATION_RECHECK_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(significantChanges || {}, field));
+
+export const REGISTRATION_REVIEW_REASONS = {
+  CLOSES_AFTER_START: "CLOSES_AFTER_START",
+  CAPACITY_ABOVE_VENUE: "CAPACITY_ABOVE_VENUE"
+};
+
+// I3 / SCRUM-149 AC5 — does the registration now need the organiser's review? It only says
+// so: nothing here edits, closes or cancels a registration. Closing exactly at the start is
+// not after it. With no approved booking there is no venue limit to compare with.
+export const registrationReview = ({ event = {}, bookings = [], venues = {} } = {}) => {
+  const reasons = [];
+  if (event?.registration_required !== true) return { needsReview: false, reasons };
+
+  const { closesAt } = registrationWindowOf(event);
+  const eventStart = registrationInstant(event.event_date, event.start_time);
+  if (closesAt && eventStart && closesAt > eventStart) reasons.push(REGISTRATION_REVIEW_REASONS.CLOSES_AFTER_START);
+
+  const ceiling = venueCapacityCeiling(bookings, venues);
+  const capacity = Number(event.registration_capacity);
+  if (ceiling !== null && Number.isFinite(capacity) && capacity > ceiling) reasons.push(REGISTRATION_REVIEW_REASONS.CAPACITY_ABOVE_VENUE);
+
+  return { needsReview: reasons.length > 0, reasons };
+};
