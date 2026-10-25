@@ -24,11 +24,13 @@
 import arrangementsService from "./arrangements/index.js";
 import coordinatorAssignmentService from "./coordinatorAssignment/index.js";
 import equipmentService from "./equipment/index.js";
+import eventService from "./event/index.js";
 import registrationService from "./registration/index.js";
 import venueService from "./venue/index.js";
 
 const SERVICES = [
   { name: "coordinatorAssignment", prefix: "/api/coordinator-assignment", router: coordinatorAssignmentService },
+  { name: "event", prefix: "/api/events", router: eventService },
   { name: "venue", prefix: "/api/venues", router: venueService },
   { name: "equipment", prefix: "/api/equipment", router: equipmentService },
   { name: "registration", prefix: "/api/registrations", router: registrationService },

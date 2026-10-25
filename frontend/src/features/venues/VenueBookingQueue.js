@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { isActiveHold, singaporeDateTime } from "../../domain/venueHolds";
-import { approveVenueBooking, holdVenueBooking, loadVenueBookingQueue } from "./venuesApi";
+import { approveVenueBooking, holdVenueBooking, loadVenueBookingQueue, rejectVenueBooking } from "./venuesApi";
 
 const asTime = (value) => new Date(value).getTime();
 const displayDateTime = (value) => value ? new Date(value).toLocaleString() : "Not recorded";
@@ -46,6 +46,8 @@ export default function VenueBookingQueue({ user, onNotice }) {
   const [working, setWorking] = useState("");
   const [error, setError] = useState("");
   const [expandedBookingId, setExpandedBookingId] = useState("");
+  const [rejectingBookingId, setRejectingBookingId] = useState("");
+  const [rejectionReason, setRejectionReason] = useState("");
 
   const reload = async () => setBookings(await loadVenueBookingQueue({ user }));
   useEffect(() => {
@@ -84,6 +86,26 @@ export default function VenueBookingQueue({ user, onNotice }) {
   const hold = (booking) => decide(booking, holdVenueBooking,
     (result) => `${booking.venue_name} held for ${booking.event_name} until ${singaporeDateTime(result.hold_expires_at)}.`,
     "The venue could not be held.");
+  const reject = async (booking) => {
+    if (!rejectionReason.trim()) {
+      setError("A rejection reason is required.");
+      return;
+    }
+    setWorking(booking.booking_id);
+    setError("");
+    try {
+      await rejectVenueBooking({ user, bookingId: booking.booking_id, reason: rejectionReason });
+      await reload();
+      setExpandedBookingId("");
+      setRejectingBookingId("");
+      setRejectionReason("");
+      onNotice?.(`${booking.venue_name} booking rejected.`);
+    } catch (failure) {
+      setError(failure.message || "The booking could not be rejected.");
+    } finally {
+      setWorking("");
+    }
+  };
 
   if (loading) return <p className="cs-panel-note">Loading booking requests…</p>;
   return (
@@ -149,6 +171,17 @@ export default function VenueBookingQueue({ user, onNotice }) {
                     {working === booking.booking_id ? "Converting…" : "Convert to booking"}
                   </button>
                 )}
+                {(isPending(booking) || isHeld(booking)) && (
+                  <button type="button" className="cs-btn cs-btn-ghost cs-record-btn cs-record-danger" disabled={working === booking.booking_id}
+                    onClick={() => {
+                      setExpandedBookingId(booking.booking_id);
+                      setRejectingBookingId(rejectingBookingId === booking.booking_id ? "" : booking.booking_id);
+                      setRejectionReason("");
+                      setError("");
+                    }}>
+                    Reject
+                  </button>
+                )}
               </div>
               {expanded && <div className="cs-record-expanded" id={detailsId}>
                 <dl className="cs-detail-grid">
@@ -160,13 +193,25 @@ export default function VenueBookingQueue({ user, onNotice }) {
                   <div><dt>Safety review required</dt><dd>{booking.safety_review_required ? "Yes" : "No"}</dd></div>
                   <div><dt>Submitted</dt><dd>{displayDateTime(booking.submitted_at)}</dd></div>
                   {!isPending(booking) && booking.decided_at && <div><dt>Decided</dt><dd>{displayDateTime(booking.decided_at)}</dd></div>}
-                  {booking.hold_expires_at && <div><dt>Hold expires</dt><dd>{singaporeDateTime(booking.hold_expires_at)}</dd></div>}
+                  {booking.decision_reason && <div className="cs-detail-wide"><dt>Decision reason</dt><dd>{booking.decision_reason}</dd></div>}
+                  {booking.status === "HELD" && booking.hold_expires_at && <div><dt>Hold expires</dt><dd>{singaporeDateTime(booking.hold_expires_at)}</dd></div>}
                   <div><dt>Occupied window</dt><dd>{displayDateTime(booking.occupied_start || booking.start_datetime)}–{displayDateTime(booking.occupied_end || booking.end_datetime)}</dd></div>
                   <div className="cs-detail-wide"><dt>Event description</dt><dd>{booking.event_description || "Not recorded"}</dd></div>
                   <div className="cs-detail-wide"><dt>Known suitability shortfalls</dt><dd>{acknowledgement?.acknowledged
                     ? (acknowledgement.criteria || []).map(words).join(", ") || "Acknowledged without listed criteria"
                     : "None acknowledged"}</dd></div>
                 </dl>
+                {rejectingBookingId === booking.booking_id && (
+                  <form className="cs-inline-form" onSubmit={(event) => { event.preventDefault(); reject(booking); }} noValidate>
+                    <label className="cs-field">
+                      <span className="cs-field-name">Reason for rejection<span className="cs-required" aria-hidden="true">*</span></span>
+                      <textarea rows="3" required value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} />
+                    </label>
+                    <button className="cs-btn cs-btn-ghost cs-record-danger" type="submit" disabled={working === booking.booking_id}>
+                      {working === booking.booking_id ? "Rejecting…" : "Confirm rejection"}
+                    </button>
+                  </form>
+                )}
               </div>}
             </article>
           );})}

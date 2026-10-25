@@ -7,7 +7,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { approveVenueBooking, holdVenueBooking, requestVenueBooking } from './venuesApi';
+import { approveVenueBooking, holdVenueBooking, rejectVenueBooking, requestVenueBooking } from './venuesApi';
 
 const mockTransactionUpdate = jest.fn();
 const mockTransactionSet = jest.fn();
@@ -44,6 +44,28 @@ const found = (id, data, ref = { path: `documents/${id}`, id }) => ({ id, ref, e
 const now = sg('2026-10-19', '10:00');
 const expiry = sg('2026-10-22', '10:00');
 const staff = { uid: 'STAFF-001' };
+
+test('F5 sends rejection through the authenticated venue service, not client Firestore writes', async () => {
+  const originalFetch = global.fetch;
+  const fetchMock = jest.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ booking_id: 'VB-001', status: 'REJECTED', decision_reason: 'No fit.' })
+  });
+  global.fetch = fetchMock;
+  try {
+    const user = { ...staff, getIdToken: jest.fn().mockResolvedValue('staff-token') };
+    await expect(rejectVenueBooking({ user, bookingId: 'VB-001', reason: ' No fit. ' }))
+      .resolves.toEqual({ booking_id: 'VB-001', status: 'REJECTED', decision_reason: 'No fit.' });
+    expect(fetchMock).toHaveBeenCalledWith('/api/venues/bookings/VB-001/reject', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer staff-token' },
+      body: JSON.stringify({ reason: 'No fit.' })
+    });
+  } finally {
+    if (originalFetch) global.fetch = originalFetch;
+    else delete global.fetch;
+  }
+});
 
 const pending = {
   booking_id: 'VB-001', booking_label: 'Annual Conference — Harbour Hall', event_id: 'EVT-001', event_name: 'Annual Conference',

@@ -10,7 +10,7 @@ jest.mock('../safety/safetyApi', () => ({ savePlanningNotes: jest.fn(() => Promi
 jest.mock('../../lib/firebase', () => ({ auth: { currentUser: { uid: 'c1' } } }));
 jest.mock('./reviewApi', () => ({ reviewApi: {
   list: jest.fn(), detail: jest.fn(), openReview: jest.fn(), clarify: jest.fn(), approve: jest.fn(), reject: jest.fn(),
-  cancel: jest.fn(), notifyCancelledAttendees: jest.fn(),
+  cancel: jest.fn(), complete: jest.fn(), notifyCancelledAttendees: jest.fn(),
   significantChangeImpact: jest.fn(), saveEventEdit: jest.fn(), registeredCount: jest.fn(), retryRerequest: jest.fn()
 } }));
 jest.mock('../venues/venuesApi', () => ({ releaseCancelledEventBookings: jest.fn() }));
@@ -30,6 +30,7 @@ beforeEach(() => {
   reviewApi.clarify.mockResolvedValue({ ok: true });
   reviewApi.approve.mockResolvedValue({ ok: true });
   reviewApi.reject.mockResolvedValue({ ok: true });
+  reviewApi.complete.mockResolvedValue({ ok: true });
   reviewApi.cancel.mockResolvedValue({ eventId: 'e1', eventName: 'Partner Summit', reason: 'Speaker unavailable', attendees: [] });
   reviewApi.notifyCancelledAttendees.mockResolvedValue({ notified: 0 });
   releaseCancelledEventBookings.mockResolvedValue([]);
@@ -125,7 +126,21 @@ test('D4 cancellation requires a reason and explicit confirmation, then releases
   expect(releaseCancelledEventReservations).toHaveBeenCalledWith({
     eventId: 'e1', reason: 'Speaker unavailable'
   });
+
   expect(onNotice).toHaveBeenCalledWith('Event cancelled and arrangements released.');
+});
+
+test("D5 AC1/AC2 offers completion after the event end and sends the completion action", async () => {
+  const finished = { ...baseEvent, status: "CONFIRMED", event_date: "2020-01-01" };
+  const onNotice = jest.fn();
+  reviewApi.list.mockResolvedValue({ events: [finished] });
+  reviewApi.detail.mockResolvedValue(detail(finished));
+
+  await openRequest({ onNotice });
+  await userEvent.click(screen.getByRole("button", { name: /mark completed/i }));
+
+  await waitFor(() => expect(reviewApi.complete).toHaveBeenCalledWith("e1"));
+  await waitFor(() => expect(onNotice).toHaveBeenCalledWith("Event marked completed."));
 });
 
 test('D4 cancellation cleanup failures are reported after retaining the cancellation', async () => {
@@ -414,6 +429,21 @@ test('TC-127 the status filter narrows the list to the chosen status', async () 
   expect(screen.getByRole('heading', { name: 'Partner Summit' })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Alumni Mixer' })).not.toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Careers Fair' })).not.toBeInTheDocument();
+});
+
+test("D5 AC2/AC3 completed events leave the active list and remain viewable via the status filter", async () => {
+  const completed = { ...assignedEvents[0], id: "e-completed", name: "Past Summit", status: "COMPLETED" };
+  reviewApi.list.mockResolvedValue({ events: [...assignedEvents, completed] });
+  reviewApi.detail.mockResolvedValue(detail({ ...baseEvent, ...completed }));
+  render(<EventReviewScreen />);
+
+  await screen.findByRole("heading", { name: "Alumni Mixer" });
+  expect(screen.queryByRole("heading", { name: "Past Summit" })).not.toBeInTheDocument();
+
+  await userEvent.selectOptions(screen.getByRole("combobox", { name: /filter by status/i }), "COMPLETED");
+  await userEvent.click(await screen.findByRole("button", { name: /view request/i }));
+  expect(await screen.findByRole("heading", { name: "Past Summit" })).toBeInTheDocument();
+  expect(screen.getByText("COMPLETED")).toBeInTheDocument();
 });
 
 test('TC-128 sorting by proposed date orders ascending, then descending on toggle', async () => {

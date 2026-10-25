@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { statusTone } from "../../domain/events";
 import { EVENT_TABS, buildRequestView, canCancelEvent, canFindVenues, clarificationSummary } from "../../domain/eventReview";
-import { ALL_STATUSES, buildAssignedView, statusOptions } from "../../domain/assignedEvents";
+import { ACTIVE_EVENTS, ALL_STATUSES, buildAssignedView, statusOptions } from "../../domain/assignedEvents";
 import { reviewApi } from "./reviewApi";
 import { decisionReasonProblem } from "../../domain/notifications";
 import RecordLead from "../../components/RecordLead";
@@ -31,7 +31,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState(EVENT_TABS.REQUEST);
   // C2 / SCRUM-103 — AC3 controls for the "Assigned events" list.
-  const [statusFilter, setStatusFilter] = useState(ALL_STATUSES);
+  const [statusFilter, setStatusFilter] = useState(ACTIVE_EVENTS);
   const [sortDir, setSortDir] = useState("asc");
 
   const loadList = async () => {
@@ -123,11 +123,13 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
 
   const act = async (action, success) => {
     // J2 / SCRUM-151 AC3 — approve and reject each need a reason, worded by one function.
-    const problem = action === "clarify"
-      ? (message.trim() ? null : "Clarification message is required.")
-      : action === "cancel"
-        ? (message.trim() ? null : "Cancellation reason is required.")
-        : decisionReasonProblem(action, message);
+    const problem = action === "complete"
+      ? null
+      : action === "clarify"
+        ? (message.trim() ? null : "Clarification message is required.")
+        : action === "cancel"
+          ? (message.trim() ? null : "Cancellation reason is required.")
+          : decisionReasonProblem(action, message);
     if (problem) { setError(problem); return; }
     if (action === "cancel" && !cancellationConfirmed) {
       setError("Confirm that you want to cancel this event.");
@@ -155,6 +157,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
       if (action === "clarify") await reviewApi.clarify(selected, message);
       if (action === "reject") await reviewApi.reject(selected, message);
       if (action === "approve") await reviewApi.approve(selected, message);
+      if (action === "complete") await reviewApi.complete(selected);
       await loadList(); await loadDetail(selected, false); onNotice?.(success); setMode(""); setMessage("");
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
@@ -173,6 +176,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     // clarification); the transaction in reviewApi.approve re-checks it server-side.
     const canApprove = canDecide;
     const canCancel = event.editable && canCancelEvent(event, auth.currentUser?.uid);
+    const mayComplete = event.editable && event.status === "CONFIRMED";
     // K3 / SCRUM-184 — reassigning is the Event Coordinator Lead's alone (it replaces
     // C9 criterion 5), so a coordinator, even the one in charge, is offered no Reassign.
     // D1 / D2 — one Edit event form, in Approved, Planning and Confirmed only (D1 AC3).
@@ -264,8 +268,10 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
         {canApprove && <button className="cs-btn cs-btn-primary" type="button" disabled={busy} onClick={() => startMode("approve")}>Approve</button>}
         {canDecide && <button className="cs-btn cs-btn-ghost cs-record-danger" type="button" disabled={busy} onClick={() => startMode("reject")}>Reject request</button>}
         {canCancel && <button className="cs-btn cs-btn-ghost cs-record-danger" type="button" disabled={busy} onClick={() => { setMode("cancel"); setMessage(""); setError(""); setCancellationConfirmed(false); }}>Cancel event</button>}
+        {mayComplete && <button className="cs-btn cs-btn-secondary" type="button" disabled={busy} onClick={() => act("complete", "Event marked completed.")}>Mark completed</button>}
         {canEdit && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => startMode("edit")}>Edit event</button>}
       </div>}
+      {mayComplete && <p className="cs-panel-note">Completion is checked against the event end time on the server.</p>}
       {!editing && showFindVenues && !canRequestVenue && (
         <p id="cs-find-venues-reason" className="cs-panel-note">
           Venue requests are available only for events with Approved or Planning status.
@@ -376,9 +382,8 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     return <>{error && <p className="cs-error" role="alert">{error}</p>}<div className="cs-record-list">{visible.map((event) => <article className="cs-record cs-review-record" key={event.id}><div className="cs-record-title"><RecordLead date={event.event_date} /><div><h2>{event.name || "Untitled event"}</h2><p>{event.event_date || "Date not set"}</p></div></div><p className="cs-record-ref">{event.reference_no}</p><div className="cs-record-status"><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div><div className="cs-record-modified"><p className="cs-record-saved">{event.editable ? "Current assignment" : "Previous assignment · read only"}</p></div><div className="cs-record-actions"><button className="cs-btn cs-btn-ghost cs-record-btn" type="button" disabled={busy} onClick={() => loadDetail(event.id)}>View request</button></div></article>)}</div></>;
   }
 
-  // C2 / SCRUM-103 — the coordinator's "Assigned events" list: everything they are
-  // accountable for, with the five columns the story asks for plus the status
-  // filter and proposed-date sort.
+  // C2 / SCRUM-103 and D5 — show active work by default while retaining terminal
+  // event records behind the status filter.
   if (!events.length) return <div className="cs-empty"><p role={error ? "alert" : undefined}>{error || "No events are assigned to you."}</p></div>;
   return <>
     {error && <p className="cs-error" role="alert">{error}</p>}
@@ -386,6 +391,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
       <label className="cs-field cs-inline-field">
         <span className="cs-field-name">Status</span>
         <select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <option value={ACTIVE_EVENTS}>Active events</option>
           {assignedOptions.map((status) => <option key={status} value={status}>{status === ALL_STATUSES ? "All statuses" : status}</option>)}
         </select>
       </label>

@@ -732,6 +732,25 @@ export const holdVenueBooking = async ({ user, bookingId, now = new Date() }) =>
   });
 };
 
+export const rejectVenueBooking = async ({ user, bookingId, reason }) => {
+  const decisionReason = typeof reason === "string" ? reason.trim() : "";
+  if (!decisionReason) throw new Error("A rejection reason is required.");
+  if (!user?.getIdToken) throw new Error("Sign in is required to reject a venue booking.");
+
+  const token = await user.getIdToken();
+  const response = await fetch(`/api/venues/bookings/${encodeURIComponent(bookingId)}/reject`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ reason: decisionReason })
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "The booking could not be rejected.");
+  return result;
+};
+
 export const releaseCancelledEventBookings = async ({ user, eventId, reason = "Event cancelled" }) => {
   const userId = requiredUser(user);
   if (!eventId) throw new Error("That event could not be identified.");

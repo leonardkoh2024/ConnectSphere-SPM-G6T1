@@ -228,6 +228,14 @@ describe('F1/F7 venue booking snapshots and confirmation boundary', () => {
     expect(bookings).toContain('request.resource.data.required_facilities_snapshot is list');
   });
 
+  describe('F5 venue booking rejection is terminal', () => {
+    test('no browser update rule can transition a rejected booking to another state', () => {
+      const bookings = matchBlock('venue_bookings');
+      expect(bookings).not.toContain("resource.data.status == 'REJECTED'");
+      expect(bookings).not.toContain("resource.data.status in ['REJECTED'");
+    });
+  });
+
   test('booking approval may only link the event to the booking approved in the same transaction', () => {
     const events = matchBlock('events');
     expect(events).toContain('venueBookingApprovalLinkUpdate()');
