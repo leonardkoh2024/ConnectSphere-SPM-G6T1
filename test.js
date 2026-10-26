@@ -27,6 +27,13 @@
  * F6 / SCRUM-130  Never double-book a venue
  * E11 / SCRUM-173 Take a venue out of use even when events are booked
  * F9 / SCRUM-174  Count setup and turnaround time in clash checks
+ * L1 / SCRUM-187  Send an event for its safety check
+ * L2 / SCRUM-188  Review an event's operational safety
+ * L3 / SCRUM-189  Record the outcome of a safety check
+ * L4 / SCRUM-190  Return an event to planning after a safety concern
+ * J7 / SCRUM-156  Be told about changes to events I registered for
+ * J8 / SCRUM-191  Be told when an event is waiting for a coordinator
+ * J9 / SCRUM-192  Be told when an event is waiting for its safety check
  *
  * Run from the repo root (no extra install — Node's built-in runner):
  *   node --test test.js
@@ -35,7 +42,7 @@
  * the screens must call; when those land, move the helpers into
  * frontend/src/domain/ and keep these assertions.
  *
- * Last Updated: 2026-10-15
+ * Last Updated: 2026-10-26
  * ================================================================
  */
 
@@ -642,6 +649,25 @@ const {
   recordVenueUnavailability,
   searchBlockedByUnavailability
 } = require("./frontend/src/domain/venueBooking");
+
+const {
+  REVIEW_REQUIRED,
+  NOT_RECORDED,
+  sendForSafetyCheck,
+  confirmEvent,
+  safetyReviewQueue,
+  safetyReviewFacts,
+  recordSafetyOutcome,
+  attendeeChangeNotices,
+  unreadCount,
+  markNotificationRead,
+  unassignedQueue,
+  eventEnteredUnassignedQueue,
+  openLeadAssignmentNotice,
+  cancelUnassignedEvent,
+  cancelSafetyReview,
+  openSafetyReviewNotice
+} = require("./frontend/src/domain/safetyAndNotices");
 
 function makeVenueBookingRequest({
   event,
@@ -3279,5 +3305,528 @@ describe("E11 / SCRUM-173 Take a venue out of use even when events are booked th
       end: "2026-11-20T15:00:00.000Z",
       unavailability: [period]
     }), false);
+  });
+});
+
+
+// =============================================================================
+// L1 / SCRUM-187 — Send an event for its safety check
+// =============================================================================
+
+describe("L1 / SCRUM-187 Send an event for its safety check", () => {
+  const event = {
+    event_id: "EVT-001",
+    name: "Partner Summit",
+    status: STATUS.PLANNING,
+    coordinator_id: "USR-COORD-001",
+    organiser_id: "USR-ORG-001",
+    event_date: "2026-11-20",
+    expected_attendance: 80,
+    venues: ["Main Hall"]
+  };
+  const approvedBooking = { booking_id: "VB-001", event_id: "EVT-001", venue_id: "VEN-001", venue_name: "Main Hall", status: "APPROVED" };
+  const officers = [
+    { user_id: "USR-SAFE-001", role: "SAFETY_OFFICER", active: true },
+    { user_id: "USR-SAFE-002", role: "SAFETY_OFFICER", active: false }
+  ];
+
+  test("AC1 positive — send is available when every active booking is approved and no technical arrangement was requested", () => {
+    const result = sendForSafetyCheck({
+      event,
+      bookings: [approvedBooking, { booking_id: "VB-OLD", event_id: "EVT-001", status: "RELEASED" }],
+      technicalArrangements: [],
+      safetyOfficers: officers
+    });
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.outstanding, []);
+  });
+
+  test("AC1 positive — a requested technical arrangement must be confirmed, and an unrequested one does not block", () => {
+    const ready = sendForSafetyCheck({
+      event,
+      bookings: [approvedBooking],
+      technicalArrangements: [
+        { arrangement_id: "TA-001", label: "Sound", status: "CONFIRMED", requested: true },
+        { arrangement_id: "TA-002", label: "Lighting", status: "PENDING", requested: false }
+      ],
+      safetyOfficers: officers
+    });
+    assert.equal(ready.ok, true);
+    const waiting = sendForSafetyCheck({
+      event,
+      bookings: [approvedBooking],
+      technicalArrangements: [{ arrangement_id: "TA-001", label: "Sound", status: "PENDING", requested: true }]
+    });
+    assert.equal(waiting.ok, false);
+    assert.deepEqual(waiting.outstanding, ["Sound"]);
+  });
+
+  test("AC2 negative — a missing arrangement keeps the event in Planning and names what is outstanding", () => {
+    const result = sendForSafetyCheck({
+      event,
+      bookings: [{ ...approvedBooking, status: "PENDING", venue_name: "Breakout" }],
+      safetyOfficers: officers
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "outstanding");
+    assert.deepEqual(result.outstanding, ["Breakout"]);
+    assert.equal(result.event.status, STATUS.PLANNING);
+  });
+
+  test("AC3 positive — sending moves the event to Safety Review and notifies each active Safety Officer", () => {
+    const result = sendForSafetyCheck({ event, bookings: [approvedBooking], safetyOfficers: officers, now: "2026-10-26T02:00:00.000Z" });
+    assert.equal(result.event.status, STATUS.SAFETY_REVIEW);
+    assert.equal(result.event.safety_review_requested_at, "2026-10-26T02:00:00.000Z");
+    assert.deepEqual(result.notifications.map((notice) => notice.user_id), ["USR-SAFE-001"]);
+    assert.match(result.notifications[0].message, /Partner Summit/);
+    assert.equal(result.notifications[0].link.screen, "Safety review");
+  });
+
+  test("AC4 negative — an event cannot become Confirmed without an approved check after its latest return to Planning", () => {
+    const returned = { ...event, returned_to_planning_at: "2026-10-20T00:00:00.000Z" };
+    const earlierPass = [{ event_id: "EVT-001", outcome: "APPROVE", decided_at: "2026-10-18T00:00:00.000Z" }];
+    assert.equal(confirmEvent({ event: returned, reviews: earlierPass }).ok, false);
+    const laterPass = [{ event_id: "EVT-001", outcome: "APPROVE", decided_at: "2026-10-21T00:00:00.000Z" }];
+    assert.equal(confirmEvent({ event: returned, reviews: laterPass }).event.status, STATUS.CONFIRMED);
+  });
+});
+
+
+// =============================================================================
+// L2 / SCRUM-188 — Review an event's operational safety
+// =============================================================================
+
+describe("L2 / SCRUM-188 Review an event's operational safety", () => {
+  const waiting = (id, requestedAt, fields = {}) => ({
+    event_id: id,
+    name: fields.name || id,
+    status: STATUS.SAFETY_REVIEW,
+    event_date: "2026-11-20",
+    venues: ["Main Hall"],
+    expected_attendance: 80,
+    safety_review_requested_at: requestedAt,
+    ...fields
+  });
+
+  test("AC1 positive — the queue is Safety Review only, oldest first, with name, date, venues and attendance", () => {
+    const queue = safetyReviewQueue([
+      waiting("EVT-NEW", "2026-10-12T00:00:00.000Z", { name: "Later Forum" }),
+      { event_id: "EVT-PLAN", name: "Still planning", status: STATUS.PLANNING, safety_review_requested_at: "2026-10-01T00:00:00.000Z" },
+      waiting("EVT-OLD", "2026-10-10T00:00:00.000Z", { name: "Earlier Forum", venues: ["Main Hall", "Annex"], expected_attendance: 40 })
+    ]);
+    assert.deepEqual(queue.map((row) => row.event_id), ["EVT-OLD", "EVT-NEW"]);
+    assert.deepEqual(queue[0], {
+      event_id: "EVT-OLD",
+      name: "Earlier Forum",
+      date: "2026-11-20",
+      venues: ["Main Hall", "Annex"],
+      expected_attendance: 40
+    });
+  });
+
+  test("AC2 positive — each active booking shows attendance against capacity, layout, emergency access and restrictions", () => {
+    const facts = safetyReviewFacts({
+      event: { event_id: "EVT-001", expected_attendance: 120, accessibility_requirements: "Step-free route" },
+      bookings: [
+        { booking_id: "VB-001", event_id: "EVT-001", venue_id: "VEN-001", status: "APPROVED", required_layout: "Theatre" },
+        { booking_id: "VB-OLD", event_id: "EVT-001", venue_id: "VEN-002", status: "RELEASED", required_layout: "Banquet" }
+      ],
+      venues: [{ venue_id: "VEN-001", max_capacity: 100, emergency_access: "Loading bay", restrictions: "No open flame" }]
+    });
+    assert.equal(facts.bookings.length, 1);
+    assert.deepEqual(facts.bookings[0], {
+      booking_id: "VB-001",
+      attendance: 120,
+      capacity: 100,
+      required_layout: "Theatre",
+      emergency_access: "Loading bay",
+      restrictions: "No open flame"
+    });
+  });
+
+  test("AC2 negative — a fact nobody recorded reads as not recorded, and a missing capacity is not a number", () => {
+    const facts = safetyReviewFacts({
+      event: { event_id: "EVT-001" },
+      bookings: [{ booking_id: "VB-001", event_id: "EVT-001", venue_id: "VEN-001", status: "APPROVED" }],
+      venues: [{ venue_id: "VEN-001" }]
+    });
+    assert.equal(facts.bookings[0].required_layout, NOT_RECORDED);
+    assert.equal(facts.bookings[0].emergency_access, NOT_RECORDED);
+    assert.equal(facts.bookings[0].capacity, null);
+    assert.equal(facts.accessibility, NOT_RECORDED);
+  });
+
+  test("AC3 positive — the review shows accessibility, reserved equipment, placement and crowd movement", () => {
+    const facts = safetyReviewFacts({
+      event: {
+        event_id: "EVT-001",
+        accessibility_requirements: "Hearing loop",
+        equipment_placement: "Speakers by the stage",
+        crowd_movement: "Aisle kept clear"
+      },
+      equipment: [
+        { equipment_id: "EQ-1", event_id: "EVT-001", label: "Radio mics", status: "RESERVED" },
+        { equipment_id: "EQ-2", event_id: "EVT-001", label: "Spare lectern", status: "REQUESTED" }
+      ]
+    });
+    assert.equal(facts.accessibility, "Hearing loop");
+    assert.deepEqual(facts.reserved_equipment, [{ equipment_id: "EQ-1", label: "Radio mics" }]);
+    assert.equal(facts.equipment_placement, "Speakers by the stage");
+    assert.equal(facts.crowd_movement, "Aisle kept clear");
+  });
+
+  test("AC4 positive — earlier outcomes for the event are shown with their comments", () => {
+    const facts = safetyReviewFacts({
+      event: { event_id: "EVT-001" },
+      reviews: [
+        { event_id: "EVT-001", outcome: "REQUEST_CHANGES", comment: "Move the stage.", decided_at: "2026-10-18T00:00:00.000Z" },
+        { event_id: "EVT-002", outcome: "APPROVE", comment: "Other event.", decided_at: "2026-10-19T00:00:00.000Z" }
+      ]
+    });
+    assert.deepEqual(facts.previous_outcomes, [
+      { outcome: "REQUEST_CHANGES", comment: "Move the stage.", decided_at: "2026-10-18T00:00:00.000Z" }
+    ]);
+  });
+});
+
+
+// =============================================================================
+// L3 / SCRUM-189 — Record the outcome of a safety check
+// =============================================================================
+
+describe("L3 / SCRUM-189 Record the outcome of a safety check", () => {
+  const event = {
+    event_id: "EVT-001",
+    name: "Partner Summit",
+    status: STATUS.SAFETY_REVIEW,
+    coordinator_id: "USR-COORD-001",
+    organiser_id: "USR-ORG-001"
+  };
+  const record = (overrides = {}) => recordSafetyOutcome({
+    event,
+    outcome: "APPROVE",
+    officerId: "USR-SAFE-001",
+    now: "2026-10-26T03:00:00.000Z",
+    ...overrides
+  });
+
+  test("AC1 positive — Approve, Reject and Request changes are the only outcomes", () => {
+    assert.equal(record().ok, true);
+    assert.equal(record({ outcome: "REJECT", comment: "Exit blocked." }).review.outcome, "REJECT");
+    assert.equal(record({ outcome: "REQUEST_CHANGES", comment: "Move the stage.", marked: ["venue"] }).review.outcome, "REQUEST_CHANGES");
+    assert.equal(record({ outcome: "CONFIRM" }).reason, "outcome");
+  });
+
+  test("AC2 negative — Reject and Request changes without a comment are refused", () => {
+    assert.equal(record({ outcome: "REJECT", comment: "  " }).reason, "comment_required");
+    assert.equal(record({ outcome: "REQUEST_CHANGES" }).reason, "comment_required");
+    assert.equal(record({ outcome: "APPROVE", comment: "" }).ok, true);
+  });
+
+  test("AC3 positive — the outcome, comment, officer and time are stored on the review and the event history", () => {
+    const result = record({ outcome: "REJECT", comment: " Exit blocked. " });
+    ["review", "history"].forEach((recordName) => {
+      assert.equal(result[recordName].outcome, "REJECT");
+      assert.equal(result[recordName].comment, "Exit blocked.");
+      assert.equal(result[recordName].safety_officer_id, "USR-SAFE-001");
+      assert.equal(result[recordName].decided_at, "2026-10-26T03:00:00.000Z");
+    });
+    assert.equal(result.history.record, "event_history");
+  });
+
+  test("AC4 positive — Approve confirms the event and notifies the coordinator and the organiser", () => {
+    const result = record();
+    assert.equal(result.event.status, STATUS.CONFIRMED);
+    assert.deepEqual(result.notifications.map((notice) => notice.user_id), ["USR-COORD-001", "USR-ORG-001"]);
+    assert.match(result.notifications[0].message, /Partner Summit/);
+    assert.match(result.notifications[0].message, /Confirmed/);
+  });
+
+  test("AC5 negative — an outcome cannot be recorded once the event has left Safety Review", () => {
+    const result = record({ event: { ...event, status: STATUS.PLANNING }, outcome: "APPROVE" });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "not_in_review");
+    assert.equal(result.event.status, STATUS.PLANNING);
+  });
+});
+
+
+// =============================================================================
+// L4 / SCRUM-190 — Return an event to planning after a safety concern
+// =============================================================================
+
+describe("L4 / SCRUM-190 Return an event to planning after a safety concern", () => {
+  const event = {
+    event_id: "EVT-001",
+    name: "Partner Summit",
+    status: STATUS.SAFETY_REVIEW,
+    coordinator_id: "USR-COORD-001",
+    organiser_id: "USR-ORG-001"
+  };
+  const bookings = [
+    { booking_id: "VB-001", event_id: "EVT-001", status: "APPROVED", assigned_staff_id: "USR-VENUE-001", venue_name: "Main Hall" }
+  ];
+  const technical = [
+    { arrangement_id: "TA-001", label: "Sound", status: "CONFIRMED", requested: true, assigned_staff_id: "USR-TECH-001" }
+  ];
+  const concern = (overrides = {}) => recordSafetyOutcome({
+    event,
+    outcome: "REQUEST_CHANGES",
+    comment: "Move the stage.",
+    marked: ["venue"],
+    officerId: "USR-SAFE-001",
+    bookings,
+    technicalArrangements: technical,
+    now: "2026-10-26T04:00:00.000Z",
+    ...overrides
+  });
+
+  test("AC1 positive — Reject or Request changes returns the event to Planning and tells the assigned coordinator", () => {
+    const result = concern();
+    assert.equal(result.event.status, STATUS.PLANNING);
+    const notice = result.notifications.find((item) => item.user_id === "USR-COORD-001");
+    assert.match(notice.message, /Move the stage\./);
+    assert.equal(concern({ outcome: "REJECT", comment: "Exit blocked.", marked: [] }).event.status, STATUS.PLANNING);
+  });
+
+  test("AC2 positive — Request changes flags only the marked arrangements, and Reject flags venue and technical", () => {
+    const requested = concern({ marked: ["venue"] });
+    assert.equal(requested.bookings[0].review_status, REVIEW_REQUIRED);
+    assert.equal(requested.technicalArrangements[0].review_status, undefined);
+    const rejected = concern({ outcome: "REJECT", comment: "Exit blocked.", marked: [] });
+    assert.equal(rejected.bookings[0].review_status, REVIEW_REQUIRED);
+    assert.equal(rejected.technicalArrangements[0].review_status, REVIEW_REQUIRED);
+    const both = concern({ marked: ["both"] });
+    assert.equal(both.bookings[0].review_status, REVIEW_REQUIRED);
+    assert.equal(both.technicalArrangements[0].review_status, REVIEW_REQUIRED);
+  });
+
+  test("AC3 positive — only flagged arrangements notify their staff, and the others keep their approval", () => {
+    const result = concern({ marked: ["technical"] });
+    assert.equal(result.bookings[0].status, "APPROVED");
+    assert.equal(result.bookings[0].review_status, undefined);
+    assert.equal(result.technicalArrangements[0].status, "CONFIRMED");
+    assert.equal(result.technicalArrangements[0].review_status, REVIEW_REQUIRED);
+    const staff = result.notifications.filter((notice) => notice.type === "ARRANGEMENT_REVIEW_REQUIRED");
+    assert.deepEqual(staff.map((notice) => notice.user_id), ["USR-TECH-001"]);
+  });
+
+  test("AC4 negative — a new safety check is refused while an arrangement is still marked for review", () => {
+    const returned = concern().event;
+    const blocked = sendForSafetyCheck({
+      event: returned,
+      bookings: concern().bookings,
+      technicalArrangements: concern().technicalArrangements
+    });
+    assert.equal(blocked.ok, false);
+    assert.match(blocked.outstanding.join(" "), /still needs review/);
+    const cleared = sendForSafetyCheck({
+      event: returned,
+      bookings: [{ ...bookings[0], review_status: undefined }],
+      technicalArrangements: technical
+    });
+    assert.equal(cleared.ok, true);
+  });
+
+  test("AC5 negative — confirmation needs a new approved check made after the return to Planning", () => {
+    const returned = concern().event;
+    const oldPass = [{ event_id: "EVT-001", outcome: "APPROVE", decided_at: "2026-10-01T00:00:00.000Z" }];
+    assert.equal(confirmEvent({ event: returned, reviews: oldPass }).reason, "safety_check_required");
+    const newPass = [{ event_id: "EVT-001", outcome: "APPROVE", decided_at: "2026-10-27T00:00:00.000Z" }];
+    assert.equal(confirmEvent({ event: returned, reviews: newPass }).event.status, STATUS.CONFIRMED);
+  });
+});
+
+
+// =============================================================================
+// J7 / SCRUM-156 — Be told about changes to events I registered for
+// =============================================================================
+
+describe("J7 / SCRUM-156 Be told about changes to events I registered for", () => {
+  const event = { event_id: "EVT-001", name: "Partner Summit" };
+  const attendees = [
+    { user_id: "USR-ATT-001", status: "REGISTERED" },
+    { user_id: "USR-ATT-002", status: "WAITLISTED" }
+  ];
+  const tell = (kind, detail) => attendeeChangeNotices({ event, attendees, change: { kind, detail } });
+
+  test("AC1 positive — registered attendees are told of confirmation, cancellation, and a date, time or venue change", () => {
+    ["REGISTRATION_CONFIRMED", "CANCELLED", "DATE", "TIME", "VENUE"].forEach((kind) => {
+      const notices = tell(kind, "21 Nov, 10:00, Annex");
+      assert.deepEqual(notices.map((notice) => notice.user_id), ["USR-ATT-001"]);
+    });
+  });
+
+  test("AC1 negative — a waitlisted attendee is not told of a date change", () => {
+    assert.equal(tell("DATE", "21 Nov").some((notice) => notice.user_id === "USR-ATT-002"), false);
+  });
+
+  test("AC2 positive — a waitlisted attendee is invited to apply when a place opens", () => {
+    const [notice] = tell("PLACE_OPENED");
+    assert.equal(notice.user_id, "USR-ATT-002");
+    assert.match(notice.message, /invited to apply/);
+  });
+
+  test("AC3 positive — each notice names the event and states what changed", () => {
+    assert.match(tell("VENUE", "Annex")[0].message, /Partner Summit/);
+    assert.match(tell("VENUE", "Annex")[0].message, /Annex/);
+    assert.match(tell("CANCELLED")[0].message, /cancelled/);
+  });
+
+  test("AC4 positive — opening a notice marks it read and the unread count drops by one", () => {
+    const inbox = tell("CANCELLED").map((notice) => ({ ...notice, notification_id: "N-1" }));
+    inbox.push({ notification_id: "N-2", user_id: "USR-ATT-001", is_read: false, message: "Other" });
+    assert.equal(unreadCount(inbox), 2);
+    const opened = markNotificationRead(inbox, "N-1");
+    assert.equal(opened.notifications[0].is_read, true);
+    assert.equal(opened.unread, 1);
+    assert.equal(opened.badge, "1");
+  });
+});
+
+
+// =============================================================================
+// J8 / SCRUM-191 — Be told when an event is waiting for a coordinator
+// =============================================================================
+
+describe("J8 / SCRUM-191 Be told when an event is waiting for a coordinator", () => {
+  const event = {
+    event_id: "EVT-001",
+    name: "Partner Summit",
+    status: STATUS.SUBMITTED,
+    organiser_name: "Avery Tan",
+    event_date: "2026-11-20",
+    submitted_at: "2026-10-26T01:00:00.000Z"
+  };
+  const leads = [
+    { user_id: "USR-LEAD-001", role: "EVENT_COORDINATOR_LEAD", active: true },
+    { user_id: "USR-LEAD-002", role: "EVENT_COORDINATOR_LEAD", active: true },
+    { user_id: "USR-LEAD-003", role: "EVENT_COORDINATOR_LEAD", active: false }
+  ];
+
+  test("AC1 positive — every active Lead is told when a submitted event enters the unassigned queue", () => {
+    const result = eventEnteredUnassignedQueue({ event, leads });
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.notifications.map((notice) => notice.user_id), ["USR-LEAD-001", "USR-LEAD-002"]);
+  });
+
+  test("AC2 positive — the notice names the event, organiser, date and submission time, and links to the read-only queue", () => {
+    const notice = eventEnteredUnassignedQueue({ event, leads }).notifications[0];
+    assert.match(notice.message, /Partner Summit/);
+    assert.match(notice.message, /Avery Tan/);
+    assert.match(notice.message, /2026-11-20/);
+    assert.match(notice.message, /2026-10-26T01:00:00.000Z/);
+    assert.deepEqual(notice.link, { screen: "Unassigned queue", event_id: "EVT-001", read_only: true });
+  });
+
+  test("AC3 positive — opening the notice after assignment shows the coordinator and does not offer assignment again", () => {
+    const assigned = openLeadAssignmentNotice({ event: { ...event, coordinator_id: "USR-COORD-001" } });
+    assert.equal(assigned.current_coordinator_id, "USR-COORD-001");
+    assert.equal(assigned.offer_assignment, false);
+    assert.equal(openLeadAssignmentNotice({ event }).offer_assignment, true);
+  });
+
+  test("AC4 positive — cancelling an unassigned event notifies the Lead and removes it from the queue", () => {
+    const result = cancelUnassignedEvent({ event, leads });
+    assert.equal(result.event.status, STATUS.CANCELLED);
+    assert.deepEqual(result.queue, []);
+    assert.equal(unassignedQueue([event]).length, 1);
+    assert.match(result.notifications[0].message, /cancelled/);
+    assert.equal(result.notifications[0].user_id, "USR-LEAD-001");
+  });
+
+  test("AC5 positive — the Lead inbox badge counts unread notices and opening one marks it read", () => {
+    const inbox = eventEnteredUnassignedQueue({ event, leads }).notifications
+      .map((notice, index) => ({ ...notice, notification_id: `N-${index}` }))
+      .filter((notice) => notice.user_id === "USR-LEAD-001");
+    assert.equal(unreadCount(inbox), 1);
+    const opened = markNotificationRead(inbox, "N-0");
+    assert.equal(opened.notifications[0].is_read, true);
+    assert.equal(opened.unread, 0);
+    assert.equal(opened.badge, null);
+  });
+});
+
+
+// =============================================================================
+// J9 / SCRUM-192 — Be told when an event is waiting for its safety check
+// =============================================================================
+
+describe("J9 / SCRUM-192 Be told when an event is waiting for its safety check", () => {
+  const event = {
+    event_id: "EVT-001",
+    name: "Partner Summit",
+    status: STATUS.PLANNING,
+    event_date: "2026-11-20",
+    venues: ["Main Hall"],
+    expected_attendance: 80
+  };
+  const booking = { booking_id: "VB-001", event_id: "EVT-001", venue_id: "VEN-001", venue_name: "Main Hall", status: "APPROVED" };
+  const officers = [
+    { user_id: "USR-SAFE-001", role: "SAFETY_OFFICER", active: true },
+    { user_id: "USR-SAFE-002", role: "SAFETY_OFFICER", active: true },
+    { user_id: "USR-SAFE-003", role: "SAFETY_OFFICER", active: false }
+  ];
+
+  test("AC1 positive — every active Safety Officer is told when an event enters Safety Review, including one sent again", () => {
+    const first = sendForSafetyCheck({ event, bookings: [booking], safetyOfficers: officers });
+    assert.deepEqual(first.notifications.map((notice) => notice.user_id), ["USR-SAFE-001", "USR-SAFE-002"]);
+    const resent = sendForSafetyCheck({
+      event: { ...event, returned_to_planning_at: "2026-10-20T00:00:00.000Z" },
+      bookings: [booking],
+      safetyOfficers: officers,
+      previousReviews: [{ event_id: "EVT-001", outcome: "REQUEST_CHANGES", comment: "Move the stage." }]
+    });
+    assert.equal(resent.notifications.length, 2);
+    assert.equal(resent.notifications[0].checked_before, true);
+  });
+
+  test("AC2 positive — the notice names the event, date, venues and attendance, and links to the review", () => {
+    const notice = sendForSafetyCheck({ event, bookings: [booking], safetyOfficers: officers }).notifications[0];
+    assert.match(notice.message, /Partner Summit/);
+    assert.match(notice.message, /2026-11-20/);
+    assert.match(notice.message, /Main Hall/);
+    assert.match(notice.message, /80/);
+    assert.deepEqual(notice.link, { screen: "Safety review", event_id: "EVT-001" });
+  });
+
+  test("AC3 positive — a resubmitted event says it has been checked before", () => {
+    const notice = sendForSafetyCheck({
+      event: { ...event, returned_to_planning_at: "2026-10-20T00:00:00.000Z" },
+      bookings: [booking],
+      safetyOfficers: officers,
+      previousReviews: [{ event_id: "EVT-001", outcome: "REJECT", comment: "Exit blocked." }]
+    }).notifications[0];
+    assert.match(notice.message, /checked before/);
+  });
+
+  test("AC4 positive — cancelling an event in Safety Review notifies the Safety Officer and removes it from the queue", () => {
+    const sent = sendForSafetyCheck({ event, bookings: [booking], safetyOfficers: officers }).event;
+    const result = cancelSafetyReview({ event: { ...sent, venues: ["Main Hall"], expected_attendance: 80 }, safetyOfficers: officers });
+    assert.equal(result.event.status, STATUS.CANCELLED);
+    assert.deepEqual(result.queue, []);
+    assert.equal(result.notifications[0].user_id, "USR-SAFE-001");
+    assert.match(result.notifications[0].message, /left the safety review queue/);
+  });
+
+  test("AC5 positive — opening a notice after the event has left the queue hides the details and the outcome", () => {
+    const closed = openSafetyReviewNotice({ event: { ...event, status: STATUS.CONFIRMED } });
+    assert.equal(closed.left_queue, true);
+    assert.match(closed.message, /left the safety review queue/);
+    assert.equal(closed.details, null);
+    assert.equal(closed.offer_outcome, false);
+    const open = openSafetyReviewNotice({ event: { ...event, status: STATUS.SAFETY_REVIEW } });
+    assert.equal(open.offer_outcome, true);
+    assert.equal(open.details.name, "Partner Summit");
+  });
+
+  test("AC6 positive — opening the notice marks it read and the unread badge drops", () => {
+    const inbox = sendForSafetyCheck({ event, bookings: [booking], safetyOfficers: officers }).notifications
+      .filter((notice) => notice.user_id === "USR-SAFE-001")
+      .map((notice) => ({ ...notice, notification_id: "N-1" }));
+    const opened = markNotificationRead(inbox, "N-1");
+    assert.equal(opened.notifications[0].is_read, true);
+    assert.equal(opened.unread, 0);
+    assert.equal(opened.badge, null);
   });
 });
