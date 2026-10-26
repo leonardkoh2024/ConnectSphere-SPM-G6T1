@@ -17,9 +17,12 @@
 
 import {
   REGISTRATION_OPENABLE_STATUSES,
+  capacityReductionNeedsAcknowledgement,
   registrationAttemptRefusal,
   registrationInstant,
   registrationPhase,
+  registrationRecheckApplies,
+  registrationReview,
   registrationSetupRefusal,
   validateRegistrationSettings,
   venueCapacityCeiling
@@ -296,5 +299,106 @@ describe('H1 SCRUM-139 the capacity cannot fall below the people already registe
   test('H1-TC57 AC5 a window change that leaves the capacity as it is is never blocked by the registered count', () => {
     const result = check({ registrationCapacity: '80', registrationOpenDate: '2026-11-12' }, { registeredCount: 80 });
     expect(result.ok).toBe(true);
+  });
+});
+
+// I3 / SCRUM-149 — an applied change to the event may leave its registration needing a
+// second look. AC4: lowering the capacity below the people already registered needs an
+// explicit acknowledgement (the coordinator's Edit event form asks for it). AC5: after a
+// change to the date, start time, expected attendance or venue, the close time must still
+// come before the event starts and the capacity must still fit the approved venues. The
+// result only says "needs review"; nothing here edits, closes or cancels a registration.
+describe('I3 SCRUM-149 a lower registration capacity needs an explicit acknowledgement (AC4)', () => {
+  test.each([
+    ['lowered below the registered count', { oldCapacity: 100, newCapacity: 40, registeredCount: 60 }, true],
+    ['lowered to exactly the registered count', { oldCapacity: 100, newCapacity: 60, registeredCount: 60 }, false],
+    ['lowered but still above the registered count', { oldCapacity: 100, newCapacity: 80, registeredCount: 60 }, false],
+    ['unchanged', { oldCapacity: 40, newCapacity: 40, registeredCount: 60 }, false],
+    ['raised', { oldCapacity: 40, newCapacity: 50, registeredCount: 60 }, false],
+    ['lowered with nobody registered', { oldCapacity: 100, newCapacity: 1, registeredCount: 0 }, false]
+  ])('I3-TC14 capacity %s', (_name, input, expected) => {
+    expect(capacityReductionNeedsAcknowledgement(input)).toBe(expected);
+  });
+
+  test('I3-TC15 a capacity that was never set has nothing to reduce', () => {
+    expect(capacityReductionNeedsAcknowledgement({ oldCapacity: null, newCapacity: 10, registeredCount: 60 })).toBe(false);
+    expect(capacityReductionNeedsAcknowledgement({ oldCapacity: undefined, newCapacity: 10, registeredCount: 60 })).toBe(false);
+  });
+});
+
+describe('I3 SCRUM-149 the registration window and capacity are re-checked, never edited (AC5)', () => {
+  const venues = { v1: { max_capacity: 120 }, v2: { max_capacity: 80 } };
+  const approved = [{ venue_id: 'v1', status: 'APPROVED' }];
+  const changed = {
+    registration_required: true,
+    event_date: '2026-11-04',
+    start_time: '09:00',
+    registration_close_date: '2026-11-03',
+    registration_close_time: '18:00',
+    registration_capacity: 100
+  };
+
+  test('I3-TC16 the re-check runs for a changed date, start time, attendance or venue, and for nothing else', () => {
+    expect(registrationRecheckApplies({ event_date: {} })).toBe(true);
+    expect(registrationRecheckApplies({ start_time: {} })).toBe(true);
+    expect(registrationRecheckApplies({ expected_attendance: {} })).toBe(true);
+    expect(registrationRecheckApplies({ preferred_location: {} })).toBe(true);
+    expect(registrationRecheckApplies({ required_layout: {} })).toBe(true);
+    expect(registrationRecheckApplies({ end_time: {} })).toBe(false);
+    expect(registrationRecheckApplies({ accessibility_notes: {} })).toBe(false);
+    expect(registrationRecheckApplies({})).toBe(false);
+  });
+
+  test('I3-TC17 a window that still closes before the event, with capacity inside the venue, needs no review', () => {
+    expect(registrationReview({ event: changed, bookings: approved, venues })).toEqual({ needsReview: false, reasons: [] });
+  });
+
+  test('I3-TC18 a close time after the new event start needs review', () => {
+    const moved = { ...changed, event_date: '2026-11-03', start_time: '09:00' };
+    expect(registrationReview({ event: moved, bookings: approved, venues }))
+      .toEqual({ needsReview: true, reasons: ['CLOSES_AFTER_START'] });
+  });
+
+  test('I3-TC19 closing exactly at the start is not after it', () => {
+    const edge = { ...changed, event_date: '2026-11-03', start_time: '18:00' };
+    expect(registrationReview({ event: edge, bookings: approved, venues }).needsReview).toBe(false);
+  });
+
+  test('I3-TC20 a close only minutes after a very early start is still after it', () => {
+    const early = { ...changed, event_date: '2026-11-04', start_time: '00:30', registration_close_date: '2026-11-04', registration_close_time: '00:45' };
+    expect(registrationReview({ event: early, bookings: approved, venues }).reasons).toEqual(['CLOSES_AFTER_START']);
+  });
+
+  test('I3-TC21 a capacity above the venue capacity of the approved bookings needs review', () => {
+    expect(registrationReview({ event: { ...changed, registration_capacity: 130 }, bookings: approved, venues }))
+      .toEqual({ needsReview: true, reasons: ['CAPACITY_ABOVE_VENUE'] });
+  });
+
+  test('I3-TC22 the venue capacity is the combined capacity of approved bookings only, a venue counted once', () => {
+    const bookings = [
+      { venue_id: 'v1', status: 'APPROVED' },
+      { venue_id: 'v1', status: 'APPROVED' },
+      { venue_id: 'v2', status: 'APPROVED' },
+      { venue_id: 'v2', status: 'HELD' }
+    ];
+    expect(registrationReview({ event: { ...changed, registration_capacity: 200 }, bookings, venues }).needsReview).toBe(false);
+    expect(registrationReview({ event: { ...changed, registration_capacity: 201 }, bookings, venues }).reasons).toEqual(['CAPACITY_ABOVE_VENUE']);
+  });
+
+  test('I3-TC23 both problems are reported together, window first', () => {
+    const both = { ...changed, event_date: '2026-11-03', start_time: '09:00', registration_capacity: 500 };
+    expect(registrationReview({ event: both, bookings: approved, venues }).reasons)
+      .toEqual(['CLOSES_AFTER_START', 'CAPACITY_ABOVE_VENUE']);
+  });
+
+  test('I3-TC24 no approved booking means no venue limit to compare with', () => {
+    expect(registrationReview({ event: { ...changed, registration_capacity: 9999 }, bookings: [], venues }).needsReview).toBe(false);
+    expect(registrationReview({ event: { ...changed, registration_capacity: 9999 }, bookings: [{ venue_id: 'v1', status: 'HELD' }], venues }).needsReview).toBe(false);
+  });
+
+  test('I3-TC25 an event without registration, or with no close time set, has nothing to review', () => {
+    expect(registrationReview({ event: { ...changed, registration_required: false, registration_capacity: 999 }, bookings: approved, venues }).needsReview).toBe(false);
+    const unset = { ...changed, registration_close_date: undefined, registration_close_time: undefined, event_date: '2026-11-01' };
+    expect(registrationReview({ event: unset, bookings: approved, venues }).reasons).toEqual([]);
   });
 });

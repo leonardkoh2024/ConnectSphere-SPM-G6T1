@@ -52,7 +52,7 @@ export default function EquipmentRequestEditor({ eventId, onCancel, onSubmitted 
         onSiteSupport,
         onSiteSupportDetails: onSiteSupport ? onSiteSupportDetails : ""
       });
-      await onSubmitted({ notified: result?.notified !== false });
+      await onSubmitted({ notified: result?.notified !== false, rerequested: result?.rerequested !== false });
     } catch (submitError) {
       setError(submitError.message);
     } finally {

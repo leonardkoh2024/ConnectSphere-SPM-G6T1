@@ -18,8 +18,10 @@
 //   venue                  /api/venues                   venue catalogue, bookings            epics E–F
 //   equipment              /api/equipment                equipment counts, reservations       epic G
 //   registration           /api/registrations            attendee registrations, waiting list
+//   arrangements           /api/events                   arrangement_rerequests               I3 re-request after a significant change
 //   notification           /api/notifications             inbox items
 
+import arrangementsService from "./arrangements/index.js";
 import coordinatorAssignmentService from "./coordinatorAssignment/index.js";
 import equipmentService from "./equipment/index.js";
 import eventService from "./event/index.js";
@@ -31,7 +33,8 @@ const SERVICES = [
   { name: "event", prefix: "/api/events", router: eventService },
   { name: "venue", prefix: "/api/venues", router: venueService },
   { name: "equipment", prefix: "/api/equipment", router: equipmentService },
-  { name: "registration", prefix: "/api/registrations", router: registrationService }
+  { name: "registration", prefix: "/api/registrations", router: registrationService },
+  { name: "arrangements", prefix: "/api/events", router: arrangementsService }
 ];
 
 /** Mount every registered service onto the app. Called once at startup. */

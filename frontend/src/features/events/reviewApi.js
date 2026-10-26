@@ -23,6 +23,7 @@ import {
   validateOrdinaryEventValues
 } from "../../domain/ordinaryEventChanges";
 import { equipmentActivity, equipmentArrangements } from "../../domain/eventEquipment";
+import { REGISTERED_STATUS, capacityReductionNeedsAcknowledgement } from "../../domain/registrationWindow";
 
 // K5 / SCRUM-186 AC3 — one response for every event the caller may not open (someone
 // else's, one they held before it was reassigned, an unassigned one, or an id that does
@@ -328,7 +329,68 @@ const cleanSignificantValues = (values) => ({
   accessibility_notes: String(values.accessibility_notes || "").trim()
 });
 
-const saveEventEdit = async ({ eventId, before, values, organiser = null, impact = null, acknowledged = false }) => {
+// I3 / SCRUM-149 — the browser may not write venue bookings, equipment reservations or the
+// Venue Staff and Technical Support notices, so after a significant change is saved it asks
+// the arrangements service (Admin SDK) to re-request them. A lower registration capacity is
+// also saved through the service, which counts who is registered. Both need the signed-in
+// coordinator's token; the service checks they coordinate this event.
+const ARRANGEMENTS_UNREACHABLE = "The arrangements service could not be reached.";
+
+const callArrangementsService = async (user, eventId, action, body, fallbackError) => {
+  const token = await user.getIdToken();
+  let response;
+  let result;
+  try {
+    response = await fetch(`/api/events/${encodeURIComponent(eventId)}/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body)
+    });
+    result = await response.json();
+  } catch (_error) {
+    throw new Error(ARRANGEMENTS_UNREACHABLE);
+  }
+  if (!response.ok) throw new Error(result?.error || fallbackError);
+  return result;
+};
+
+const REREQUEST_FAILED = "The arrangements could not be marked for re-request.";
+
+// Never throws: the change is already saved, so a failure is reported back for a Retry.
+const requestRerequest = async (user, eventId, changeId) => {
+  try {
+    await callArrangementsService(user, eventId, "rerequest-arrangements", { source: "EVENT_EDIT", change_id: changeId }, REREQUEST_FAILED);
+    return { sent: true, changeId };
+  } catch (error) {
+    console.error("The arrangements could not be marked for re-request.", error);
+    return { sent: false, changeId, error: error.message || REREQUEST_FAILED };
+  }
+};
+
+const retryRerequest = async ({ eventId, changeId }) => {
+  const user = requireUser();
+  await callArrangementsService(user, eventId, "rerequest-arrangements", { source: "EVENT_EDIT", change_id: changeId }, REREQUEST_FAILED);
+  return { sent: true, changeId };
+};
+
+// I3 AC4 — people holding a place (status REGISTERED); waitlisted, withdrawn and cancelled do not.
+const registeredCount = async (eventId) => {
+  const snapshot = await getDocs(query(collection(db, "registrations"), where("event_id", "==", eventId)));
+  return snapshot.docs.filter((item) => String(item.data().status || "").toUpperCase() === REGISTERED_STATUS).length;
+};
+
+const newCapacityOf = (values, before) => {
+  const raw = values?.registration_capacity;
+  if (raw === undefined || raw === null || raw === "") return null;
+  const capacity = Number(raw);
+  if (!Number.isInteger(capacity) || capacity < 1) throw new Error("Registration capacity must be a whole number greater than zero.");
+  return capacity === Number(before?.registration_capacity) ? null : capacity;
+};
+
+const saveEventEdit = async ({
+  eventId, before, values, organiser = null, impact = null, acknowledged = false,
+  registeredCount: registered = 0, capacityAcknowledged = false
+}) => {
   const user = requireUser();
   const ordinaryBefore = ordinaryEventValues(before, organiser);
   const ordinaryPlanned = ordinaryEventChanges(ordinaryBefore, values);
@@ -336,7 +398,16 @@ const saveEventEdit = async ({ eventId, before, values, organiser = null, impact
   const significantPlanned = significantEventChanges(before, significant);
   const hasOrdinary = ordinaryPlanned.length > 0;
   const hasSignificant = Object.keys(significantPlanned).length > 0;
-  if (!hasOrdinary && !hasSignificant) throw new Error("There are no changes to save.");
+  const capacity = newCapacityOf(values, before);
+  const capacityChanged = capacity !== null;
+  if (!hasOrdinary && !hasSignificant && !capacityChanged) throw new Error("There are no changes to save.");
+
+  // I3 AC4 — a capacity below the people already registered is refused before anything is written.
+  if (capacityChanged && capacityReductionNeedsAcknowledgement({
+    oldCapacity: before?.registration_capacity, newCapacity: capacity, registeredCount: registered
+  }) && capacityAcknowledged !== true) {
+    throw new Error(`The new capacity of ${capacity} is below the ${registered} ${registered === 1 ? "person" : "people"} already registered. Acknowledge this to apply it; nobody will be unregistered.`);
+  }
 
   if (hasOrdinary) {
     const ordinaryError = validateOrdinaryEventValues(values);
@@ -354,6 +425,13 @@ const saveEventEdit = async ({ eventId, before, values, organiser = null, impact
   }
   const ordinary = cleanOrdinaryValues(values);
 
+  // I3 AC4 — the capacity is saved by the service (it counts who is registered and enforces the
+  // acknowledgement), before the rest of the form, so a refusal leaves everything unsaved.
+  if (capacityChanged) {
+    await callArrangementsService(user, eventId, "registration-capacity",
+      { capacity, acknowledged: capacityAcknowledged === true }, "The registration capacity could not be saved.");
+  }
+
   const eventRef = doc(db, "events", eventId);
   const requirementRef = doc(db, "event_venue_requirements", eventId);
   const [existingFacilities, existingAccessibility] = hasSignificant
@@ -363,7 +441,8 @@ const saveEventEdit = async ({ eventId, before, values, organiser = null, impact
     ])
     : [{ docs: [] }, { docs: [] }];
   let saved = 0;
-  await runTransaction(db, async (tx) => {
+  let significantChangeId = null;
+  if (hasOrdinary || hasSignificant) await runTransaction(db, async (tx) => {
     const snapshots = await Promise.all([
       tx.get(eventRef),
       ...(hasSignificant ? [
@@ -429,6 +508,7 @@ const saveEventEdit = async ({ eventId, before, values, organiser = null, impact
         last_significant_change_id: significantRef.id
       });
     }
+    significantChangeId = significantRef ? significantRef.id : null;
     tx.update(eventRef, eventUpdate);
 
     ordinaryChanges.forEach((change, index) => {
@@ -492,7 +572,10 @@ const saveEventEdit = async ({ eventId, before, values, organiser = null, impact
     }
     saved = ordinaryChanges.length + Object.keys(significantChanges).length;
   });
-  return { ok: true, changed: saved };
+  const result = { ok: true, changed: saved + (capacityChanged ? 1 : 0) };
+  // I3 AC1 AC2 — only after the change is committed, never before: the service reads it.
+  if (significantChangeId) result.rerequest = await requestRerequest(user, eventId, significantChangeId);
+  return result;
 };
 
 const openReview = async (eventId) => {
@@ -836,5 +919,5 @@ const leadReassign = async (eventId, coordinatorId) => {
 export const reviewApi = {
   list, detail, openReview, clarify, reject, respond, approve, cancel, complete, notifyCancelledAttendees,
   leadBoard, assign, leadReassign,
-  significantChangeImpact, saveEventEdit
+  significantChangeImpact, saveEventEdit, registeredCount, retryRerequest
 };
