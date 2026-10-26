@@ -538,6 +538,18 @@ a.cs-btn-ghost:hover {
   font-size: 14px;
 }
 
+.cs-record-alert {
+  grid-column: 1 / -1;
+  margin-top: .65rem;
+  padding: .75rem 1rem;
+  border: 1px solid var(--cs-warning);
+  border-radius: .75rem;
+  background: var(--cs-warning-faded);
+  overflow-wrap: anywhere;
+}
+
+.cs-record-alert p { margin: .25rem 0 0; }
+
 .cs-error-lead {
   margin: 0;
   font-weight: 600;
@@ -1727,6 +1739,11 @@ a.cs-btn-ghost:hover {
   font-size: 12px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+.cs-nav-badge-clash {
+  background: var(--cs-danger);
+  color: #fff;
 }
 
 .cs-workspace-collapsed .cs-nav-badge {

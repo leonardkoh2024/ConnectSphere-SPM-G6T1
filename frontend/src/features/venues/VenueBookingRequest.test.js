@@ -862,7 +862,7 @@ describe('E8 / SCRUM-124 rules — booking requests carry their suitability ackn
 
     expect(rule[1]).toContain("hasRole('EVENT_COORDINATOR')");
     expect(rule[1]).toContain('currentCoordinator(resource.data.event_id)');
-    expect(rule[1]).not.toContain('requested_by');
+    expect(rule[1]).not.toMatch(/(?<!request\.)resource\.data\.requested_by\s*==\s*request\.auth\.uid/);
     // Only PENDING -> WITHDRAWN, and nothing else on the document may move.
     expect(rule[1]).toContain("resource.data.status == 'PENDING'");
     expect(rule[1]).toContain("request.resource.data.status == 'WITHDRAWN'");

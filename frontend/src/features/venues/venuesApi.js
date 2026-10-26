@@ -17,6 +17,7 @@ import { notificationRecord } from "../../domain/eventReviewRecords";
 import { bookingDetailsErrors, clashingEventBooking } from "../../domain/venueBookingDetails";
 import { venueBookingOutcomeMessage, venueHoldPlacedMessage } from "../../domain/notifications";
 import { activeHoldClash, holdExpiry, holdRefusal, isActiveHold, singaporeDateTime } from "../../domain/venueHolds";
+import { bookingWindow, detectVenueBookingConflicts, windowsOverlap } from "../../domain/venueBookingWorkflows";
 import { ROLES } from "../../domain/roles";
 
 const asIso = (value) => value?.toDate?.().toISOString?.() || value || null;
@@ -162,7 +163,7 @@ export const saveVenuePlanningDetails = async ({ user, venueId, changes = {} }) 
   const [owned] = ownedAssignments(assignmentSnapshot);
   if (!owned) throw new Error("You are not assigned to manage this venue.");
 
-  return runTransaction(db, async (transaction) => {
+  const saved = await runTransaction(db, async (transaction) => {
     const [venueSnapshot, assignment, ...bookings] = await Promise.all([
       transaction.get(venueRef),
       transaction.get(owned.ref),
@@ -228,6 +229,29 @@ export const saveVenuePlanningDetails = async ({ user, venueId, changes = {} }) 
     });
     return { venue_id: venueId, ...current, ...update };
   });
+  // F10 AC1/AC4: notification recipients must be the current coordinators, and
+  // the recheck must remain available without granting Venue Staff broad event
+  // reads. This is one of the deliberately trusted server operations.
+  if (("setup_minutes" in update || "turnaround_minutes" in update) && user?.getIdToken) {
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch(`/api/venues/${encodeURIComponent(venueId)}/recheck-conflicts`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || "Venue clash notifications could not be refreshed.");
+      }
+    } catch (error) {
+      // The saved occupied windows are enough for the browser queue to derive
+      // live clashes. Only cross-user notifications/audit wait for the trusted
+      // service, so an unavailable backend must not report that the venue save
+      // itself failed.
+      console.warn("Venue details were saved, but server-side clash notifications were not refreshed.", error);
+    }
+  }
+  return saved;
 };
 
 // Venue Staff may read bookings only for the venues assigned to them
@@ -318,7 +342,8 @@ export const requestVenueBooking = async ({
   required_layout,
   required_facilities,
   acknowledgement,
-  now = new Date()
+  now = new Date(),
+  replacement_for_booking_id = null
 }) => {
   const userId = requiredUser(user);
   if (!event_id || !venue_id) throw new Error("An event and venue are required.");
@@ -331,6 +356,9 @@ export const requestVenueBooking = async ({
   // venue_staff is keyed by venue id, and a coordinator may only get that one
   // document — a list query on the collection is refused by firestore.rules.
   const venueStaffRef = doc(db, "venue_staff", venue_id);
+  const replacementRef = replacement_for_booking_id
+    ? doc(db, "venue_bookings", replacement_for_booking_id)
+    : null;
   // F15 AC3 — the venue's holds, whichever event they keep it for.
   const [existingSnapshot, venueBookingSnapshot] = await Promise.all([
     getDocs(query(collection(db, "venue_bookings"), where("event_id", "==", event_id))),
@@ -343,10 +371,13 @@ export const requestVenueBooking = async ({
       transaction.get(venueRef),
       transaction.get(venueStaffRef),
       ...existingSnapshot.docs.map((item) => transaction.get(item.ref)),
-      ...holdRefs.map((reference) => transaction.get(reference))
+      ...holdRefs.map((reference) => transaction.get(reference)),
+      ...(replacementRef ? [transaction.get(replacementRef)] : [])
     ]);
     const existing = rest.slice(0, existingSnapshot.docs.length);
-    const holds = rest.slice(existingSnapshot.docs.length).filter((item) => item.exists())
+    const holdSnapshots = rest.slice(existingSnapshot.docs.length, existingSnapshot.docs.length + holdRefs.length);
+    const replacementSnapshot = replacementRef ? rest[existingSnapshot.docs.length + holdRefs.length] : null;
+    const holds = holdSnapshots.filter((item) => item.exists())
       .map((item) => ({ booking_id: item.id, ...item.data() }));
     if (!eventSnapshot.exists()) throw new Error("Event not found.");
     if (!venueSnapshot.exists()) throw new Error("Venue not found.");
@@ -357,6 +388,14 @@ export const requestVenueBooking = async ({
       throw new Error("Venue requests are available only for Approved or Planning events.");
     }
     if (venue.is_active === false) throw new Error("This venue is inactive and cannot be requested.");
+    if (replacementRef) {
+      if (!replacementSnapshot?.exists()) throw new Error("The booking needing replacement was not found.");
+      const replaced = replacementSnapshot.data();
+      if (replaced.event_id !== event_id || replaced.replacement_needed !== true) {
+        throw new Error("This booking is not awaiting a replacement for this event.");
+      }
+      if (replaced.venue_id === venue_id) throw new Error("Choose a different venue from the unavailable venue.");
+    }
     const eventAttendance = Number(event.expected_attendance);
     if (!Number.isInteger(eventAttendance) || eventAttendance <= 0) throw new Error("Expected attendance must be a positive whole number.");
     const label = booking_label === undefined
@@ -418,6 +457,10 @@ export const requestVenueBooking = async ({
       release_reason: null,
       requires_re_request: false,
       replacement_needed: false,
+      replacement_for_booking_id: replacement_for_booking_id || null,
+      replacement_original_venue_id: replacementSnapshot?.data()?.venue_id || null,
+      replacement_original_label: replacementSnapshot?.data()?.booking_label || null,
+      replacement_reason: replacementSnapshot?.data()?.replacement_reason || null,
       replaced_by_booking_id: null,
       replaced_at: null,
       safety_review_required: Boolean(event.safety_review_required),
@@ -464,15 +507,42 @@ export const loadVenueBookings = async ({ user }) => {
     getDocs(query(collection(db, "venue_bookings"), where("event_id", "==", event.id)))));
   const bookingDocs = bookingSnapshots.flatMap((snapshot) => snapshot.docs);
   const venueIds = [...new Set(bookingDocs.map((item) => item.data().venue_id).filter(Boolean))];
-  const venueSnapshots = await Promise.all(venueIds.map((venueId) => getDoc(doc(db, "venues", venueId))));
+  // F10 resolution: compare this coordinator's approved bookings with every
+  // approved booking at the same venues. The current rules already allow Event
+  // Coordinators to read venue bookings; only clashes involving their own rows
+  // are attached to the returned list.
+  const [venueSnapshots, venueBookingSnapshots] = await Promise.all([
+    Promise.all(venueIds.map((venueId) => getDoc(doc(db, "venues", venueId)))),
+    Promise.all(venueIds.map((venueId) => getDocs(query(collection(db, "venue_bookings"), where("venue_id", "==", venueId)))))
+  ]);
   const venueNames = new Map(venueSnapshots.filter((item) => item.exists()).map((item) => [item.id, item.data().name]));
   const staffNames = await venueStaffNames(venueIds);
+  const venueBookingDocs = new Map();
+  venueBookingSnapshots.flatMap((snapshot) => snapshot.docs).forEach((item) => venueBookingDocs.set(item.id, item));
+  const conflictsByBooking = new Map();
+  detectVenueBookingConflicts([...venueBookingDocs.values()].map((item) => ({
+    booking_id: item.id,
+    ...item.data()
+  }))).forEach((conflict) => {
+    [conflict.booking_a_id, conflict.booking_b_id].forEach((bookingId) => {
+      conflictsByBooking.set(bookingId, [...(conflictsByBooking.get(bookingId) || []), {
+        ...conflict,
+        status: "ACTIVE",
+        overlap_start: asIso(conflict.overlap_start),
+        overlap_end: asIso(conflict.overlap_end)
+      }]);
+    });
+  });
   return bookingDocs
     .map((data) => ({
       booking_id: data.id,
       ...data.data(),
+      // F16 fallback: even before the background job persists EXPIRED, every
+      // browser view treats a hold at/past its deadline as expired and free.
+      status: data.data().status === "HELD" && !isActiveHold(data.data()) ? "EXPIRED" : data.data().status,
       event_name: events.get(data.data().event_id)?.name || events.get(data.data().event_id)?.reference_no || data.data().event_name || data.data().event_id,
       event_date: events.get(data.data().event_id)?.event_date || null,
+      event_status: events.get(data.data().event_id)?.status || null,
       venue_name: venueNames.get(data.data().venue_id) || data.data().venue_id,
       venue_staff_name: staffNames.get(data.data().venue_id) || null,
       start_datetime: asIso(data.data().start_datetime),
@@ -484,23 +554,149 @@ export const loadVenueBookings = async ({ user }) => {
       released_at: asIso(data.data().released_at),
       hold_expires_at: asIso(data.data().hold_expires_at),
       requested_at: asIso(data.data().submitted_at || data.data().requested_at),
-      suitability_acknowledgement: data.data().suitability_acknowledgement || null
+      suitability_acknowledgement: data.data().suitability_acknowledgement || null,
+      clashes: conflictsByBooking.get(data.id) || []
     }))
     .sort((left, right) => String(right.requested_at || "").localeCompare(String(left.requested_at || "")));
+};
+
+// F10 -> F11: the current coordinator chooses that their own approved booking
+// will be replaced. Detection alone never changes either booking; this explicit
+// action records the decision, then the existing replacement search and normal
+// Venue Staff approval flow take over.
+export const prepareClashReplacement = async ({ user, bookingId, clash }) => {
+  const userId = requiredUser(user);
+  if (!bookingId) throw new Error("That booking could not be identified.");
+  const involved = [clash?.booking_a_id, clash?.booking_b_id];
+  if (!clash || !involved.includes(bookingId)) throw new Error("Choose an active clash for this booking.");
+  if (!String(clash.conflict_id || "").trim()) throw new Error("Choose an active clash for this booking.");
+  const conflictingBookingId = clash.booking_a_id === bookingId ? clash.booking_b_id : clash.booking_a_id;
+  if (!conflictingBookingId || conflictingBookingId === bookingId) throw new Error("Choose an active clash for this booking.");
+  const bookingRef = doc(db, "venue_bookings", bookingId);
+  const conflictingBookingRef = doc(db, "venue_bookings", conflictingBookingId);
+  const initial = await getDoc(bookingRef);
+  if (!initial.exists()) throw new Error("That booking could not be found.");
+  const eventId = initial.data().event_id;
+  const eventRef = doc(db, "events", eventId);
+  return runTransaction(db, async (transaction) => {
+    const [eventSnapshot, bookingSnapshot, conflictingBookingSnapshot] = await Promise.all([
+      transaction.get(eventRef), transaction.get(bookingRef), transaction.get(conflictingBookingRef)
+    ]);
+    if (!eventSnapshot.exists()) throw new Error("Event not found.");
+    if (!bookingSnapshot.exists() || String(bookingSnapshot.data().status || "").toUpperCase() !== "APPROVED") {
+      throw new Error("Only an approved booking can be replaced to resolve a clash.");
+    }
+    const event = eventSnapshot.data();
+    if (event.coordinator_id !== userId) {
+      throw new Error("Only the current event coordinator may resolve this booking's clash.");
+    }
+    if (!["APPROVED", "PLANNING", "CONFIRMED"].includes(String(event.status || "").toUpperCase())) {
+      throw new Error("This event is not in a state where its venue can be replaced.");
+    }
+    const booking = bookingSnapshot.data();
+    const conflictingBooking = conflictingBookingSnapshot.exists() ? conflictingBookingSnapshot.data() : null;
+    const currentWindow = bookingWindow(booking);
+    const conflictingWindow = bookingWindow(conflictingBooking || {});
+    if (!conflictingBooking
+      || String(conflictingBooking.status || "").toUpperCase() !== "APPROVED"
+      || conflictingBooking.venue_id !== booking.venue_id
+      || !windowsOverlap(currentWindow.start, currentWindow.end, conflictingWindow.start, conflictingWindow.end)) {
+      throw new Error("This booking clash is no longer active. Refresh the bookings list.");
+    }
+    const otherName = clash.booking_a_id === bookingId ? clash.event_b_name : clash.event_a_name;
+    const reason = `Schedule clash with ${otherName || "another event"}.`;
+    const stamp = serverTimestamp();
+    const historyRef = doc(collection(db, "event_history"));
+    transaction.update(bookingRef, {
+      replacement_needed: true,
+      replacement_status: "Schedule clash - replacement needed",
+      replacement_reason: reason,
+      replacement_requested_at: stamp,
+      replacement_requested_by: userId,
+      replacement_source: "CLASH",
+      replacement_conflict_id: clash.conflict_id,
+      replacement_conflicting_booking_id: conflictingBookingId,
+      safety_review_required: true
+    });
+    const eventUpdate = {
+      last_venue_replacement_id: historyRef.id,
+      safety_review_required: true,
+      updated_at: stamp
+    };
+    if (String(event.status || "").toUpperCase() === "CONFIRMED") {
+      Object.assign(eventUpdate, {
+        status: "PLANNING",
+        approved_venue_booking_id: null,
+        last_safety_review_id: null
+      });
+    }
+    transaction.update(eventRef, eventUpdate);
+    transaction.set(historyRef, {
+      history_id: historyRef.id,
+      event_id: eventId,
+      booking_id: bookingId,
+      venue_id: booking.venue_id,
+      actor_id: userId,
+      action_type: "VENUE_REPLACEMENT_REQUESTED",
+      field_name: "replacement_needed",
+      old_value: false,
+      new_value: true,
+      description: `${booking.booking_label || bookingId} needs a replacement: ${reason}`,
+      created_at: stamp
+    });
+    return {
+      booking_id: bookingId,
+      event_id: eventId,
+      replacement_needed: true,
+      replacement_reason: reason,
+      replacement_source: "CLASH"
+    };
+  });
 };
 
 export const loadVenueBookingQueue = async ({ user }) => {
   const userId = requiredUser(user);
   const assignments = await getDocs(query(collection(db, "venue_staff"), where("user_id", "==", userId)));
   const venueIds = ownedAssignments(assignments).map((item) => item.data().venue_id);
-  const [bookingSnapshots, venueSnapshots] = await Promise.all([
+  // Persisted conflicts enrich the browser-derived clash information with its
+  // audit identity. Older deployed rule sets do not contain permission for this
+  // newer collection, so that optional read must not make the booking queue
+  // unusable. Actual clashes are still calculated below from the permitted
+  // venue_bookings reads.
+  const loadPersistedConflicts = (venueId) => getDocs(
+    query(collection(db, "venue_booking_conflicts"), where("venue_id", "==", venueId))
+  ).catch((error) => {
+    if (error?.code === "permission-denied") return { docs: [] };
+    throw error;
+  });
+  const [bookingSnapshots, venueSnapshots, conflictSnapshots] = await Promise.all([
     Promise.all(venueIds.map((venueId) => getDocs(query(collection(db, "venue_bookings"), where("venue_id", "==", venueId))))),
-    Promise.all(venueIds.map((venueId) => getDoc(doc(db, "venues", venueId))))
+    Promise.all(venueIds.map((venueId) => getDoc(doc(db, "venues", venueId)))),
+    Promise.all(venueIds.map(loadPersistedConflicts))
   ]);
   const venueNames = new Map(venueSnapshots.filter((item) => item.exists()).map((item) => [item.id, item.data().name]));
+  const allBookingDocs = bookingSnapshots.flatMap((snapshot) => snapshot.docs);
+  const activeBookingIds = new Set(allBookingDocs.filter((item) => item.data().status === "APPROVED").map((item) => item.id));
+  // Persisted rows support notifications/audit, while this browser calculation
+  // keeps the queue correct when the optional local backend is not available.
+  const conflicts = new Map(detectVenueBookingConflicts(allBookingDocs.map((item) => ({
+    booking_id: item.id,
+    ...item.data()
+  }))).map((item) => [item.conflict_id, { ...item, status: "ACTIVE" }]));
+  conflictSnapshots.flatMap((snapshot) => snapshot.docs).forEach((item) => {
+    if (item.data().status === "ACTIVE" && conflicts.has(item.id)) {
+      conflicts.set(item.id, { conflict_id: item.id, ...item.data() });
+    }
+  });
+  const conflictsByBooking = new Map();
+  conflicts.forEach((item) => {
+    const conflict = { ...item, overlap_start: asIso(item.overlap_start), overlap_end: asIso(item.overlap_end) };
+    if (conflict.status !== "ACTIVE" || !activeBookingIds.has(conflict.booking_a_id) || !activeBookingIds.has(conflict.booking_b_id)) return;
+    [conflict.booking_a_id, conflict.booking_b_id].forEach((id) => conflictsByBooking.set(id, [...(conflictsByBooking.get(id) || []), conflict]));
+  });
   // Every booking for the staff member's venues, decided ones included, so an
   // approved request stays on the screen; the screen filters by status.
-  return bookingSnapshots.flatMap((snapshot) => snapshot.docs)
+  return allBookingDocs
     .map((item) => {
       const booking = item.data();
       return {
@@ -516,7 +712,8 @@ export const loadVenueBookingQueue = async ({ user }) => {
         submitted_at: asIso(booking.submitted_at),
         decided_at: asIso(booking.decided_at),
         held_at: asIso(booking.held_at),
-        hold_expires_at: asIso(booking.hold_expires_at)
+        hold_expires_at: asIso(booking.hold_expires_at),
+        clashes: conflictsByBooking.get(item.id) || []
       };
     })
     .sort((left, right) => String(left.submitted_at || "").localeCompare(String(right.submitted_at || "")));
@@ -547,7 +744,10 @@ const loadVenueDecision = async ({ user, bookingId }) => {
     venueId,
     assignmentRef: owned.ref,
     otherBookingRefs: bookings.docs.filter((item) => item.id !== bookingId).map((item) => item.ref),
-    blockRefs: unavailable.docs.map((item) => item.ref)
+    blockRefs: unavailable.docs.map((item) => item.ref),
+    replacementRef: initial.data().replacement_for_booking_id
+      ? doc(db, "venue_bookings", initial.data().replacement_for_booking_id)
+      : null
   };
 };
 
@@ -571,7 +771,8 @@ const decideInTransaction = async (transaction, decision, { now, checkStatus }) 
   const occupied = occupiedWindow(start, end, venue);
   checkStatus({ ...booking, occupied_start: occupied.start, occupied_end: occupied.end });
   const competing = related.slice(0, otherBookingRefs.length).filter((item) => item.exists());
-  const blocks = related.slice(otherBookingRefs.length).filter((item) => item.exists());
+  const blocks = related.slice(otherBookingRefs.length, otherBookingRefs.length + blockRefs.length)
+    .filter((item) => item.exists());
   const windowFor = (item) => {
     const otherStart = asDate(item.data().start_datetime);
     const otherEnd = asDate(item.data().end_datetime);
@@ -625,6 +826,31 @@ export const approveVenueBooking = async ({ user, bookingId, now = new Date() })
       occupied_start: occupied.start,
       occupied_end: occupied.end
     });
+    if (decision.replacementRef) {
+      transaction.update(decision.replacementRef, {
+        status: "REPLACED",
+        replacement_needed: false,
+        replaced_by_booking_id: bookingId,
+        replaced_at: decidedAt,
+        released_at: decidedAt,
+        release_reason: booking.replacement_reason || "Replacement venue approved"
+      });
+      const replacementHistoryRef = doc(collection(db, "event_history"));
+      transaction.set(replacementHistoryRef, {
+        history_id: replacementHistoryRef.id,
+        event_id: booking.event_id,
+        booking_id: decision.replacementRef.id,
+        new_booking_id: bookingId,
+        venue_id: booking.replacement_original_venue_id,
+        actor_id: userId,
+        action_type: "VENUE_REPLACED",
+        field_name: "venue_booking_status",
+        old_value: "APPROVED",
+        new_value: "REPLACED",
+        description: `${booking.replacement_original_label || decision.replacementRef.id} replaced by ${booking.booking_label || bookingId}.`,
+        created_at: decidedAt
+      });
+    }
     // F7 AC3 — keep a verifiable link on the event. The rules validate this
     // against the booking written in the same transaction before Confirmed is
     // ever allowed; existing event readers safely ignore the additional field.
@@ -668,6 +894,49 @@ export const approveVenueBooking = async ({ user, bookingId, now = new Date() })
       });
     }
     return { booking_id: bookingId, status: "APPROVED" };
+  });
+};
+
+// Retained for browser-SDK callers; the public queue action below uses the
+// backend endpoint added on main so its server-side F5 tests remain intact.
+export const rejectVenueBookingInFirestore = async ({ user, bookingId, reason }) => {
+  const cleanReason = String(reason || "").trim();
+  if (!cleanReason) throw new Error("A rejection reason is required.");
+  const decision = await loadVenueDecision({ user, bookingId });
+  const { userId, bookingRef, venueId, assignmentRef } = decision;
+  return runTransaction(db, async (transaction) => {
+    const [bookingSnapshot, venueSnapshot, assignment] = await Promise.all([
+      transaction.get(bookingRef), transaction.get(doc(db, "venues", venueId)), transaction.get(assignmentRef)
+    ]);
+    if (!bookingSnapshot.exists()) throw new Error("Booking request not found.");
+    if (!assignment.exists() || assignment.data().user_id !== userId) throw new Error("You are not assigned to manage this venue.");
+    const booking = bookingSnapshot.data();
+    if (!["PENDING", "HELD"].includes(booking.status)) throw new Error("Only a pending or held booking request can be rejected.");
+    const stamp = serverTimestamp();
+    transaction.update(bookingRef, {
+      status: "REJECTED", decision_reason: cleanReason, decided_by: userId,
+      decided_at: stamp, assigned_staff_id: userId, requires_re_request: true
+    });
+    const historyRef = doc(collection(db, "event_history"));
+    transaction.set(historyRef, {
+      history_id: historyRef.id, event_id: booking.event_id, booking_id: bookingId,
+      venue_id: venueId, actor_id: userId, action_type: "VENUE_BOOKING_REJECTED",
+      field_name: "venue_booking_status", old_value: booking.status, new_value: "REJECTED",
+      description: cleanReason, created_at: stamp
+    });
+    if (booking.requested_by) {
+      const notificationRef = doc(collection(db, "notifications"));
+      transaction.set(notificationRef, {
+        ...notificationRecord({
+          notificationId: notificationRef.id, userId: booking.requested_by,
+          eventId: booking.event_id, type: "VENUE_BOOKING_REJECTED",
+          message: venueBookingOutcomeMessage({ eventName: booking.event_name, venueName: venueSnapshot.data()?.name || venueId, approved: false, reason: cleanReason }),
+          createdAt: stamp
+        }),
+        booking_id: bookingId, venue_id: venueId
+      });
+    }
+    return { booking_id: bookingId, status: "REJECTED" };
   });
 };
 
@@ -771,7 +1040,7 @@ export const releaseCancelledEventBookings = async ({ user, eventId, reason = "E
     let approvedLinkReleased = false;
     bookingSnapshots.filter((item) => item.exists()).forEach((item) => {
       const booking = item.data();
-      const status = booking.status === "APPROVED" ? "RELEASED" : booking.status === "PENDING" ? "WITHDRAWN" : null;
+      const status = booking.status === "APPROVED" ? "RELEASED" : ["PENDING", "HELD"].includes(booking.status) ? "WITHDRAWN" : null;
       if (!status) return;
       const now = serverTimestamp();
       transaction.update(item.ref, { status, released_at: now, release_reason: reason });
@@ -794,6 +1063,78 @@ export const releaseCancelledEventBookings = async ({ user, eventId, reason = "E
       transaction.update(eventRef, { approved_venue_booking_id: null, updated_at: serverTimestamp() });
     }
     return changed;
+  });
+};
+
+// F14: release one approved venue without disturbing the event's other venue
+// bookings. A confirmed event returns to Planning because its venue and safety
+// prerequisites must be checked again before it can be confirmed.
+export const releaseVenueBooking = async ({ user, bookingId, reason }) => {
+  const userId = requiredUser(user);
+  const cleanReason = String(reason || "").trim();
+  if (!cleanReason) throw new Error("A release reason is required.");
+  if (!bookingId) throw new Error("That booking could not be identified.");
+  const bookingRef = doc(db, "venue_bookings", bookingId);
+  const initial = await getDoc(bookingRef);
+  if (!initial.exists()) throw new Error("That booking could not be found.");
+  const eventId = initial.data().event_id;
+  const eventRef = doc(db, "events", eventId);
+  const eventBookings = await getDocs(query(collection(db, "venue_bookings"), where("event_id", "==", eventId)));
+  return runTransaction(db, async (transaction) => {
+    const [eventSnapshot, currentBooking, ...related] = await Promise.all([
+      transaction.get(eventRef),
+      transaction.get(bookingRef),
+      ...eventBookings.docs.filter((item) => item.id !== bookingId).map((item) => transaction.get(item.ref))
+    ]);
+    if (!eventSnapshot.exists()) throw new Error("Event not found.");
+    if (!currentBooking.exists() || currentBooking.data().status !== "APPROVED") {
+      throw new Error("Only an approved venue booking can be released.");
+    }
+    const event = eventSnapshot.data();
+    if (event.coordinator_id !== userId) throw new Error("Only the current event coordinator may release this venue.");
+    if (!["APPROVED", "PLANNING", "CONFIRMED", "SAFETY_REVIEW"].includes(String(event.status || "").toUpperCase())) {
+      throw new Error("This event's venue can no longer be released.");
+    }
+    const stamp = serverTimestamp();
+    transaction.update(bookingRef, {
+      status: "RELEASED",
+      released_at: stamp,
+      release_reason: cleanReason,
+      safety_review_required: true
+    });
+    const historyRef = doc(collection(db, "event_history"));
+    const otherCount = eventBookings.docs.filter((item) => item.id !== bookingId).length;
+    const otherBookings = related.slice(0, otherCount).filter((item) => item.exists()).map((item) => ({ id: item.id, ...item.data() }));
+    const remainingApproved = otherBookings.find((item) => item.status === "APPROVED");
+    const eventUpdate = {
+      approved_venue_booking_id: event.approved_venue_booking_id === bookingId
+        ? remainingApproved?.id || null
+        : event.approved_venue_booking_id || remainingApproved?.id || null,
+      last_venue_release_id: historyRef.id,
+      updated_at: stamp
+    };
+    if (["CONFIRMED", "SAFETY_REVIEW"].includes(String(event.status || "").toUpperCase())) {
+      Object.assign(eventUpdate, {
+        status: "PLANNING",
+        last_safety_review_id: null,
+        safety_review_required: true
+      });
+    }
+    transaction.update(eventRef, eventUpdate);
+    transaction.set(historyRef, {
+      history_id: historyRef.id,
+      event_id: eventId,
+      booking_id: bookingId,
+      venue_id: currentBooking.data().venue_id,
+      actor_id: userId,
+      action_type: "VENUE_BOOKING_RELEASED",
+      field_name: "venue_booking_status",
+      old_value: "APPROVED",
+      new_value: "RELEASED",
+      description: `${currentBooking.data().booking_label || bookingId}: ${cleanReason}`,
+      created_at: stamp
+    });
+    return { booking_id: bookingId, status: "RELEASED" };
   });
 };
 

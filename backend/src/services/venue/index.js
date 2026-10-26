@@ -9,10 +9,14 @@ import {
   VenueNotFoundError,
   UnavailabilityNotFoundError
 } from "./unavailability.js";
+export { createProcessVenueHolds, startVenueHoldExpiryScheduler } from "./holdExpiry.js";
+import { createRecheckVenueConflicts, VenueConflictAssignmentError, VenueNotFoundForConflictError } from "./conflicts.js";
+export { createRecheckVenueConflicts, startVenueConflictScheduler } from "./conflicts.js";
 
 export function createVenueService({ firestore, verifyIdToken, serverTimestamp }) {
   const router = express.Router();
   const saveUnavailability = createSaveVenueUnavailability({ firestore, serverTimestamp });
+  const recheckConflicts = createRecheckVenueConflicts({ firestore, serverTimestamp });
 
   const authenticateVenueStaff = async (request, response) => {
     const token = request.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
@@ -84,6 +88,19 @@ export function createVenueService({ firestore, verifyIdToken, serverTimestamp }
       else if (error instanceof ApprovedBookingConflictError) response.status(409).json({ error: error.message });
       else if (error instanceof TypeError) response.status(400).json({ error: error.message });
       else if (error instanceof UnavailabilityNotFoundError) response.status(409).json({ error: error.message });
+      else next(error);
+    }
+  });
+
+  router.post("/:venueId/recheck-conflicts", async (request, response, next) => {
+    let user;
+    try { user = await authenticateVenueStaff(request, response); } catch (error) { next(error); return; }
+    if (!user) return;
+    try {
+      response.json(await recheckConflicts({ venueId: request.params.venueId, userId: user.uid }));
+    } catch (error) {
+      if (error instanceof VenueNotFoundForConflictError) response.status(404).json({ error: error.message });
+      else if (error instanceof VenueConflictAssignmentError) response.status(403).json({ error: error.message });
       else next(error);
     }
   });

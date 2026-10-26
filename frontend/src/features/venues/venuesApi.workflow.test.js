@@ -259,7 +259,14 @@ describe('K5 SCRUM-186 venue bookings follow the coordinator the event is assign
     expect(bookings.map((item) => item.booking_id)).toEqual(['VB-1']);
     const eventsQuery = queries.find((item) => item.path === 'events');
     expect(eventsQuery.constraints).toEqual([['coordinator_id', '==', 'COORD-1']]);
-    expect(queries.filter((item) => item.path === 'venue_bookings')).toHaveLength(1);
+    const bookingQueries = queries.filter((item) => item.path === 'venue_bookings');
+    // K5 still scopes the returned rows through the coordinator's assigned
+    // event. F10 additionally reads the same venue to compare approved windows,
+    // but never adds those other coordinators' bookings to this list.
+    expect(bookingQueries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ constraints: [['event_id', '==', 'EVT-1']] }),
+      expect.objectContaining({ constraints: [['venue_id', '==', 'VEN-1']] })
+    ]));
   });
 
   // E8 — TC-396. A coordinator may get venue_staff/{venueId} but not read Venue

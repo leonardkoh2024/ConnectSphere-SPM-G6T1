@@ -45,6 +45,18 @@ beforeEach(() => {
 
 async function openRequest(props = {}) {
   render(<EventReviewScreen {...props} />);
+  // Assigned Events now opens on Active events. Tests whose fixture contains
+  // only a terminal event must reveal archived statuses before opening it.
+  await waitFor(() => {
+    expect(
+      screen.queryByRole('button', { name: /view request/i })
+      || screen.queryByRole('combobox', { name: /filter by status/i })
+    ).toBeTruthy();
+  });
+  if (!screen.queryByRole('button', { name: /view request/i })) {
+    const statusFilter = screen.queryByRole('combobox', { name: /filter by status/i });
+    if (statusFilter) await userEvent.selectOptions(statusFilter, 'ALL');
+  }
   await userEvent.click(await screen.findByRole('button', { name: /view request/i }));
   await screen.findByRole('button', { name: /back to events/i });
 }
@@ -441,7 +453,7 @@ test("D5 AC2/AC3 completed events leave the active list and remain viewable via 
   await userEvent.selectOptions(screen.getByRole("combobox", { name: /filter by status/i }), "COMPLETED");
   await userEvent.click(await screen.findByRole("button", { name: /view request/i }));
   expect(await screen.findByRole("heading", { name: "Past Summit" })).toBeInTheDocument();
-  expect(screen.getByText("COMPLETED")).toBeInTheDocument();
+  expect(screen.getByText("COMPLETED", { selector: ".cs-pill" })).toBeInTheDocument();
 });
 
 test('TC-128 sorting by proposed date orders ascending, then descending on toggle', async () => {
