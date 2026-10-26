@@ -133,6 +133,28 @@ export const createEquipmentService = ({
     }
   });
 
+  router.post("/events/:eventId/cancel-reservations", async (request, response, next) => {
+    let user;
+    try {
+      user = await authenticateCoordinator(request, response);
+    } catch (error) {
+      next(error);
+      return;
+    }
+    if (!user) return;
+
+    try {
+      response.json(await reservations.releaseCancelledEventReservations({
+        eventId: request.params.eventId,
+        reason: request.body?.reason,
+        userId: user.uid
+      }));
+    } catch (error) {
+      if (error.statusCode) response.status(error.statusCode).json({ error: error.message });
+      else next(error);
+    }
+  });
+
   router.patch("/requests/:eventId/lines/:lineIndex", async (request, response, next) => {
     let user;
     try {

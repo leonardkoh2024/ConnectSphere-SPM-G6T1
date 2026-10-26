@@ -856,12 +856,13 @@ describe('E8 / SCRUM-124 rules — booking requests carry their suitability ackn
     }
   );
 
-  test('TC-174 withdrawing is the only update, and only the raiser may do it', () => {
+  test('TC-174 withdrawing is the only update and only the current coordinator may do it', () => {
     const rule = bookingRules().match(/allow update:\s*if([^;]*);/);
     expect(rule).not.toBeNull();
 
     expect(rule[1]).toContain("hasRole('EVENT_COORDINATOR')");
-    expect(rule[1]).toContain('resource.data.requested_by == request.auth.uid');
+    expect(rule[1]).toContain('currentCoordinator(resource.data.event_id)');
+    expect(rule[1]).not.toMatch(/(?<!request\.)resource\.data\.requested_by\s*==\s*request\.auth\.uid/);
     // Only PENDING -> WITHDRAWN, and nothing else on the document may move.
     expect(rule[1]).toContain("resource.data.status == 'PENDING'");
     expect(rule[1]).toContain("request.resource.data.status == 'WITHDRAWN'");

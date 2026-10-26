@@ -9,6 +9,7 @@
 // that needs no Firestore.
 
 export const ALL_STATUSES = "ALL";
+export const ACTIVE_EVENTS = "ACTIVE";
 
 // AC1 — only the events whose coordinator_id is the signed-in coordinator.
 export const onlyForCoordinator = (events = [], coordinatorId) =>
@@ -93,5 +94,8 @@ export const buildAssignedView = (
 ) => {
   const scoped = coordinatorId ? onlyForCoordinator(events, coordinatorId) : events;
   const rows = scoped.map((event) => assignedRow(event, now));
-  return sortByProposedDate(filterByStatus(rows, status), sort);
+  const filtered = status === ACTIVE_EVENTS
+    ? rows.filter((row) => !["COMPLETED", "CANCELLED", "REJECTED"].includes(row.status))
+    : filterByStatus(rows, status);
+  return sortByProposedDate(filtered, sort);
 };

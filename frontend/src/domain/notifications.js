@@ -117,8 +117,7 @@ export const eventCancelledMessage = ({ eventName, reason } = {}) => {
 export const VENUE_BOOKING_OUTCOMES = ["VENUE_BOOKING_APPROVED", "VENUE_BOOKING_REJECTED", "VENUE_BOOKING_HELD"];
 export const EQUIPMENT_OUTCOMES = ["EQUIPMENT_ARRANGED", "EQUIPMENT_UNABLE_TO_FULFIL"];
 
-// AC1 — approved or rejected, and on rejection the reason. F5 (reject a booking)
-// is not built yet; it is to call this with `approved: false` and its reason.
+// AC1 — approved or rejected, and on rejection the reason.
 export const venueBookingOutcomeMessage = ({ eventName, venueName, approved, reason }) => {
   const subject = `${eventName || "Your event"}: the booking for ${venueName || "the venue"}`;
   if (approved) return `${subject} was approved.`;

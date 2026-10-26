@@ -166,3 +166,67 @@ test("J5-TC18 AC1 AC3 an Event Coordinator reaches the notifier, and its result 
   assert.deepEqual(await response.json(), { eventId: "event-1", sent: 2, types: ["EQUIPMENT_REQUEST_RAISED"] });
   assert.equal(transactionCalls, 1);
 });
+
+const cancelReservationsRoute = async ({ role, authorization = "Bearer valid-token" }) => {
+  let transactionCalls = 0;
+  const firestore = {
+    collection(name) {
+      if (name === "users") {
+        return { doc: () => ({ get: async () => ({ exists: true, data: () => ({ role }) }) }) };
+      }
+      if (name === "equipment_reservations") {
+        return { where: () => ({ collection: name, eventId: "event-1" }) };
+      }
+      return { doc: (id) => ({ collection: name, id }) };
+    },
+    async runTransaction(operation) {
+      transactionCalls += 1;
+      return operation({
+        get: async (reference) => {
+          if (reference.collection === "equipment_reservations") return { docs: [] };
+          if (reference.collection === "events") {
+            return { exists: true, data: () => ({ coordinator_id: "user-1", status: "CANCELLED" }) };
+          }
+          return { exists: false };
+        }
+      });
+    }
+  };
+  const app = express();
+  app.use(express.json());
+  app.use("/api/equipment", createEquipmentService({
+    firestore,
+    verifyIdToken: async (token) => {
+      assert.equal(token, "valid-token");
+      return { uid: "user-1" };
+    },
+    serverTimestamp: () => ({ serverTimestamp: true }),
+    getApprovedEventBookings: async () => []
+  }));
+  const server = app.listen(0);
+  try {
+    await new Promise((resolve) => server.once("listening", resolve));
+    const { port } = server.address();
+    const response = await fetch(`http://127.0.0.1:${port}/api/equipment/events/event-1/cancel-reservations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: authorization },
+      body: JSON.stringify({ reason: "Event cancelled" })
+    });
+    return { response, transactionCalls };
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+};
+
+test("D4 only an Event Coordinator can release reservations after event cancellation", async () => {
+  const { response, transactionCalls } = await cancelReservationsRoute({ role: "TECHNICAL_SUPPORT_STAFF" });
+  assert.equal(response.status, 403);
+  assert.equal(transactionCalls, 0);
+});
+
+test("D4 an authenticated coordinator reaches the cancellation release operation", async () => {
+  const { response, transactionCalls } = await cancelReservationsRoute({ role: "EVENT_COORDINATOR" });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { released: 0 });
+  assert.equal(transactionCalls, 1);
+});

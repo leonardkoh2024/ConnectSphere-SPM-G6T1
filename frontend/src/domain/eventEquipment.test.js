@@ -16,6 +16,7 @@ describe('equipment arrangements on the coordinator event page', () => {
     expect(equipmentLineStatus({ fulfillment_status: 'RESERVED' })).toEqual({ label: 'Approved', tone: 'positive' });
     expect(equipmentLineStatus({ fulfillment_status: 'PENDING' })).toEqual({ label: 'Pending', tone: 'warning' });
     expect(equipmentLineStatus({ fulfillment_status: 'RESOLVED' })).toEqual({ label: 'Unable to fulfil', tone: 'danger' });
+    expect(equipmentLineStatus({ fulfillment_status: 'RELEASED' })).toEqual({ label: 'Released', tone: 'neutral' });
   });
 
   test('TC-478 G4 each request line carries its status, and an approved line its reservation window', () => {
@@ -61,6 +62,7 @@ describe('the coordinator equipment requests screen wording', () => {
     expect(equipmentRequestStatus({ status: 'ARRANGED', lines: lines('RESERVED', 'RESERVED') })).toEqual({ label: 'Reserved', tone: 'positive' });
     expect(equipmentRequestStatus({ status: 'ARRANGED', lines: lines('RESERVED', 'RESOLVED') }).label).toBe('Partly reserved');
     expect(equipmentRequestStatus({ status: 'ARRANGED', lines: lines('RESOLVED') })).toEqual({ label: 'Unable to fulfil', tone: 'danger' });
+    expect(equipmentRequestStatus({ status: 'CANCELLED', lines: lines('RELEASED') })).toEqual({ label: 'Cancelled', tone: 'neutral' });
   });
 
   test('TC-482 G4 each Technical Support decision reads as a plain sentence', () => {

@@ -1,10 +1,11 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import VenueBookingQueue, { elapsed } from './VenueBookingQueue';
-import { approveVenueBooking, loadVenueBookingQueue } from './venuesApi';
+import { approveVenueBooking, loadVenueBookingQueue, rejectVenueBooking } from './venuesApi';
 
 jest.mock('./venuesApi', () => ({
   approveVenueBooking: jest.fn(),
+  rejectVenueBooking: jest.fn(),
   loadVenueBookingQueue: jest.fn()
 }));
 
@@ -26,6 +27,7 @@ const second = {
 beforeEach(() => {
   loadVenueBookingQueue.mockReset().mockResolvedValue([first, second]);
   approveVenueBooking.mockReset().mockResolvedValue({ booking_id: 'BK-2', status: 'APPROVED' });
+  rejectVenueBooking.mockReset().mockResolvedValue({ booking_id: 'BK-2', status: 'REJECTED' });
 });
 
 test('F3 shows only the supplied staff queue details and sorts by submission time or requested date', async () => {
@@ -73,6 +75,37 @@ test('F4 approval refreshes the queue and reports service-side conflict errors',
 
 test('elapsed provides the time since submission used in each queue entry', () => {
   expect(elapsed('2026-10-09T01:00:00Z', new Date('2026-10-09T03:30:00Z').getTime())).toBe('2 hours ago');
+});
+
+test('F5 / SCRUM-129 requires a reason and shows the complete rejection reason and time', async () => {
+  const rejected = {
+    ...second,
+    status: 'REJECTED',
+    decision_reason: 'The requested layout is not supported at this venue.',
+    decided_at: '2026-10-03T09:30:00.000Z'
+  };
+  loadVenueBookingQueue.mockResolvedValueOnce([second]).mockResolvedValueOnce([rejected]);
+  const notice = jest.fn();
+  render(<VenueBookingQueue user={{ uid: 'staff' }} onNotice={notice} />);
+  const row = (await screen.findByText('Earlier event')).closest('.cs-record');
+
+  await userEvent.click(within(row).getByRole('button', { name: 'Reject' }));
+  await userEvent.click(within(row).getByRole('button', { name: 'Confirm rejection' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(/reason is required/i);
+  expect(rejectVenueBooking).not.toHaveBeenCalled();
+
+  await userEvent.type(within(row).getByLabelText(/reason for rejection/i), rejected.decision_reason);
+  await userEvent.click(within(row).getByRole('button', { name: 'Confirm rejection' }));
+  await waitFor(() => expect(rejectVenueBooking).toHaveBeenCalledWith({
+    user: { uid: 'staff' }, bookingId: 'BK-2', reason: rejected.decision_reason
+  }));
+  expect(notice).toHaveBeenCalledWith('Hall A booking rejected.');
+
+  const rejectedRow = screen.getByText('Earlier event').closest('.cs-record');
+  await userEvent.click(within(rejectedRow).getByRole('button', { name: 'View request' }));
+  expect(within(rejectedRow).getByText(rejected.decision_reason)).toBeInTheDocument();
+  expect(within(rejectedRow).getByText('Decided', { selector: 'dt' }).nextSibling)
+    .toHaveTextContent(new Date(rejected.decided_at).toLocaleString());
 });
 
 // TC-400 — decided requests stay on the screen. All lists pending first; the

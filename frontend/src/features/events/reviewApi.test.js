@@ -11,7 +11,8 @@ import { significantEventValues } from '../../domain/significantEventChanges';
 jest.mock('../../lib/firebase', () => ({ auth: { currentUser: { uid: 'c1' } }, db: {} }));
 jest.mock('firebase/firestore', () => ({
   collection: jest.fn(), doc: jest.fn(), query: jest.fn(), where: jest.fn(),
-  getDoc: jest.fn(), getDocs: jest.fn(), runTransaction: jest.fn(), serverTimestamp: jest.fn()
+  getDoc: jest.fn(), getDocs: jest.fn(), runTransaction: jest.fn(), serverTimestamp: jest.fn(),
+  writeBatch: jest.fn()
 }));
 
 const permissionDenied = () => Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' });
@@ -657,6 +658,107 @@ describe('the coordinator event detail carries its equipment arrangements', () =
 
     const detail = await reviewApi.detail('e1');
     expect(detail.actorNames).toEqual({ c1: 'Joshua Chua' });
+  });
+
+  test('D6 resolves actor display names from supported profile name fields', async () => {
+    const getDoc = firestore.getDoc.getMockImplementation();
+    firestore.getDoc.mockImplementation(async (ref) => {
+      if (ref.path === 'users/c1') return snapshot('c1', { role: 'EVENT_COORDINATOR', full_name: 'Joshua Chua' });
+      return getDoc(ref);
+    });
+
+    const detail = await reviewApi.detail('e1');
+
+    expect(detail.actorNames).toEqual({ c1: 'Joshua Chua' });
+  });
+});
+
+describe('D4 cancel an assigned event', () => {
+  const storedEvent = {
+    organiser_id: 'org1',
+    coordinator_id: 'c1',
+    name: 'Partner Summit',
+    reference_no: 'EVT-100234',
+    status: 'PLANNING'
+  };
+  let writes;
+
+  beforeEach(() => {
+    auth.currentUser = { uid: 'c1' };
+    writes = { updates: [], sets: [] };
+    firestore.getDoc.mockImplementation(async (ref) => {
+      if (ref.path === 'events/e4') return snapshot('e4', storedEvent);
+      return snapshot(ref.id, null);
+    });
+    firestore.getDocs.mockImplementation(async (q) => {
+      if (q.name === 'registrations') return docs([
+        ['reg1', { event_id: 'e4', user_id: 'attendee-1', status: 'REGISTERED' }],
+        ['reg2', { event_id: 'e4', user_id: 'waitlisted-1', status: 'WAITLISTED' }],
+        ['reg3', { event_id: 'e4', attendee_id: 'attendee-2', status: 'REGISTERED' }]
+      ]);
+      return docs([]);
+    });
+    firestore.runTransaction.mockImplementation(async (db, work) => work({
+      get: async (ref) => snapshot(ref.id, ref.path === 'events/e4' ? storedEvent : null),
+      update: (ref, data) => writes.updates.push([ref.path, data]),
+      set: (ref, data) => writes.sets.push([ref.path, data])
+    }));
+  });
+
+  test('D4 requires a reason and atomically cancels, records history and notifies the organiser', async () => {
+    await expect(reviewApi.cancel('e4', '  ')).rejects.toThrow('Cancellation reason is required.');
+    expect(firestore.runTransaction).not.toHaveBeenCalled();
+
+    const outcome = await reviewApi.cancel('e4', 'Speaker unavailable');
+
+    expect(outcome).toMatchObject({
+      eventId: 'e4',
+      eventName: 'Partner Summit',
+      reason: 'Speaker unavailable',
+      attendees: [
+        { registrationId: 'reg1', userId: 'attendee-1' },
+        { registrationId: 'reg3', userId: 'attendee-2' }
+      ]
+    });
+    expect(writes.updates).toEqual([['events/e4', {
+      status: 'CANCELLED',
+      cancellation_reason: 'Speaker unavailable',
+      cancelled_at: 'TS',
+      last_cancellation_id: 'auto',
+      updated_at: 'TS'
+    }]]);
+    expect(writes.sets).toEqual(expect.arrayContaining([
+      [expect.stringMatching(/^event_history\//), expect.objectContaining({
+        event_id: 'e4', actor_id: 'c1', action_type: 'EVENT_CANCELLED',
+        old_value: 'PLANNING', new_value: 'CANCELLED',
+        description: 'Speaker unavailable', created_at: 'TS'
+      })],
+      [expect.stringMatching(/^notifications\//), expect.objectContaining({
+        user_id: 'org1', event_id: 'e4', type: 'EVENT_CANCELLED',
+        message: 'Partner Summit was cancelled — Speaker unavailable',
+        created_at: 'TS'
+      })]
+    ]));
+  });
+
+  test('D4 sends cancellation notices to registered attendees only', async () => {
+    const committed = {
+      eventId: 'e4',
+      eventName: 'Partner Summit',
+      reason: 'Speaker unavailable',
+      attendees: [
+        { registrationId: 'reg1', userId: 'attendee-1' },
+        { registrationId: 'reg3', userId: 'attendee-2' }
+      ]
+    };
+    const batch = { writes: [], set(ref, data) { this.writes.push([ref.path, data]); }, commit: jest.fn() };
+    firestore.writeBatch.mockReturnValue(batch);
+
+    await expect(reviewApi.notifyCancelledAttendees(committed)).resolves.toEqual({ notified: 2 });
+    expect(batch.commit).toHaveBeenCalledTimes(1);
+    expect(batch.writes.map(([, notification]) => notification.user_id)).toEqual(['attendee-1', 'attendee-2']);
+    expect(batch.writes.map(([, notification]) => notification.registration_id)).toEqual(['reg1', 'reg3']);
+    expect(batch.writes.every(([, notification]) => notification.type === 'EVENT_CANCELLED')).toBe(true);
   });
 });
 

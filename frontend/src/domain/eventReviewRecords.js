@@ -28,8 +28,9 @@ export const eventHistoryRecord = ({ historyId, eventId, actorId, actionType, fi
 
 // `eventName` is for a recipient who may not read the event itself (J4: Venue
 // Staff), so their inbox can still name it. Left off when not given.
-export const notificationRecord = ({ notificationId, userId, eventId, type, message, createdAt, eventName }) => ({
+export const notificationRecord = ({ notificationId, userId, eventId, type, message, createdAt, eventName, registrationId }) => ({
   notification_id: notificationId, user_id: userId, event_id: eventId, type, message,
   is_read: false, created_at: createdAt, read_at: null,
-  ...(eventName ? { event_name: eventName } : {})
+  ...(eventName ? { event_name: eventName } : {}),
+  ...(registrationId ? { registration_id: registrationId } : {})
 });

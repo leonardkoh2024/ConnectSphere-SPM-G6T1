@@ -897,7 +897,9 @@ export const approveVenueBooking = async ({ user, bookingId, now = new Date() })
   });
 };
 
-export const rejectVenueBooking = async ({ user, bookingId, reason }) => {
+// Retained for browser-SDK callers; the public queue action below uses the
+// backend endpoint added on main so its server-side F5 tests remain intact.
+export const rejectVenueBookingInFirestore = async ({ user, bookingId, reason }) => {
   const cleanReason = String(reason || "").trim();
   if (!cleanReason) throw new Error("A rejection reason is required.");
   const decision = await loadVenueDecision({ user, bookingId });
@@ -997,6 +999,25 @@ export const holdVenueBooking = async ({ user, bookingId, now = new Date() }) =>
     }
     return { booking_id: bookingId, status: "HELD", hold_expires_at: expiresAt.toISOString() };
   });
+};
+
+export const rejectVenueBooking = async ({ user, bookingId, reason }) => {
+  const decisionReason = typeof reason === "string" ? reason.trim() : "";
+  if (!decisionReason) throw new Error("A rejection reason is required.");
+  if (!user?.getIdToken) throw new Error("Sign in is required to reject a venue booking.");
+
+  const token = await user.getIdToken();
+  const response = await fetch(`/api/venues/bookings/${encodeURIComponent(bookingId)}/reject`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ reason: decisionReason })
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "The booking could not be rejected.");
+  return result;
 };
 
 export const releaseCancelledEventBookings = async ({ user, eventId, reason = "Event cancelled" }) => {

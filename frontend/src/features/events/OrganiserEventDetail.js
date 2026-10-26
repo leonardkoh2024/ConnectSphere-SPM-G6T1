@@ -3,6 +3,9 @@
 // decision and the form, read-only except while a clarification is open — C5)
 // and the clarification exchange, where the organiser answers an open question.
 // It opens on Clarifications when an answer is owed.
+//
+// H1 / SCRUM-139 — an event that uses attendee registration (the B5 flag) gets a third tab,
+// Registration, where the organiser sets its capacity and open/close window once approved.
 
 import React, { useEffect, useState } from "react";
 import { EVENT_TABS, clarificationSummary, initialEventTab } from "../../domain/eventReview";
@@ -11,6 +14,7 @@ import EventRequestForm from "./EventRequestForm";
 import DecisionSummary from "./components/DecisionSummary";
 import ClarificationThread from "./components/ClarificationThread";
 import EventDetailTabs from "./components/EventDetailTabs";
+import RegistrationPanel from "./RegistrationPanel";
 
 const isDraft = (event) => !event || !event.status || String(event.status).toUpperCase() === "DRAFT";
 
@@ -43,6 +47,7 @@ export default function OrganiserEventDetail({ user, event, onSaved, onNotice })
   const current = detail?.event || event;
   const amending = String(current.status || "").toUpperCase() === "UNDER_REVIEW" && Boolean(current.open_clarification_id);
   const summary = clarificationSummary(detail);
+  const usesRegistration = current.registration_required === true;
   const open = detail?.clarifications.find((item) => item.id === detail.event.open_clarification_id);
 
   const respond = async (submitEvent) => {
@@ -82,7 +87,8 @@ export default function OrganiserEventDetail({ user, event, onSaved, onNotice })
       onChange={setTab}
       tabs={[
         { id: EVENT_TABS.REQUEST, label: "Event request", content: requestTab },
-        { id: EVENT_TABS.CLARIFICATIONS, label: "Clarifications", count: summary.requests, attention: summary.awaitingOrganiser, content: clarificationsTab }
+        { id: EVENT_TABS.CLARIFICATIONS, label: "Clarifications", count: summary.requests, attention: summary.awaitingOrganiser, content: clarificationsTab },
+        ...(usesRegistration ? [{ id: EVENT_TABS.REGISTRATION, label: "Registration", content: <RegistrationPanel eventId={event.id} event={current} onNotice={onNotice} /> }] : [])
       ]}
     />
   </>;

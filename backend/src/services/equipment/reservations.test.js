@@ -34,7 +34,7 @@ const fixture = ({
         return {
           exists: true,
           data: () => (withReservationRequest
-            ? { status: "ARRANGED", lines: [{ reservation_id: "reservation-1", fulfillment_status: "RESERVED" }] }
+            ? { status: "ARRANGED", lines: [{ reservation_id: "reservation-1", equipment_type: "AUDIO", quantity: 2, fulfillment_status: "RESERVED" }] }
             : { status: "PENDING", lines })
         };
       }
@@ -52,7 +52,14 @@ const fixture = ({
         };
       }
       if (reference.collectionName === "equipment_reservations") {
-        return { docs: reservations.map((data) => ({ data: () => data })) };
+        return { docs: reservations.map((data, index) => {
+          const id = data.reservation_id || `reservation-${index + 1}`;
+          return {
+            id,
+            ref: { path: `equipment_reservations/${id}`, id },
+            data: () => data
+          };
+        }) };
       }
       if (reference.collectionName === "equipment_unavailability") {
         return { docs: unavailable.map((data) => ({ data: () => data })) };
@@ -163,6 +170,56 @@ test("TC-305 release retains the reservation and advances the inventory revision
   assert.equal(transaction.updated[1].reference.path, "equipment_requests/event-1");
   assert.equal(transaction.updated[1].data.lines[0].fulfillment_status, "PENDING");
   assert.equal(transaction.updated[2].data.availability_revision, 1);
+});
+
+test("D4 cancellation releases every active reservation and advances inventory availability", async () => {
+  const { service, transaction } = fixture({
+    withReservationRequest: true,
+    event: { coordinator_id: "coord-1", status: "CANCELLED", name: "Q4 Partner Summit" },
+    reservations: [
+      reservationRecord({
+        reservation_id: "reservation-1", event_id: "event-1", line_index: 0, equipment_type: "AUDIO", quantity: 2
+      })
+    ]
+  });
+
+  await assert.deepEqual(
+    await service.releaseCancelledEventReservations({
+      eventId: "event-1", reason: "Speaker unavailable", userId: "coord-1"
+    }),
+    { released: 1 }
+  );
+  assert.equal(transaction.updated[0].reference.path, "equipment_reservations/reservation-1");
+  assert.deepEqual(transaction.updated[0].data, {
+    status: "RELEASED",
+    released_at: { serverTimestamp: true },
+    released_by: "coord-1",
+    release_reason: "Speaker unavailable",
+    updated_at: { serverTimestamp: true }
+  });
+  assert.equal(transaction.updated[1].reference.path, "equipment_requests/event-1");
+  assert.equal(transaction.updated[1].data.status, "CANCELLED");
+  assert.equal(transaction.updated[1].data.lines[0].fulfillment_status, "RELEASED");
+  assert.equal(transaction.updated[2].reference.path, "equipment_inventory/AUDIO");
+  assert.equal(transaction.updated[2].data.availability_revision, 1);
+  assert.equal(transaction.created[0].data.actor_id, "coord-1");
+  assert.equal(transaction.created[0].data.actor_role, "Event Coordinator");
+  assert.equal(transaction.created[0].data.reason, "Speaker unavailable");
+});
+
+test("D4 equipment release rejects a non-cancelled event", async () => {
+  const { service, transaction } = fixture({
+    withReservationRequest: true,
+    event: { coordinator_id: "coord-1", status: "PLANNING" }
+  });
+  await assert.rejects(
+    service.releaseCancelledEventReservations({
+      eventId: "event-1", reason: "No longer happening", userId: "coord-1"
+    }),
+    /only after the event is Cancelled/
+  );
+  assert.equal(transaction.updated.length, 0);
+  assert.equal(transaction.created.length, 0);
 });
 
 // J6 / SCRUM-155 AC3 — TC-329, TC-330, TC-334, TC-346 in docs/test-cases.md.

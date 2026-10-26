@@ -45,9 +45,10 @@ export default function VenueBookingQueue({ user, onNotice, onClashCountChange }
   const [sortBy, setSortBy] = useState("submitted_at");
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState("");
+  const [workingAction, setWorkingAction] = useState("");
   const [error, setError] = useState("");
   const [expandedBookingId, setExpandedBookingId] = useState("");
-  const [rejecting, setRejecting] = useState(null);
+  const [rejectingBookingId, setRejectingBookingId] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
 
   // Keep the sidebar's clash badge in step with this screen's latest queue.
@@ -75,6 +76,7 @@ export default function VenueBookingQueue({ user, onNotice, onClashCountChange }
 
   const decide = async (booking, action, notice, failureMessage) => {
     setWorking(booking.booking_id);
+    setWorkingAction("decision");
     setError("");
     try {
       const result = await action({ user, bookingId: booking.booking_id });
@@ -87,6 +89,7 @@ export default function VenueBookingQueue({ user, onNotice, onClashCountChange }
       return false;
     } finally {
       setWorking("");
+      setWorkingAction("");
     }
   };
   const approve = (booking) => decide(booking, approveVenueBooking,
@@ -94,11 +97,30 @@ export default function VenueBookingQueue({ user, onNotice, onClashCountChange }
   const hold = (booking) => decide(booking, holdVenueBooking,
     (result) => `${booking.venue_name} held for ${booking.event_name} until ${singaporeDateTime(result.hold_expires_at)}.`,
     "The venue could not be held.");
-  const reject = async () => {
-    if (!rejectionReason.trim()) { setError("A rejection reason is required."); return; }
-    const saved = await decide(rejecting, (args) => rejectVenueBooking({ ...args, reason: rejectionReason }),
-      () => `${rejecting.venue_name} booking rejected.`, "The booking could not be rejected.");
-    if (saved) { setRejecting(null); setRejectionReason(""); }
+  const reject = async (booking) => {
+    if (!rejectionReason.trim()) {
+      setError("A rejection reason is required.");
+      return;
+    }
+    setWorking(booking.booking_id);
+    setWorkingAction("reject");
+    setError("");
+    try {
+      await rejectVenueBooking({ user, bookingId: booking.booking_id, reason: rejectionReason });
+      // Close the inline editor before waiting for the refreshed queue. This
+      // makes the completed action visible immediately and avoids leaving a
+      // stale "Rejecting" form open while Firestore returns the decided row.
+      setExpandedBookingId("");
+      setRejectingBookingId("");
+      setRejectionReason("");
+      await reload();
+      onNotice?.(`${booking.venue_name} booking rejected.`);
+    } catch (failure) {
+      setError(failure.message || "The booking could not be rejected.");
+    } finally {
+      setWorking("");
+      setWorkingAction("");
+    }
   };
 
   if (loading) return <p className="cs-panel-note">Loading booking requests…</p>;
@@ -123,7 +145,9 @@ export default function VenueBookingQueue({ user, onNotice, onClashCountChange }
       {!sorted.length ? <p className="cs-panel-note">{SHOW[show].empty}</p> : (
         <div className="cs-record-list">
           {sorted.map((booking) => {
-            const expanded = expandedBookingId === booking.booking_id;
+            const rejectingThisBooking = rejectingBookingId === booking.booking_id;
+            const expanded = expandedBookingId === booking.booking_id
+              && !(working === booking.booking_id && workingAction === "reject" && rejectingThisBooking);
             const detailsId = `venue-booking-${booking.booking_id}-details`;
             const acknowledgement = booking.suitability_acknowledgement;
             return (
@@ -166,16 +190,22 @@ export default function VenueBookingQueue({ user, onNotice, onClashCountChange }
                 )}
                 {isPending(booking) && (
                   <button type="button" className="cs-btn cs-btn-primary cs-record-btn" disabled={working === booking.booking_id} onClick={() => approve(booking)}>
-                    {working === booking.booking_id ? "Approving…" : "Approve"}
+                    {working === booking.booking_id && workingAction === "decision" ? "Approving…" : "Approve"}
                   </button>
                 )}
                 {isHeld(booking) && (
                   <button type="button" className="cs-btn cs-btn-primary cs-record-btn" disabled={working === booking.booking_id} onClick={() => approve(booking)}>
-                    {working === booking.booking_id ? "Converting…" : "Convert to booking"}
+                    {working === booking.booking_id && workingAction === "decision" ? "Converting…" : "Convert to booking"}
                   </button>
                 )}
                 {(isPending(booking) || isHeld(booking)) && (
-                  <button type="button" className="cs-btn cs-btn-ghost cs-record-danger" disabled={working === booking.booking_id} onClick={() => { setError(""); setRejecting(booking); setRejectionReason(""); }}>
+                  <button type="button" className="cs-btn cs-btn-ghost cs-record-btn cs-record-danger" disabled={working === booking.booking_id}
+                    onClick={() => {
+                      setExpandedBookingId(booking.booking_id);
+                      setRejectingBookingId(rejectingBookingId === booking.booking_id ? "" : booking.booking_id);
+                      setRejectionReason("");
+                      setError("");
+                    }}>
                     Reject
                   </button>
                 )}
@@ -190,29 +220,30 @@ export default function VenueBookingQueue({ user, onNotice, onClashCountChange }
                   <div><dt>Safety review required</dt><dd>{booking.safety_review_required ? "Yes" : "No"}</dd></div>
                   <div><dt>Submitted</dt><dd>{displayDateTime(booking.submitted_at)}</dd></div>
                   {!isPending(booking) && booking.decided_at && <div><dt>Decided</dt><dd>{displayDateTime(booking.decided_at)}</dd></div>}
-                  {booking.hold_expires_at && <div><dt>Hold expires</dt><dd>{singaporeDateTime(booking.hold_expires_at)}</dd></div>}
+                  {booking.decision_reason && <div className="cs-detail-wide"><dt>Decision reason</dt><dd>{booking.decision_reason}</dd></div>}
+                  {booking.status === "HELD" && booking.hold_expires_at && <div><dt>Hold expires</dt><dd>{singaporeDateTime(booking.hold_expires_at)}</dd></div>}
                   <div><dt>Occupied window</dt><dd>{displayDateTime(booking.occupied_start || booking.start_datetime)}–{displayDateTime(booking.occupied_end || booking.end_datetime)}</dd></div>
                   <div className="cs-detail-wide"><dt>Event description</dt><dd>{booking.event_description || "Not recorded"}</dd></div>
                   <div className="cs-detail-wide"><dt>Known suitability shortfalls</dt><dd>{acknowledgement?.acknowledged
                     ? (acknowledgement.criteria || []).map(words).join(", ") || "Acknowledged without listed criteria"
                     : "None acknowledged"}</dd></div>
                 </dl>
+                {rejectingThisBooking && (
+                  <form className="cs-inline-form" onSubmit={(event) => { event.preventDefault(); reject(booking); }} noValidate>
+                    <label className="cs-field">
+                      <span className="cs-field-name">Reason for rejection<span className="cs-required" aria-hidden="true">*</span></span>
+                      <textarea rows="3" required value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} />
+                    </label>
+                    <button className="cs-btn cs-btn-ghost cs-record-danger" type="submit" disabled={working === booking.booking_id}>
+                      {working === booking.booking_id && workingAction === "reject" ? "Rejecting…" : "Confirm rejection"}
+                    </button>
+                  </form>
+                )}
               </div>}
             </article>
           );})}
         </div>
       )}
-      {rejecting && <div className="cs-modal-backdrop">
-        <div className="cs-modal" role="dialog" aria-modal="true" aria-labelledby="cs-reject-venue-title">
-          <h2 id="cs-reject-venue-title">Reject venue booking?</h2>
-          <label className="cs-field"><span className="cs-field-name">Reason</span><textarea value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} /></label>
-          {!rejectionReason.trim() && error && <p className="cs-error" role="alert">{error}</p>}
-          <div className="cs-modal-actions">
-            <button type="button" className="cs-btn cs-btn-ghost" onClick={() => setRejecting(null)}>Cancel</button>
-            <button type="button" className="cs-btn cs-btn-ghost cs-record-danger" onClick={reject}>Reject booking</button>
-          </div>
-        </div>
-      </div>}
     </section>
   );
 }
