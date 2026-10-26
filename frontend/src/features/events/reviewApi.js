@@ -108,7 +108,17 @@ const list = async () => {
     snapshots = (await step("assigned events", () => getDocs(query(collection(db, "events"), where("coordinator_id", "==", user.uid))))).docs;
   } else throw new Error("This role cannot review event requests.");
   const unique = [...new Map(snapshots.map((item) => [item.id, item])).values()];
-  const events = unique.map((item) => ({ ...record(item), editable: item.data().coordinator_id === user.uid }));
+  let events = unique.map((item) => ({ ...record(item), editable: item.data().coordinator_id === user.uid }));
+  // F11 AC1: only the current coordinator can load this list, and affected
+  // events are visibly flagged without changing the event itself.
+  if (profile.role === ROLES.COORDINATOR) {
+    const bookingSnapshots = await Promise.all(events.map((event) =>
+      getDocs(query(collection(db, "venue_bookings"), where("event_id", "==", event.id)))));
+    events = events.map((event, index) => ({
+      ...event,
+      replacement_needed: bookingSnapshots[index].docs.some((item) => item.data().replacement_needed === true)
+    }));
+  }
   return { events: await withOrganiserNames(events) };
 };
 
@@ -237,6 +247,9 @@ const detail = async (eventId) => {
         decided_at: asIso(booking.decided_at),
         released_at: asIso(booking.released_at),
         release_reason: booking.release_reason || null,
+        replacement_needed: booking.replacement_needed === true,
+        replacement_reason: booking.replacement_reason || null,
+        replaced_by_booking_id: booking.replaced_by_booking_id || null,
         required_facilities_snapshot: booking.required_facilities_snapshot || []
       };
     }).sort((left, right) => String(left.start_datetime || "").localeCompare(String(right.start_datetime || "")))

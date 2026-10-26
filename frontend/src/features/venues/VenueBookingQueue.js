@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { isActiveHold, singaporeDateTime } from "../../domain/venueHolds";
-import { approveVenueBooking, holdVenueBooking, loadVenueBookingQueue } from "./venuesApi";
+import { approveVenueBooking, holdVenueBooking, loadVenueBookingQueue, rejectVenueBooking } from "./venuesApi";
 
 const asTime = (value) => new Date(value).getTime();
 const displayDateTime = (value) => value ? new Date(value).toLocaleString() : "Not recorded";
@@ -17,7 +17,7 @@ const elapsed = (value, now = Date.now()) => {
   return `${days} day${days === 1 ? "" : "s"} ago`;
 };
 
-const STATUS_TONE = { PENDING: "info", HELD: "warning", APPROVED: "positive", REJECTED: "danger" };
+const STATUS_TONE = { PENDING: "info", HELD: "warning", APPROVED: "positive", REJECTED: "danger", EXPIRED: "neutral" };
 const statusLabel = (status) => {
   const text = words(status);
   return text ? text[0].toUpperCase() + text.slice(1) : "Unknown";
@@ -33,12 +33,13 @@ const SHOW = {
   all: { label: "All requests", keep: () => true, empty: "No booking requests for your venues." },
   pending: { label: "Pending", keep: isPending, empty: "No pending requests for your venues." },
   held: { label: "On hold", keep: isHeld, empty: "No requests on hold for your venues." },
+  clashes: { label: "Clashes", keep: (booking) => Boolean(booking.clashes?.length), empty: "No booking clashes require review." },
   decided: { label: "Decided", keep: isDecided, empty: "No decided requests for your venues yet." }
 };
 // Pending first, then holds — both still waiting on this staff member — then decided.
 const waitingRank = (booking) => (isPending(booking) ? 0 : isHeld(booking) ? 1 : 2);
 
-export default function VenueBookingQueue({ user, onNotice }) {
+export default function VenueBookingQueue({ user, onNotice, onClashCountChange }) {
   const [bookings, setBookings] = useState([]);
   const [show, setShow] = useState("all");
   const [sortBy, setSortBy] = useState("submitted_at");
@@ -46,16 +47,23 @@ export default function VenueBookingQueue({ user, onNotice }) {
   const [working, setWorking] = useState("");
   const [error, setError] = useState("");
   const [expandedBookingId, setExpandedBookingId] = useState("");
+  const [rejecting, setRejecting] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState("");
 
-  const reload = async () => setBookings(await loadVenueBookingQueue({ user }));
+  // Keep the sidebar's clash badge in step with this screen's latest queue.
+  const applyBookings = useCallback((rows) => {
+    setBookings(rows);
+    onClashCountChange?.(rows);
+  }, [onClashCountChange]);
+  const reload = async () => applyBookings(await loadVenueBookingQueue({ user }));
   useEffect(() => {
     let mounted = true;
     loadVenueBookingQueue({ user })
-      .then((rows) => { if (mounted) setBookings(rows); })
+      .then((rows) => { if (mounted) applyBookings(rows); })
       .catch((failure) => { if (mounted) setError(failure.message || "Booking requests could not be loaded."); })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
-  }, [user]);
+  }, [applyBookings, user]);
 
   // Requests still waiting on this staff member first, then each group by the
   // chosen field.
@@ -73,8 +81,10 @@ export default function VenueBookingQueue({ user, onNotice }) {
       await reload();
       setExpandedBookingId("");
       onNotice?.(notice(result));
+      return true;
     } catch (failure) {
       setError(failure.message || failureMessage);
+      return false;
     } finally {
       setWorking("");
     }
@@ -84,6 +94,12 @@ export default function VenueBookingQueue({ user, onNotice }) {
   const hold = (booking) => decide(booking, holdVenueBooking,
     (result) => `${booking.venue_name} held for ${booking.event_name} until ${singaporeDateTime(result.hold_expires_at)}.`,
     "The venue could not be held.");
+  const reject = async () => {
+    if (!rejectionReason.trim()) { setError("A rejection reason is required."); return; }
+    const saved = await decide(rejecting, (args) => rejectVenueBooking({ ...args, reason: rejectionReason }),
+      () => `${rejecting.venue_name} booking rejected.`, "The booking could not be rejected.");
+    if (saved) { setRejecting(null); setRejectionReason(""); }
+  };
 
   if (loading) return <p className="cs-panel-note">Loading booking requests…</p>;
   return (
@@ -124,6 +140,15 @@ export default function VenueBookingQueue({ user, onNotice }) {
                     ? `Decided ${elapsed(booking.decided_at)}`
                     : `Submitted ${elapsed(booking.submitted_at)}`}</p>
               </div>
+              {booking.clashes?.length > 0 && (
+                <div className="cs-record-alert" role="status">
+                  <strong>Clash - review required</strong>
+                  {booking.clashes.map((clash) => {
+                    const other = clash.booking_a_id === booking.booking_id ? clash.event_b_name : clash.event_a_name;
+                    return <p key={clash.conflict_id}>Overlaps {other}: {displayDateTime(clash.overlap_start)}–{displayDateTime(clash.overlap_end)}</p>;
+                  })}
+                </div>
+              )}
               <div className="cs-record-actions cs-record-actions-stacked">
                 <button
                   type="button"
@@ -149,6 +174,11 @@ export default function VenueBookingQueue({ user, onNotice }) {
                     {working === booking.booking_id ? "Converting…" : "Convert to booking"}
                   </button>
                 )}
+                {(isPending(booking) || isHeld(booking)) && (
+                  <button type="button" className="cs-btn cs-btn-ghost cs-record-danger" disabled={working === booking.booking_id} onClick={() => { setError(""); setRejecting(booking); setRejectionReason(""); }}>
+                    Reject
+                  </button>
+                )}
               </div>
               {expanded && <div className="cs-record-expanded" id={detailsId}>
                 <dl className="cs-detail-grid">
@@ -172,6 +202,17 @@ export default function VenueBookingQueue({ user, onNotice }) {
           );})}
         </div>
       )}
+      {rejecting && <div className="cs-modal-backdrop">
+        <div className="cs-modal" role="dialog" aria-modal="true" aria-labelledby="cs-reject-venue-title">
+          <h2 id="cs-reject-venue-title">Reject venue booking?</h2>
+          <label className="cs-field"><span className="cs-field-name">Reason</span><textarea value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} /></label>
+          {!rejectionReason.trim() && error && <p className="cs-error" role="alert">{error}</p>}
+          <div className="cs-modal-actions">
+            <button type="button" className="cs-btn cs-btn-ghost" onClick={() => setRejecting(null)}>Cancel</button>
+            <button type="button" className="cs-btn cs-btn-ghost cs-record-danger" onClick={reject}>Reject booking</button>
+          </div>
+        </div>
+      </div>}
     </section>
   );
 }

@@ -108,6 +108,15 @@ export function createSaveVenueUnavailability({ firestore, serverTimestamp }) {
         })));
       }
 
+      // Firestore transactions require every read before the first write. Read
+      // the current event now so replacement notices always go to the current
+      // coordinator, including after reassignment.
+      const affectedEventIds = [...new Set(affectedDocs.map((item) => item.data().event_id).filter(Boolean))];
+      const affectedEvents = new Map(await Promise.all(affectedEventIds.map(async (eventId) => {
+        const snapshot = await transaction.get(firestore.collection("events").doc(eventId));
+        return [eventId, snapshot];
+      })));
+
       const savedPeriods = periodsSnapshot.docs
         .filter((item) => keptIds.has(item.id))
         .map((item) => ({ id: item.id, ...item.data() }));
@@ -132,15 +141,44 @@ export function createSaveVenueUnavailability({ firestore, serverTimestamp }) {
 
       for (const bookingDoc of affectedDocs) {
         const booking = bookingDoc.data();
+        const changedAt = serverTimestamp();
+        const addition = preparedAdditions.find((item) => overlaps(item.start, item.end, booking)) || preparedAdditions[0];
         transaction.update(bookingDoc.ref, {
           replacement_needed: true,
-          replacement_status: REPLACEMENT_NEEDED
+          replacement_status: REPLACEMENT_NEEDED,
+          replacement_reason: addition.reason,
+          replacement_requested_at: changedAt,
+          safety_review_required: true
         });
         const eventId = booking.event_id;
-        const eventSnap = eventId ? await transaction.get(firestore.collection("events").doc(eventId)) : { exists: false };
+        const eventSnap = affectedEvents.get(eventId) || { exists: false };
         const coordinatorId = eventSnap.exists ? eventSnap.data().coordinator_id : booking.requested_by;
+        if (eventSnap.exists && String(eventSnap.data().status || "").toUpperCase() === "CONFIRMED") {
+          transaction.update(eventSnap.ref || firestore.collection("events").doc(eventId), {
+            status: "PLANNING",
+            approved_venue_booking_id: null,
+            last_safety_review_id: null,
+            safety_review_required: true,
+            updated_at: changedAt
+          });
+        }
+        if (eventId) {
+          const historyRef = firestore.collection("event_history").doc();
+          transaction.set(historyRef, {
+            history_id: historyRef.id,
+            event_id: eventId,
+            booking_id: bookingDoc.id,
+            venue_id: venueId,
+            actor_id: userId,
+            action_type: "VENUE_REPLACEMENT_REQUESTED",
+            field_name: "replacement_needed",
+            old_value: false,
+            new_value: true,
+            description: `${bookingLabel(booking, bookingDoc.id)} needs a replacement: ${addition.reason}`,
+            created_at: changedAt
+          });
+        }
         if (!coordinatorId) continue;
-        const addition = preparedAdditions.find((item) => overlaps(item.start, item.end, booking)) || preparedAdditions[0];
         const notificationRef = firestore.collection("notifications").doc();
         transaction.set(notificationRef, {
           notification_id: notificationRef.id,
@@ -152,7 +190,7 @@ export function createSaveVenueUnavailability({ firestore, serverTimestamp }) {
           start_datetime: addition.start,
           end_datetime: addition.end,
           reason: addition.reason,
-          created_at: serverTimestamp()
+          created_at: changedAt
         });
       }
 

@@ -59,9 +59,13 @@ export const safetyOutcomeStatus = (outcome) => {
 };
 
 // AC3 / L2 AC2 — only bookings that will actually be used are reviewed.
-const INACTIVE_BOOKING_STATUSES = new Set(["RELEASED", "REPLACED", "REJECTED", "CANCELLED", "EXPIRED"]);
+const INACTIVE_BOOKING_STATUSES = new Set(["RELEASED", "REPLACED", "WITHDRAWN", "CANCELLED", "EXPIRED"]);
 export const activeBookings = (bookings = []) =>
-  (bookings || []).filter((booking) => !INACTIVE_BOOKING_STATUSES.has(String(booking.status || "").toUpperCase()));
+  (bookings || []).filter((booking) => {
+    const status = String(booking.status || "").toUpperCase();
+    if (status === "REJECTED") return booking.requires_re_request === true || booking.replacement_needed === true;
+    return !INACTIVE_BOOKING_STATUSES.has(status);
+  });
 
 // firestore.rules confirms an event only when it points at an approved venue
 // booking (safetyOutcomeUpdate), so an approval without one is refused here

@@ -36,6 +36,49 @@ const eventsGetList = () => {
   return readRule[1];
 };
 
+describe('F10 coordinator clash resolution stays explicit and server-validated', () => {
+  test('only the current coordinator can mark an approved booking for clash replacement', () => {
+    const bookings = matchBlock('venue_bookings');
+    expect(bookings).toContain("replacement_source == 'CLASH'");
+    expect(bookings).toContain('currentCoordinator(resource.data.event_id)');
+    expect(bookings).toContain("resource.data.status == 'APPROVED'");
+    expect(bookings).toContain('replacement_requested_by == request.auth.uid');
+  });
+
+  test('the claimed conflicting booking must still be approved at the same venue and overlap', () => {
+    const bookings = matchBlock('venue_bookings');
+    expect(bookings).toContain('replacement_conflicting_booking_id != bookingId');
+    expect(bookings).toContain("replacement_conflicting_booking_id)).data.status == 'APPROVED'");
+    expect(bookings).toContain('replacement_conflicting_booking_id)).data.venue_id == resource.data.venue_id');
+    expect(bookings).toContain('resource.data.occupied_start < get(');
+    expect(bookings).toContain(').data.occupied_start < resource.data.occupied_end');
+  });
+
+  test('the event change is tied to a fresh history row and same-commit booking update', () => {
+    const events = matchBlock('events');
+    expect(events).toContain('coordinatorClashReplacementUpdate()');
+    expect(events).toContain("history.action_type == 'VENUE_REPLACEMENT_REQUESTED'");
+    expect(events).toContain('history.created_at == request.time');
+    expect(events).toContain("booking.replacement_source == 'CLASH'");
+  });
+});
+
+describe('F14 coordinator venue release follows the event lifecycle', () => {
+  test('release is allowed during safety review and returns the event to Planning', () => {
+    const events = matchBlock('events');
+    expect(events).toContain("resource.data.status in ['APPROVED', 'PLANNING', 'CONFIRMED', 'SAFETY_REVIEW']");
+    expect(events).toContain("resource.data.status in ['CONFIRMED', 'SAFETY_REVIEW']");
+    expect(events).toContain("request.resource.data.status == 'PLANNING'");
+    expect(events).toContain("request.resource.data.get('last_safety_review_id', null) == null");
+  });
+
+  test('completed events are not included in the release states', () => {
+    const releaseFunction = matchBlock('events').split('function coordinatorSingleVenueReleaseUpdate()')[1]
+      .split('function coordinatorClashReplacementUpdate()')[0];
+    expect(releaseFunction).not.toContain("'COMPLETED'");
+  });
+});
+
 describe('TC-015 no request is left unguarded', () => {
   test('nothing is granted unconditionally', () => {
     expect(RULES).not.toMatch(/if\s+true/);

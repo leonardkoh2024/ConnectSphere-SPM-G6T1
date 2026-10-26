@@ -1,26 +1,29 @@
 // J6 / SCRUM-155 AC2 — TC-324, TC-339, TC-340 in docs/test-cases.md. Arriving from a booking's
 // outcome notification opens that booking, with its date, time and status.
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import VenueBookings from './VenueBookings';
-import { loadVenueBookings, loadVenueCatalogue, withdrawVenueBooking } from './venuesApi';
+import { loadVenueBookings, loadVenueCatalogue, prepareClashReplacement, withdrawVenueBooking } from './venuesApi';
 import { reviewApi } from '../events/reviewApi';
 
 jest.mock('./venuesApi', () => ({
   loadVenueBookings: jest.fn(),
   loadVenueCatalogue: jest.fn(),
+  prepareClashReplacement: jest.fn(),
+  releaseVenueBooking: jest.fn(),
   withdrawVenueBooking: jest.fn()
 }));
 jest.mock('../events/reviewApi', () => ({ reviewApi: { list: jest.fn(), detail: jest.fn() } }));
 
 const booking = (id, changes = {}) => ({
   booking_id: id, event_id: 'e1', venue_id: 'VEN-1', event_name: 'Q4 Partner Summit',
-  status: 'APPROVED', event_date: '2026-11-20', start_time: '10:00', end_time: '12:00',
+  status: 'APPROVED', event_status: 'PLANNING', event_date: '2026-11-20', start_time: '10:00', end_time: '12:00',
   expected_attendance: 80, ...changes
 });
 
 beforeEach(() => {
+  jest.clearAllMocks();
   reviewApi.list.mockResolvedValue({ events: [] });
   loadVenueCatalogue.mockResolvedValue([{ venue_id: 'VEN-1', name: 'Harbour Hall', max_capacity: 120 }]);
   loadVenueBookings.mockResolvedValue([booking('VB-1'), booking('VB-2', { status: 'PENDING' })]);
@@ -122,4 +125,52 @@ test('TC-395 the booking details name the venue\'s Venue Staff member, or say it
 
   await userEvent.click(screen.getAllByRole('button', { name: /details/ })[1]);
   expect(screen.getByText('Venue Staff').nextSibling).toHaveTextContent('Not recorded');
+});
+
+test('F10 clash gives the current coordinator a pre-filled alternative-venue path', async () => {
+  const clash = {
+    conflict_id: 'VEN-1--VB-1--VB-OTHER', booking_a_id: 'VB-1', booking_b_id: 'VB-OTHER',
+    event_a_name: 'Q4 Partner Summit', event_b_name: 'Partner Briefing',
+    overlap_start: '2026-11-20T11:30:00Z', overlap_end: '2026-11-20T12:00:00Z'
+  };
+  loadVenueBookings.mockResolvedValue([booking('VB-1', {
+    booking_label: 'Main hall', requested_layout_id: 'THEATRE', required_facilities_snapshot: ['WIFI'], clashes: [clash]
+  })]);
+  prepareClashReplacement.mockResolvedValue({
+    booking_id: 'VB-1', event_id: 'e1', replacement_needed: true,
+    replacement_reason: 'Schedule clash with Partner Briefing.', replacement_source: 'CLASH'
+  });
+  reviewApi.detail.mockResolvedValue({ event: {
+    id: 'e1', name: 'Q4 Partner Summit', status: 'PLANNING', expected_attendance: 80,
+    event_date: '2026-11-20', start_time: '10:00', end_time: '12:00'
+  } });
+  const onFindReplacement = jest.fn();
+  render(<VenueBookings user={{ uid: 'coord-1' }} onFindReplacement={onFindReplacement} />);
+
+  expect(await screen.findByText('Clash - coordinator action required')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: /details/i }));
+  await userEvent.click(screen.getByRole('button', { name: /find alternative venue/i }));
+
+  expect(prepareClashReplacement).toHaveBeenCalledWith({ user: { uid: 'coord-1' }, bookingId: 'VB-1', clash });
+  await waitFor(() => expect(onFindReplacement).toHaveBeenCalledWith(expect.objectContaining({
+      event_id: 'e1', replacement_for_booking_id: 'VB-1', excluded_venue_id: 'VEN-1',
+      required_layout: 'THEATRE', facilities: ['WIFI']
+    })));
+});
+
+test('F11 keeps the original booking link after the replacement event is reloaded', async () => {
+  reviewApi.detail.mockResolvedValue({ event: {
+    id: 'e1', name: 'Regional Partnership Forum', status: 'PLANNING', expected_attendance: 80,
+    event_date: '2027-01-12', start_time: '10:00', end_time: '12:00'
+  } });
+  render(<VenueBookings
+    user={{ uid: 'coord-1' }}
+    event={{
+      id: 'e1', event_id: 'e1', replacement_for_booking_id: 'booking-clash-manualtest',
+      excluded_venue_id: 'VEN-OLD', required_layout: 'THEATRE', facilities: ['WIFI']
+    }}
+    venue={{ venue_id: 'VEN-1' }}
+  />);
+
+  expect(await screen.findByText(/will replace booking booking-clash-manualtest/i)).toBeInTheDocument();
 });

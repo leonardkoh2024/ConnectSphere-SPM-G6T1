@@ -51,7 +51,8 @@ export const assignedRow = (event = {}, now = Date.now()) => {
     status: event.status || null,
     lastActivityAt,
     lastActivityLabel: timeSince(lastActivityAt, now),
-    editable: event.editable !== false
+    editable: event.editable !== false,
+    replacementNeeded: event.replacement_needed === true
   };
 };
 

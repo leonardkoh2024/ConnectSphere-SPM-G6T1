@@ -17,6 +17,7 @@ import { screenHash } from './routes';
 import { ROLES } from '../domain/roles';
 import { DISMISS_AFTER_MS } from './Toasts';
 import useNotifications from '../features/notifications/useNotifications';
+import useVenueClashCount from '../features/venues/useVenueClashCount';
 
 jest.mock('../lib/firebase', () => ({ auth: {}, db: {} }));
 jest.mock('firebase/auth', () => ({ signOut: jest.fn() }));
@@ -41,6 +42,7 @@ jest.mock('../features/equipment/EquipmentCatalogueScreen', () => ({ __esModule:
 jest.mock('../features/equipment/EquipmentReservationsScreen', () => ({ __esModule: true, default: () => 'equipment reservations' }));
 // J1 — the live inbox is stubbed so the badge can be driven by hand.
 jest.mock('../features/notifications/useNotifications', () => ({ __esModule: true, default: jest.fn() }));
+jest.mock('../features/venues/useVenueClashCount', () => ({ __esModule: true, default: jest.fn() }));
 // The stub offers View only when the shell hands it somewhere to go.
 jest.mock('../features/notifications/NotificationInbox', () => ({
   __esModule: true,
@@ -73,9 +75,11 @@ const sidebarScreens = (container) =>
   [...container.querySelectorAll('.cs-sidebar-screens button')].map((button) => button.textContent);
 
 const givenUnread = (unread) => useNotifications.mockReturnValue({ notifications: [], unread, loading: false, error: '', markRead: jest.fn() });
+const givenClashes = (count) => useVenueClashCount.mockReturnValue({ count, refresh: jest.fn(), setFromBookings: jest.fn() });
 
 beforeEach(() => {
   givenUnread(0);
+  givenClashes(0);
   window.location.hash = '';
   sessionStorage.clear();
   localStorage.clear();
@@ -262,6 +266,25 @@ describe('J1 the unread badge on the inbox', () => {
     render(<Workspace user={USER} role={ROLES.ORGANISER} />);
 
     expect(screen.queryByLabelText(/unread/)).not.toBeInTheDocument();
+  });
+});
+
+describe('F10 active clash badges in role navigation', () => {
+  test.each([
+    [ROLES.COORDINATOR, 'Venue bookings'],
+    [ROLES.VENUE_STAFF, 'Booking requests']
+  ])('%s sees the active clash count on %s', (role, destination) => {
+    givenClashes(4);
+    render(<Workspace user={USER} role={role} />);
+
+    const item = screen.getByRole('button', { name: new RegExp(`^${destination}`) });
+    expect(within(item).getByLabelText('4 active booking clashes')).toHaveTextContent('4');
+    expect(within(item).getByLabelText('4 active booking clashes')).toHaveClass('cs-nav-badge-clash');
+  });
+
+  test('a zero clash count does not render an empty badge', () => {
+    render(<Workspace user={USER} role={ROLES.COORDINATOR} />);
+    expect(screen.queryByLabelText(/active booking clash/)).not.toBeInTheDocument();
   });
 });
 

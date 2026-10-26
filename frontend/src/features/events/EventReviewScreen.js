@@ -328,6 +328,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
           <div className="cs-record-title"><RecordLead date={row.proposedDate} /><div><h2>{row.name}</h2><p>{row.proposedDate || "Date not set"}</p></div></div>
           <p className="cs-record-ref">{row.organiser}</p>
           <div className="cs-record-status"><span className={`cs-pill cs-pill-${statusTone(row.status)}`}>{row.status}</span></div>
+          {row.replacementNeeded && <div className="cs-record-alert"><strong>Replacement venue needed</strong></div>}
           <div className="cs-record-modified"><p className="cs-record-saved">Last activity: {row.lastActivityLabel}</p></div>
           <div className="cs-record-actions"><button className="cs-btn cs-btn-ghost cs-record-btn" type="button" disabled={busy} onClick={() => loadDetail(row.id)}>View request</button></div>
         </article>)}</div>

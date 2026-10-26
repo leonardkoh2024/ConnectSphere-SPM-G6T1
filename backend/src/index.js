@@ -10,6 +10,8 @@ import cors from "cors";
 import express from "express";
 
 import { listServices, registerServices } from "./services/index.js";
+import { startVenueConflictScheduler, startVenueHoldExpiryScheduler } from "./services/venue/index.js";
+import { admin, db } from "./lib/firebaseAdmin.js";
 
 // BACKEND_PORT, not PORT: the repo shares one root .env and CRA reads PORT to
 // pick the dev server port, so a shared PORT would move both onto the same one.
@@ -33,6 +35,18 @@ app.get("/api/health", (_request, response) => {
 });
 
 registerServices(app);
+
+// F10/F16 must run without a page visit. Firebase Admin is intentionally used
+// only for these trusted background jobs; user-triggered venue work remains in
+// the browser SDK and is constrained by firestore.rules.
+startVenueHoldExpiryScheduler({
+  firestore: db(),
+  serverTimestamp: () => admin.firestore.FieldValue.serverTimestamp()
+});
+startVenueConflictScheduler({
+  firestore: db(),
+  serverTimestamp: () => admin.firestore.FieldValue.serverTimestamp()
+});
 
 // Anything under /api that no service claimed is a mistake worth seeing loudly,
 // rather than a 200 with an empty body.

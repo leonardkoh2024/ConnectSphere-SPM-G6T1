@@ -86,7 +86,8 @@ export default function VenueBookingRequest({ venue, event, user, onSubmitted, e
           acknowledged,
           userId: user?.uid,
           at: new Date().toISOString()
-        })
+        }),
+        replacement_for_booking_id: event.replacement_for_booking_id || null
       });
       setSent(true);
       if (onSubmitted) onSubmitted(result);
@@ -99,6 +100,9 @@ export default function VenueBookingRequest({ venue, event, user, onSubmitted, e
 
   return (
     <section className="cs-booking-request" aria-label="Request this venue">
+      {event.replacement_for_booking_id && (
+        <p className="cs-panel-note" role="status">This request will replace booking {event.replacement_for_booking_id} if Venue Staff approve it.</p>
+      )}
       <div className="cs-form-grid">
         <label className="cs-field">
           <span className="cs-field-name">Booking label</span>

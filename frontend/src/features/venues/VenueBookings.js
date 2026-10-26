@@ -2,10 +2,11 @@ import React, { useCallback, useEffect, useState } from "react";
 import { PREFERRED_LOCATIONS } from "../../domain/events";
 import { assessVenue, bookingRequirements, existingBookingFor, isBlocked } from "../../domain/venueSuitability";
 import { singaporeDateTime } from "../../domain/venueHolds";
+import { replacementSearchEvent } from "../../domain/venueBookingWorkflows";
 import { reviewApi } from "../events/reviewApi";
 import VenueBookingRequest, { BookingAcknowledgementNotice } from "./VenueBookingRequest";
 import Icon from "../../app/Icon";
-import { loadVenueBookings, loadVenueCatalogue, withdrawVenueBooking } from "./venuesApi";
+import { loadVenueBookings, loadVenueCatalogue, prepareClashReplacement, releaseVenueBooking, withdrawVenueBooking } from "./venuesApi";
 
 const word = (value) => String(value || "").replaceAll("_", " ");
 const listOf = (items = []) => (items.length ? items.map(word).join(", ") : "None stated");
@@ -21,6 +22,7 @@ const bookingWindow = (booking) => {
   }
   return "Not set";
 };
+const displayDateTime = (value) => value ? new Date(value).toLocaleString() : "Time not recorded";
 
 // Judge every venue in the list, so the coordinator can tell a usable venue from
 // an unusable one before choosing it. Nothing is hidden or reordered: an
@@ -46,7 +48,7 @@ const venueVerdict = (venue, requirements) => {
   };
 };
 
-export default function VenueBookings({ user, event: initialEvent = null, venue: initialVenue = null, focusBookingId = null, onViewEvent, onBackChange, creating: creatingProp, onCreatingChange }) {
+export default function VenueBookings({ user, event: initialEvent = null, venue: initialVenue = null, focusBookingId = null, onViewEvent, onFindReplacement, onClashCountChange, onBackChange, creating: creatingProp, onCreatingChange }) {
   const [events, setEvents] = useState([]);
   const [venues, setVenues] = useState([]);
   const [eventId, setEventId] = useState(initialEvent?.id || initialEvent?.event_id || "");
@@ -62,11 +64,18 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
   // J6 AC2 — arriving from a booking's outcome notification opens that booking.
   const [openBooking, setOpenBooking] = useState(focusBookingId);
   const [confirmWithdraw, setConfirmWithdraw] = useState(null);
+  const [releaseBooking, setReleaseBooking] = useState(null);
+  const [releaseReason, setReleaseReason] = useState("");
   const [actionError, setActionError] = useState("");
   const [withdrawing, setWithdrawing] = useState(false);
+  const [resolvingBookingId, setResolvingBookingId] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingEvent, setLoadingEvent] = useState(false);
   const [error, setError] = useState("");
+  const applyBookings = useCallback((rows) => {
+    setBookings(rows);
+    onClashCountChange?.(rows);
+  }, [onClashCountChange]);
 
   useEffect(() => {
     let mounted = true;
@@ -75,12 +84,12 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
         if (!mounted) return;
         setEvents(eventList.events || []);
         setVenues(catalogue);
-        setBookings(raised);
+        applyBookings(raised);
       })
       .catch((loadError) => { if (mounted) setError(loadError.message || "Venue bookings could not be loaded."); })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
-  }, [user]);
+  }, [applyBookings, user]);
 
   useEffect(() => {
     if (loading || !focusBookingId) return;
@@ -94,18 +103,26 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
     if (!eventId) { setChosenEvent(null); return undefined; }
     setLoadingEvent(true);
     reviewApi.detail(eventId)
-      .then((detail) => { if (mounted) setChosenEvent({ ...detail.event, event_id: eventId }); })
+      .then((detail) => {
+        if (!mounted) return;
+        // A replacement search carries booking-specific requirements and the
+        // original booking id. Re-reading the base event must not discard that
+        // context, otherwise the new request becomes an unrelated normal one.
+        const initialEventId = initialEvent?.id || initialEvent?.event_id;
+        const replacementContext = initialEventId === eventId ? initialEvent : null;
+        setChosenEvent({ ...detail.event, ...(replacementContext || {}), event_id: eventId });
+      })
       .catch((loadError) => { if (mounted) setError(loadError.message || "That event could not be loaded."); })
       .finally(() => { if (mounted) setLoadingEvent(false); });
     return () => { mounted = false; };
-  }, [eventId]);
+  }, [eventId, initialEvent]);
 
   const startOver = useCallback(async () => {
     setCreating(false);
     setEventId("");
     setVenueId("");
-    setBookings(await loadVenueBookings({ user }));
-  }, [setCreating, user]);
+    applyBookings(await loadVenueBookings({ user }));
+  }, [applyBookings, setCreating, user]);
 
   // Withdrawing keeps the record and only moves it out of the live statuses, so
   // the event and venue can be requested again without losing what was accepted.
@@ -114,14 +131,47 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
     setActionError("");
     try {
       await withdrawVenueBooking({ user, bookingId });
-      setBookings(await loadVenueBookings({ user }));
+      applyBookings(await loadVenueBookings({ user }));
       setConfirmWithdraw(null);
     } catch (withdrawError) {
       setActionError(withdrawError.message || "That request could not be withdrawn.");
     } finally {
       setWithdrawing(false);
     }
-  }, [user]);
+  }, [applyBookings, user]);
+
+  const release = useCallback(async () => {
+    if (!releaseReason.trim()) { setActionError("A release reason is required."); return; }
+    setWithdrawing(true);
+    setActionError("");
+    try {
+      await releaseVenueBooking({ user, bookingId: releaseBooking.booking_id, reason: releaseReason });
+      applyBookings(await loadVenueBookings({ user }));
+      setReleaseBooking(null);
+      setReleaseReason("");
+    } catch (releaseError) {
+      setActionError(releaseError.message || "That venue could not be released.");
+    } finally { setWithdrawing(false); }
+  }, [applyBookings, releaseBooking, releaseReason, user]);
+
+  const findReplacement = useCallback(async (booking, clash = null) => {
+    setActionError("");
+    setResolvingBookingId(booking.booking_id);
+    try {
+      const prepared = clash && !booking.replacement_needed
+        ? await prepareClashReplacement({ user, bookingId: booking.booking_id, clash })
+        : null;
+      const detail = await reviewApi.detail(booking.event_id);
+      onFindReplacement?.(replacementSearchEvent(
+        { ...detail.event, event_id: booking.event_id },
+        prepared ? { ...booking, ...prepared } : booking
+      ));
+    } catch (loadError) {
+      setActionError(loadError.message || "Replacement details could not be loaded.");
+    } finally {
+      setResolvingBookingId("");
+    }
+  }, [onFindReplacement, user]);
 
   // Inside the workspace the back button lives in the page header; the form only
   // says it is open and how to leave it.
@@ -162,6 +212,9 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
             {bookings.map((booking) => {
               const expanded = openBooking === booking.booking_id;
               const venueRecord = venues.find((item) => item.venue_id === booking.venue_id);
+              const activeClash = booking.clashes?.[0] || null;
+              const releaseAllowed = ["APPROVED", "PLANNING", "CONFIRMED", "SAFETY_REVIEW"]
+                .includes(String(booking.event_status || "").toUpperCase());
               return (
                 <article className="cs-record" key={booking.booking_id} id={`venue-booking-${booking.booking_id}`}>
                   <div className="cs-record-title">
@@ -178,6 +231,15 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
                       {word(booking.status)}
                     </span>
                   </div>
+                  {booking.clashes?.length > 0 && (
+                    <div className="cs-record-alert" role="status">
+                      <strong>Clash - coordinator action required</strong>
+                      {booking.clashes.map((clash) => {
+                        const other = clash.booking_a_id === booking.booking_id ? clash.event_b_name : clash.event_a_name;
+                        return <p key={clash.conflict_id}>Overlaps {other}: {displayDateTime(clash.overlap_start)} to {displayDateTime(clash.overlap_end)}</p>;
+                      })}
+                    </div>
+                  )}
                   <div className="cs-record-actions">
                     <button
                       type="button"
@@ -219,6 +281,21 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
                             Withdraw request
                           </button>
                         )}
+                        {booking.replacement_needed && onFindReplacement && (
+                          <button type="button" className="cs-btn cs-btn-primary" disabled={resolvingBookingId === booking.booking_id} onClick={() => findReplacement(booking)}>
+                            Find replacement venue
+                          </button>
+                        )}
+                        {activeClash && !booking.replacement_needed && String(booking.status || "").toUpperCase() === "APPROVED" && onFindReplacement && (
+                          <button type="button" className="cs-btn cs-btn-primary" disabled={resolvingBookingId === booking.booking_id} onClick={() => findReplacement(booking, activeClash)}>
+                            {resolvingBookingId === booking.booking_id ? "Preparing replacement..." : "Find alternative venue"}
+                          </button>
+                        )}
+                        {String(booking.status || "").toUpperCase() === "APPROVED" && releaseAllowed && (
+                          <button type="button" className="cs-btn cs-btn-ghost cs-record-danger" onClick={() => { setActionError(""); setReleaseReason(""); setReleaseBooking(booking); }}>
+                            Release this venue
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -243,6 +320,21 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
               <button type="button" className="cs-btn cs-btn-ghost cs-record-danger" disabled={withdrawing} onClick={() => withdraw(confirmWithdraw.booking_id)}>
                 {withdrawing ? "Withdrawing…" : "Yes, withdraw"}
               </button>
+            </div>
+          </div>
+        </div>}
+        {releaseBooking && <div className="cs-modal-backdrop" onMouseDown={(clickEvent) => { if (clickEvent.target === clickEvent.currentTarget && !withdrawing) setReleaseBooking(null); }}>
+          <div className="cs-modal" role="dialog" aria-modal="true" aria-labelledby="cs-release-booking-title">
+            <h2 id="cs-release-booking-title">Release this venue?</h2>
+            <p>The other venue bookings for this event will stay unchanged.</p>
+            <label className="cs-field">
+              <span className="cs-field-name">Reason</span>
+              <textarea value={releaseReason} onChange={(event) => setReleaseReason(event.target.value)} disabled={withdrawing} />
+            </label>
+            {!releaseReason.trim() && actionError && <p className="cs-error" role="alert">{actionError}</p>}
+            <div className="cs-modal-actions">
+              <button type="button" className="cs-btn cs-btn-ghost" disabled={withdrawing} onClick={() => setReleaseBooking(null)}>Keep venue</button>
+              <button type="button" className="cs-btn cs-btn-ghost cs-record-danger" disabled={withdrawing} onClick={release}>{withdrawing ? "Releasing…" : "Release venue"}</button>
             </div>
           </div>
         </div>}
@@ -344,7 +436,7 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
           event={chosenEvent}
           user={user}
           existingBooking={existingBookingFor(bookings, { eventId, venueId })}
-          onSubmitted={() => loadVenueBookings({ user }).then(setBookings)}
+          onSubmitted={() => loadVenueBookings({ user }).then(applyBookings)}
         />
       )}
     </div>

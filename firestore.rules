@@ -313,6 +313,77 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['approved_venue_booking_id', 'updated_at']);
       }
 
+      // F14: one approved booking is released in the same transaction and is
+      // named by an immutable history row. Confirmed returns to Planning and
+      // loses its prior safety decision; other event data cannot move.
+      function coordinatorSingleVenueReleaseUpdate() {
+        let historyId = request.resource.data.get('last_venue_release_id', '');
+        let history = getAfter(/databases/$(database)/documents/event_history/$(historyId)).data;
+        let booking = getAfter(/databases/$(database)/documents/venue_bookings/$(history.booking_id)).data;
+        let approvedId = request.resource.data.get('approved_venue_booking_id', null);
+        return hasRole('EVENT_COORDINATOR')
+          && resource.data.coordinator_id == request.auth.uid
+          && resource.data.status in ['APPROVED', 'PLANNING', 'CONFIRMED', 'SAFETY_REVIEW']
+          && historyId is string && historyId.size() > 0
+          && history.event_id == eventId
+          && history.actor_id == request.auth.uid
+          && history.action_type == 'VENUE_BOOKING_RELEASED'
+          && history.created_at == request.time
+          && booking.event_id == eventId && booking.status == 'RELEASED'
+          && request.resource.data.updated_at == request.time
+          && (approvedId == null
+            || (approvedId is string
+              && getAfter(/databases/$(database)/documents/venue_bookings/$(approvedId)).data.event_id == eventId
+              && getAfter(/databases/$(database)/documents/venue_bookings/$(approvedId)).data.status == 'APPROVED'))
+          && ((resource.data.status in ['CONFIRMED', 'SAFETY_REVIEW']
+              && request.resource.data.status == 'PLANNING'
+              && request.resource.data.get('last_safety_review_id', null) == null
+              && request.resource.data.get('safety_review_required', false) == true)
+            || (resource.data.status in ['APPROVED', 'PLANNING']
+              && request.resource.data.status == resource.data.status))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'approved_venue_booking_id', 'last_safety_review_id',
+            'safety_review_required', 'last_venue_release_id', 'updated_at'
+          ]);
+      }
+
+      // F10 resolution reuses F11: after an explicit coordinator choice, their
+      // approved booking is marked for replacement and a Confirmed event returns
+      // to Planning. The linked history row and booking must be written in the
+      // same commit, preventing an unrelated event status change from borrowing
+      // an earlier replacement decision.
+      function coordinatorClashReplacementUpdate() {
+        let historyId = request.resource.data.get('last_venue_replacement_id', '');
+        let history = getAfter(/databases/$(database)/documents/event_history/$(historyId)).data;
+        let booking = getAfter(/databases/$(database)/documents/venue_bookings/$(history.booking_id)).data;
+        return hasRole('EVENT_COORDINATOR')
+          && resource.data.coordinator_id == request.auth.uid
+          && resource.data.status in ['APPROVED', 'PLANNING', 'CONFIRMED']
+          && historyId is string && historyId.size() > 0
+          && history.event_id == eventId
+          && history.actor_id == request.auth.uid
+          && history.action_type == 'VENUE_REPLACEMENT_REQUESTED'
+          && history.created_at == request.time
+          && booking.event_id == eventId
+          && booking.status == 'APPROVED'
+          && booking.replacement_needed == true
+          && booking.replacement_source == 'CLASH'
+          && booking.replacement_requested_by == request.auth.uid
+          && booking.replacement_requested_at == request.time
+          && request.resource.data.get('safety_review_required', false) == true
+          && request.resource.data.updated_at == request.time
+          && ((resource.data.status == 'CONFIRMED'
+              && request.resource.data.status == 'PLANNING'
+              && request.resource.data.get('approved_venue_booking_id', null) == null
+              && request.resource.data.get('last_safety_review_id', null) == null)
+            || (resource.data.status in ['APPROVED', 'PLANNING']
+              && request.resource.data.status == resource.data.status))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'approved_venue_booking_id', 'last_safety_review_id',
+            'safety_review_required', 'last_venue_replacement_id', 'updated_at'
+          ]);
+      }
+
       allow create: if hasRole('EVENT_ORGANISER') && request.resource.data.organiser_id == request.auth.uid && request.resource.data.created_by == request.auth.uid && noClientCoordinatorWrite();
       allow get, list: if (hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid)
         || (hasRole('EVENT_COORDINATOR') && resource.data.get('coordinator_id', '') == request.auth.uid)
@@ -329,7 +400,9 @@ service cloud.firestore {
         || safetyOutcomeUpdate()
         || coordinatorSafetyNotesUpdate()
         || venueBookingApprovalLinkUpdate()
-        || coordinatorVenueReleaseLinkUpdate();
+        || coordinatorVenueReleaseLinkUpdate()
+        || coordinatorSingleVenueReleaseUpdate()
+        || coordinatorClashReplacementUpdate();
       // B8 — only the owning organiser, and only while it is still a draft. Once a
       // request has been submitted it is part of a coordinator's queue, so it is
       // no longer the organiser's alone to remove.
@@ -392,7 +465,21 @@ service cloud.firestore {
             && request.resource.data.venue_id is string
             && assignedVenueStaff(request.resource.data.venue_id)
             && getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data.event_id == request.resource.data.event_id
-            && getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data.status == 'APPROVED'));
+            && getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data.status == 'APPROVED')
+          || (request.resource.data.action_type == 'VENUE_BOOKING_REJECTED'
+            && request.resource.data.booking_id is string
+            && request.resource.data.venue_id is string
+            && assignedVenueStaff(request.resource.data.venue_id)
+            && getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data.status == 'REJECTED'
+            && getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data.decided_at == request.time)
+          // F11: Venue Staff approve the replacement and retain the original.
+          || (request.resource.data.action_type == 'VENUE_REPLACED'
+            && request.resource.data.booking_id is string
+            && request.resource.data.new_booking_id is string
+            && request.resource.data.venue_id is string
+            && getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data.status == 'REPLACED'
+            && getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data.replaced_by_booking_id == request.resource.data.new_booking_id
+            && assignedVenueStaff(getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.new_booking_id)).data.venue_id)));
       allow get, list: if canReadEvent(resource.data.event_id) || safetyReviewing(resource.data.event_id);
     }
 
@@ -679,19 +766,102 @@ service cloud.firestore {
             'status', 'assigned_staff_id', 'decided_by', 'decided_at', 'occupied_start', 'occupied_end'
           ]))
         || (assignedVenueStaff(resource.data.venue_id)
+          && resource.data.status in ['PENDING', 'HELD']
+          && request.resource.data.status == 'REJECTED'
+          && request.resource.data.assigned_staff_id == request.auth.uid
+          && request.resource.data.decided_by == request.auth.uid
+          && request.resource.data.decided_at == request.time
+          && request.resource.data.decision_reason is string
+          && request.resource.data.decision_reason.trim().size() > 0
+          && request.resource.data.requires_re_request == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'decision_reason', 'decided_by', 'decided_at', 'assigned_staff_id', 'requires_re_request'
+          ]))
+        // F11: approving a replacement retires, but does not delete, the
+        // unavailable original booking in the same transaction.
+        || (assignedVenueStaff(getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.replaced_by_booking_id)).data.venue_id)
+          && resource.data.status == 'APPROVED'
+          && resource.data.replacement_needed == true
+          && request.resource.data.status == 'REPLACED'
+          && request.resource.data.replacement_needed == false
+          && request.resource.data.replaced_by_booking_id is string
+          && getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.replaced_by_booking_id)).data.status == 'APPROVED'
+          && getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.replaced_by_booking_id)).data.get('replacement_for_booking_id', '') == bookingId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'replacement_needed', 'replaced_by_booking_id', 'replaced_at', 'released_at', 'release_reason'
+          ]))
+        || (assignedVenueStaff(resource.data.venue_id)
           && resource.data.status == 'APPROVED'
           && request.resource.data.status == 'APPROVED'
           && request.resource.data.occupied_start is timestamp
           && request.resource.data.occupied_end is timestamp
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['occupied_start', 'occupied_end']))
+        // F10 resolution: detection itself changes nothing. The current
+        // coordinator may explicitly choose to replace only their own approved
+        // booking, with the event/history linkage validated above.
+        || (hasRole('EVENT_COORDINATOR')
+          && currentCoordinator(resource.data.event_id)
+          && resource.data.status == 'APPROVED'
+          && request.resource.data.status == 'APPROVED'
+          && request.resource.data.replacement_needed == true
+          && request.resource.data.replacement_status == 'Schedule clash - replacement needed'
+          && request.resource.data.replacement_source == 'CLASH'
+          && request.resource.data.replacement_reason is string
+          && request.resource.data.replacement_reason.trim().size() > 0
+          && request.resource.data.replacement_conflict_id is string
+          && request.resource.data.replacement_conflict_id.size() > 0
+          && request.resource.data.replacement_conflicting_booking_id is string
+          && request.resource.data.replacement_conflicting_booking_id != bookingId
+          && get(/databases/$(database)/documents/venue_bookings/$(request.resource.data.replacement_conflicting_booking_id)).data.status == 'APPROVED'
+          && get(/databases/$(database)/documents/venue_bookings/$(request.resource.data.replacement_conflicting_booking_id)).data.venue_id == resource.data.venue_id
+          && resource.data.occupied_start < get(/databases/$(database)/documents/venue_bookings/$(request.resource.data.replacement_conflicting_booking_id)).data.occupied_end
+          && get(/databases/$(database)/documents/venue_bookings/$(request.resource.data.replacement_conflicting_booking_id)).data.occupied_start < resource.data.occupied_end
+          && request.resource.data.replacement_requested_by == request.auth.uid
+          && request.resource.data.replacement_requested_at == request.time
+          && request.resource.data.safety_review_required == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'replacement_needed', 'replacement_status', 'replacement_reason',
+            'replacement_requested_at', 'replacement_requested_by',
+            'replacement_source', 'replacement_conflict_id',
+            'replacement_conflicting_booking_id', 'safety_review_required'
+          ]))
+        // F14: the current coordinator releases exactly one approved booking,
+        // with a reason and a same-commit history row referenced by the event.
+        || (hasRole('EVENT_COORDINATOR')
+          && currentCoordinator(resource.data.event_id)
+          && resource.data.status == 'APPROVED'
+          && request.resource.data.status == 'RELEASED'
+          && request.resource.data.release_reason is string
+          && request.resource.data.release_reason.trim().size() > 0
+          && request.resource.data.released_at == request.time
+          && request.resource.data.safety_review_required == true
+          && getAfter(/databases/$(database)/documents/events/$(resource.data.event_id)).data.last_venue_release_id is string
+          && getAfter(/databases/$(database)/documents/event_history/$(getAfter(/databases/$(database)/documents/events/$(resource.data.event_id)).data.last_venue_release_id)).data.booking_id == bookingId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'released_at', 'release_reason', 'safety_review_required'
+          ]))
         || (hasRole('EVENT_COORDINATOR')
           && currentCoordinator(resource.data.event_id)
           && get(/databases/$(database)/documents/events/$(resource.data.event_id)).data.status == 'CANCELLED'
           && ((resource.data.status == 'APPROVED' && request.resource.data.status == 'RELEASED')
-            || (resource.data.status == 'PENDING' && request.resource.data.status == 'WITHDRAWN'))
+            || (resource.data.status in ['PENDING', 'HELD'] && request.resource.data.status == 'WITHDRAWN'))
           && request.resource.data.released_at is timestamp
           && request.resource.data.release_reason is string
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'released_at', 'release_reason']));
+    }
+    match /venue_booking_conflicts/{conflictId} {
+      // F10's trusted backend owns persisted detection and notification. Venue
+      // Staff see only their venues; current coordinators may read conflicts
+      // involving their assigned event and resolve a persisted row after acting.
+      allow get, list: if assignedVenueStaff(resource.data.venue_id)
+        || currentCoordinator(resource.data.event_a_id)
+        || currentCoordinator(resource.data.event_b_id);
+      allow update: if hasRole('EVENT_COORDINATOR')
+        && (currentCoordinator(resource.data.event_a_id) || currentCoordinator(resource.data.event_b_id))
+        && resource.data.status == 'ACTIVE'
+        && request.resource.data.status == 'RESOLVED'
+        && request.resource.data.resolved_at is timestamp
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'resolved_at']);
     }
     // D2 limits coordinator reads to related events. G3 reservation writes go
     // through the authenticated equipment service, not the browser SDK.

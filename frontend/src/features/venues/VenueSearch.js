@@ -101,6 +101,7 @@ export default function VenueSearch({ event, onBookVenue, role = ROLES.COORDINAT
   // The coordinator's only venue screen: the whole catalogue A–Z until an event
   // or a filter narrows it.
   const shown = applyFilters(shortlist.matches, filters)
+    .filter((venue) => venue.venue_id !== event?.excluded_venue_id)
     .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), undefined, { sensitivity: "base" }));
   const chips = activeFilters(filters);
 
@@ -156,6 +157,9 @@ export default function VenueSearch({ event, onBookVenue, role = ROLES.COORDINAT
         <p className="cs-panel-note">
           Pre-filled from the event: {windowPrefill.event_date} · {windowPrefill.start_time}–{windowPrefill.end_time} · {windowPrefill.expected_attendance} attending
         </p>
+      )}
+      {event?.excluded_venue_id && (
+        <p className="cs-panel-note">The unavailable original venue is excluded from this replacement search.</p>
       )}
       {/* E6 and E7 in one card: the requirements are stated once, they narrow the
           shortlist, and the same values are what a named venue is assessed against. */}
