@@ -128,8 +128,8 @@ test("TC-653 H5 AC6 an attendee with no registration for the event is refused", 
   assert.deepEqual(firestore.log.writes, []);
 });
 
-for (const status of ["WITHDRAWN", "WAITLISTED", "CANCELLED"]) {
-  test(`TC-654 H5 AC6 a ${status} attendee is not currently registered, so is refused`, async () => {
+for (const status of ["WITHDRAWN", "CANCELLED"]) {
+  test(`TC-654 H5 AC6 a ${status} attendee holds no place, so is refused`, async () => {
     const { firestore, withdraw } = setup({ registrations: { "e1_attendee-1": record("e1", "attendee-1", status) } });
     await refusedWith(withdraw(), 409, "not_registered");
     assert.deepEqual(firestore.log.writes, []);
@@ -231,4 +231,62 @@ test("TC-663 H5 only a signed-in Attendee may withdraw; nothing is written other
   assert.match(organiser.body.error, /only attendees/i);
   assert.equal(firestore.log.transactions, 0);
   assert.equal(firestore.store.registrations["e1_attendee-1"].status, "REGISTERED");
+});
+
+// ---- H6 — leaving the waiting list ------------------------------------------------
+
+const queue = () => ({
+  e1_x1: record("e1", "x1"),
+  e1_x2: record("e1", "x2"),
+  e1_first: record("e1", "first", "WAITLISTED", { waitlisted_at: "2026-11-04T01:00:00.000Z", registered_at: null }),
+  "e1_attendee-1": record("e1", "attendee-1", "WAITLISTED", { waitlisted_at: "2026-11-04T02:00:00.000Z", registered_at: null }),
+  e1_last: record("e1", "last", "WAITLISTED", { waitlisted_at: "2026-11-04T03:00:00.000Z", registered_at: null })
+});
+
+test("TC-711 H6 a waitlisted attendee withdraws: their record becomes Withdrawn and no place is freed", async () => {
+  const { firestore, withdraw } = setup({ registrations: queue() });
+  const result = await withdraw();
+  assert.equal(firestore.store.registrations["e1_attendee-1"].status, "WITHDRAWN");
+  assert.equal(firestore.store.registrations["e1_attendee-1"].withdrawn_at, STAMP);
+  assert.deepEqual(firestore.log.writes, ["registrations/e1_attendee-1"]);
+  assert.equal(result.registration.status, "WITHDRAWN");
+  assert.equal(result.remaining_places, 0);
+});
+
+test("TC-712 H6 AC2 everyone behind the one who left moves up the waiting list", async () => {
+  const firestore = fakeFirestore({
+    users: { last: { role: "ATTENDEE" }, "attendee-1": { role: "ATTENDEE" } },
+    events: { e1: event() },
+    registrations: queue()
+  });
+  const app = express();
+  app.use("/api/registrations", createRegistrationService({
+    firestore,
+    verifyIdToken: async (token) => ({ uid: token }),
+    now: () => NOW,
+    serverTimestamp: () => STAMP,
+    venueNamesFor: async () => []
+  }));
+  const server = app.listen(0);
+  try {
+    await new Promise((resolve) => server.once("listening", resolve));
+    const base = `http://127.0.0.1:${server.address().port}/api/registrations`;
+    const positionOfLast = async () => (await (await fetch(`${base}/mine`, { headers: { Authorization: "Bearer last" } })).json())
+      .registrations.find((entry) => entry.event_id === "e1").waitlist_position;
+
+    assert.equal(await positionOfLast(), 3);
+    const left = await fetch(`${base}/events/e1/withdraw`, { method: "POST", headers: { Authorization: "Bearer attendee-1" } });
+    assert.equal(left.status, 200);
+    assert.equal(await positionOfLast(), 2);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("TC-713 H6 an attendee who left the waiting list may join it again, at the back", async () => {
+  const actions = setup({ registrations: queue() });
+  await actions.withdraw();
+  const { joinWaitlist } = createAttendeeRegistration({ firestore: actions.firestore, serverTimestamp: () => STAMP, now: () => NOW });
+  const rejoined = await joinWaitlist({ eventId: "e1", attendeeId: "attendee-1" });
+  assert.equal(rejoined.registration.waitlist_position, 3);
 });

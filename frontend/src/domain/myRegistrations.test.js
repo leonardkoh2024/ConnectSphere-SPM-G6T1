@@ -196,9 +196,8 @@ describe("H5 AC2 / AC6 who may withdraw", () => {
   test.each([
     ["no registration at all", null],
     ["a withdrawn registration", { status: "WITHDRAWN" }],
-    ["a waitlisted registration", { status: "WAITLISTED" }],
     ["a cancelled registration", { status: "CANCELLED" }]
-  ])("TC-644 %s cannot be withdrawn: the attendee is not currently registered", (_label, changes) => {
+  ])("TC-644 %s cannot be withdrawn: the attendee holds no place", (_label, changes) => {
     const refusal = withdrawalRefusal(changes ? registration(changes) : null, event(), BEFORE);
     expect(refusal).toEqual({ reason: "not_registered", message: "You are not registered for this event." });
     if (changes) expect(myRegistrationEntry(registration(changes), event(), { now: BEFORE }).can_withdraw).toBe(false);
@@ -220,5 +219,17 @@ describe("H5 AC2 / AC6 who may withdraw", () => {
 
   test("TC-647 the status is read whatever its case", () => {
     expect(withdrawalRefusal(registration({ status: "registered" }), event({ status: "confirmed" }), BEFORE)).toBeNull();
+  });
+});
+
+describe("H6 leaving the waiting list", () => {
+  test("TC-710 a waitlisted attendee may withdraw from an event still to come, giving up their place in the queue", () => {
+    expect(withdrawalRefusal(registration({ status: "WAITLISTED" }), event(), BEFORE)).toBeNull();
+    expect(myRegistrationEntry(registration({ status: "WAITLISTED" }), event(), { now: BEFORE }).can_withdraw).toBe(true);
+  });
+
+  test("TC-710 the same limits apply: not once the event has started, nor from an event that has ended", () => {
+    expect(withdrawalRefusal(registration({ status: "WAITLISTED" }), event(), START)).toMatchObject({ reason: "event_started" });
+    expect(withdrawalRefusal(registration({ status: "WAITLISTED" }), event({ status: "CANCELLED" }), BEFORE)).toMatchObject({ reason: "event_closed" });
   });
 });

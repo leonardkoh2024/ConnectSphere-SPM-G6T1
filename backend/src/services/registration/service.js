@@ -1,6 +1,7 @@
 import express from "express";
 
 import { isOpenForRegistration, listOpenEvents } from "../../../../frontend/src/domain/openRegistration.mjs";
+import { waitlistPosition } from "../../../../frontend/src/domain/waitingList.mjs";
 import { getApprovedEventBookings as readApprovedEventBookings, getApprovedEventVenueNames } from "../venue/approvedEventBookings.js";
 import { createRegistrationList } from "./attendeeList.js";
 import { createMyRegistrations } from "./myRegistrations.js";
@@ -30,6 +31,9 @@ import { createRegistrationSettings } from "./settings.js";
 //
 // H4 / SCRUM-142 — an attendee's own registrations, with their status and each event's
 // public details. Only the caller's records are queried.
+//
+// H6 / SCRUM-144 — an attendee joins the waiting list of a full event here. Their position is
+// worked out from the event's waiting list each time either list is read, never stored.
 export function createRegistrationService({
   firestore,
   verifyIdToken,
@@ -43,7 +47,12 @@ export function createRegistrationService({
   const settings = createRegistrationSettings({ firestore, serverTimestamp, getApprovedEventBookings, now });
   const attendeeList = createRegistrationList({ firestore });
   const attendeeRegistration = createAttendeeRegistration({ firestore, serverTimestamp, now });
-  const myRegistrations = createMyRegistrations({ firestore, venueNamesFor, now });
+  // H6 AC2 — where record `recordId` stands on the event's waiting list right now.
+  const waitlistPositionFor = async (eventId, recordId) => {
+    const snapshot = await firestore.collection("registrations").where("event_id", "==", eventId).where("status", "==", "WAITLISTED").get();
+    return waitlistPosition(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })), recordId);
+  };
+  const myRegistrations = createMyRegistrations({ firestore, venueNamesFor, now, waitlistPositionFor });
 
   // Signs the caller in and checks their profile holds `role`; otherwise answers the
   // request itself (401 or 403 with `forbidden`) and returns null.
@@ -72,15 +81,15 @@ export function createRegistrationService({
     authenticate(request, response, { role: "ATTENDEE", forbidden });
 
   // H3 AC8 — the caller's own place on each event, so the list offers View details instead of
-  // Register. Only a held place (Registered or Waitlisted) is reported.
-  const ownStatuses = async (attendeeId) => {
+  // Register. Only a held place (Registered or Waitlisted) is reported, with the record holding it.
+  const ownPlaces = async (attendeeId) => {
     const snapshot = await firestore.collection("registrations").where("attendee_id", "==", attendeeId).get();
-    const statuses = {};
+    const places = {};
     snapshot.docs.forEach((item) => {
       const { event_id: eventId, status } = item.data();
-      if (status === "REGISTERED" || (status === "WAITLISTED" && statuses[eventId] !== "REGISTERED")) statuses[eventId] = status;
+      if (status === "REGISTERED" || (status === "WAITLISTED" && places[eventId]?.status !== "REGISTERED")) places[eventId] = { status, id: item.id };
     });
-    return statuses;
+    return places;
   };
 
   const authenticateOrganiser = (request, response) =>
@@ -109,7 +118,7 @@ export function createRegistrationService({
       const venueNamesByEvent = {};
       const registeredCountByEvent = {};
       const [mine] = await Promise.all([
-        ownStatuses(user.uid),
+        ownPlaces(user.uid),
         ...open.map(async (event) => {
           [venueNamesByEvent[event.id], registeredCountByEvent[event.id]] = await Promise.all([
             venueNamesFor(event.id),
@@ -118,8 +127,13 @@ export function createRegistrationService({
         })
       ]);
 
-      const events = listOpenEvents(open, { now: at, venueNamesByEvent, registeredCountByEvent })
-        .map((entry) => ({ ...entry, registration_status: mine[entry.id] || null }));
+      // H6 AC2 — the caller's position on each waiting list they are on.
+      const events = await Promise.all(listOpenEvents(open, { now: at, venueNamesByEvent, registeredCountByEvent })
+        .map(async (entry) => {
+          const place = mine[entry.id];
+          const position = place?.status === "WAITLISTED" ? await waitlistPositionFor(entry.id, place.id) : null;
+          return { ...entry, registration_status: place?.status || null, waitlist_position: position };
+        }));
       response.json({ events });
     } catch (error) {
       next(error);
@@ -164,6 +178,28 @@ export function createRegistrationService({
       const result = await attendeeRegistration.withdraw({ eventId: request.params.eventId, attendeeId: user.uid });
       const venueNames = await venueNamesFor(request.params.eventId);
       response.json({ ...result, registration: { ...result.registration, venue_names: venueNames } });
+    } catch (error) {
+      if (error.statusCode) response.status(error.statusCode).json({ error: error.message, reason: error.reason });
+      else next(error);
+    }
+  });
+
+  // H6 — join the waiting list of a full event. A refusal (a place is free, already holding a
+  // place, registration not open) is answered with its reason.
+  router.post("/events/:eventId/waitlist", async (request, response, next) => {
+    let user;
+    try {
+      user = await authenticateAttendee(request, response, "Only attendees can join a waiting list.");
+    } catch (error) {
+      next(error);
+      return;
+    }
+    if (!user) return;
+
+    try {
+      const result = await attendeeRegistration.joinWaitlist({ eventId: request.params.eventId, attendeeId: user.uid });
+      const venueNames = await venueNamesFor(request.params.eventId);
+      response.status(201).json({ registration: { ...result.registration, venue_names: venueNames } });
     } catch (error) {
       if (error.statusCode) response.status(error.statusCode).json({ error: error.message, reason: error.reason });
       else next(error);

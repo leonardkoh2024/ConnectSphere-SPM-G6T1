@@ -45,6 +45,7 @@ they can be read next to the acceptance criteria and move into the service layer
 | H3 | SCRUM-141 | Register for an event | TC-573 – TC-605 |
 | H4 | SCRUM-142 | See the status of my registrations | TC-606 – TC-638 |
 | H5 | SCRUM-143 | Withdraw from an event | TC-639 – TC-679 |
+| H6 | SCRUM-144 | Join the waiting list when an event is full | TC-680 – TC-716 |
 | E4 | SCRUM-120 | See when a venue is free | TC-200 – TC-249 |
 | J6 | SCRUM-155 | Be told the outcome of my booking and equipment requests (AC1: approval and rejection) | TC-313 – TC-346 |
 | A7 | SCRUM-170 | Use ConnectSphere as a Safety Officer | TC-348 – TC-385, TC-388 |
@@ -1421,7 +1422,7 @@ An attendee without a Registered place is refused (AC6), as is any withdrawal on
 | TC-641 | A cancelled, completed or rejected event's registration is not active | Each status | myRegistrationEntry | active false | As expected | Pass | AC1 |
 | TC-642 | Once the event starts its registration is no longer active; no start, not upcoming | One second before / at the start; no start time | myRegistrationEntry | true, false; false | As expected | Pass | AC1 - boundary |
 | TC-643 | A Registered attendee may withdraw from an event still to come | — | withdrawalRefusal; can_withdraw | null; true | As expected | Pass | AC2 |
-| TC-644 | No registration, or a withdrawn, waitlisted or cancelled one, cannot be withdrawn | Each | withdrawalRefusal | not_registered, "You are not registered for this event."; can_withdraw false | As expected | Pass | AC6 |
+| TC-644 | No registration, or a withdrawn or cancelled one, cannot be withdrawn | Each | withdrawalRefusal | not_registered, "You are not registered for this event."; can_withdraw false (a waitlisted place can, since H6: TC-710) | As expected | Pass | AC6 |
 | TC-645 | Nothing can be withdrawn from a cancelled, completed or rejected event | Each status | withdrawalRefusal | event_closed; can_withdraw false | As expected | Pass | Guard |
 | TC-646 | Withdrawal closes at the Singapore start; a missing event is refused | One second before / at 09:00; null event | withdrawalRefusal | null; event_started; not_found | As expected | Pass | Boundary |
 | TC-647 | Statuses are read whatever their case | registered / confirmed | withdrawalRefusal | null | As expected | Pass | Guard |
@@ -1436,7 +1437,7 @@ An attendee without a Registered place is refused (AC6), as is any withdrawal on
 | TC-651 | A registration under an older record id is withdrawn in that record | Mock-style id | withdraw | That record WITHDRAWN; one write | As expected | Pass | AC2 |
 | TC-652 | The check and the write are one transaction | — | withdraw | One transaction reading the event and the attendee's record | As expected | Pass | AC6 |
 | TC-653 | An attendee with no registration is refused | — | withdraw as a stranger | 409 not_registered; nothing written | As expected | Pass | AC6 |
-| TC-654 | A withdrawn, waitlisted or cancelled attendee is refused | Each | withdraw | 409 not_registered; nothing written | As expected | Pass | AC6 |
+| TC-654 | A withdrawn or cancelled attendee holds no place, so is refused | Each | withdraw | 409 not_registered; nothing written | As expected | Pass | AC6 |
 | TC-655 | Withdrawing twice is refused the second time | — | withdraw twice | Second 409 not_registered; one write | As expected | Pass | AC6 |
 | TC-656 | One attendee cannot withdraw another's place | Only another attendee registered | withdraw | 409; their record untouched | As expected | Pass | AC6 |
 | TC-657 | Once the event has started there is nothing to withdraw from | Now = start | withdraw | 409 event_started; nothing written | As expected | Pass | Guard |
@@ -1452,7 +1453,7 @@ An attendee without a Registered place is refused (AC6), as is any withdrawal on
 | Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TC-664 | Active registrations are under Upcoming, the rest apart | Registered, waitlisted, withdrawn, cancelled | Open My registrations | Upcoming: Going, Waiting; Past, withdrawn and cancelled: Left, Called off; "You have no upcoming registrations." when none | As expected | Pass | AC1, AC5 |
-| TC-665 | Withdraw is offered only on a place that can be withdrawn | Registered, waitlisted, withdrawn | Open My registrations | Withdraw on the Registered row only | As expected | Pass | AC2, AC6 |
+| TC-665 | Withdraw is offered only on a place that can be withdrawn | Registered, waitlisted, withdrawn | Open My registrations | Withdraw on the Registered and waitlisted rows; none on the withdrawn one | As expected | Pass | AC2, AC6 |
 | TC-666 | Withdrawing asks first; keeping the place changes nothing | Registered | Withdraw, then Keep my place | Dialog names the event, focus on Keep my place; closed; no call | As expected | Pass | AC2 |
 | TC-667 | Confirming withdraws, confirms it, and moves the event out of Upcoming | Registered | Withdraw, then Yes, withdraw | Called for the event; toast "You have withdrawn from …"; row under Past with Withdrawn and no Withdraw | As expected | Pass | AC2, AC3, AC5 |
 | TC-668 | A refusal is shown in the dialog, and Withdraw is taken away | Service refuses not_registered | Withdraw, then Yes, withdraw | Alert with the message; only Close left; no Withdraw on the row; no toast | As expected | Pass | AC6 |
@@ -1467,3 +1468,65 @@ An attendee without a Registered place is refused (AC6), as is any withdrawal on
 | TC-677 | The two filters combine | Same | Registered + "gala" | Nothing listed; "No registrations match these filters." | As expected | Pass | Filters |
 | TC-678 | While filtering, an empty Upcoming says nothing matches | Same | Show Withdrawn | "No upcoming registrations match these filters."; the withdrawn one listed below | As expected | Pass | Filters, AC5 |
 | TC-679 | A filter is kept after viewing details and coming back | Same | Show Waitlisted, View details, back | Still Waitlisted; only Data Summit | As expected | Pass | Filters |
+
+## H6 / SCRUM-144 — Join the waiting list when an event is full
+
+**Scope:** on **Browse events**, a full event that is still taking registrations offers **Join waiting list**. The registration service (`POST /api/registrations/events/{eventId}/waitlist`) sets the attendee's one record for the event to `WAITLISTED` at once, with the server's `waitlisted_at`, in one transaction (AC1). The position is never stored. Each time Browse events or My registrations is read, it is worked out from join times, first come first served, so it stays exact as people ahead leave (AC2, `frontend/src/domain/waitingList.mjs`). Older records with no `waitlisted_at` fall back to their registration time, then their stored position.
+
+An attendee holds one record per event, so they can never be both Registered and Waitlisted (AC3). Joining while already registered or already waiting is refused, and so is registering while waitlisted. That keeps the queue in order when a place frees: H7 invites people in turn. Joining is refused while a place is free (`places_available`), and the screen then reloads the list so Register reappears.
+
+A waitlisted attendee may also **Withdraw**, from My registrations or from the event's details, after a "Leave the waiting list?" confirmation (decided 27 Oct 2026). It frees no place in the event. Everyone behind them moves up, since positions are worked out from who is still waiting, and they may join again at the back. The same limits as H5 apply: not once the event has started or ended.
+
+**AC coverage:** AC1 (join, Waitlisted at once) — TC-686, TC-688, TC-690, TC-698, TC-700 – TC-703, TC-706. AC2 (exact FCFS position) — TC-680 – TC-685, TC-687, TC-696, TC-697, TC-702, TC-704, TC-705, TC-709. AC3 (never both) — TC-691 – TC-693, TC-704, TC-707, TC-708. Leaving the list — TC-710 – TC-716. Guards — TC-689, TC-694, TC-695, TC-699.
+
+**Unit test cases — `frontend/src/domain/waitingList.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-680 | The order follows join time, earliest first | Three waiting, joined 03:00, 01:00, 02:00 | waitlistOrder; waitlistPosition | a, b, c; a 1st, c 3rd | As expected | Pass | AC2 |
+| TC-681 | Only Waitlisted records hold a place in the queue | Withdrawn, registered, waiting | waitlistPosition | The waiting one is 1st; the withdrawn has none | As expected | Pass | AC2 |
+| TC-682 | Timestamps and dates are ordered by their instant | Timestamp and Date | waitlistOrder | Earlier first | As expected | Pass | AC2 |
+| TC-683 | No join time falls back to registration time, then stored position | Older records | waitlistOrder | By registered_at, then position 1, 2 | As expected | Pass | AC2 |
+| TC-684 | Simultaneous joins are settled by record id | Same instant | waitlistOrder both ways round | Same order each time | As expected | Pass | AC2 |
+| TC-685 | Someone ahead leaving moves everyone up; an absent id has no position | Two waiting | Withdraw the first | Second becomes 1st; null for none | As expected | Pass | AC2 |
+
+**Service test cases — `backend/src/services/registration/waitlist.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-686 | An attendee joins the waiting list of a full event | Two of two places taken | joinWaitlist | Own record WAITLISTED with server waitlisted_at; position 1; one write | As expected | Pass | AC1 |
+| TC-687 | Each later joiner is placed behind everyone waiting | One already waiting | Two more join | Positions 2 and 3 | As expected | Pass | AC2 |
+| TC-688 | While a place is free the attendee is told to register | One of two taken | joinWaitlist | 409 places_available; nothing written | As expected | Pass | AC1 |
+| TC-689 | The join, the count and the check are one transaction | — | joinWaitlist | One transaction reading the event, Registered and Waitlisted records | As expected | Pass | AC1, AC2 |
+| TC-690 | An attendee who withdrew may join, in the same record | Own record WITHDRAWN | joinWaitlist | Same record WAITLISTED, withdrawn_at cleared | As expected | Pass | AC1 |
+| TC-691 | A registered attendee cannot also join | Attendee registered | joinWaitlist | 409 already_registered; nothing written | As expected | Pass | AC3 |
+| TC-692 | A waiting attendee cannot join twice, even under an older id | Joined; legacy waiting record | joinWaitlist again | 409 already_waitlisted; nothing more written | As expected | Pass | AC3 |
+| TC-693 | A waitlisted attendee cannot register past the queue | Waiting, a place free | register | 409 waitlisted; still WAITLISTED; nothing written | As expected | Pass | AC3 |
+| TC-694 | The waiting list closes with registration | Window closed; not yet open; cancelled; registration off | joinWaitlist | closed, not_open_yet, status, not_enabled; nothing written | As expected | Pass | Guard |
+| TC-695 | A missing event or one without capacity is refused | — | joinWaitlist | 404 not_found; 409 no_capacity | As expected | Pass | Guard |
+| TC-696 | My registrations gives the exact position from join times | Three waiting; attendee joined 2nd | GET /api/registrations/mine | WAITLISTED, position 2 | As expected | Pass | AC2 |
+| TC-697 | Browse events gives the attendee's status and position | Same | GET /api/registrations/open-events | WAITLISTED, position 2, 0 places left | As expected | Pass | AC2 |
+| TC-698 | POST waitlist answers 201 with the Waitlisted registration | Full event | POST /api/registrations/events/e1/waitlist | 201; WAITLISTED; position 1; venue names | As expected | Pass | AC1 |
+| TC-699 | A refusal answers with its reason; only Attendees may join | Place free; no token; organiser | Same | 409 places_available; 401; 403 | As expected | Pass | Guard |
+
+**Screen and client test cases — `BrowseEvents.test.js`, `MyRegistrations.test.js`, `registrationsApi.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-700 | Joining posts to the waitlist route with the ID token | Signed-in attendee | joinWaitlist | POST /api/registrations/events/{id}/waitlist, id escaped; refusal keeps message and reason | As expected | Pass | AC1 |
+| TC-701 | A full event offers Join waiting list | 0 places left | Click Join waiting list | "This event is full."; called for the event; Waitlisted shown | As expected | Pass | AC1 |
+| TC-702 | Joining confirms Waitlisted and the position at once | Same | Click Join waiting list | Toast "… at position 3."; Waitlisted pill; "Position 3 on the waiting list"; no Join | As expected | Pass | AC1, AC2 |
+| TC-703 | An event with places left offers Register, not the waiting list | 110 places | Open Browse events | Register; no Join | As expected | Pass | AC1 |
+| TC-704 | An event being waited for shows Waitlisted and the position, never Register or Join | WAITLISTED, position 2 | Open Browse events | Waitlisted; "Position 2 on the waiting list"; no Register or Join | As expected | Pass | AC2, AC3 |
+| TC-705 | Its details give the status and position, and offer Withdraw | WAITLISTED, position 2 | View details | Waitlisted; 2; Withdraw | As expected | Pass | AC2 |
+| TC-706 | A place freed before joining is explained and the list reloaded | Service answers places_available | Click Join waiting list | Alert; list reloaded; Register with 1 place left | As expected | Pass | AC1 |
+| TC-707 | Registering refused because the attendee is waiting marks the row Waitlisted | Service answers waitlisted | Click Register | Alert; Waitlisted; no Register | As expected | Pass | AC3 |
+| TC-708 | Join cannot be pressed twice while the first is on its way | Pending call | Click twice | One call; "Joining…" disabled | As expected | Pass | AC3 |
+| TC-709 | A waitlisted row on My registrations gives the exact position | WAITLISTED, position 4; a Registered row | Open My registrations | "Position 4 on the waiting list"; none on the other | As expected | Pass | AC2 |
+| TC-710 | A waitlisted attendee may withdraw, within the same limits | Event still to come; started; cancelled | withdrawalRefusal; can_withdraw | null and true; event_started; event_closed | As expected | Pass | Leaving the list |
+| TC-711 | Withdrawing from the waiting list frees no place | Full, attendee 2nd in the queue | withdraw | Own record WITHDRAWN with server time; 0 places left; one write | As expected | Pass | Leaving the list |
+| TC-712 | Everyone behind the one who left moves up | Queue first, attendee, last | GET /mine as last; withdraw as attendee; GET /mine again | last at 3, then 2 | As expected | Pass | AC2 |
+| TC-713 | Someone who left may join again, at the back | Left the queue | joinWaitlist | Position 3 | As expected | Pass | AC1, AC2 |
+| TC-714 | Leaving the waiting list asks first, saying the place in the queue is lost | Waitlisted row | Withdraw | Dialog "Leave the waiting list for …?" and "You will lose your place in the queue" | As expected | Pass | Leaving the list |
+| TC-715 | Leaving confirms it and moves the event out of Upcoming | Same | Withdraw, Yes, withdraw | Toast "You have left the waiting list for …"; row under Past as Withdrawn, no position | As expected | Pass | Leaving the list |
+| TC-716 | Leaving from Browse events details returns to the list, still Full, offering Join | WAITLISTED on a full event | View details, Withdraw, Yes, withdraw | Toast; row Full with Join waiting list; no Waitlisted | As expected | Pass | Leaving the list |

@@ -90,6 +90,17 @@ counts only `REGISTERED`. It is refused with nothing written when the caller hol
 person is H7's. Each `/mine` entry also carries `active` and `can_withdraw`, from `withdrawalRefusal` in
 `frontend/src/domain/myRegistrations.mjs`.
 
+H6 (SCRUM-144) adds `POST /api/registrations/events/{eventId}/waitlist` (Attendee ID token required). In one
+Admin transaction it refuses unless the event is taking registrations (the same window check as H3) and is
+full (`places_available` otherwise). It also refuses when the caller already holds a place
+(`already_registered`, `already_waitlisted`). Otherwise it sets `registrations/{eventId}_{attendeeId}` to
+`WAITLISTED` with a server `waitlisted_at`. The position is never stored: it is worked out from join times,
+first come first served, each time `/mine` or `/open-events` is read (`frontend/src/domain/waitingList.mjs`).
+Registering while waitlisted is refused (`waitlisted`), so nobody holds both statuses and nobody steps past
+the queue when a place frees.
+The H5 withdraw route also takes a waitlisted place off the list. That frees no place in the event, and
+everyone behind moves up.
+
 **Scoped exception — `venue` writes `event_history` and `notifications`.** F5 rejection commits the
 booking decision, audit entry and notification together. The venue endpoint uses Admin Firestore for
 this transaction so the outcome cannot be partially applied by a browser write.

@@ -5,6 +5,9 @@
 // H3 / SCRUM-141 — each open event can be registered for from its row. Whether a
 // place is free, the window still open and the attendee not already registered is
 // decided by the service in one transaction; this screen shows its answer.
+//
+// H6 / SCRUM-144 — a full event offers Join waiting list instead, and an event the attendee
+// is waiting for shows their place in the queue.
 
 import React, { useCallback, useEffect, useState } from "react";
 import RecordLead from "../../components/RecordLead";
@@ -12,14 +15,18 @@ import { placesLabel, venueLabel } from "../../domain/openRegistration";
 import EventDetails from "./components/EventDetails";
 import WithdrawDialog, { FINAL_WITHDRAW_REFUSALS, WITHDRAW_FAILED } from "./components/WithdrawDialog";
 import { eventDay, singaporeDateTime, timeWindow } from "./format";
-import { loadOpenEvents, registerForEvent, withdrawFromEvent } from "./registrationsApi";
+import { joinWaitlist, loadOpenEvents, registerForEvent, withdrawFromEvent } from "./registrationsApi";
 
 const placesTone = (remaining) => (remaining <= 0 ? "danger" : remaining <= 10 ? "warning" : "positive");
 
 const REGISTERED = "REGISTERED";
+const WAITLISTED = "WAITLISTED";
 const REGISTER_FAILED = "You could not be registered. Try again.";
+const JOIN_FAILED = "You could not join the waiting list. Try again.";
 // Refusals after which pressing Register again cannot succeed, so it is withdrawn.
 const FINAL_REFUSALS = ["closed", "not_open_yet", "status", "not_enabled", "no_capacity", "not_found"];
+
+const positionText = (position) => (position ? `Position ${position} on the waiting list` : null);
 
 export default function BrowseEvents({ onNotice, onBackChange }) {
   const [events, setEvents] = useState([]);
@@ -40,6 +47,9 @@ export default function BrowseEvents({ onNotice, onBackChange }) {
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, []);
+
+  // Fetches the list again when it is known to be out of date; a failure keeps what is shown.
+  const reload = () => loadOpenEvents().then(setEvents).catch(() => {});
 
   const closeDetails = useCallback(() => setDetails(null), []);
 
@@ -68,22 +78,51 @@ export default function BrowseEvents({ onNotice, onBackChange }) {
       const reason = failure.reason || null;
       if (reason === "full") updateEntry(entry.id, { remaining_places: 0 });
       if (reason === "already_registered") updateEntry(entry.id, { registration_status: REGISTERED });
+      if (reason === "waitlisted") updateEntry(entry.id, { registration_status: WAITLISTED });
       updateRow(entry.id, { busy: false, error: failure.message || REGISTER_FAILED, final: FINAL_REFUSALS.includes(reason) });
     }
   };
 
+  // H6 AC1 — join the waiting list of a full event; the row shows Waitlisted and the position.
+  const join = async (entry) => {
+    if (rowState[entry.id]?.busy) return;
+    updateRow(entry.id, { busy: true, error: "" });
+    try {
+      const result = await joinWaitlist(entry.id);
+      const position = result.registration?.waitlist_position ?? null;
+      updateEntry(entry.id, { registration_status: WAITLISTED, waitlist_position: position });
+      updateRow(entry.id, { busy: false, error: "" });
+      onNotice?.(`You are on the waiting list for ${entry.name || "this event"}${position ? `, at position ${position}` : ""}.`);
+    } catch (failure) {
+      const reason = failure.reason || null;
+      if (reason === "already_registered") updateEntry(entry.id, { registration_status: REGISTERED });
+      if (reason === "already_waitlisted") updateEntry(entry.id, { registration_status: WAITLISTED });
+      updateRow(entry.id, { busy: false, error: failure.message || JOIN_FAILED, final: FINAL_REFUSALS.includes(reason) });
+      // A place came free since the list was loaded: reload it so the row offers Register.
+      if (reason === "places_available") reload();
+    }
+  };
+
   // H5 — withdrawing from an event registered for, from its details. Back on the list the
-  // event offers Register again, with the place given back.
+  // event offers Register again, with the place given back. H6 — leaving its waiting list
+  // the same way frees no place, so the event stays Full and offers Join again.
   const confirmWithdraw = async () => {
     if (!withdrawing || withdrawing.busy || !details) return;
     const entry = events.find((item) => item.id === details.id);
     setWithdrawing({ busy: true, error: "" });
     try {
       const result = await withdrawFromEvent(entry.id);
-      updateEntry(entry.id, { registration_status: null, remaining_places: result.remaining_places ?? entry.remaining_places + 1 });
+      const wasWaiting = entry.registration_status === WAITLISTED;
+      updateEntry(entry.id, {
+        registration_status: null,
+        waitlist_position: null,
+        remaining_places: result.remaining_places ?? (wasWaiting ? entry.remaining_places : entry.remaining_places + 1)
+      });
       setWithdrawing(null);
       setDetails(null);
-      onNotice?.(`You have withdrawn from ${entry.name || "this event"}.`);
+      onNotice?.(wasWaiting
+        ? `You have left the waiting list for ${entry.name || "this event"}.`
+        : `You have withdrawn from ${entry.name || "this event"}.`);
     } catch (failure) {
       const final = FINAL_WITHDRAW_REFUSALS.includes(failure.reason);
       if (final) setDetails((current) => ({ ...current, cannotWithdraw: true }));
@@ -100,7 +139,8 @@ export default function BrowseEvents({ onNotice, onBackChange }) {
     // AC4 — the event registered for, with the confirmation when it has just happened.
     const closes = singaporeDateTime(open.registration_closes_at);
     const registeredOn = singaporeDateTime(details.registeredAt);
-    const canWithdraw = open.registration_status === REGISTERED && !details.cannotWithdraw;
+    const waiting = open.registration_status === WAITLISTED;
+    const canWithdraw = (open.registration_status === REGISTERED || waiting) && !details.cannotWithdraw;
     return (
       <>
         <EventDetails
@@ -109,7 +149,8 @@ export default function BrowseEvents({ onNotice, onBackChange }) {
           facts={[
             ["Places", placesLabel(open.remaining_places)],
             closes && ["Registration closes", closes],
-            ["Your registration", "Registered"],
+            ["Your registration", waiting ? "Waitlisted" : "Registered"],
+            waiting && open.waitlist_position && ["Place on the waiting list", String(open.waitlist_position)],
             registeredOn && ["Registered on", registeredOn]
           ]}
           actions={canWithdraw ? (
@@ -118,7 +159,7 @@ export default function BrowseEvents({ onNotice, onBackChange }) {
           backLabel="browse events"
           onClose={onBackChange ? null : closeDetails}
         />
-        {withdrawing && <WithdrawDialog state={{ ...withdrawing, name: open.name }} onKeep={() => setWithdrawing(null)} onConfirm={confirmWithdraw} />}
+        {withdrawing && <WithdrawDialog state={{ ...withdrawing, name: open.name, waitlisted: waiting }} onKeep={() => setWithdrawing(null)} onConfirm={confirmWithdraw} />}
       </>
     );
   }
@@ -129,6 +170,7 @@ export default function BrowseEvents({ onNotice, onBackChange }) {
         const closes = singaporeDateTime(entry.registration_closes_at);
         const row = rowState[entry.id] || {};
         const registered = entry.registration_status === REGISTERED;
+        const waiting = entry.registration_status === WAITLISTED;
         const full = entry.remaining_places <= 0;
         return (
           <article className="cs-record cs-browse-record" key={entry.id}>
@@ -148,13 +190,21 @@ export default function BrowseEvents({ onNotice, onBackChange }) {
               {closes && <p className="cs-record-saved">Registration closes {closes}</p>}
             </div>
             <div className="cs-record-actions cs-record-actions-stacked">
-              {registered ? (
+              {registered || waiting ? (
                 <>
-                  <span className="cs-pill cs-pill-positive">Registered</span>
+                  <span className={`cs-pill cs-pill-${registered ? "positive" : "warning"}`}>{registered ? "Registered" : "Waitlisted"}</span>
+                  {waiting && entry.waitlist_position && <p className="cs-record-saved">{positionText(entry.waitlist_position)}</p>}
                   <button type="button" className="cs-btn cs-btn-ghost cs-record-btn" onClick={() => setDetails({ id: entry.id, registeredAt: null, justRegistered: false })}>View details</button>
                 </>
               ) : full ? (
-                !row.error && <p className="cs-record-saved">This event is full.</p>
+                <>
+                  {!row.error && <p className="cs-record-saved">This event is full.</p>}
+                  {!row.final && (
+                    <button type="button" className="cs-btn cs-btn-ghost cs-record-btn" disabled={row.busy} onClick={() => join(entry)}>
+                      {row.busy ? "Joining…" : "Join waiting list"}
+                    </button>
+                  )}
+                </>
               ) : !row.final && (
                 <button type="button" className="cs-btn cs-btn-primary cs-record-btn" disabled={row.busy} onClick={() => register(entry)}>
                   {row.busy ? "Registering…" : "Register"}

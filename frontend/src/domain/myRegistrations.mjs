@@ -43,12 +43,12 @@ const isUpcoming = (event, now) => {
   return Boolean(start) && now < start;
 };
 
-// AC2, AC6 — why this attendee cannot withdraw now, or null when they can. Only a Registered
-// place can be withdrawn; a waitlisted one leaves the list through H6/H7, not here. There is
-// no deadline before the start (release 1 has no change deadlines).
+// AC2, AC6 — why this attendee cannot withdraw now, or null when they can. A Registered place
+// can be withdrawn, and so can a place on the waiting list (H6), which gives up the attendee's
+// turn in the queue. There is no deadline before the start (release 1 has no change deadlines).
 export const withdrawalRefusal = (registration, event, now = new Date()) => {
   if (!event) return { reason: "not_found", message: "That event could not be found." };
-  if (upper(registration?.status) !== "REGISTERED") {
+  if (!["REGISTERED", "WAITLISTED"].includes(upper(registration?.status))) {
     return { reason: "not_registered", message: "You are not registered for this event." };
   }
   if (ENDED_STATUSES.includes(upper(event.status))) {

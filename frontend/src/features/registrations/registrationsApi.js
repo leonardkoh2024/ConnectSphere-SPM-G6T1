@@ -50,3 +50,8 @@ export const loadMyRegistrations = async () => {
 // now stands and the places left; rejects with the service's message and `reason`.
 export const withdrawFromEvent = (eventId) =>
   callRegistrationService(`/api/registrations/events/${encodeURIComponent(eventId)}/withdraw`, "You could not be withdrawn. Try again.", "POST");
+
+// H6 — join the waiting list of a full event. Resolves with the Waitlisted registration and
+// its position; rejects with the service's message and `reason`.
+export const joinWaitlist = (eventId) =>
+  callRegistrationService(`/api/registrations/events/${encodeURIComponent(eventId)}/waitlist`, "You could not join the waiting list. Try again.", "POST");

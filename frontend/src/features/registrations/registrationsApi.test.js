@@ -2,7 +2,7 @@
 // open events; it never reads the events collection itself (AC3).
 
 import { auth } from "../../lib/firebase";
-import { loadMyRegistrations, loadOpenEvents, registerForEvent, withdrawFromEvent } from "./registrationsApi";
+import { joinWaitlist, loadMyRegistrations, loadOpenEvents, registerForEvent, withdrawFromEvent } from "./registrationsApi";
 
 jest.mock("../../lib/firebase", () => ({
   auth: { currentUser: { uid: "attendee-1", getIdToken: jest.fn() } },
@@ -109,4 +109,22 @@ test("TC-670 withdrawing posts to the event's withdraw route with the attendee's
 test("TC-670 a refusal keeps the service's message and reason", async () => {
   global.fetch.mockResolvedValue(reply(409, { error: "You are not registered for this event.", reason: "not_registered" }));
   await expect(withdrawFromEvent("e1")).rejects.toMatchObject({ message: "You are not registered for this event.", reason: "not_registered" });
+});
+
+// H6 / SCRUM-144 — joining the waiting list is a call to the service too.
+
+test("TC-700 joining the waiting list posts to the event's waitlist route with the attendee's ID token", async () => {
+  const replied = { registration: { registration_id: "e1_attendee-1", status: "WAITLISTED", waitlist_position: 3 } };
+  global.fetch.mockResolvedValue(reply(201, replied));
+
+  await expect(joinWaitlist("e/1")).resolves.toEqual(replied);
+  expect(global.fetch).toHaveBeenCalledWith("/api/registrations/events/e%2F1/waitlist", {
+    method: "POST",
+    headers: { Authorization: "Bearer id-token" }
+  });
+});
+
+test("TC-700 a refusal keeps the service's message and reason", async () => {
+  global.fetch.mockResolvedValue(reply(409, { error: "A place is free, so register instead.", reason: "places_available" }));
+  await expect(joinWaitlist("e1")).rejects.toMatchObject({ message: "A place is free, so register instead.", reason: "places_available" });
 });
