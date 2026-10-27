@@ -7,7 +7,8 @@
 //
 // Times are Singapore time (UTC+8, no daylight saving), as in venueHolds.js. The window is
 // half-open: registration is open from the open instant and closed from the close instant.
-// firestore.rules repeats the window check (registrationWindowOpen) on the stored instants.
+// The registration service applies the window check when an attendee registers (H3); no
+// browser can create a registration, so firestore.rules carry no copy of it.
 
 // AC1 — Approved or later. Completed, Cancelled and Rejected are past or ended, so they never
 // take registration.

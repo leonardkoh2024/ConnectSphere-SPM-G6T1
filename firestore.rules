@@ -25,22 +25,6 @@ service cloud.firestore {
         // Written in this same commit, so an old acknowledgement cannot cover a later write.
         && change.created_at == request.time;
     }
-    // H1 / SCRUM-139 AC4 — a registration is accepted only inside the event's open window,
-    // judged on the SERVER's clock (request.time), never on a time the client sends. The
-    // instants are written by the registration service when the organiser saves the window
-    // (the same Singapore-time reading as domain/registrationWindow.mjs); an event with no
-    // window written has no instants, so nothing can register. The window is half-open: open
-    // from the open instant, closed from the close instant. Only a flagged event in Approved or
-    // later can take registrations.
-    function registrationWindowOpen(eventId) {
-      let eventRecord = get(/databases/$(database)/documents/events/$(eventId)).data;
-      return eventRecord.registration_required == true
-        && eventRecord.status in ['APPROVED', 'PLANNING', 'SAFETY_REVIEW', 'CONFIRMED']
-        && eventRecord.get('registration_opens_at', null) is timestamp
-        && eventRecord.get('registration_closes_at', null) is timestamp
-        && request.time >= eventRecord.registration_opens_at
-        && request.time < eventRecord.registration_closes_at;
-    }
     function assignedVenueStaff(venueId) {
       return hasRole('VENUE_STAFF')
         && exists(/databases/$(database)/documents/venue_staff/$(venueId))
@@ -997,11 +981,10 @@ service cloud.firestore {
     }
     match /registrations/{registrationId} {
       allow get, list: if hasRole('EVENT_COORDINATOR') && currentCoordinator(resource.data.event_id);
-      // H1 / SCRUM-139 AC4 — an attendee can register only while the event's window is open.
-      // H3 builds on this clause (one place per attendee, capacity, duplicates); this is its floor.
-      allow create: if hasRole('ATTENDEE')
-        && request.resource.data.attendee_id == request.auth.uid
-        && registrationWindowOpen(request.resource.data.event_id);
+      // H3 / SCRUM-141 — no browser creates, changes or removes a registration. Attendees
+      // register through the registration service, which checks the open window (H1 AC4) by
+      // the server's clock, counts the places left and refuses a duplicate in one transaction:
+      // things a rule cannot do, since it cannot count documents.
     }
   }
 }
