@@ -43,6 +43,7 @@ they can be read next to the acceptance criteria and move into the service layer
 | J4 | SCRUM-153 | Be told when work arrives for me (Venue Staff see which event) | TC-537 – TC-540 |
 | H2 | SCRUM-140 | Find events I can register for | TC-541 – TC-572 |
 | H3 | SCRUM-141 | Register for an event | TC-573 – TC-605 |
+| H4 | SCRUM-142 | See the status of my registrations | TC-606 – TC-638 |
 | E4 | SCRUM-120 | See when a venue is free | TC-200 – TC-249 |
 | J6 | SCRUM-155 | Be told the outcome of my booking and equipment requests (AC1: approval and rejection) | TC-313 – TC-346 |
 | A7 | SCRUM-170 | Use ConnectSphere as a Safety Officer | TC-348 – TC-385, TC-388 |
@@ -1345,3 +1346,59 @@ No browser can create a registration any more. H1 had added a window-gated atten
 | H1-RT4 | No browser can create, change or remove a registration | — | Read the registrations rules | No create, update, delete or write clause | As expected | Pass | AC5, AC7, AC8 - server side |
 | H1-RT5 | No registrations clause names the Attendee role | — | Same | ATTENDEE absent | As expected | Pass | Server side |
 | H1-RT6 | The browser-side window rule is gone | — | Read firestore.rules | No registrationWindowOpen | As expected | Pass | H1 AC4 now in TC-583 – TC-588 |
+
+## H4 / SCRUM-142 — See the status of my registrations
+
+**Scope:** an Attendee's **My registrations** screen lists every event they have registered for, soonest first, with the event's name, date, time window, venue and their status: Registered, Waitlisted, Withdrawn or Cancelled. **View details** opens the event as an attendee may see it. The list comes from the registration service (`GET /api/registrations/mine`, Attendee ID token only), which queries the caller's registrations by `attendee_id`. Attendees still have no browser read of `registrations` or `events`.
+
+D4 cancels an event without touching its registrations, so the status shown is worked out: a registration on a cancelled event reads **Cancelled**, and the entry stays in the list (AC3). The cancellation reason is not sent. The rules live in `frontend/src/domain/myRegistrations.mjs`, shared with the service.
+
+**AC coverage:** AC1 (name, date, window, venue, status) — TC-606, TC-607, TC-610, TC-611, TC-614, TC-616, TC-618, TC-619, TC-624, TC-627 – TC-629, TC-634, TC-635. AC2 (view the event as an attendee) — TC-612, TC-621, TC-630 – TC-633, TC-638. AC3 (cancelled events stay, marked Cancelled) — TC-608, TC-616, TC-620, TC-628, TC-629, TC-632. Guards — TC-609, TC-613, TC-615, TC-617, TC-622, TC-623, TC-625, TC-626, TC-636, TC-637.
+
+**Unit test cases — `frontend/src/domain/myRegistrations.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-606 | The four statuses and their wording | — | Read REGISTRATION_STATUS_LABELS | Registered, Waitlisted, Withdrawn, Cancelled | As expected | Pass | AC1 |
+| TC-607 | A registration on a running event keeps its own status | Confirmed event | registrationDisplayStatus for each status | Unchanged | As expected | Pass | AC1 |
+| TC-608 | Any registration on a cancelled event shows Cancelled | Cancelled event; Registered, Waitlisted, Withdrawn | registrationDisplayStatus; mixed case | CANCELLED for each; case ignored | As expected | Pass | AC3 |
+| TC-609 | An unknown status is not shown | — | registrationDisplayStatus | null | As expected | Pass | Guard |
+| TC-610 | Each status has a tone | — | registrationStatusTone | positive, warning, neutral, danger; neutral otherwise | As expected | Pass | AC1, AC3 |
+| TC-611 | An entry carries name, date, window, venue, status and times | Registered, one venue | myRegistrationEntry | Exactly the attendee-facing fields | As expected | Pass | AC1 |
+| TC-612 | Internal fields never reach the attendee | Cancelled event with a reason | myRegistrationEntry | No ids, reference, capacity or cancellation reason | As expected | Pass | AC2 |
+| TC-613 | Timestamps come back as ISO text or null | Timestamp, text, null | myRegistrationEntry | ISO text; null | As expected | Pass | Guard |
+| TC-614 | A waitlisted entry keeps its queue position | Position 3 | myRegistrationEntry | 3 | As expected | Pass | AC1 |
+| TC-615 | A registration id falls back to the document's own field | No id | myRegistrationEntry | registration_id used; no venues | As expected | Pass | Guard |
+| TC-616 | The list is soonest first and keeps cancelled events | Four registrations | listMyRegistrations | Morning, Afternoon, Cancelled, Later | As expected | Pass | AC1, AC3 |
+| TC-617 | Missing events and unknown statuses are left out; venues attached | — | listMyRegistrations | Kept only the valid one; venue names by event; [] for none | As expected | Pass | Guard |
+
+**Service test cases — `backend/src/services/registration/myRegistrations.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-618 | An attendee is given their own registrations, soonest first | Four of their own, one of another attendee's | GET /api/registrations/mine | 200; forum, talk, expo, gala | As expected | Pass | AC1 |
+| TC-619 | Each entry shows the event and the attendee's status | Registered, Withdrawn, Waitlisted, and a cancelled event | Same | Full entry for forum; statuses REGISTERED, WITHDRAWN, WAITLISTED, CANCELLED | As expected | Pass | AC1 |
+| TC-620 | A registration on a cancelled event stays, marked Cancelled | Gala cancelled with a reason | Same | CANCELLED; its venue named; the reason not sent | As expected | Pass | AC3 |
+| TC-621 | No internal event field is sent | — | Same | No ids, reference, reason or capacity | As expected | Pass | AC2 |
+| TC-622 | Another attendee's registrations are never read | — | Same | Not listed; their event not read; every query names this attendee | As expected | Pass | Guard |
+| TC-623 | A registration whose event is gone is left out | Event deleted | Same | 200 without it | As expected | Pass | Guard |
+| TC-624 | An attendee with no registrations gets an empty list | — | Same as a new attendee | [] | As expected | Pass | AC1 |
+| TC-625 | Only a signed-in Attendee may read the list | No token; bad token; organiser | Same | 401, 401, 403; nothing read | As expected | Pass | Guard |
+| TC-626 | A failed read is a server error | Registrations read throws | Same | 500 | As expected | Pass | Guard |
+
+**Screen, client and shell test cases — `MyRegistrations.test.js`, `registrationsApi.test.js`, `Workspace.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-627 | Each registration shows name, date, window, venue and status | One Registered | Open My registrations | "Thu, 12 Nov 2026 · 09:00 – 17:00", both venues, Registered (positive) | As expected | Pass | AC1 |
+| TC-628 | Waitlisted, Withdrawn and Cancelled read as themselves | One of each | Open My registrations | Warning, neutral, danger pills | As expected | Pass | AC1, AC3 |
+| TC-629 | No venue yet, or a cancelled event's released venue, is said plainly | No venues; cancelled with none | Open; View details | "Venue to be confirmed"; "No venue — event cancelled" in the row and the details | As expected | Pass | AC1, AC3 |
+| TC-630 | Selecting an entry shows the event for an attendee | Registered | View details | Description, date, window, venues, Registered, registered time | As expected | Pass | AC2 |
+| TC-631 | A waitlisted entry's details give the queue position | Position 2 | View details | Waitlisted; 2 | As expected | Pass | AC2 |
+| TC-632 | Withdrawn and cancelled details say so | One of each | View details on each | Withdrawn with its time; "This event has been cancelled." | As expected | Pass | AC2, AC3 |
+| TC-633 | The details view hands the shell its way back | — | View details; shell back | No own back button; back returns to the list | As expected | Pass | AC2 |
+| TC-634 | The service's order is kept | Two entries | Open My registrations | In the order given | As expected | Pass | AC1 |
+| TC-635 | No registrations is said plainly | Empty list | Open My registrations | "You have not registered for any events yet." | As expected | Pass | AC1 |
+| TC-636 | Loading and failure are shown | Pending, then rejected | Open My registrations | Loading text; failure in an alert, no empty message | As expected | Pass | Guard |
+| TC-637 | The list is fetched from the service with the ID token | Signed-in attendee | loadMyRegistrations | GET /api/registrations/mine with Bearer token; refusal passed on | As expected | Pass | Guard |
+| TC-638 | My registrations opens the attendee's own list, with the shell's way back | Attendee | Open the My registrations hash | Screen rendered with onBackChange | As expected | Pass | AC2 |

@@ -2,7 +2,7 @@
 // open events; it never reads the events collection itself (AC3).
 
 import { auth } from "../../lib/firebase";
-import { loadOpenEvents, registerForEvent } from "./registrationsApi";
+import { loadMyRegistrations, loadOpenEvents, registerForEvent } from "./registrationsApi";
 
 jest.mock("../../lib/firebase", () => ({
   auth: { currentUser: { uid: "attendee-1", getIdToken: jest.fn() } },
@@ -74,4 +74,21 @@ test("TC-596 a refusal keeps the service's message and its reason", async () => 
 test("TC-596 a backend that is not running is named as the problem when registering too", async () => {
   global.fetch.mockRejectedValue(new TypeError("Failed to fetch"));
   await expect(registerForEvent("e1")).rejects.toThrow(/registration service is not responding/i);
+});
+
+// H4 / SCRUM-142 — the attendee's own registrations come from the service as well.
+
+test("TC-637 the attendee's registrations are fetched with their ID token", async () => {
+  const registrations = [{ registration_id: "e1_attendee-1", status: "REGISTERED" }];
+  global.fetch.mockResolvedValue(reply(200, { registrations }));
+
+  await expect(loadMyRegistrations()).resolves.toEqual(registrations);
+  expect(global.fetch).toHaveBeenCalledWith("/api/registrations/mine", {
+    headers: { Authorization: "Bearer id-token" }
+  });
+});
+
+test("TC-637 a refusal is passed on", async () => {
+  global.fetch.mockResolvedValue(reply(403, { error: "Only attendees can see their registrations." }));
+  await expect(loadMyRegistrations()).rejects.toThrow("Only attendees can see their registrations.");
 });
