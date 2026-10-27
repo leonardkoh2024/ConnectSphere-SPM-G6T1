@@ -9,6 +9,9 @@
 //
 // It also keeps H1 AC4: a registration outside the open window is refused by the server's
 // clock, through the same rule the organiser's Registration tab shows (registrationWindow.mjs).
+//
+// H5 (withdraw) and H6 (join the waiting list) change the same one record per attendee and
+// event, and start from the same reads, so all three live here.
 
 import {
   REGISTERED_STATUS,
@@ -16,6 +19,8 @@ import {
 } from "../../../../frontend/src/domain/registrationWindow.mjs";
 import { myRegistrationEntry, withdrawalRefusal } from "../../../../frontend/src/domain/myRegistrations.mjs";
 import { openEventListing, remainingPlaces } from "../../../../frontend/src/domain/openRegistration.mjs";
+
+const WAITLISTED_STATUS = "WAITLISTED";
 
 class RegistrationRefused extends Error {
   constructor(statusCode, reason, message) {
@@ -32,24 +37,40 @@ export const registrationIdFor = (eventId, attendeeId) => `${eventId}_${attendee
 const usableCapacity = (value) => Number.isInteger(value) && value > 0;
 
 export const createAttendeeRegistration = ({ firestore, serverTimestamp, now = () => new Date() }) => {
-  const register = ({ eventId, attendeeId }) => firestore.runTransaction(async (transaction) => {
-    const at = now();
+  // Everything an action needs to know about the attendee's place on the event, read through
+  // the transaction before anything is written: the event, the attendee's own record, any
+  // record of theirs under an older id (the mock data's), the Registered places and, when
+  // asked for, the waiting list.
+  const readPlace = async (transaction, eventId, attendeeId, { withWaitlist = false } = {}) => {
     const registrations = firestore.collection("registrations");
     const own = registrations.doc(registrationIdFor(eventId, attendeeId));
-
-    const [eventSnapshot, ownSnapshot, attendeeSnapshot, registeredSnapshot] = await Promise.all([
+    const [eventSnapshot, ownSnapshot, attendeeSnapshot, registeredSnapshot, waitlistSnapshot] = await Promise.all([
       transaction.get(firestore.collection("events").doc(eventId)),
       transaction.get(own),
-      // AC8 — a registration made under an older record id (the mock data's) still counts.
       transaction.get(registrations.where("event_id", "==", eventId).where("attendee_id", "==", attendeeId)),
-      transaction.get(registrations.where("event_id", "==", eventId).where("status", "==", REGISTERED_STATUS))
+      transaction.get(registrations.where("event_id", "==", eventId).where("status", "==", REGISTERED_STATUS)),
+      withWaitlist ? transaction.get(registrations.where("event_id", "==", eventId).where("status", "==", WAITLISTED_STATUS)) : null
     ]);
+    const records = [
+      ...(ownSnapshot.exists ? [{ ref: own, id: own.id, data: ownSnapshot.data() }] : []),
+      ...attendeeSnapshot.docs
+        .filter((item) => item.id !== own.id)
+        .map((item) => ({ ref: registrations.doc(item.id), id: item.id, data: item.data() }))
+    ];
+    return {
+      own,
+      event: eventSnapshot.exists ? { id: eventId, ...eventSnapshot.data() } : null,
+      // The attendee's record holding `status`, their own first; null when there is none.
+      holding: (status) => records.find((record) => record.data.status === status) || null,
+      taken: registeredSnapshot.docs.filter((item) => item.data().status === REGISTERED_STATUS).length,
+      waiting: waitlistSnapshot ? waitlistSnapshot.docs.filter((item) => item.data().status === WAITLISTED_STATUS).length : 0
+    };
+  };
 
-    if (!eventSnapshot.exists) throw new RegistrationRefused(404, "not_found", "That event could not be found.");
-    const event = { id: eventId, ...eventSnapshot.data() };
-
-    // AC6 and H1 AC4 — the flag, the status, and the window, by the server's clock.
-    // The status message is written for the organiser, so an attendee gets a plainer one.
+  // The flag, the status and the window, by the server's clock (H1 AC4), then a usable capacity.
+  // The status message is written for the organiser, so an attendee gets a plainer one.
+  const refuseUnlessTakingRegistrations = (event, at) => {
+    if (!event) throw new RegistrationRefused(404, "not_found", "That event could not be found.");
     const refusal = registrationAttemptRefusal(event, at);
     if (refusal) {
       const message = refusal.reason === "status" ? "Registration is not open for this event." : refusal.message;
@@ -58,21 +79,30 @@ export const createAttendeeRegistration = ({ firestore, serverTimestamp, now = (
     if (!usableCapacity(event.registration_capacity)) {
       throw new RegistrationRefused(409, "no_capacity", "Registration is not open for this event.");
     }
+  };
+
+  const register = ({ eventId, attendeeId }) => firestore.runTransaction(async (transaction) => {
+    const at = now();
+    const place = await readPlace(transaction, eventId, attendeeId);
+    const { event } = place;
+    refuseUnlessTakingRegistrations(event, at);
 
     // AC8 — checked before capacity, so someone already holding a place is told that.
-    const alreadyRegistered = (ownSnapshot.exists && ownSnapshot.data().status === REGISTERED_STATUS)
-      || attendeeSnapshot.docs.some((item) => item.data().status === REGISTERED_STATUS);
-    if (alreadyRegistered) {
+    if (place.holding(REGISTERED_STATUS)) {
       throw new RegistrationRefused(409, "already_registered", "You are already registered for this event.");
+    }
+    // H6 AC3 — never Registered and Waitlisted at once, and no stepping past the queue: a freed
+    // place goes to the waiting list in turn (H7).
+    if (place.holding(WAITLISTED_STATUS)) {
+      throw new RegistrationRefused(409, "waitlisted", "You are on the waiting list for this event, so a freed place will be offered to you in turn.");
     }
 
     // AC5, AC7 — only REGISTERED holds a place.
-    const taken = registeredSnapshot.docs.filter((item) => item.data().status === REGISTERED_STATUS).length;
-    if (taken >= event.registration_capacity) throw new RegistrationRefused(409, "full", "This event is full.");
+    if (place.taken >= event.registration_capacity) throw new RegistrationRefused(409, "full", "This event is full.");
 
     // A withdrawn attendee who registers again reuses their record.
     const registrationId = registrationIdFor(eventId, attendeeId);
-    transaction.set(own, {
+    transaction.set(place.own, {
       registration_id: registrationId,
       event_id: eventId,
       attendee_id: attendeeId,
@@ -84,46 +114,73 @@ export const createAttendeeRegistration = ({ firestore, serverTimestamp, now = (
 
     return {
       registration: { registration_id: registrationId, status: REGISTERED_STATUS, registered_at: at.toISOString() },
-      event: openEventListing(event, { registeredCount: taken + 1 })
+      event: openEventListing(event, { registeredCount: place.taken + 1 })
     };
   });
 
   // H5 / SCRUM-143 — the attendee's Registered place becomes Withdrawn, which gives it back to
   // the event at once (AC4): H3 counts only REGISTERED. Refused, with nothing written, unless
-  // they hold a Registered place on an event that has not started (AC6). The waiting list is
-  // left alone; inviting the next person is H7's.
+  // they hold a place on an event that has not started (AC6). Inviting the next person on the
+  // waiting list is H7's.
+  //
+  // H6 — a place on the waiting list can be withdrawn the same way. It frees no place in the
+  // event; everyone behind moves up, since positions are worked out from who is still waiting.
   const withdraw = ({ eventId, attendeeId }) => firestore.runTransaction(async (transaction) => {
     const at = now();
-    const registrations = firestore.collection("registrations");
-    const own = registrations.doc(registrationIdFor(eventId, attendeeId));
-
-    const [eventSnapshot, ownSnapshot, attendeeSnapshot, registeredSnapshot] = await Promise.all([
-      transaction.get(firestore.collection("events").doc(eventId)),
-      transaction.get(own),
-      // A registration made under an older record id (the mock data's) is withdrawn in place.
-      transaction.get(registrations.where("event_id", "==", eventId).where("attendee_id", "==", attendeeId)),
-      transaction.get(registrations.where("event_id", "==", eventId).where("status", "==", REGISTERED_STATUS))
-    ]);
-
-    const event = eventSnapshot.exists ? { id: eventId, ...eventSnapshot.data() } : null;
-    const held = ownSnapshot.exists && ownSnapshot.data().status === REGISTERED_STATUS
-      ? { ref: own, id: own.id, data: ownSnapshot.data() }
-      : attendeeSnapshot.docs
-        .filter((item) => item.data().status === REGISTERED_STATUS)
-        .map((item) => ({ ref: registrations.doc(item.id), id: item.id, data: item.data() }))[0] || null;
+    const place = await readPlace(transaction, eventId, attendeeId);
+    const { event } = place;
+    const held = place.holding(REGISTERED_STATUS) || place.holding(WAITLISTED_STATUS);
 
     const refusal = withdrawalRefusal(held?.data, event, at);
     if (refusal) throw new RegistrationRefused(refusal.reason === "not_found" ? 404 : 409, refusal.reason, refusal.message);
 
     transaction.update(held.ref, { status: "WITHDRAWN", withdrawn_at: serverTimestamp() });
 
-    const taken = registeredSnapshot.docs.filter((item) => item.data().status === REGISTERED_STATUS).length;
     const withdrawn = { ...held.data, id: held.id, status: "WITHDRAWN", withdrawn_at: at };
+    const freed = held.data.status === REGISTERED_STATUS ? 1 : 0;
     return {
       registration: myRegistrationEntry(withdrawn, event, { now: at }),
-      remaining_places: remainingPlaces(event.registration_capacity, taken - 1)
+      remaining_places: remainingPlaces(event.registration_capacity, place.taken - freed)
     };
   });
 
-  return { register, withdraw };
+  // H6 / SCRUM-144 — join the waiting list of a full event that is still taking registrations.
+  // The attendee's one record becomes Waitlisted at once (AC1), with the server's time, which is
+  // what their place in the queue is worked out from (AC2). Refused, with nothing written, while
+  // a place is free or when they already hold a place either way (AC3).
+  const joinWaitlist = ({ eventId, attendeeId }) => firestore.runTransaction(async (transaction) => {
+    const at = now();
+    const place = await readPlace(transaction, eventId, attendeeId, { withWaitlist: true });
+    const { event } = place;
+    refuseUnlessTakingRegistrations(event, at);
+
+    if (place.holding(REGISTERED_STATUS)) {
+      throw new RegistrationRefused(409, "already_registered", "You are already registered for this event.");
+    }
+    if (place.holding(WAITLISTED_STATUS)) {
+      throw new RegistrationRefused(409, "already_waitlisted", "You are already on the waiting list for this event.");
+    }
+    if (place.taken < event.registration_capacity) {
+      throw new RegistrationRefused(409, "places_available", "A place is free, so register instead.");
+    }
+
+    const registrationId = registrationIdFor(eventId, attendeeId);
+    const waitlisted = {
+      registration_id: registrationId,
+      event_id: eventId,
+      attendee_id: attendeeId,
+      status: WAITLISTED_STATUS,
+      waitlisted_at: serverTimestamp(),
+      registered_at: null,
+      withdrawn_at: null,
+      waitlist_position: null
+    };
+    transaction.set(place.own, waitlisted);
+
+    // Everyone already waiting joined earlier, so this attendee is last in the queue.
+    const entry = myRegistrationEntry({ ...waitlisted, id: registrationId, waitlisted_at: at }, event, { now: at });
+    return { registration: { ...entry, waitlist_position: place.waiting + 1 } };
+  });
+
+  return { register, withdraw, joinWaitlist };
 };

@@ -8,7 +8,8 @@
 
 import { listMyRegistrations } from "../../../../frontend/src/domain/myRegistrations.mjs";
 
-export const createMyRegistrations = ({ firestore, venueNamesFor, now = () => new Date() }) => {
+// H6 AC2 — a waitlisted entry carries its live position, from `waitlistPositionFor`.
+export const createMyRegistrations = ({ firestore, venueNamesFor, now = () => new Date(), waitlistPositionFor = async () => null }) => {
   const load = async ({ attendeeId }) => {
     const snapshot = await firestore.collection("registrations").where("attendee_id", "==", attendeeId).get();
     const registrations = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
@@ -24,7 +25,12 @@ export const createMyRegistrations = ({ firestore, venueNamesFor, now = () => ne
     }));
 
     const pairs = registrations.map((registration) => ({ registration, event: events[registration.event_id] || null }));
-    return { registrations: listMyRegistrations(pairs, { venueNamesByEvent, now: now() }) };
+    const entries = listMyRegistrations(pairs, { venueNamesByEvent, now: now() });
+    return {
+      registrations: await Promise.all(entries.map(async (entry) => (entry.status === "WAITLISTED"
+        ? { ...entry, waitlist_position: await waitlistPositionFor(entry.event_id, entry.registration_id) }
+        : entry)))
+    };
   };
 
   return { load };

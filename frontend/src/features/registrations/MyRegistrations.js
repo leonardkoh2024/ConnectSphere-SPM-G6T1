@@ -74,7 +74,9 @@ export default function MyRegistrations({ onNotice, onBackChange }) {
       const result = await withdrawFromEvent(entry.event_id);
       replaceEntry(entry.registration_id, { ...result.registration, registration_id: entry.registration_id });
       setWithdrawing(null);
-      onNotice?.(`You have withdrawn from ${entry.name || "this event"}.`);
+      onNotice?.(entry.status === "WAITLISTED"
+        ? `You have left the waiting list for ${entry.name || "this event"}.`
+        : `You have withdrawn from ${entry.name || "this event"}.`);
     } catch (failure) {
       const final = FINAL_WITHDRAW_REFUSALS.includes(failure.reason);
       if (final) replaceEntry(entry.registration_id, { can_withdraw: false });
@@ -91,7 +93,7 @@ export default function MyRegistrations({ onNotice, onBackChange }) {
     <button type="button" className="cs-btn cs-btn-ghost cs-record-btn cs-record-danger" onClick={() => askToWithdraw(entry)}>Withdraw</button>
   );
   const dialog = withdrawing && (
-    <WithdrawDialog state={{ ...withdrawing, name: withdrawing.entry.name }} onKeep={() => setWithdrawing(null)} onConfirm={confirmWithdraw} />
+    <WithdrawDialog state={{ ...withdrawing, name: withdrawing.entry.name, waitlisted: withdrawing.entry.status === "WAITLISTED" }} onKeep={() => setWithdrawing(null)} onConfirm={confirmWithdraw} />
   );
 
   // AC2 — the event as an attendee may see it, and their own place on it. H5 — with
@@ -129,7 +131,10 @@ export default function MyRegistrations({ onNotice, onBackChange }) {
         </div>
       </div>
       <p className="cs-record-ref">{venueText(entry)}</p>
-      <div className="cs-record-status">{statusPill(entry.status)}</div>
+      <div className="cs-record-status">
+        {statusPill(entry.status)}
+        {entry.status === "WAITLISTED" && entry.waitlist_position && <p className="cs-record-saved">Position {entry.waitlist_position} on the waiting list</p>}
+      </div>
       <div className="cs-record-actions">
         <button type="button" className="cs-btn cs-btn-ghost cs-record-btn" onClick={() => setOpenId(entry.registration_id)}>View details</button>
         {withdrawButton(entry)}

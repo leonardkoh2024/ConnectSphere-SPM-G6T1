@@ -10,9 +10,10 @@
 //   node backend/scripts/seedOpenRegistrationEvents.mjs            # dry run
 //   node backend/scripts/seedOpenRegistrationEvents.mjs --write    # write them
 //   node backend/scripts/seedOpenRegistrationEvents.mjs --remove   # delete them again
+//   node backend/scripts/seedOpenRegistrationEvents.mjs --only 10 --write   # just the events named
 //
 // Every id starts with `h2demo-`. Writes (only with --write):
-//   events/h2demo-{n}                       9 events — 4 open now, 5 that must not be listed
+//   events/h2demo-{n}                       10 events — 5 open now, 5 that must not be listed
 //   event_venue_requirements/h2demo-{n}     one per event, so the other roles' screens load
 //   venue_bookings/h2demo-{n}-{venue}       approved bookings for 3 of the open events
 //   registrations/h2demo-{n}-{attendee}     mock attendees, to show places left and Full
@@ -27,6 +28,9 @@ import { isOpenForRegistration } from "../../frontend/src/domain/openRegistratio
 const flags = process.argv.slice(2);
 const commit = flags.includes("--write");
 const remove = flags.includes("--remove");
+// --only 3,10 seeds just those events, so one can be added after the rest already exist.
+const onlyFlag = flags.indexOf("--only");
+const only = onlyFlag === -1 ? null : String(flags[onlyFlag + 1] || "").split(",").map(Number).filter(Boolean);
 const firestore = db();
 const fail = (message) => { console.error(`\n✗ ${message}\n`); process.exit(1); };
 
@@ -101,11 +105,18 @@ const EVENTS = [
     window: { opens: [addDays(today, -10), "09:00"], closes: [addDays(today, -1), "17:00"] } },
   { n: 9, name: "Not Yet Open Gala", status: "CONFIRMED", day: 30, start: "18:00", end: "22:00", capacity: 50,
     venues: [], registrations: {}, shown: "hidden — window opens next week", description: "Should never be listed.",
-    window: { opens: [addDays(today, 7), "09:00"], closes: [addDays(today, 20), "17:00"] } }
+    window: { opens: [addDays(today, 7), "09:00"], closes: [addDays(today, 20), "17:00"] } },
+  // H6 — a full event most attendees are not registered for, so they can join its waiting list.
+  // The two places go to the spare "… 2" accounts, leaving Nur Aisyah and five others free.
+  { n: 10, name: "Waitlist Demo Workshop", status: "CONFIRMED", day: 28, start: "10:00", end: "12:00", capacity: 2,
+    venues: [], registrations: { REGISTERED: 2 }, attendees: ["user-047-MOCKDATA", "user-054-MOCKDATA"],
+    shown: "listed — Full, Join waiting list", description: "A short workshop that is already full, for trying the waiting list." }
 ];
+const SEEDED = only ? EVENTS.filter((event) => only.includes(event.n)) : EVENTS;
+if (only && SEEDED.length !== only.length) fail(`--only names an event this script does not define: ${only.join(", ")}`);
 
 const venueDocs = {};
-for (const venueId of new Set(EVENTS.flatMap((event) => event.venues.map(([id]) => id)))) {
+for (const venueId of new Set(SEEDED.flatMap((event) => event.venues.map(([id]) => id)))) {
   const snapshot = await firestore.collection("venues").doc(venueId).get();
   if (!snapshot.exists) fail(`Venue ${venueId} does not exist.`);
   venueDocs[venueId] = snapshot.data();
@@ -115,7 +126,7 @@ const writes = [];
 const now = new Date();
 let attendeeCursor = 0;
 
-for (const spec of EVENTS) {
+for (const spec of SEEDED) {
   const id = `${PREFIX}${spec.n}`;
   const eventDate = addDays(today, spec.day);
   const window = spec.window || OPEN;
@@ -194,7 +205,7 @@ for (const spec of EVENTS) {
 
   for (const [status, count] of Object.entries(spec.registrations)) {
     for (let index = 0; index < count; index += 1) {
-      const attendee = ATTENDEES[attendeeCursor % ATTENDEES.length];
+      const attendee = spec.attendees ? spec.attendees[attendeeCursor] : ATTENDEES[attendeeCursor % ATTENDEES.length];
       attendeeCursor += 1;
       const registrationId = `${id}-${attendee}`;
       writes.push({
