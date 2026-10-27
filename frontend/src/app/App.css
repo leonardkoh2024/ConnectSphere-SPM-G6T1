@@ -2737,3 +2737,18 @@ a.cs-btn-ghost:hover {
 
 .cs-registration-window { min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: 12px; }
 .cs-registration-window legend { padding: 0; font-size: 14px; font-weight: 600; color: var(--cs-ink); }
+
+/* ---------- H8 / SCRUM-146 — who has registered, under the Registration settings ---------- */
+
+.cs-registration-list { display: grid; gap: 16px; max-width: 720px; margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--cs-line); }
+.cs-registration-list-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cs-registration-list-head h3 { margin: 0; font-size: 18px; }
+.cs-registration-list .cs-panel-note { margin: 0; }
+.cs-registration-counts { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 12px; }
+.cs-registration-counts li { display: flex; align-items: baseline; gap: 8px; padding: 10px 16px; background: var(--cs-surface); border: 1px solid var(--cs-line); border-radius: var(--cs-radius-m); color: var(--cs-muted); font-size: 14px; }
+.cs-registration-counts strong { color: var(--cs-ink); font-size: 20px; }
+.cs-registration-table-wrap { overflow-x: auto; border: 1px solid var(--cs-line); border-radius: var(--cs-radius-m); background: var(--cs-surface); }
+.cs-registration-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.cs-registration-table th { text-align: left; padding: 10px 14px; color: var(--cs-muted); font-size: 13px; font-weight: 600; background: var(--cs-canvas); border-bottom: 1px solid var(--cs-line); white-space: nowrap; }
+.cs-registration-table td { padding: 10px 14px; color: var(--cs-ink); border-bottom: 1px solid var(--cs-line); }
+.cs-registration-table tbody tr:last-child td { border-bottom: 0; }

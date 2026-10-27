@@ -19,6 +19,12 @@ jest.mock('./RegistrationPanel', () => ({
   default: (props) => require('react').createElement('p', null, `registration panel for ${props.eventId}`)
 }));
 
+// H8 / SCRUM-146 — the registration list under the settings. Its own tests are in RegistrationList.test.js.
+jest.mock('./RegistrationList', () => ({
+  __esModule: true,
+  default: (props) => require('react').createElement('p', null, `registration list for ${props.eventId}`)
+}));
+
 const USER = { uid: 'u1', email: 'nadia.organiser@connectsphere.com' };
 const approved = { id: 'e1', name: 'Partner Summit', status: 'APPROVED', open_clarification_id: null, registration_required: true };
 const detailFor = (event) => ({
@@ -79,4 +85,15 @@ test('H1-FT20 a clarification the organiser owes still opens first: the Registra
   await screen.findByText('Confirm numbers.');
   expect(clarifications).toHaveAttribute('aria-selected', 'true');
   expect(screen.getByRole('tab', { name: 'Registration' })).toHaveAttribute('aria-selected', 'false');
+});
+
+test('H8-FT15 AC1 the Registration tab also shows the registration list for this event, after the settings', async () => {
+  reviewApi.detail.mockResolvedValue(detailFor(approved));
+  render(<OrganiserEventDetail user={USER} event={approved} />);
+
+  await userEvent.click(await screen.findByRole('tab', { name: 'Registration' }));
+  const panel = screen.getByText('registration panel for e1');
+  const list = screen.getByText('registration list for e1');
+  expect(list).toBeVisible();
+  expect(panel.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });

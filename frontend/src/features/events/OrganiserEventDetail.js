@@ -6,6 +6,8 @@
 //
 // H1 / SCRUM-139 — an event that uses attendee registration (the B5 flag) gets a third tab,
 // Registration, where the organiser sets its capacity and open/close window once approved.
+//
+// H8 / SCRUM-146 — the same tab lists who has registered, under the settings.
 
 import React, { useEffect, useState } from "react";
 import { EVENT_TABS, clarificationSummary, initialEventTab } from "../../domain/eventReview";
@@ -15,6 +17,7 @@ import DecisionSummary from "./components/DecisionSummary";
 import ClarificationThread from "./components/ClarificationThread";
 import EventDetailTabs from "./components/EventDetailTabs";
 import RegistrationPanel from "./RegistrationPanel";
+import RegistrationList from "./RegistrationList";
 
 const isDraft = (event) => !event || !event.status || String(event.status).toUpperCase() === "DRAFT";
 
@@ -88,7 +91,7 @@ export default function OrganiserEventDetail({ user, event, onSaved, onNotice })
       tabs={[
         { id: EVENT_TABS.REQUEST, label: "Event request", content: requestTab },
         { id: EVENT_TABS.CLARIFICATIONS, label: "Clarifications", count: summary.requests, attention: summary.awaitingOrganiser, content: clarificationsTab },
-        ...(usesRegistration ? [{ id: EVENT_TABS.REGISTRATION, label: "Registration", content: <RegistrationPanel eventId={event.id} event={current} onNotice={onNotice} /> }] : [])
+        ...(usesRegistration ? [{ id: EVENT_TABS.REGISTRATION, label: "Registration", content: <><RegistrationPanel eventId={event.id} event={current} onNotice={onNotice} /><RegistrationList eventId={event.id} /></> }] : [])
       ]}
     />
   </>;
