@@ -3,5 +3,6 @@ export {
   listMyRegistrations,
   myRegistrationEntry,
   registrationDisplayStatus,
-  registrationStatusTone
+  registrationStatusTone,
+  withdrawalRefusal
 } from "./myRegistrations.mjs";

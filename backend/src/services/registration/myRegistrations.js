@@ -8,7 +8,7 @@
 
 import { listMyRegistrations } from "../../../../frontend/src/domain/myRegistrations.mjs";
 
-export const createMyRegistrations = ({ firestore, venueNamesFor }) => {
+export const createMyRegistrations = ({ firestore, venueNamesFor, now = () => new Date() }) => {
   const load = async ({ attendeeId }) => {
     const snapshot = await firestore.collection("registrations").where("attendee_id", "==", attendeeId).get();
     const registrations = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
@@ -24,7 +24,7 @@ export const createMyRegistrations = ({ firestore, venueNamesFor }) => {
     }));
 
     const pairs = registrations.map((registration) => ({ registration, event: events[registration.event_id] || null }));
-    return { registrations: listMyRegistrations(pairs, { venueNamesByEvent }) };
+    return { registrations: listMyRegistrations(pairs, { venueNamesByEvent, now: now() }) };
   };
 
   return { load };

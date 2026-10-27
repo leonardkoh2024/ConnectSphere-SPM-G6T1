@@ -43,7 +43,7 @@ export function createRegistrationService({
   const settings = createRegistrationSettings({ firestore, serverTimestamp, getApprovedEventBookings, now });
   const attendeeList = createRegistrationList({ firestore });
   const attendeeRegistration = createAttendeeRegistration({ firestore, serverTimestamp, now });
-  const myRegistrations = createMyRegistrations({ firestore, venueNamesFor });
+  const myRegistrations = createMyRegistrations({ firestore, venueNamesFor, now });
 
   // Signs the caller in and checks their profile holds `role`; otherwise answers the
   // request itself (401 or 403 with `forbidden`) and returns null.
@@ -142,6 +142,28 @@ export function createRegistrationService({
       const result = await attendeeRegistration.register({ eventId: request.params.eventId, attendeeId: user.uid });
       const venueNames = await venueNamesFor(request.params.eventId);
       response.status(201).json({ ...result, event: { ...result.event, venue_names: venueNames } });
+    } catch (error) {
+      if (error.statusCode) response.status(error.statusCode).json({ error: error.message, reason: error.reason });
+      else next(error);
+    }
+  });
+
+  // H5 — withdraw the signed-in attendee from one event. A refusal (not registered, the event
+  // has started or ended) is answered with its reason.
+  router.post("/events/:eventId/withdraw", async (request, response, next) => {
+    let user;
+    try {
+      user = await authenticateAttendee(request, response, "Only attendees can withdraw from events.");
+    } catch (error) {
+      next(error);
+      return;
+    }
+    if (!user) return;
+
+    try {
+      const result = await attendeeRegistration.withdraw({ eventId: request.params.eventId, attendeeId: user.uid });
+      const venueNames = await venueNamesFor(request.params.eventId);
+      response.json({ ...result, registration: { ...result.registration, venue_names: venueNames } });
     } catch (error) {
       if (error.statusCode) response.status(error.statusCode).json({ error: error.message, reason: error.reason });
       else next(error);

@@ -10,8 +10,9 @@ import React, { useCallback, useEffect, useState } from "react";
 import RecordLead from "../../components/RecordLead";
 import { placesLabel, venueLabel } from "../../domain/openRegistration";
 import EventDetails from "./components/EventDetails";
+import WithdrawDialog, { FINAL_WITHDRAW_REFUSALS, WITHDRAW_FAILED } from "./components/WithdrawDialog";
 import { eventDay, singaporeDateTime, timeWindow } from "./format";
-import { loadOpenEvents, registerForEvent } from "./registrationsApi";
+import { loadOpenEvents, registerForEvent, withdrawFromEvent } from "./registrationsApi";
 
 const placesTone = (remaining) => (remaining <= 0 ? "danger" : remaining <= 10 ? "warning" : "positive");
 
@@ -28,6 +29,8 @@ export default function BrowseEvents({ onNotice, onBackChange }) {
   const [rowState, setRowState] = useState({});
   // The event whose details are open, and what the registration reply said.
   const [details, setDetails] = useState(null);
+  // H5 — withdrawing from the open event: { busy, error, final }.
+  const [withdrawing, setWithdrawing] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -69,6 +72,25 @@ export default function BrowseEvents({ onNotice, onBackChange }) {
     }
   };
 
+  // H5 — withdrawing from an event registered for, from its details. Back on the list the
+  // event offers Register again, with the place given back.
+  const confirmWithdraw = async () => {
+    if (!withdrawing || withdrawing.busy || !details) return;
+    const entry = events.find((item) => item.id === details.id);
+    setWithdrawing({ busy: true, error: "" });
+    try {
+      const result = await withdrawFromEvent(entry.id);
+      updateEntry(entry.id, { registration_status: null, remaining_places: result.remaining_places ?? entry.remaining_places + 1 });
+      setWithdrawing(null);
+      setDetails(null);
+      onNotice?.(`You have withdrawn from ${entry.name || "this event"}.`);
+    } catch (failure) {
+      const final = FINAL_WITHDRAW_REFUSALS.includes(failure.reason);
+      if (final) setDetails((current) => ({ ...current, cannotWithdraw: true }));
+      setWithdrawing({ busy: false, error: failure.message || WITHDRAW_FAILED, final });
+    }
+  };
+
   if (loading) return <p className="cs-panel-note">Loading events…</p>;
   if (error) return <p className="cs-error" role="alert">{error}</p>;
   if (!events.length) return <p className="cs-panel-note">No events are open for registration right now.</p>;
@@ -78,19 +100,26 @@ export default function BrowseEvents({ onNotice, onBackChange }) {
     // AC4 — the event registered for, with the confirmation when it has just happened.
     const closes = singaporeDateTime(open.registration_closes_at);
     const registeredOn = singaporeDateTime(details.registeredAt);
+    const canWithdraw = open.registration_status === REGISTERED && !details.cannotWithdraw;
     return (
-      <EventDetails
-        entry={open}
-        notice={details.justRegistered ? <p className="cs-success" role="status">You are registered for this event.</p> : null}
-        facts={[
-          ["Places", placesLabel(open.remaining_places)],
-          closes && ["Registration closes", closes],
-          ["Your registration", "Registered"],
-          registeredOn && ["Registered on", registeredOn]
-        ]}
-        backLabel="browse events"
-        onClose={onBackChange ? null : closeDetails}
-      />
+      <>
+        <EventDetails
+          entry={open}
+          notice={details.justRegistered ? <p className="cs-success" role="status">You are registered for this event.</p> : null}
+          facts={[
+            ["Places", placesLabel(open.remaining_places)],
+            closes && ["Registration closes", closes],
+            ["Your registration", "Registered"],
+            registeredOn && ["Registered on", registeredOn]
+          ]}
+          actions={canWithdraw ? (
+            <button type="button" className="cs-btn cs-btn-ghost cs-record-btn cs-record-danger" onClick={() => setWithdrawing({ busy: false, error: "" })}>Withdraw</button>
+          ) : null}
+          backLabel="browse events"
+          onClose={onBackChange ? null : closeDetails}
+        />
+        {withdrawing && <WithdrawDialog state={{ ...withdrawing, name: open.name }} onKeep={() => setWithdrawing(null)} onConfirm={confirmWithdraw} />}
+      </>
     );
   }
 
@@ -102,7 +131,7 @@ export default function BrowseEvents({ onNotice, onBackChange }) {
         const registered = entry.registration_status === REGISTERED;
         const full = entry.remaining_places <= 0;
         return (
-          <article className="cs-record" key={entry.id}>
+          <article className="cs-record cs-browse-record" key={entry.id}>
             <div className="cs-record-title">
               <RecordLead date={entry.event_date} />
               <div>

@@ -185,7 +185,7 @@ export default function Workspace({ user, role }) {
   else if (role === ROLES.SAFETY_OFFICER && screen.name === "Safety reviews") contents = <>{head(screen.name, screen.blurb)}<SafetyReviewScreen onNotice={showToast} onBackChange={reportBack} /></>;
   else if (role === ROLES.SAFETY_OFFICER && screen.name === "Venue safety information") contents = <>{head(screen.name, screen.blurb)}<VenueSafetyInformation /></>;
   else if (role === ROLES.ATTENDEE && screen.name === "Browse events") contents = <>{head(screen.name, screen.blurb)}<BrowseEvents onNotice={showToast} onBackChange={reportBack} /></>;
-  else if (role === ROLES.ATTENDEE && screen.name === "My registrations") contents = <>{head(screen.name, screen.blurb)}<MyRegistrations onBackChange={reportBack} /></>;
+  else if (role === ROLES.ATTENDEE && screen.name === "My registrations") contents = <>{head(screen.name, screen.blurb)}<MyRegistrations onNotice={showToast} onBackChange={reportBack} /></>;
   else if (role === ROLES.COORDINATOR_LEAD && screen.name === "Unassigned queue") contents = <>{head(screen.name, screen.blurb)}<LeadAssignmentScreen view="queue" onNotice={showToast} /></>;
   else if (role === ROLES.COORDINATOR_LEAD && screen.name === "Oversight") contents = <>{head(screen.name, screen.blurb)}<LeadAssignmentScreen view="oversight" onNotice={showToast} /></>;
   else if (screen.name === "Notifications") contents = <>{head(screen.name, screen.blurb)}<NotificationInbox notifications={inbox.notifications} loading={inbox.loading} error={inbox.error} onOpen={inbox.markRead} onViewEvent={viewScreen ? viewEvent : undefined} /></>;

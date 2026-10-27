@@ -45,3 +45,8 @@ export const loadMyRegistrations = async () => {
   const result = await callRegistrationService("/api/registrations/mine", "Your registrations could not be loaded.");
   return result.registrations || [];
 };
+
+// H5 — withdraw the signed-in attendee from one event. Resolves with the registration as it
+// now stands and the places left; rejects with the service's message and `reason`.
+export const withdrawFromEvent = (eventId) =>
+  callRegistrationService(`/api/registrations/events/${encodeURIComponent(eventId)}/withdraw`, "You could not be withdrawn. Try again.", "POST");
