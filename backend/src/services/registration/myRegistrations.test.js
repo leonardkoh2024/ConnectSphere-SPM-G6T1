@@ -169,7 +169,11 @@ test("TC-622 H4 another attendee's registrations are never read into the list", 
   const { body } = await request({ firestore });
   assert.ok(!body.registrations.some((entry) => entry.event_id === "others"));
   assert.ok(!firestore.reads.includes("events/others"));
-  assert.ok(firestore.reads.every((read) => !read.startsWith("registrations?") || read.includes("attendee_id=attendee-1")));
+  // Registrations are queried by this attendee, or (H6) as the waiting list of an event this
+  // attendee is waiting on, to work out their position; nothing else of the queue is returned.
+  assert.ok(firestore.reads.every((read) => !read.startsWith("registrations?")
+    || read.includes("attendee_id=attendee-1")
+    || read === "registrations?event_id=expo&status=WAITLISTED"));
 });
 
 test("TC-623 H4 a registration whose event no longer exists is left out rather than failing the list", async () => {

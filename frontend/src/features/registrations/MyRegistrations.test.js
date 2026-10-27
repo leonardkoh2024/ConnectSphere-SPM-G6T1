@@ -185,13 +185,13 @@ test("TC-664 H5 AC1 with nothing upcoming the attendee is told so, and the rest 
 test("TC-665 H5 AC2 AC6 Withdraw is offered only on a place the attendee can withdraw", async () => {
   loadMyRegistrations.mockResolvedValue([
     entry({ registration_id: "a", event_id: "a", name: "Going" }),
-    entry({ registration_id: "w", event_id: "w", name: "Waiting", status: "WAITLISTED", can_withdraw: false }),
+    entry({ registration_id: "w", event_id: "w", name: "Waiting", status: "WAITLISTED", can_withdraw: true }),
     entry({ registration_id: "x", event_id: "x", name: "Left", status: "WITHDRAWN", active: false, can_withdraw: false })
   ]);
   render(<MyRegistrations />);
 
   expect(await withdrawButtonIn("Going")).toBeInTheDocument();
-  expect(within(await rowFor("Waiting")).queryByRole("button", { name: "Withdraw" })).not.toBeInTheDocument();
+  expect(await withdrawButtonIn("Waiting")).toBeInTheDocument();
   expect(within(await rowFor("Left")).queryByRole("button", { name: "Withdraw" })).not.toBeInTheDocument();
 });
 
@@ -292,7 +292,7 @@ test("TC-671 H5 AC2 the details view offers Withdraw; withdrawing there updates 
 });
 
 test("TC-671 H5 AC6 the details view of a place that cannot be withdrawn offers no Withdraw", async () => {
-  loadMyRegistrations.mockResolvedValue([entry({ status: "WAITLISTED", can_withdraw: false })]);
+  loadMyRegistrations.mockResolvedValue([entry({ status: "WITHDRAWN", active: false, can_withdraw: false })]);
   render(<MyRegistrations />);
   await userEvent.click(within(await rowFor("Harbour Tech Forum")).getByRole("button", { name: "View details" }));
   const details = await screen.findByRole("region", { name: "Harbour Tech Forum" });
@@ -389,4 +389,45 @@ test("TC-679 a filter is kept after viewing an event's details and coming back",
   await userEvent.click(screen.getByRole("button", { name: /back to my registrations/i }));
   expect(screen.getByRole("combobox", { name: "Show" })).toHaveValue("WAITLISTED");
   expect(listedNames()).toEqual(["Data Summit"]);
+});
+
+// ---- H6 / SCRUM-144 — the position on the waiting list -----------------------------
+
+test("TC-709 H6 AC2 a waitlisted row gives the attendee's exact position", async () => {
+  loadMyRegistrations.mockResolvedValue([entry({ status: "WAITLISTED", waitlist_position: 4, can_withdraw: false })]);
+  render(<MyRegistrations />);
+  const row = await rowFor("Harbour Tech Forum");
+  expect(within(row).getByText("Position 4 on the waiting list")).toBeInTheDocument();
+});
+
+test("TC-709 H6 a row that is not waitlisted gives no position", async () => {
+  loadMyRegistrations.mockResolvedValue([entry()]);
+  render(<MyRegistrations />);
+  expect(within(await rowFor("Harbour Tech Forum")).queryByText(/on the waiting list/)).not.toBeInTheDocument();
+});
+
+// ---- H6 — leaving the waiting list ------------------------------------------------
+
+test("TC-714 H6 leaving the waiting list asks first, saying the place in the queue is lost", async () => {
+  loadMyRegistrations.mockResolvedValue([entry({ status: "WAITLISTED", waitlist_position: 2 })]);
+  render(<MyRegistrations />);
+
+  await userEvent.click(await withdrawButtonIn("Harbour Tech Forum"));
+  const dialog = screen.getByRole("dialog", { name: "Leave the waiting list for Harbour Tech Forum?" });
+  expect(within(dialog).getByText(/you will lose your place in the queue/i)).toBeInTheDocument();
+});
+
+test("TC-715 H6 leaving the waiting list confirms it and moves the event out of Upcoming", async () => {
+  loadMyRegistrations.mockResolvedValue([entry({ status: "WAITLISTED", waitlist_position: 2 })]);
+  withdrawFromEvent.mockResolvedValue(withdrawnReply({ waitlist_position: null }));
+  const onNotice = jest.fn();
+  render(<MyRegistrations onNotice={onNotice} />);
+
+  await userEvent.click(await withdrawButtonIn("Harbour Tech Forum"));
+  await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Yes, withdraw" }));
+
+  await waitFor(() => expect(onNotice).toHaveBeenCalledWith("You have left the waiting list for Harbour Tech Forum."));
+  const row = within(screen.getByRole("region", { name: "Past, withdrawn and cancelled" })).getByText("Harbour Tech Forum").closest(".cs-record");
+  expect(within(row).getByText("Withdrawn")).toBeInTheDocument();
+  expect(within(row).queryByText(/on the waiting list/)).not.toBeInTheDocument();
 });

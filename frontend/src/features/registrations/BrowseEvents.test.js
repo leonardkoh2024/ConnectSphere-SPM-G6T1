@@ -4,9 +4,9 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import BrowseEvents from "./BrowseEvents";
-import { loadOpenEvents, registerForEvent, withdrawFromEvent } from "./registrationsApi";
+import { joinWaitlist, loadOpenEvents, registerForEvent, withdrawFromEvent } from "./registrationsApi";
 
-jest.mock("./registrationsApi", () => ({ loadOpenEvents: jest.fn(), registerForEvent: jest.fn(), withdrawFromEvent: jest.fn() }));
+jest.mock("./registrationsApi", () => ({ joinWaitlist: jest.fn(), loadOpenEvents: jest.fn(), registerForEvent: jest.fn(), withdrawFromEvent: jest.fn() }));
 
 const entry = (changes = {}) => ({
   id: "e1",
@@ -273,4 +273,124 @@ test("TC-673 rows on Browse events share fixed columns, so venue and places line
   loadOpenEvents.mockResolvedValue([entry()]);
   render(<BrowseEvents />);
   expect(await rowFor("Harbour Tech Forum")).toHaveClass("cs-record", "cs-browse-record");
+});
+
+// ---- H6 / SCRUM-144 — Join the waiting list when an event is full ------------------
+
+const waitlistedReply = (position = 3) => ({
+  registration: { registration_id: "e1_attendee-1", status: "WAITLISTED", waitlist_position: position }
+});
+
+test("TC-701 H6 AC1 a full event offers Join waiting list; joining calls the service for that event", async () => {
+  loadOpenEvents.mockResolvedValue([entry({ remaining_places: 0 })]);
+  joinWaitlist.mockResolvedValue(waitlistedReply());
+  render(<BrowseEvents />);
+  const row = await rowFor("Harbour Tech Forum");
+
+  expect(within(row).getByText("This event is full.")).toBeInTheDocument();
+  await userEvent.click(within(row).getByRole("button", { name: "Join waiting list" }));
+  expect(joinWaitlist).toHaveBeenCalledWith("e1");
+  expect(await within(row).findByText("Waitlisted")).toBeInTheDocument();
+});
+
+test("TC-702 H6 AC1 AC2 joining confirms the Waitlisted status and the position at once", async () => {
+  loadOpenEvents.mockResolvedValue([entry({ remaining_places: 0 })]);
+  joinWaitlist.mockResolvedValue(waitlistedReply(3));
+  const onNotice = jest.fn();
+  render(<BrowseEvents onNotice={onNotice} />);
+  const row = await rowFor("Harbour Tech Forum");
+
+  await userEvent.click(within(row).getByRole("button", { name: "Join waiting list" }));
+  await waitFor(() => expect(onNotice).toHaveBeenCalledWith("You are on the waiting list for Harbour Tech Forum, at position 3."));
+  expect(within(row).getByText("Waitlisted")).toHaveClass("cs-pill-warning");
+  expect(within(row).getByText("Position 3 on the waiting list")).toBeInTheDocument();
+  expect(within(row).queryByRole("button", { name: "Join waiting list" })).not.toBeInTheDocument();
+});
+
+test("TC-703 H6 AC1 an event with places left offers Register, not the waiting list", async () => {
+  loadOpenEvents.mockResolvedValue([entry()]);
+  render(<BrowseEvents />);
+  const row = await rowFor("Harbour Tech Forum");
+  expect(within(row).getByRole("button", { name: "Register" })).toBeInTheDocument();
+  expect(within(row).queryByRole("button", { name: "Join waiting list" })).not.toBeInTheDocument();
+});
+
+test("TC-704 H6 AC2 AC3 an event the attendee is waiting for shows Waitlisted with the position, never Register or Join", async () => {
+  loadOpenEvents.mockResolvedValue([entry({ remaining_places: 0, registration_status: "WAITLISTED", waitlist_position: 2 })]);
+  render(<BrowseEvents />);
+  const row = await rowFor("Harbour Tech Forum");
+
+  expect(within(row).getByText("Waitlisted")).toBeInTheDocument();
+  expect(within(row).getByText("Position 2 on the waiting list")).toBeInTheDocument();
+  expect(within(row).queryByRole("button", { name: /register|join waiting list/i })).not.toBeInTheDocument();
+});
+
+test("TC-705 H6 AC2 the details of an event being waited for give the status and position, and offer Withdraw", async () => {
+  loadOpenEvents.mockResolvedValue([entry({ remaining_places: 0, registration_status: "WAITLISTED", waitlist_position: 2 })]);
+  render(<BrowseEvents />);
+
+  await userEvent.click(within(await rowFor("Harbour Tech Forum")).getByRole("button", { name: "View details" }));
+  const details = await screen.findByRole("region", { name: "Harbour Tech Forum" });
+  expect(within(details).getByText("Waitlisted")).toBeInTheDocument();
+  expect(within(details).getByText("2")).toBeInTheDocument();
+  expect(within(details).getByRole("button", { name: "Withdraw" })).toBeInTheDocument();
+});
+
+test("TC-716 H6 leaving the waiting list from the details returns to the list, still Full, offering Join again", async () => {
+  loadOpenEvents.mockResolvedValue([entry({ remaining_places: 0, registration_status: "WAITLISTED", waitlist_position: 2 })]);
+  withdrawFromEvent.mockResolvedValue({ registration: { status: "WITHDRAWN" }, remaining_places: 0 });
+  const onNotice = jest.fn();
+  render(<BrowseEvents onNotice={onNotice} />);
+
+  await userEvent.click(within(await rowFor("Harbour Tech Forum")).getByRole("button", { name: "View details" }));
+  await userEvent.click(within(await screen.findByRole("region", { name: "Harbour Tech Forum" })).getByRole("button", { name: "Withdraw" }));
+  const dialog = screen.getByRole("dialog", { name: "Leave the waiting list for Harbour Tech Forum?" });
+  await userEvent.click(within(dialog).getByRole("button", { name: "Yes, withdraw" }));
+
+  await waitFor(() => expect(onNotice).toHaveBeenCalledWith("You have left the waiting list for Harbour Tech Forum."));
+  const row = await rowFor("Harbour Tech Forum");
+  expect(within(row).getByText("Full")).toBeInTheDocument();
+  expect(within(row).getByRole("button", { name: "Join waiting list" })).toBeInTheDocument();
+  expect(within(row).queryByText("Waitlisted")).not.toBeInTheDocument();
+});
+
+test("TC-706 H6 a place freed before joining is explained, and the list is reloaded so the row offers Register again", async () => {
+  loadOpenEvents.mockResolvedValueOnce([entry({ remaining_places: 0 })]).mockResolvedValueOnce([entry({ remaining_places: 1 })]);
+  joinWaitlist.mockRejectedValue(Object.assign(new Error("A place is free, so register instead."), { reason: "places_available" }));
+  render(<BrowseEvents />);
+  const row = await rowFor("Harbour Tech Forum");
+
+  await userEvent.click(within(row).getByRole("button", { name: "Join waiting list" }));
+  expect(await within(row).findByRole("alert")).toHaveTextContent("A place is free, so register instead.");
+  expect(await within(row).findByRole("button", { name: "Register" })).toBeInTheDocument();
+  expect(within(row).getByText("1 place left")).toBeInTheDocument();
+  expect(loadOpenEvents).toHaveBeenCalledTimes(2);
+});
+
+test("TC-707 H6 AC3 registering refused because the attendee is waiting marks the row Waitlisted", async () => {
+  loadOpenEvents.mockResolvedValue([entry()]);
+  registerForEvent.mockRejectedValue(Object.assign(new Error("You are on the waiting list for this event."), { reason: "waitlisted" }));
+  render(<BrowseEvents />);
+  const row = await rowFor("Harbour Tech Forum");
+
+  await userEvent.click(within(row).getByRole("button", { name: "Register" }));
+  expect(await within(row).findByRole("alert")).toHaveTextContent("You are on the waiting list for this event.");
+  expect(within(row).getByText("Waitlisted")).toBeInTheDocument();
+  expect(within(row).queryByRole("button", { name: "Register" })).not.toBeInTheDocument();
+});
+
+test("TC-708 H6 Join waiting list cannot be pressed twice while the first is on its way", async () => {
+  let finish;
+  loadOpenEvents.mockResolvedValue([entry({ remaining_places: 0 })]);
+  joinWaitlist.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+  render(<BrowseEvents />);
+  const row = await rowFor("Harbour Tech Forum");
+
+  await userEvent.click(within(row).getByRole("button", { name: "Join waiting list" }));
+  const busy = within(row).getByRole("button", { name: "Joining…" });
+  expect(busy).toBeDisabled();
+  await userEvent.click(busy);
+  expect(joinWaitlist).toHaveBeenCalledTimes(1);
+  await act(async () => finish(waitlistedReply()));
+  expect(within(row).getByText("Waitlisted")).toBeInTheDocument();
 });
