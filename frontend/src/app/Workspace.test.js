@@ -44,6 +44,9 @@ jest.mock('../features/equipment/EquipmentReservationsScreen', () => ({ __esModu
 // since registering confirms with a toast and opens the event's details, that the shell
 // handed it both the toast and the way back.
 jest.mock('../features/registrations/BrowseEvents', () => ({ __esModule: true, default: (props) => (props.onNotice && props.onBackChange ? 'open events list' : 'open events list without its handlers') }));
+// H4 — the attendee's own registrations report that they were opened, with the way back.
+// H5 — withdrawing confirms with a toast, so it is handed that too.
+jest.mock('../features/registrations/MyRegistrations', () => ({ __esModule: true, default: (props) => (props.onBackChange && props.onNotice ? 'my registrations list' : 'my registrations without its handlers') }));
 // J1 — the live inbox is stubbed so the badge can be driven by hand.
 jest.mock('../features/notifications/useNotifications', () => ({ __esModule: true, default: jest.fn() }));
 jest.mock('../features/venues/useVenueClashCount', () => ({ __esModule: true, default: jest.fn() }));
@@ -198,6 +201,8 @@ describe('TC-015 requesting a screen that belongs to another role', () => {
 
     expect(screen.getByRole('heading', { name: 'My registrations' })).toBeInTheDocument();
     expect(screen.queryByText(/not authorised/i)).not.toBeInTheDocument();
+    // H4 (TC-638) — the screen is the attendee's own list, handed the shell's way back.
+    expect(screen.getByText('my registrations list')).toBeInTheDocument();
   });
 });
 

@@ -14,7 +14,8 @@ import {
   REGISTERED_STATUS,
   registrationAttemptRefusal
 } from "../../../../frontend/src/domain/registrationWindow.mjs";
-import { openEventListing } from "../../../../frontend/src/domain/openRegistration.mjs";
+import { myRegistrationEntry, withdrawalRefusal } from "../../../../frontend/src/domain/myRegistrations.mjs";
+import { openEventListing, remainingPlaces } from "../../../../frontend/src/domain/openRegistration.mjs";
 
 class RegistrationRefused extends Error {
   constructor(statusCode, reason, message) {
@@ -87,5 +88,42 @@ export const createAttendeeRegistration = ({ firestore, serverTimestamp, now = (
     };
   });
 
-  return { register };
+  // H5 / SCRUM-143 — the attendee's Registered place becomes Withdrawn, which gives it back to
+  // the event at once (AC4): H3 counts only REGISTERED. Refused, with nothing written, unless
+  // they hold a Registered place on an event that has not started (AC6). The waiting list is
+  // left alone; inviting the next person is H7's.
+  const withdraw = ({ eventId, attendeeId }) => firestore.runTransaction(async (transaction) => {
+    const at = now();
+    const registrations = firestore.collection("registrations");
+    const own = registrations.doc(registrationIdFor(eventId, attendeeId));
+
+    const [eventSnapshot, ownSnapshot, attendeeSnapshot, registeredSnapshot] = await Promise.all([
+      transaction.get(firestore.collection("events").doc(eventId)),
+      transaction.get(own),
+      // A registration made under an older record id (the mock data's) is withdrawn in place.
+      transaction.get(registrations.where("event_id", "==", eventId).where("attendee_id", "==", attendeeId)),
+      transaction.get(registrations.where("event_id", "==", eventId).where("status", "==", REGISTERED_STATUS))
+    ]);
+
+    const event = eventSnapshot.exists ? { id: eventId, ...eventSnapshot.data() } : null;
+    const held = ownSnapshot.exists && ownSnapshot.data().status === REGISTERED_STATUS
+      ? { ref: own, id: own.id, data: ownSnapshot.data() }
+      : attendeeSnapshot.docs
+        .filter((item) => item.data().status === REGISTERED_STATUS)
+        .map((item) => ({ ref: registrations.doc(item.id), id: item.id, data: item.data() }))[0] || null;
+
+    const refusal = withdrawalRefusal(held?.data, event, at);
+    if (refusal) throw new RegistrationRefused(refusal.reason === "not_found" ? 404 : 409, refusal.reason, refusal.message);
+
+    transaction.update(held.ref, { status: "WITHDRAWN", withdrawn_at: serverTimestamp() });
+
+    const taken = registeredSnapshot.docs.filter((item) => item.data().status === REGISTERED_STATUS).length;
+    const withdrawn = { ...held.data, id: held.id, status: "WITHDRAWN", withdrawn_at: at };
+    return {
+      registration: myRegistrationEntry(withdrawn, event, { now: at }),
+      remaining_places: remainingPlaces(event.registration_capacity, taken - 1)
+    };
+  });
+
+  return { register, withdraw };
 };

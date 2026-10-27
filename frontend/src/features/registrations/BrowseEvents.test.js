@@ -4,9 +4,9 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import BrowseEvents from "./BrowseEvents";
-import { loadOpenEvents, registerForEvent } from "./registrationsApi";
+import { loadOpenEvents, registerForEvent, withdrawFromEvent } from "./registrationsApi";
 
-jest.mock("./registrationsApi", () => ({ loadOpenEvents: jest.fn(), registerForEvent: jest.fn() }));
+jest.mock("./registrationsApi", () => ({ loadOpenEvents: jest.fn(), registerForEvent: jest.fn(), withdrawFromEvent: jest.fn() }));
 
 const entry = (changes = {}) => ({
   id: "e1",
@@ -229,4 +229,48 @@ test("TC-605 a failure the service did not explain still tells the attendee, and
   await userEvent.click(within(row).getByRole("button", { name: "Register" }));
   expect(await within(row).findByRole("alert")).toHaveTextContent("You could not be registered. Try again.");
   expect(within(row).getByRole("button", { name: "Register" })).toBeEnabled();
+});
+
+// ---- H5 / SCRUM-143 — withdrawing from an event's details on Browse events -------
+
+test("TC-672 H5 AC2 AC3 the details of an event registered for offer Withdraw; withdrawing returns to the list with Register again", async () => {
+  loadOpenEvents.mockResolvedValue([entry({ registration_status: "REGISTERED", remaining_places: 109 })]);
+  withdrawFromEvent.mockResolvedValue({ registration: { status: "WITHDRAWN" }, remaining_places: 110 });
+  const onNotice = jest.fn();
+  render(<BrowseEvents onNotice={onNotice} />);
+
+  await userEvent.click(within(await rowFor("Harbour Tech Forum")).getByRole("button", { name: "View details" }));
+  const details = await screen.findByRole("region", { name: "Harbour Tech Forum" });
+  await userEvent.click(within(details).getByRole("button", { name: "Withdraw" }));
+  const dialog = screen.getByRole("dialog", { name: "Withdraw from Harbour Tech Forum?" });
+  await userEvent.click(within(dialog).getByRole("button", { name: "Yes, withdraw" }));
+
+  expect(withdrawFromEvent).toHaveBeenCalledWith("e1");
+  await waitFor(() => expect(onNotice).toHaveBeenCalledWith("You have withdrawn from Harbour Tech Forum."));
+  const row = await rowFor("Harbour Tech Forum");
+  expect(within(row).getByRole("button", { name: "Register" })).toBeInTheDocument();
+  expect(within(row).queryByText("Registered")).not.toBeInTheDocument();
+  expect(within(row).getByText("110 places left")).toBeInTheDocument();
+});
+
+test("TC-672 H5 AC6 a refused withdrawal from the details is explained and changes nothing", async () => {
+  loadOpenEvents.mockResolvedValue([entry({ registration_status: "REGISTERED" })]);
+  withdrawFromEvent.mockRejectedValue(Object.assign(new Error("This event has already started."), { reason: "event_started" }));
+  const onNotice = jest.fn();
+  render(<BrowseEvents onNotice={onNotice} />);
+
+  await userEvent.click(within(await rowFor("Harbour Tech Forum")).getByRole("button", { name: "View details" }));
+  await userEvent.click(within(await screen.findByRole("region", { name: "Harbour Tech Forum" })).getByRole("button", { name: "Withdraw" }));
+  await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Yes, withdraw" }));
+
+  expect(await within(screen.getByRole("dialog")).findByRole("alert")).toHaveTextContent("This event has already started.");
+  await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
+  expect(within(screen.getByRole("region", { name: "Harbour Tech Forum" })).queryByRole("button", { name: "Withdraw" })).not.toBeInTheDocument();
+  expect(onNotice).not.toHaveBeenCalled();
+});
+
+test("TC-673 rows on Browse events share fixed columns, so venue and places line up", async () => {
+  loadOpenEvents.mockResolvedValue([entry()]);
+  render(<BrowseEvents />);
+  expect(await rowFor("Harbour Tech Forum")).toHaveClass("cs-record", "cs-browse-record");
 });

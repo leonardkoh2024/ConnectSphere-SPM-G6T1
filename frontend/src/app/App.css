@@ -1556,6 +1556,47 @@ a.cs-btn-ghost:hover {
 .cs-browse-details h2 { margin: 0 0 4px; font-size: 18px; }
 .cs-browse-details .cs-record-title p { margin: 0; color: var(--cs-muted); font-size: 14px; }
 
+/* H5 — My registrations in two groups: Upcoming, then past, withdrawn and cancelled. Rows
+   in a group take an h3, styled as a record's h2. */
+.cs-registration-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+  margin-bottom: 24px;
+}
+
+.cs-registration-filters .cs-field { min-width: 200px; }
+.cs-registration-filters input[type="search"] { min-width: 260px; }
+
+.cs-registration-group { display: grid; gap: 12px; }
+.cs-registration-group + .cs-registration-group { margin-top: 28px; }
+.cs-registration-group > h2 { margin: 0; color: var(--cs-muted); font-size: 14px; font-weight: 600; }
+.cs-record h3 { margin: 0 0 2px; font-size: 16px; }
+
+/* The attendee lists use fixed columns, so venue, status and buttons line up from row to row
+   however long a title or venue is. Venue names wrap rather than push the row wider. */
+.cs-registration-record { grid-template-columns: minmax(0, 1fr) 220px 120px 220px; }
+.cs-browse-record { grid-template-columns: minmax(0, 1fr) 200px 130px 190px 150px; }
+.cs-registration-record .cs-record-ref,
+.cs-browse-record .cs-record-ref { white-space: normal; }
+.cs-registration-record .cs-record-actions { justify-content: flex-start; }
+
+.cs-browse-details-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cs-browse-details-actions { display: flex; flex-shrink: 0; gap: 8px; }
+
+@media (max-width: 900px) {
+  .cs-registration-record,
+  .cs-browse-record { grid-template-columns: minmax(0, 1fr); }
+  .cs-browse-details-head { flex-direction: column; }
+}
+
 /* Venue catalogue rows can contain user-managed names, locations and many
    facilities. Keep each column bounded so one verbose venue cannot distort the
    entire list; the full values remain available through their title text and
@@ -1664,6 +1705,9 @@ a.cs-btn-ghost:hover {
   align-items: stretch;
   min-width: 132px;
 }
+
+/* A status pill stretched to the column's width keeps its word centred over the buttons. */
+.cs-record-actions-stacked > .cs-pill { justify-content: center; }
 
 .cs-record-danger { color: var(--cs-danger); }
 .cs-record-danger:hover:enabled { border-color: var(--cs-danger); background: var(--cs-danger-faded); }

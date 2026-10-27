@@ -3,6 +3,7 @@ import express from "express";
 import { isOpenForRegistration, listOpenEvents } from "../../../../frontend/src/domain/openRegistration.mjs";
 import { getApprovedEventBookings as readApprovedEventBookings, getApprovedEventVenueNames } from "../venue/approvedEventBookings.js";
 import { createRegistrationList } from "./attendeeList.js";
+import { createMyRegistrations } from "./myRegistrations.js";
 import { createAttendeeRegistration } from "./register.js";
 import { createRegistrationSettings } from "./settings.js";
 
@@ -26,6 +27,9 @@ import { createRegistrationSettings } from "./settings.js";
 //
 // H3 / SCRUM-141 — an attendee registers here, in one transaction that checks the window,
 // the places left and any registration they already hold. No browser can create one.
+//
+// H4 / SCRUM-142 — an attendee's own registrations, with their status and each event's
+// public details. Only the caller's records are queried.
 export function createRegistrationService({
   firestore,
   verifyIdToken,
@@ -39,6 +43,7 @@ export function createRegistrationService({
   const settings = createRegistrationSettings({ firestore, serverTimestamp, getApprovedEventBookings, now });
   const attendeeList = createRegistrationList({ firestore });
   const attendeeRegistration = createAttendeeRegistration({ firestore, serverTimestamp, now });
+  const myRegistrations = createMyRegistrations({ firestore, venueNamesFor, now });
 
   // Signs the caller in and checks their profile holds `role`; otherwise answers the
   // request itself (401 or 403 with `forbidden`) and returns null.
@@ -140,6 +145,38 @@ export function createRegistrationService({
     } catch (error) {
       if (error.statusCode) response.status(error.statusCode).json({ error: error.message, reason: error.reason });
       else next(error);
+    }
+  });
+
+  // H5 — withdraw the signed-in attendee from one event. A refusal (not registered, the event
+  // has started or ended) is answered with its reason.
+  router.post("/events/:eventId/withdraw", async (request, response, next) => {
+    let user;
+    try {
+      user = await authenticateAttendee(request, response, "Only attendees can withdraw from events.");
+    } catch (error) {
+      next(error);
+      return;
+    }
+    if (!user) return;
+
+    try {
+      const result = await attendeeRegistration.withdraw({ eventId: request.params.eventId, attendeeId: user.uid });
+      const venueNames = await venueNamesFor(request.params.eventId);
+      response.json({ ...result, registration: { ...result.registration, venue_names: venueNames } });
+    } catch (error) {
+      if (error.statusCode) response.status(error.statusCode).json({ error: error.message, reason: error.reason });
+      else next(error);
+    }
+  });
+
+  router.get("/mine", async (request, response, next) => {
+    try {
+      const user = await authenticateAttendee(request, response, "Only attendees can see their registrations.");
+      if (!user) return;
+      response.json(await myRegistrations.load({ attendeeId: user.uid }));
+    } catch (error) {
+      next(error);
     }
   });
 
