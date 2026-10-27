@@ -40,14 +40,16 @@ const toService = (form) => ({
   registration_close_time: form.registrationCloseTime
 });
 
-const callService = async (eventId, method, body) => {
+// One signed request to the registration service. `path` is what follows the event id
+// ("settings", "attendees"); `fallback` words the refusal when the service gives no message.
+const callService = async (eventId, path, method, body, fallback) => {
   const user = auth.currentUser;
   if (!user) throw new Error("Please sign in again.");
   const token = await user.getIdToken();
   let response;
   let result;
   try {
-    response = await fetch(`/api/registrations/events/${encodeURIComponent(eventId)}/settings`, {
+    response = await fetch(`/api/registrations/events/${encodeURIComponent(eventId)}/${path}`, {
       method,
       headers: {
         "Content-Type": "application/json",
@@ -60,12 +62,34 @@ const callService = async (eventId, method, body) => {
     throw new Error(SERVICE_UNREACHABLE);
   }
   if (!response.ok) {
-    throw Object.assign(new Error(result?.error || "The registration settings could not be saved."), { fields: result?.fields });
+    throw Object.assign(new Error(result?.error || fallback), { fields: result?.fields });
   }
-  return toScreen(result);
+  return result;
 };
 
+const SAVE_FAILED = "The registration settings could not be saved.";
+
+// H8 / SCRUM-146 — the organiser's list: the people registered (name, contact details, time)
+// and the registered / waitlisted / withdrawn counts. Waitlisted and withdrawn people are
+// counts only; the service sends no one else.
+const toList = (result) => ({
+  counts: {
+    registered: result.counts?.registered ?? 0,
+    waitlisted: result.counts?.waitlisted ?? 0,
+    withdrawn: result.counts?.withdrawn ?? 0
+  },
+  attendees: (result.attendees || []).map((item) => ({
+    id: item.registration_id,
+    attendeeId: item.attendee_id,
+    name: item.name ?? null,
+    email: item.email ?? null,
+    mobileNumber: item.mobile_number ?? null,
+    registeredAt: item.registered_at ?? null
+  }))
+});
+
 export const registrationApi = {
-  load: (eventId) => callService(eventId, "GET"),
-  save: (eventId, form) => callService(eventId, "PUT", toService(form))
+  load: async (eventId) => toScreen(await callService(eventId, "settings", "GET", undefined, SAVE_FAILED)),
+  save: async (eventId, form) => toScreen(await callService(eventId, "settings", "PUT", toService(form), SAVE_FAILED)),
+  loadAttendees: async (eventId) => toList(await callService(eventId, "attendees", "GET", undefined, "The registration list could not be loaded."))
 };

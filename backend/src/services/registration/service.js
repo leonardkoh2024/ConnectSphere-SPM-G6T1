@@ -2,6 +2,7 @@ import express from "express";
 
 import { isOpenForRegistration, listOpenEvents } from "../../../../frontend/src/domain/openRegistration.mjs";
 import { getApprovedEventBookings as readApprovedEventBookings, getApprovedEventVenueNames } from "../venue/approvedEventBookings.js";
+import { createRegistrationList } from "./attendeeList.js";
 import { createRegistrationSettings } from "./settings.js";
 
 // The registration service owns `registrations` (and, with H6, the waiting list).
@@ -17,6 +18,10 @@ import { createRegistrationSettings } from "./settings.js";
 // are saved here too, in one transaction that also reads the approved venue bookings
 // and the registered count. Each feature has its own role check; neither can reach
 // the other's routes.
+//
+// H8 / SCRUM-146 — the organiser's list of who has registered (names, contact details, times,
+// and the registered / waitlisted / withdrawn counts) is built here, for the organiser of the
+// event only: an organiser has no browser read of registrations or attendee profiles.
 export function createRegistrationService({
   firestore,
   verifyIdToken,
@@ -28,6 +33,7 @@ export function createRegistrationService({
 }) {
   const router = express.Router();
   const settings = createRegistrationSettings({ firestore, serverTimestamp, getApprovedEventBookings, now });
+  const attendeeList = createRegistrationList({ firestore });
 
   // Signs the caller in and checks their profile holds `role`; otherwise answers the
   // request itself (401 or 403 with `forbidden`) and returns null.
@@ -113,6 +119,8 @@ export function createRegistrationService({
 
   router.get("/events/:eventId/settings", answerOrganiser(({ eventId, userId }) => settings.load({ eventId, userId })));
   router.put("/events/:eventId/settings", answerOrganiser(({ eventId, userId, body }) => settings.save({ eventId, userId, settings: body || {} })));
+
+  router.get("/events/:eventId/attendees", answerOrganiser(({ eventId, userId }) => attendeeList.load({ eventId, userId })));
 
   return router;
 }
