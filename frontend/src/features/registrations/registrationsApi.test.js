@@ -2,7 +2,7 @@
 // open events; it never reads the events collection itself (AC3).
 
 import { auth } from "../../lib/firebase";
-import { loadOpenEvents } from "./registrationsApi";
+import { loadOpenEvents, registerForEvent } from "./registrationsApi";
 
 jest.mock("../../lib/firebase", () => ({
   auth: { currentUser: { uid: "attendee-1", getIdToken: jest.fn() } },
@@ -44,4 +44,34 @@ test("TC-565 a signed-out browser is not sent to the service", async () => {
   auth.currentUser = null;
   await expect(loadOpenEvents()).rejects.toThrow(/sign in/i);
   expect(global.fetch).not.toHaveBeenCalled();
+});
+
+// H3 / SCRUM-141 — registering is a call to the registration service too: the browser
+// has no create on `registrations`, so the place is counted and taken on the server.
+
+test("TC-595 registering posts to the event's register route with the attendee's ID token", async () => {
+  const reply201 = { registration: { registration_id: "e1_attendee-1", status: "REGISTERED" }, event: { id: "e1", remaining_places: 3 } };
+  global.fetch.mockResolvedValue(reply(201, reply201));
+
+  await expect(registerForEvent("e1")).resolves.toEqual(reply201);
+  expect(global.fetch).toHaveBeenCalledWith("/api/registrations/events/e1/register", {
+    method: "POST",
+    headers: { Authorization: "Bearer id-token" }
+  });
+});
+
+test("TC-595 an event id is escaped into the path", async () => {
+  global.fetch.mockResolvedValue(reply(201, { registration: {}, event: {} }));
+  await registerForEvent("a/b");
+  expect(global.fetch.mock.calls[0][0]).toBe("/api/registrations/events/a%2Fb/register");
+});
+
+test("TC-596 a refusal keeps the service's message and its reason", async () => {
+  global.fetch.mockResolvedValue(reply(409, { error: "This event is full.", reason: "full" }));
+  await expect(registerForEvent("e1")).rejects.toMatchObject({ message: "This event is full.", reason: "full" });
+});
+
+test("TC-596 a backend that is not running is named as the problem when registering too", async () => {
+  global.fetch.mockRejectedValue(new TypeError("Failed to fetch"));
+  await expect(registerForEvent("e1")).rejects.toThrow(/registration service is not responding/i);
 });

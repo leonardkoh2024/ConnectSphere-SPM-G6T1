@@ -40,8 +40,10 @@ jest.mock('../features/equipment/EquipmentQueueScreen', () => ({ __esModule: tru
 // G2 / G3 — Technical Support's catalogue and reservation list report only that they were opened.
 jest.mock('../features/equipment/EquipmentCatalogueScreen', () => ({ __esModule: true, default: () => 'equipment catalogue' }));
 jest.mock('../features/equipment/EquipmentReservationsScreen', () => ({ __esModule: true, default: () => 'equipment reservations' }));
-// H2 — the attendee's list of open events reports only that it was opened.
-jest.mock('../features/registrations/BrowseEvents', () => ({ __esModule: true, default: () => 'open events list' }));
+// H2 — the attendee's list of open events reports only that it was opened. H3 — and,
+// since registering confirms with a toast and opens the event's details, that the shell
+// handed it both the toast and the way back.
+jest.mock('../features/registrations/BrowseEvents', () => ({ __esModule: true, default: (props) => (props.onNotice && props.onBackChange ? 'open events list' : 'open events list without its handlers') }));
 // J1 — the live inbox is stubbed so the badge can be driven by hand.
 jest.mock('../features/notifications/useNotifications', () => ({ __esModule: true, default: jest.fn() }));
 jest.mock('../features/venues/useVenueClashCount', () => ({ __esModule: true, default: jest.fn() }));

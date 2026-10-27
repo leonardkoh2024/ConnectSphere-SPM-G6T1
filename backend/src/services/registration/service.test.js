@@ -139,7 +139,8 @@ test("TC-558 each entry names its approved venues and counts only Registered pla
     venue_names: ["Harbour Hall"],
     capacity: 3,
     remaining_places: 1,
-    registration_closes_at: "2026-11-10T09:00:00.000Z"
+    registration_closes_at: "2026-11-10T09:00:00.000Z",
+    registration_status: null
   });
   assert.deepEqual(multi.venue_names, ["Harbour Hall", "Pier Room"]);
   assert.equal(multi.remaining_places, 2);
