@@ -75,6 +75,12 @@ attendee. One Admin transaction reads the event, checks the window, status and f
 refusal answers 409 with a `reason` (`closed`, `not_open_yet`, `status`, `not_enabled`, `no_capacity`, `full`,
 `already_registered`), or 404 `not_found`. See `src/services/registration/register.js`.
 
+H4 (SCRUM-142) adds `GET /api/registrations/mine` (Attendee ID token required): the caller's own registrations,
+queried by `attendee_id` only, each with its event's name, description, date, window, approved venues and the
+status shown. A registration on a cancelled event reads `CANCELLED`, since D4 cancels the event without
+touching its registrations; the event's cancellation reason and internal fields are not sent. The rules live
+in `frontend/src/domain/myRegistrations.mjs`. See `src/services/registration/myRegistrations.js`.
+
 **Scoped exception — `venue` writes `event_history` and `notifications`.** F5 rejection commits the
 booking decision, audit entry and notification together. The venue endpoint uses Admin Firestore for
 this transaction so the outcome cannot be partially applied by a browser write.

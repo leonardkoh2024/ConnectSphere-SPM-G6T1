@@ -7,35 +7,11 @@
 // decided by the service in one transaction; this screen shows its answer.
 
 import React, { useCallback, useEffect, useState } from "react";
-import Icon from "../../app/Icon";
 import RecordLead from "../../components/RecordLead";
 import { placesLabel, venueLabel } from "../../domain/openRegistration";
+import EventDetails from "./components/EventDetails";
+import { eventDay, singaporeDateTime, timeWindow } from "./format";
 import { loadOpenEvents, registerForEvent } from "./registrationsApi";
-
-const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const SINGAPORE_OFFSET_MS = 8 * 60 * 60 * 1000;
-const pad = (value) => String(value).padStart(2, "0");
-
-// `event_date` is a YYYY-MM-DD calendar date, so it is read as one rather than
-// through the browser's time zone.
-const eventDay = (value) => {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
-  if (!match) return "Date not set";
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
-  return `${DAYS[date.getUTCDay()]}, ${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
-};
-
-// The closing instant comes back in UTC; attendees read it in Singapore time.
-const singaporeDateTime = (iso) => {
-  const parsed = new Date(iso || "");
-  if (Number.isNaN(parsed.getTime())) return null;
-  const local = new Date(parsed.getTime() + SINGAPORE_OFFSET_MS);
-  return `${local.getUTCDate()} ${MONTHS[local.getUTCMonth()]} ${local.getUTCFullYear()}, ${pad(local.getUTCHours())}:${pad(local.getUTCMinutes())}`;
-};
-
-const timeWindow = (entry) =>
-  entry.start_time && entry.end_time ? `${entry.start_time} – ${entry.end_time}` : "Time not set";
 
 const placesTone = (remaining) => (remaining <= 0 ? "danger" : remaining <= 10 ? "warning" : "positive");
 
@@ -43,35 +19,6 @@ const REGISTERED = "REGISTERED";
 const REGISTER_FAILED = "You could not be registered. Try again.";
 // Refusals after which pressing Register again cannot succeed, so it is withdrawn.
 const FINAL_REFUSALS = ["closed", "not_open_yet", "status", "not_enabled", "no_capacity", "not_found"];
-
-// AC4 — the event an attendee has registered for, with the confirmation when they have
-// just done so.
-function EventDetails({ entry, registeredAt, justRegistered, onClose }) {
-  const closes = singaporeDateTime(entry.registration_closes_at);
-  const registered = registeredAt ? singaporeDateTime(registeredAt) : null;
-  return (
-    <section className="cs-browse-details" aria-label={entry.name || "Untitled event"}>
-      {onClose && <button type="button" className="cs-btn cs-btn-ghost cs-back" onClick={onClose}><Icon name="chevron-left" />Back to browse events</button>}
-      {justRegistered && <p className="cs-success" role="status">You are registered for this event.</p>}
-      <div className="cs-record-title">
-        <RecordLead date={entry.event_date} />
-        <div>
-          <h2>{entry.name || "Untitled event"}</h2>
-          {entry.description && <p>{entry.description}</p>}
-        </div>
-      </div>
-      <dl className="cs-detail-grid">
-        <div><dt>Date</dt><dd>{eventDay(entry.event_date)}</dd></div>
-        <div><dt>Time</dt><dd>{timeWindow(entry)}</dd></div>
-        <div className="cs-detail-wide"><dt>Venue</dt><dd>{venueLabel(entry.venue_names)}</dd></div>
-        <div><dt>Places</dt><dd>{placesLabel(entry.remaining_places)}</dd></div>
-        {closes && <div><dt>Registration closes</dt><dd>{closes}</dd></div>}
-        <div><dt>Your registration</dt><dd>Registered</dd></div>
-        {registered && <div><dt>Registered on</dt><dd>{registered}</dd></div>}
-      </dl>
-    </section>
-  );
-}
 
 export default function BrowseEvents({ onNotice, onBackChange }) {
   const [events, setEvents] = useState([]);
@@ -128,7 +75,23 @@ export default function BrowseEvents({ onNotice, onBackChange }) {
 
   const open = details && events.find((entry) => entry.id === details.id);
   if (open) {
-    return <EventDetails entry={open} registeredAt={details.registeredAt} justRegistered={details.justRegistered} onClose={onBackChange ? null : closeDetails} />;
+    // AC4 — the event registered for, with the confirmation when it has just happened.
+    const closes = singaporeDateTime(open.registration_closes_at);
+    const registeredOn = singaporeDateTime(details.registeredAt);
+    return (
+      <EventDetails
+        entry={open}
+        notice={details.justRegistered ? <p className="cs-success" role="status">You are registered for this event.</p> : null}
+        facts={[
+          ["Places", placesLabel(open.remaining_places)],
+          closes && ["Registration closes", closes],
+          ["Your registration", "Registered"],
+          registeredOn && ["Registered on", registeredOn]
+        ]}
+        backLabel="browse events"
+        onClose={onBackChange ? null : closeDetails}
+      />
+    );
   }
 
   return (
