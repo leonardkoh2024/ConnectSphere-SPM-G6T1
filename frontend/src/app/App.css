@@ -1542,6 +1542,20 @@ a.cs-btn-ghost:hover {
   overflow: hidden;
 }
 
+/* H3 — an event's details after registering, laid out as one card like a record row. */
+.cs-browse-details {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--cs-line);
+  border-radius: var(--cs-radius);
+  background: var(--cs-surface);
+  box-shadow: var(--cs-elevation-card);
+}
+
+.cs-browse-details h2 { margin: 0 0 4px; font-size: 18px; }
+.cs-browse-details .cs-record-title p { margin: 0; color: var(--cs-muted); font-size: 14px; }
+
 /* Venue catalogue rows can contain user-managed names, locations and many
    facilities. Keep each column bounded so one verbose venue cannot distort the
    entire list; the full values remain available through their title text and

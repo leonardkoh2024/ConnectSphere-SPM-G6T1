@@ -251,16 +251,13 @@ describe('D2 significant event details require an acknowledged audit record', ()
     expect(matchBlock('event_history')).toContain('request.resource.data.warning_acknowledged == true');
   });
 
-  test('registrations are readable only by the current coordinator; the only write is the H1 attendee create', () => {
+  test('registrations are readable only by the current coordinator, and no browser writes them', () => {
     const block = matchBlock('registrations');
     expect(block).toContain("hasRole('EVENT_COORDINATOR') && currentCoordinator(resource.data.event_id)");
     // D2 still never edits or removes registrations, and nobody gets a blanket write.
     expect(block).not.toMatch(/allow\s+(update|delete|write)/);
-    // H1 (SCRUM-139) added one create clause: an attendee, for themselves, inside the open window.
-    const creates = block.match(/allow\s+create/g) || [];
-    expect(creates).toHaveLength(1);
-    expect(block).toMatch(/allow create:[^;]*hasRole\('ATTENDEE'\)[^;]*registrationWindowOpen\(/);
-    expect(block).not.toMatch(/allow create:[^;]*EVENT_COORDINATOR/);
+    // H3 (SCRUM-141) registers through the registration service, so no browser creates one.
+    expect(block).not.toMatch(/allow\s+[a-z,\s]*create/);
   });
 });
 
@@ -1033,14 +1030,12 @@ describe('I3 SCRUM-149 re-request marks and notices come only from the arrangeme
 //     Review with a clarification open);
 //   - keep the booking and venue records closed to organisers, so the service is the only
 //     route to the ceiling;
-//   - AC4: refuse a registration outside the open window, by the SERVER's clock.
+//   - AC4: give no browser a way to create a registration at all. H3 (SCRUM-141) registers
+//     through the registration service, which refuses one outside the open window by the
+//     server's clock (backend register.test.js, TC-583 – TC-588), because a rule cannot
+//     count places or see a duplicate.
 describe('H1 SCRUM-139 registration capacity and window are set through the service, and the window is enforced', () => {
   const flat = RULES.replace(/\/\/[^\n]*/g, '').replace(/\s+/g, ' ');
-  const windowFunction = () => {
-    const found = flat.match(/function registrationWindowOpen\(eventId\) \{ (.*?) \}(?= function| allow| match|$)/);
-    if (!found) throw new Error('registrationWindowOpen(eventId) is not defined in firestore.rules');
-    return found[1];
-  };
 
   test('H1-RT1 AC2 the instants the window is judged on are written by the service alone: no event update clause names them', () => {
     const events = flat.slice(flat.indexOf('match /events/'), flat.indexOf('match /event_venue_requirements/'));
@@ -1071,38 +1066,17 @@ describe('H1 SCRUM-139 registration capacity and window are set through the serv
     expect(venuesRead).not.toContain('EVENT_ORGANISER');
   });
 
-  test('H1-RT4 AC4 a registration can be created only through registrationWindowOpen, for the event it names', () => {
-    const create = matchBlock('registrations').match(/allow create:\s*if([^;]*);/);
-    expect(create).not.toBeNull();
-    expect(create[1]).toContain("hasRole('ATTENDEE')");
-    expect(create[1]).toContain('registrationWindowOpen(request.resource.data.event_id)');
+  test('H1-RT4 AC4 no browser can create, change or remove a registration: the service is the only way in', () => {
+    const block = matchBlock('registrations');
+    expect(block).not.toMatch(/allow\s+[a-z,\s]*(create|update|delete|write)/);
   });
 
-  test('H1-RT5 AC4 the window is open only for a flagged event in Approved or later, from the open instant until the close instant', () => {
-    const body = windowFunction();
-    expect(body).toContain("registration_required == true");
-    expect(body).toContain("['APPROVED', 'PLANNING', 'SAFETY_REVIEW', 'CONFIRMED']");
-    expect(body).toContain('request.time >=');
-    expect(body).toContain('registration_opens_at');
-    expect(body).toContain('request.time <');
-    expect(body).toContain('registration_closes_at');
+  test('H1-RT5 AC4 no clause on registrations names the Attendee role', () => {
+    expect(matchBlock('registrations')).not.toContain(ROLES.ATTENDEE);
   });
 
-  test('H1-RT6 AC4 the clock is the server\'s: the window is never judged on a time the client sends', () => {
-    const body = windowFunction();
-    expect(body).toContain('request.time');
-    expect(body).not.toMatch(/request\.resource\.data\.(registered_at|created_at|submitted_at|time|timestamp)/);
-    // The event record is read from the database, not taken from the request.
-    expect(body).toContain('get(/databases/$(database)/documents/events/$(eventId))');
-  });
-
-  test('H1-RT7 AC4 an event with no window written yet is never open: a missing instant refuses the registration', () => {
-    const body = windowFunction();
-    expect(body).toMatch(/registration_opens_at.*registration_closes_at|registration_closes_at.*registration_opens_at/);
-    // get(..., null) style defaults would let a missing field read as "no limit"; the
-    // instants must be compared as present timestamps.
-    expect(body).toMatch(/registration_opens_at is timestamp|get\('registration_opens_at', null\) is timestamp/);
-    expect(body).toMatch(/registration_closes_at is timestamp|get\('registration_closes_at', null\) is timestamp/);
+  test('H1-RT6 AC4 the browser-side window rule is gone, so nothing can rely on it instead of the service', () => {
+    expect(flat).not.toContain('registrationWindowOpen');
   });
 });
 

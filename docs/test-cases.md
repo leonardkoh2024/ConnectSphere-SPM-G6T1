@@ -42,6 +42,7 @@ they can be read next to the acceptance criteria and move into the service layer
 | F15 | SCRUM-180 | Place a tentative hold on a venue | TC-512 – TC-536 |
 | J4 | SCRUM-153 | Be told when work arrives for me (Venue Staff see which event) | TC-537 – TC-540 |
 | H2 | SCRUM-140 | Find events I can register for | TC-541 – TC-572 |
+| H3 | SCRUM-141 | Register for an event | TC-573 – TC-605 |
 | E4 | SCRUM-120 | See when a venue is free | TC-200 – TC-249 |
 | J6 | SCRUM-155 | Be told the outcome of my booking and equipment requests (AC1: approval and rejection) | TC-313 – TC-346 |
 | A7 | SCRUM-170 | Use ConnectSphere as a Safety Officer | TC-348 – TC-385, TC-388 |
@@ -1284,3 +1285,63 @@ An approved request used to vanish from the Venue Staff Booking requests screen,
 | TC-570 | Loading and failure are shown | Pending, then rejected load | Open Browse events | "Loading events…"; failure in an alert, no empty-list message | As expected | Pass | Guard |
 | TC-571 | An attendee lands on Browse events; no other role reaches it | Attendee; organiser with the attendee hash | Render the workspace | List shown to the attendee; organiser told "not authorised" | As expected | Pass | AC3 |
 | TC-572 | Attendees get no browser read of events or registrations | — | Read the events and registrations rules | Neither names ATTENDEE; registrations not open to any signed-in user | As expected | Pass | AC3 - server side |
+
+## H3 / SCRUM-141 — Register for an event
+
+**Scope:** on **Browse events**, an Attendee can **Register** for an open event with a place free. The registration service (`POST /api/registrations/events/{eventId}/register`) does everything in one Admin transaction: it checks the registration flag, the status (Approved, Planning, Safety Review or Confirmed) and the window by the server's clock, refuses a second registration by the same attendee, counts the `REGISTERED` places and writes `registrations/{eventId}_{attendeeId}` with the attendee in `attendee_id`. The attendee is then shown a confirmation and the event's details. A full event shows "This event is full." with no Register, and an event already registered for shows **Registered** with **View details**.
+
+No browser can create a registration any more. H1 had added a window-gated attendee create to `firestore.rules`, but a rule cannot count places or detect a duplicate, so that clause and `registrationWindowOpen` are removed (agreed with the H1 owner). H1 AC4 (a registration outside the window is refused) is now covered by the service tests TC-583 – TC-588. H1-RT4 – H1-RT7 in `firestoreRules.test.js` became H1-RT4 – H1-RT6 below, and the D2 registrations test now asserts there is no create.
+
+**AC coverage:** AC1 (open events listed) — H2's TC-541 – TC-572. AC2 (register when a place is free) — TC-573, TC-591, TC-595, TC-597. AC3 (confirmation) — TC-578, TC-591, TC-598. AC4 (event details after registering) — TC-578, TC-599, TC-600. AC5 (full) — TC-579, TC-601, TC-602. AC6 (closed window) — TC-583, TC-585, TC-603. AC7 (capacity goes down) — TC-575, TC-576, TC-599. AC8 (no duplicate) — TC-580 – TC-582, TC-594, TC-600, TC-604, TC-605, H1-RT4. H1 AC4 — TC-583 – TC-588.
+
+**Service test cases — `backend/src/services/registration/register.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-573 | An attendee registers for an open event with a place free | Confirmed event, window open, capacity 3, none registered | register | registrations/e1_attendee-1 written: event_id, attendee_id, REGISTERED, server registered_at; reply confirms | As expected | Pass | AC2 |
+| TC-574 | One record per attendee and event | — | registrationIdFor | `{eventId}_{attendeeId}`; differs per event | As expected | Pass | AC8 |
+| TC-575 | Each registration reduces the places left by one | Capacity 3 | Register three attendees | 2, 1, 0 places left | As expected | Pass | AC7 |
+| TC-576 | Only Registered places count | Registered, withdrawn, waitlisted, cancelled and another event's registrations | register | 1 place left of 3 | As expected | Pass | AC7 |
+| TC-577 | Count, duplicate check and write are one transaction | — | register | One transaction reads the event, the attendee's record and the Registered count | As expected | Pass | AC5, AC7, AC8 |
+| TC-578 | The reply confirms and carries the event's public details | — | register | Registration id, status, time; event name, description, date, window, places; no internal fields | As expected | Pass | AC3, AC4 |
+| TC-579 | A full event is refused; the last place goes to the first | 3 of 3 registered; then 2 of 3 and two attempts | register | 409 full, nothing written; first succeeds, second refused full | As expected | Pass | AC5 |
+| TC-580 | An attendee already registered is refused | Same attendee twice; a registration under an older record id | register | 409 already_registered, nothing more written | As expected | Pass | AC8 |
+| TC-581 | A duplicate is reported as such even when the event is also full | Attendee holds one of 3 taken places | register | 409 already_registered | As expected | Pass | AC8 |
+| TC-582 | An attendee who withdrew may register again | Their record is WITHDRAWN | register | Same record back to REGISTERED, withdrawn_at cleared | As expected | Pass | AC8 |
+| TC-583 | Registration after the window has closed is refused | Window closed yesterday | register | 409 closed, "Registration has closed.", nothing written | As expected | Pass | AC6, H1 AC4 |
+| TC-584 | Registration before the window opens is refused | Window opens tomorrow | register | 409 not_open_yet, nothing written | As expected | Pass | H1 AC4 |
+| TC-585 | The window opens at its opening minute and closes at its closing minute, by the server clock | — | register at 08:59:59, 09:00, 16:59:59, 17:00 (Singapore) | Refused, accepted, accepted, refused | As expected | Pass | H1 AC4 - boundary |
+| TC-586 | An event with no window set is refused | No open or close date | register | 409 not_open_yet, nothing written | As expected | Pass | H1 AC4 |
+| TC-587 | Only Approved, Planning, Safety Review and Confirmed take registrations | Each of the ten statuses | register | Six refused (status), four accepted | As expected | Pass | H1 AC4 |
+| TC-588 | An event that does not use registration is refused | registration_required false | register | 409 not_enabled, nothing written | As expected | Pass | H1 AC4 |
+| TC-589 | An event without a usable capacity is refused | Capacity null | register | 409 no_capacity, nothing written | As expected | Pass | Guard |
+| TC-590 | An event that does not exist is refused | — | register a missing id | 404 not_found, nothing written | As expected | Pass | Guard |
+| TC-591 | The route answers 201 with the registration and the event, venues included | Attendee | POST /api/registrations/events/e1/register | 201; REGISTERED; venue names; 2 places left | As expected | Pass | AC2, AC3, AC4 |
+| TC-592 | A refusal is answered with its reason and message | Attendee already registered | Same request | 409 with reason already_registered and its message | As expected | Pass | AC5, AC8 |
+| TC-593 | Only a signed-in Attendee may register | No token; bad token; organiser | Same request | 401, 401, 403 "Only attendees …"; no transaction run | As expected | Pass | Guard |
+| TC-594 | The open-events list says which events the attendee is registered for | Registered for one, withdrew from another | GET /api/registrations/open-events | registration_status REGISTERED and null | As expected | Pass | AC8 |
+
+**Client and screen test cases — `registrationsApi.test.js`, `BrowseEvents.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-595 | Registering posts to the event's register route with the ID token | Signed-in attendee | registerForEvent | POST /api/registrations/events/{id}/register with Bearer token; id escaped | As expected | Pass | AC2 |
+| TC-596 | A refusal keeps the service's message and reason; a backend that is down is named | 409 reply; network failure | registerForEvent | Error with message and reason; "registration service is not responding" | As expected | Pass | Guard |
+| TC-597 | An event with places left offers Register | Open event, 110 places | Click Register | registerForEvent called for that event; details open | As expected | Pass | AC2 |
+| TC-598 | A successful registration is confirmed | Same | Click Register | Toast "You are registered for …"; "You are registered for this event." status | As expected | Pass | AC3 |
+| TC-599 | After registering, the event's details are shown; back returns to the list | Same | Click Register, then back | Description, date, window, venues, 109 places left, registered time; the row then shows Registered and no Register | As expected | Pass | AC4, AC7 |
+| TC-600 | An event already registered for offers View details, never Register | registration_status REGISTERED | Open Browse events; View details | Registered pill; details open; no register call | As expected | Pass | AC4, AC8 |
+| TC-601 | A full event says so and offers no Register | 0 places left | Open Browse events | "This event is full."; no Register | As expected | Pass | AC5 |
+| TC-602 | An event that fills while the list is open says so on its row | Service refuses full | Click Register | Alert "This event is full."; Full; no Register | As expected | Pass | AC5 |
+| TC-603 | Registering after the window has closed is refused | Service refuses closed | Click Register | Alert "Registration has closed."; no Register; no toast | As expected | Pass | AC6 |
+| TC-604 | A duplicate refused by the service marks the row Registered | Service refuses already_registered | Click Register | Alert with the message; Registered pill | As expected | Pass | AC8 |
+| TC-605 | Register cannot be pressed twice; an unexplained failure can be retried | Pending call; empty error | Click twice; click once | One call, button "Registering…" disabled; "You could not be registered. Try again." with Register enabled | As expected | Pass | AC8, Guard |
+
+**Shell and rules — `Workspace.test.js`, `firestoreRules.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-571 | The shell hands Browse events its toast and its way back | Attendee | Render the workspace | Browse events receives onNotice and onBackChange | As expected | Pass | AC3, AC4 |
+| H1-RT4 | No browser can create, change or remove a registration | — | Read the registrations rules | No create, update, delete or write clause | As expected | Pass | AC5, AC7, AC8 - server side |
+| H1-RT5 | No registrations clause names the Attendee role | — | Same | ATTENDEE absent | As expected | Pass | Server side |
+| H1-RT6 | The browser-side window rule is gone | — | Read firestore.rules | No registrationWindowOpen | As expected | Pass | H1 AC4 now in TC-583 – TC-588 |

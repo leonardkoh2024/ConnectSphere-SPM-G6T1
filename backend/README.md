@@ -64,7 +64,16 @@ the events with `registration_required == true`, keeps those open now by the sha
 `frontend/src/domain/openRegistration.mjs`, and returns only their public fields with the remaining places
 (capacity less `REGISTERED` registrations). Venue names come through the venue service's
 `getApprovedEventVenueNames` read contract in `src/services/venue/approvedEventBookings.js`, not a query of
-its own. It writes nothing.
+its own. Each entry also carries the caller's own `registration_status`. The list writes nothing.
+
+H3 (SCRUM-141) adds `POST /api/registrations/events/{eventId}/register` (Attendee ID token required). It is
+the only way a registration is created: `firestore.rules` give no browser a create, update or delete on
+`registrations`, because a rule cannot count an event's places or see a second registration by the same
+attendee. One Admin transaction reads the event, checks the window, status and flag (H1 AC4, through
+`registrationAttemptRefusal` in `frontend/src/domain/registrationWindow.mjs`), refuses a duplicate, counts the
+`REGISTERED` places and writes `registrations/{eventId}_{attendeeId}`, with the attendee in `attendee_id`. A
+refusal answers 409 with a `reason` (`closed`, `not_open_yet`, `status`, `not_enabled`, `no_capacity`, `full`,
+`already_registered`), or 404 `not_found`. See `src/services/registration/register.js`.
 
 **Scoped exception — `venue` writes `event_history` and `notifications`.** F5 rejection commits the
 booking decision, audit entry and notification together. The venue endpoint uses Admin Firestore for

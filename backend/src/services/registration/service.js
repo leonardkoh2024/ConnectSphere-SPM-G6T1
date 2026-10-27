@@ -3,6 +3,7 @@ import express from "express";
 import { isOpenForRegistration, listOpenEvents } from "../../../../frontend/src/domain/openRegistration.mjs";
 import { getApprovedEventBookings as readApprovedEventBookings, getApprovedEventVenueNames } from "../venue/approvedEventBookings.js";
 import { createRegistrationList } from "./attendeeList.js";
+import { createAttendeeRegistration } from "./register.js";
 import { createRegistrationSettings } from "./settings.js";
 
 // The registration service owns `registrations` (and, with H6, the waiting list).
@@ -22,6 +23,9 @@ import { createRegistrationSettings } from "./settings.js";
 // H8 / SCRUM-146 — the organiser's list of who has registered (names, contact details, times,
 // and the registered / waitlisted / withdrawn counts) is built here, for the organiser of the
 // event only: an organiser has no browser read of registrations or attendee profiles.
+//
+// H3 / SCRUM-141 — an attendee registers here, in one transaction that checks the window,
+// the places left and any registration they already hold. No browser can create one.
 export function createRegistrationService({
   firestore,
   verifyIdToken,
@@ -34,6 +38,7 @@ export function createRegistrationService({
   const router = express.Router();
   const settings = createRegistrationSettings({ firestore, serverTimestamp, getApprovedEventBookings, now });
   const attendeeList = createRegistrationList({ firestore });
+  const attendeeRegistration = createAttendeeRegistration({ firestore, serverTimestamp, now });
 
   // Signs the caller in and checks their profile holds `role`; otherwise answers the
   // request itself (401 or 403 with `forbidden`) and returns null.
@@ -58,8 +63,20 @@ export function createRegistrationService({
     return user;
   };
 
-  const authenticateAttendee = (request, response) =>
-    authenticate(request, response, { role: "ATTENDEE", forbidden: "Only attendees can browse events open for registration." });
+  const authenticateAttendee = (request, response, forbidden = "Only attendees can browse events open for registration.") =>
+    authenticate(request, response, { role: "ATTENDEE", forbidden });
+
+  // H3 AC8 — the caller's own place on each event, so the list offers View details instead of
+  // Register. Only a held place (Registered or Waitlisted) is reported.
+  const ownStatuses = async (attendeeId) => {
+    const snapshot = await firestore.collection("registrations").where("attendee_id", "==", attendeeId).get();
+    const statuses = {};
+    snapshot.docs.forEach((item) => {
+      const { event_id: eventId, status } = item.data();
+      if (status === "REGISTERED" || (status === "WAITLISTED" && statuses[eventId] !== "REGISTERED")) statuses[eventId] = status;
+    });
+    return statuses;
+  };
 
   const authenticateOrganiser = (request, response) =>
     authenticate(request, response, { role: "EVENT_ORGANISER", forbidden: "Only an Event Organiser can manage registration." });
@@ -86,16 +103,43 @@ export function createRegistrationService({
 
       const venueNamesByEvent = {};
       const registeredCountByEvent = {};
-      await Promise.all(open.map(async (event) => {
-        [venueNamesByEvent[event.id], registeredCountByEvent[event.id]] = await Promise.all([
-          venueNamesFor(event.id),
-          registeredCount(event.id)
-        ]);
-      }));
+      const [mine] = await Promise.all([
+        ownStatuses(user.uid),
+        ...open.map(async (event) => {
+          [venueNamesByEvent[event.id], registeredCountByEvent[event.id]] = await Promise.all([
+            venueNamesFor(event.id),
+            registeredCount(event.id)
+          ]);
+        })
+      ]);
 
-      response.json({ events: listOpenEvents(open, { now: at, venueNamesByEvent, registeredCountByEvent }) });
+      const events = listOpenEvents(open, { now: at, venueNamesByEvent, registeredCountByEvent })
+        .map((entry) => ({ ...entry, registration_status: mine[entry.id] || null }));
+      response.json({ events });
     } catch (error) {
       next(error);
+    }
+  });
+
+  // H3 — register the signed-in attendee for one event. A refusal (not open, closed, full,
+  // already registered) is answered with its reason, so the screen can show the right state.
+  router.post("/events/:eventId/register", async (request, response, next) => {
+    let user;
+    try {
+      user = await authenticateAttendee(request, response, "Only attendees can register for events.");
+    } catch (error) {
+      next(error);
+      return;
+    }
+    if (!user) return;
+
+    try {
+      const result = await attendeeRegistration.register({ eventId: request.params.eventId, attendeeId: user.uid });
+      const venueNames = await venueNamesFor(request.params.eventId);
+      response.status(201).json({ ...result, event: { ...result.event, venue_names: venueNames } });
+    } catch (error) {
+      if (error.statusCode) response.status(error.statusCode).json({ error: error.message, reason: error.reason });
+      else next(error);
     }
   });
 
