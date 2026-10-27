@@ -1105,3 +1105,33 @@ describe('H1 SCRUM-139 registration capacity and window are set through the serv
     expect(body).toMatch(/registration_closes_at is timestamp|get\('registration_closes_at', null\) is timestamp/);
   });
 });
+
+// H8 / SCRUM-146 — the organiser's registration list is built by the registration service, so
+// the rules must give no organiser (or anyone else) a browser route round it. These pass today;
+// they are guards that fail if a later story opens one.
+describe('H8 the registration list reaches an organiser only through the service', () => {
+  test('H8-RT1 AC3 no role but the event\'s current coordinator has any read of registrations, and an organiser has no clause in the block at all', () => {
+    expect(matchBlock('registrations')).not.toContain(ROLES.ORGANISER);
+    const readClauses = matchBlock('registrations').match(/allow\s+(?:get|list|read)[^;]*;/g) || [];
+    expect(readClauses.length).toBeGreaterThan(0);
+    readClauses.forEach((clause) => {
+      expect(clause).toContain("hasRole('EVENT_COORDINATOR')");
+      expect(clause).toContain('currentCoordinator(resource.data.event_id)');
+      for (const other of [ROLES.ORGANISER, ROLES.ATTENDEE, ROLES.COORDINATOR_LEAD, ROLES.VENUE_STAFF, ROLES.TECH_SUPPORT, ROLES.SAFETY_OFFICER]) {
+        expect(clause).not.toContain(other);
+      }
+      expect(clause).not.toContain('ownsEvent(');
+      expect(clause).not.toMatch(/if\s+signedIn\(\)\s*;/);
+    });
+  });
+
+  test('H8-RT2 AC1 AC3 an organiser has no read of attendees\' profiles, so names and contact details cannot be fetched from the browser', () => {
+    const readClauses = matchBlock('users').match(/allow\s+(?:get|list|read)[^;]*;/g) || [];
+    expect(readClauses.length).toBeGreaterThan(0);
+    readClauses.forEach((clause) => {
+      expect(clause).not.toContain("hasRole('EVENT_ORGANISER')");
+      expect(clause).not.toContain("hasRole('ATTENDEE')");
+      expect(clause).not.toMatch(/resource\.data\.role == 'ATTENDEE'/);
+    });
+  });
+});
