@@ -45,7 +45,8 @@ jest.mock('../features/equipment/EquipmentReservationsScreen', () => ({ __esModu
 // handed it both the toast and the way back.
 jest.mock('../features/registrations/BrowseEvents', () => ({ __esModule: true, default: (props) => (props.onNotice && props.onBackChange ? 'open events list' : 'open events list without its handlers') }));
 // H4 — the attendee's own registrations report that they were opened, with the way back.
-jest.mock('../features/registrations/MyRegistrations', () => ({ __esModule: true, default: (props) => (props.onBackChange ? 'my registrations list' : 'my registrations without its way back') }));
+// H5 — withdrawing confirms with a toast, so it is handed that too.
+jest.mock('../features/registrations/MyRegistrations', () => ({ __esModule: true, default: (props) => (props.onBackChange && props.onNotice ? 'my registrations list' : 'my registrations without its handlers') }));
 // J1 — the live inbox is stubbed so the badge can be driven by hand.
 jest.mock('../features/notifications/useNotifications', () => ({ __esModule: true, default: jest.fn() }));
 jest.mock('../features/venues/useVenueClashCount', () => ({ __esModule: true, default: jest.fn() }));

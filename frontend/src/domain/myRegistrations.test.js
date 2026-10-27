@@ -7,7 +7,8 @@ import {
   listMyRegistrations,
   myRegistrationEntry,
   registrationDisplayStatus,
-  registrationStatusTone
+  registrationStatusTone,
+  withdrawalRefusal
 } from "./myRegistrations";
 
 const event = (changes = {}) => ({
@@ -36,6 +37,9 @@ const registration = (changes = {}) => ({
   waitlist_position: null,
   ...changes
 });
+
+// The event above starts 12 Nov 09:00 Singapore time.
+const BEFORE = new Date("2026-11-05T12:00:00+08:00");
 
 describe("H4 AC1 / AC3 the status shown", () => {
   test("TC-606 the four statuses read Registered, Waitlisted, Withdrawn and Cancelled", () => {
@@ -76,7 +80,7 @@ describe("H4 AC1 / AC3 the status shown", () => {
 
 describe("H4 AC1 / AC2 what an attendee is shown for each entry", () => {
   test("TC-611 an entry carries the event's name, date, window, venue and the status, with the registration's times", () => {
-    expect(myRegistrationEntry(registration(), event(), { venueNames: ["Harbour Hall"] })).toEqual({
+    expect(myRegistrationEntry(registration(), event(), { venueNames: ["Harbour Hall"], now: BEFORE })).toEqual({
       registration_id: "e1_attendee-1",
       event_id: "e1",
       name: "Harbour Tech Forum",
@@ -88,7 +92,9 @@ describe("H4 AC1 / AC2 what an attendee is shown for each entry", () => {
       status: "REGISTERED",
       registered_at: "2026-11-05T04:00:00.000Z",
       withdrawn_at: null,
-      waitlist_position: null
+      waitlist_position: null,
+      active: true,
+      can_withdraw: true
     });
   });
 
@@ -148,5 +154,71 @@ describe("H4 AC1 / AC3 the list", () => {
 
   test("TC-617 no registrations gives an empty list", () => {
     expect(listMyRegistrations([])).toEqual([]);
+  });
+});
+
+// ---- H5 / SCRUM-143 — Withdraw from an event ------------------------------------
+
+const START = new Date("2026-11-12T09:00:00+08:00");
+
+describe("H5 AC1 / AC5 which registrations are active", () => {
+  test("TC-639 a Registered or Waitlisted place on an event still to come is active", () => {
+    expect(myRegistrationEntry(registration(), event(), { now: BEFORE }).active).toBe(true);
+    expect(myRegistrationEntry(registration({ status: "WAITLISTED" }), event(), { now: BEFORE }).active).toBe(true);
+  });
+
+  test("TC-640 a withdrawn registration is not active, so it leaves the active list", () => {
+    expect(myRegistrationEntry(registration({ status: "WITHDRAWN" }), event(), { now: BEFORE }).active).toBe(false);
+  });
+
+  test("TC-641 a cancelled, completed or rejected event's registration is not active", () => {
+    ["CANCELLED", "COMPLETED", "REJECTED"].forEach((status) => {
+      expect(myRegistrationEntry(registration(), event({ status }), { now: BEFORE }).active).toBe(false);
+    });
+  });
+
+  test("TC-642 once the event has started, its registration is no longer active", () => {
+    expect(myRegistrationEntry(registration(), event(), { now: new Date(START.getTime() - 1000) }).active).toBe(true);
+    expect(myRegistrationEntry(registration(), event(), { now: START }).active).toBe(false);
+  });
+
+  test("TC-642 an event without a usable start is not treated as upcoming", () => {
+    expect(myRegistrationEntry(registration(), event({ start_time: null }), { now: BEFORE }).active).toBe(false);
+  });
+});
+
+describe("H5 AC2 / AC6 who may withdraw", () => {
+  test("TC-643 a Registered attendee may withdraw from an event still to come", () => {
+    expect(withdrawalRefusal(registration(), event(), BEFORE)).toBeNull();
+    expect(myRegistrationEntry(registration(), event(), { now: BEFORE }).can_withdraw).toBe(true);
+  });
+
+  test.each([
+    ["no registration at all", null],
+    ["a withdrawn registration", { status: "WITHDRAWN" }],
+    ["a waitlisted registration", { status: "WAITLISTED" }],
+    ["a cancelled registration", { status: "CANCELLED" }]
+  ])("TC-644 %s cannot be withdrawn: the attendee is not currently registered", (_label, changes) => {
+    const refusal = withdrawalRefusal(changes ? registration(changes) : null, event(), BEFORE);
+    expect(refusal).toEqual({ reason: "not_registered", message: "You are not registered for this event." });
+    if (changes) expect(myRegistrationEntry(registration(changes), event(), { now: BEFORE }).can_withdraw).toBe(false);
+  });
+
+  test.each(["CANCELLED", "COMPLETED", "REJECTED"])("TC-645 nothing can be withdrawn from a %s event", (status) => {
+    expect(withdrawalRefusal(registration(), event({ status }), BEFORE)).toMatchObject({ reason: "event_closed" });
+    expect(myRegistrationEntry(registration(), event({ status }), { now: BEFORE }).can_withdraw).toBe(false);
+  });
+
+  test("TC-646 withdrawal closes when the event starts, by the Singapore start time", () => {
+    expect(withdrawalRefusal(registration(), event(), new Date(START.getTime() - 1000))).toBeNull();
+    expect(withdrawalRefusal(registration(), event(), START)).toMatchObject({ reason: "event_started", message: "This event has already started." });
+  });
+
+  test("TC-646 a missing event cannot be withdrawn from", () => {
+    expect(withdrawalRefusal(registration(), null, BEFORE)).toMatchObject({ reason: "not_found" });
+  });
+
+  test("TC-647 the status is read whatever its case", () => {
+    expect(withdrawalRefusal(registration({ status: "registered" }), event({ status: "confirmed" }), BEFORE)).toBeNull();
   });
 });

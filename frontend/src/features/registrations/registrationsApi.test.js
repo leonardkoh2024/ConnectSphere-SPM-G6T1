@@ -2,7 +2,7 @@
 // open events; it never reads the events collection itself (AC3).
 
 import { auth } from "../../lib/firebase";
-import { loadMyRegistrations, loadOpenEvents, registerForEvent } from "./registrationsApi";
+import { loadMyRegistrations, loadOpenEvents, registerForEvent, withdrawFromEvent } from "./registrationsApi";
 
 jest.mock("../../lib/firebase", () => ({
   auth: { currentUser: { uid: "attendee-1", getIdToken: jest.fn() } },
@@ -91,4 +91,22 @@ test("TC-637 the attendee's registrations are fetched with their ID token", asyn
 test("TC-637 a refusal is passed on", async () => {
   global.fetch.mockResolvedValue(reply(403, { error: "Only attendees can see their registrations." }));
   await expect(loadMyRegistrations()).rejects.toThrow("Only attendees can see their registrations.");
+});
+
+// H5 / SCRUM-143 — withdrawing is a call to the service too: no browser updates `registrations`.
+
+test("TC-670 withdrawing posts to the event's withdraw route with the attendee's ID token", async () => {
+  const replied = { registration: { registration_id: "e1_attendee-1", status: "WITHDRAWN" }, remaining_places: 4 };
+  global.fetch.mockResolvedValue(reply(200, replied));
+
+  await expect(withdrawFromEvent("e/1")).resolves.toEqual(replied);
+  expect(global.fetch).toHaveBeenCalledWith("/api/registrations/events/e%2F1/withdraw", {
+    method: "POST",
+    headers: { Authorization: "Bearer id-token" }
+  });
+});
+
+test("TC-670 a refusal keeps the service's message and reason", async () => {
+  global.fetch.mockResolvedValue(reply(409, { error: "You are not registered for this event.", reason: "not_registered" }));
+  await expect(withdrawFromEvent("e1")).rejects.toMatchObject({ message: "You are not registered for this event.", reason: "not_registered" });
 });

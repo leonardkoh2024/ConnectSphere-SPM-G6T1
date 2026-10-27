@@ -44,6 +44,7 @@ they can be read next to the acceptance criteria and move into the service layer
 | H2 | SCRUM-140 | Find events I can register for | TC-541 – TC-572 |
 | H3 | SCRUM-141 | Register for an event | TC-573 – TC-605 |
 | H4 | SCRUM-142 | See the status of my registrations | TC-606 – TC-638 |
+| H5 | SCRUM-143 | Withdraw from an event | TC-639 – TC-679 |
 | E4 | SCRUM-120 | See when a venue is free | TC-200 – TC-249 |
 | J6 | SCRUM-155 | Be told the outcome of my booking and equipment requests (AC1: approval and rejection) | TC-313 – TC-346 |
 | A7 | SCRUM-170 | Use ConnectSphere as a Safety Officer | TC-348 – TC-385, TC-388 |
@@ -1402,3 +1403,67 @@ D4 cancels an event without touching its registrations, so the status shown is w
 | TC-636 | Loading and failure are shown | Pending, then rejected | Open My registrations | Loading text; failure in an alert, no empty message | As expected | Pass | Guard |
 | TC-637 | The list is fetched from the service with the ID token | Signed-in attendee | loadMyRegistrations | GET /api/registrations/mine with Bearer token; refusal passed on | As expected | Pass | Guard |
 | TC-638 | My registrations opens the attendee's own list, with the shell's way back | Attendee | Open the My registrations hash | Screen rendered with onBackChange | As expected | Pass | AC2 |
+
+## H5 / SCRUM-143 — Withdraw from an event
+
+**Scope:** **My registrations** has a **Show** filter (all, or one status) and a **Search** on event name or venue, kept while details are open. It now lists an attendee's active places (Registered or Waitlisted, on an event that is running and has not started) under **Upcoming**, and everything else under **Past, withdrawn and cancelled**, which keeps H4 AC3. A Registered place under Upcoming offers **Withdraw**. After a confirmation, the registration service (`POST /api/registrations/events/{eventId}/withdraw`) sets the attendee's own record to `WITHDRAWN` in one transaction. The place is free for the next registration at once, since H3 counts only `REGISTERED`. The attendee gets a toast, and the event moves out of Upcoming.
+
+An attendee without a Registered place is refused (AC6), as is any withdrawal once the event has started or ended. Release 1 has no change deadlines, so there is no earlier cut-off. A waitlisted place is not withdrawn here: leaving the waiting list belongs to H6/H7. Inviting the next person on the waiting list into the freed place is H7, which the customer said is "invited to apply", never automatic.
+
+**AC coverage:** AC1 (upcoming registrations) — TC-639, TC-641, TC-642, TC-664. AC2 (withdraw) — TC-643, TC-648, TC-651, TC-659, TC-661, TC-665 – TC-667, TC-670 – TC-672. AC3 (confirmation) — TC-650, TC-661, TC-667. AC4 (place given back) — TC-649. AC5 (no longer in active registrations) — TC-640, TC-664, TC-667. AC6 (not currently registered) — TC-644, TC-652 – TC-656, TC-662, TC-665, TC-668. Guards — TC-645 – TC-647, TC-657, TC-658, TC-660, TC-663, TC-669.
+
+**Unit test cases — `frontend/src/domain/myRegistrations.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-639 | A Registered or Waitlisted place on an event still to come is active | Event 12 Nov 09:00; now 5 Nov | myRegistrationEntry | active true | As expected | Pass | AC1 |
+| TC-640 | A withdrawn registration is not active | Same | myRegistrationEntry | active false | As expected | Pass | AC5 |
+| TC-641 | A cancelled, completed or rejected event's registration is not active | Each status | myRegistrationEntry | active false | As expected | Pass | AC1 |
+| TC-642 | Once the event starts its registration is no longer active; no start, not upcoming | One second before / at the start; no start time | myRegistrationEntry | true, false; false | As expected | Pass | AC1 - boundary |
+| TC-643 | A Registered attendee may withdraw from an event still to come | — | withdrawalRefusal; can_withdraw | null; true | As expected | Pass | AC2 |
+| TC-644 | No registration, or a withdrawn, waitlisted or cancelled one, cannot be withdrawn | Each | withdrawalRefusal | not_registered, "You are not registered for this event."; can_withdraw false | As expected | Pass | AC6 |
+| TC-645 | Nothing can be withdrawn from a cancelled, completed or rejected event | Each status | withdrawalRefusal | event_closed; can_withdraw false | As expected | Pass | Guard |
+| TC-646 | Withdrawal closes at the Singapore start; a missing event is refused | One second before / at 09:00; null event | withdrawalRefusal | null; event_started; not_found | As expected | Pass | Boundary |
+| TC-647 | Statuses are read whatever their case | registered / confirmed | withdrawalRefusal | null | As expected | Pass | Guard |
+
+**Service test cases — `backend/src/services/registration/withdraw.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-648 | A Registered attendee withdraws | Two registered | withdraw | Their record WITHDRAWN with server withdrawn_at; the other untouched; one write | As expected | Pass | AC2 |
+| TC-649 | The withdrawn place is free again | Capacity 2, full | register newcomer; withdraw; register newcomer | Refused full; 1 place left; then registered | As expected | Pass | AC4 |
+| TC-650 | The reply describes the registration as the attendee now sees it | — | withdraw | WITHDRAWN, withdrawn time, active and can_withdraw false; no internal fields | As expected | Pass | AC3 |
+| TC-651 | A registration under an older record id is withdrawn in that record | Mock-style id | withdraw | That record WITHDRAWN; one write | As expected | Pass | AC2 |
+| TC-652 | The check and the write are one transaction | — | withdraw | One transaction reading the event and the attendee's record | As expected | Pass | AC6 |
+| TC-653 | An attendee with no registration is refused | — | withdraw as a stranger | 409 not_registered; nothing written | As expected | Pass | AC6 |
+| TC-654 | A withdrawn, waitlisted or cancelled attendee is refused | Each | withdraw | 409 not_registered; nothing written | As expected | Pass | AC6 |
+| TC-655 | Withdrawing twice is refused the second time | — | withdraw twice | Second 409 not_registered; one write | As expected | Pass | AC6 |
+| TC-656 | One attendee cannot withdraw another's place | Only another attendee registered | withdraw | 409; their record untouched | As expected | Pass | AC6 |
+| TC-657 | Once the event has started there is nothing to withdraw from | Now = start | withdraw | 409 event_started; nothing written | As expected | Pass | Guard |
+| TC-658 | A cancelled, completed or rejected event cannot be withdrawn from | Each status | withdraw | 409 event_closed; nothing written | As expected | Pass | Guard |
+| TC-659 | Withdrawal is allowed after registration has closed, until the event starts | Window closed, event tomorrow | withdraw | WITHDRAWN | As expected | Pass | AC2 |
+| TC-660 | A missing event is refused | — | withdraw from a missing id | 404 not_found; nothing written | As expected | Pass | Guard |
+| TC-661 | POST withdraw answers 200 with the updated registration | Attendee | POST /api/registrations/events/e1/withdraw | 200; WITHDRAWN; venue names; 2 places left | As expected | Pass | AC2, AC3 |
+| TC-662 | A refusal is answered with its reason and message | Not registered | Same | 409 not_registered | As expected | Pass | AC6 |
+| TC-663 | Only a signed-in Attendee may withdraw | No token; bad token; organiser | Same | 401, 401, 403; no transaction; record unchanged | As expected | Pass | Guard |
+
+**Screen and client test cases — `MyRegistrations.test.js`, `registrationsApi.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-664 | Active registrations are under Upcoming, the rest apart | Registered, waitlisted, withdrawn, cancelled | Open My registrations | Upcoming: Going, Waiting; Past, withdrawn and cancelled: Left, Called off; "You have no upcoming registrations." when none | As expected | Pass | AC1, AC5 |
+| TC-665 | Withdraw is offered only on a place that can be withdrawn | Registered, waitlisted, withdrawn | Open My registrations | Withdraw on the Registered row only | As expected | Pass | AC2, AC6 |
+| TC-666 | Withdrawing asks first; keeping the place changes nothing | Registered | Withdraw, then Keep my place | Dialog names the event, focus on Keep my place; closed; no call | As expected | Pass | AC2 |
+| TC-667 | Confirming withdraws, confirms it, and moves the event out of Upcoming | Registered | Withdraw, then Yes, withdraw | Called for the event; toast "You have withdrawn from …"; row under Past with Withdrawn and no Withdraw | As expected | Pass | AC2, AC3, AC5 |
+| TC-668 | A refusal is shown in the dialog, and Withdraw is taken away | Service refuses not_registered | Withdraw, then Yes, withdraw | Alert with the message; only Close left; no Withdraw on the row; no toast | As expected | Pass | AC6 |
+| TC-669 | A failure that might pass on a retry can be retried; the button cannot be pressed twice | Empty error; pending call | Confirm; confirm twice | "You could not be withdrawn. Try again." with Yes, withdraw enabled; one call while "Withdrawing…" | As expected | Pass | Guard |
+| TC-670 | Withdrawing posts to the withdraw route with the ID token | Signed-in attendee | withdrawFromEvent | POST /api/registrations/events/{id}/withdraw, id escaped; refusal keeps message and reason | As expected | Pass | AC2 |
+| TC-671 | The details view on My registrations offers Withdraw, and updates in place | Registered; then a waitlisted place | View details, Withdraw, Yes, withdraw | Called for the event; toast; details now read Withdrawn with no Withdraw; none offered on the waitlisted place | As expected | Pass | AC2, AC3, AC6 |
+| TC-672 | The details of an event registered for on Browse events offer Withdraw | Registered, 109 places left | View details, Withdraw, Yes, withdraw; then a refusal | Back on the list with Register and 110 places left, toast; a refusal is explained and Withdraw taken away | As expected | Pass | AC2, AC3, AC4, AC6 |
+| TC-673 | Rows on both attendee lists share fixed columns | — | Render each list | Rows carry cs-registration-record / cs-browse-record, whose fixed columns line venue, status and buttons up | As expected | Pass | Layout |
+| TC-674 | The Show filter offers every status and starts on all | Four registrations, one of each status | Open My registrations | Options All registrations, Registered, Waitlisted, Withdrawn, Cancelled; all four listed | As expected | Pass | Filters |
+| TC-675 | Showing one status lists only those registrations | Same | Choose each status | Only the matching registration | As expected | Pass | Filters |
+| TC-676 | Search matches the event name or the venue, whatever the case | Same | Type "summit", then "WOODLANDS", then clear | Data Summit; Coding Workshop; all four | As expected | Pass | Filters |
+| TC-677 | The two filters combine | Same | Registered + "gala" | Nothing listed; "No registrations match these filters." | As expected | Pass | Filters |
+| TC-678 | While filtering, an empty Upcoming says nothing matches | Same | Show Withdrawn | "No upcoming registrations match these filters."; the withdrawn one listed below | As expected | Pass | Filters, AC5 |
+| TC-679 | A filter is kept after viewing details and coming back | Same | Show Waitlisted, View details, back | Still Waitlisted; only Data Summit | As expected | Pass | Filters |

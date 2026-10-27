@@ -139,7 +139,9 @@ test("TC-619 H4 AC1 each entry shows the event's name, date, window, venue and t
     status: "REGISTERED",
     registered_at: "2026-11-01T02:00:00.000Z",
     withdrawn_at: null,
-    waitlist_position: null
+    waitlist_position: null,
+    active: true,
+    can_withdraw: true
   });
   const statuses = Object.fromEntries(body.registrations.map((entry) => [entry.event_id, entry.status]));
   assert.deepEqual(statuses, { forum: "REGISTERED", talk: "WITHDRAWN", expo: "WAITLISTED", gala: "CANCELLED" });
