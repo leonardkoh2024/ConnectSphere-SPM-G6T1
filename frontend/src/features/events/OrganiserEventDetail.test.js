@@ -5,6 +5,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import OrganiserEventDetail from './OrganiserEventDetail';
 import { reviewApi } from './reviewApi';
+import { loadEventVenueNames } from './eventVenuesApi';
 
 jest.mock('./reviewApi', () => ({ reviewApi: { detail: jest.fn(), respond: jest.fn() } }));
 // The form is its own story; here it only reports whether it was left editable.
@@ -17,8 +18,13 @@ jest.mock('./EventRequestForm', () => ({
 jest.mock('./RegistrationPanel', () => ({ __esModule: true, default: () => null }));
 // H8's registration list sits in the same tab; mocked for the same reason.
 jest.mock('./RegistrationList', () => ({ __esModule: true, default: () => null }));
+// B10 — the venues come from the event service; stubbed here, tested in eventVenuesApi.test.js.
+jest.mock('./eventVenuesApi', () => ({ loadEventVenueNames: jest.fn() }));
 
 const USER = { uid: 'u1', email: 'nadia.organiser@connectsphere.com' };
+
+// CRA resets mocks before each test, so the venues' default answer is set here.
+beforeEach(() => { loadEventVenueNames.mockResolvedValue([]); });
 const submitted = { id: 'e1', name: 'Partner Summit', status: 'UNDER_REVIEW', open_clarification_id: null };
 const detailFor = (event, clarifications = []) => ({
   event: { decision: null, decision_reason: null, decided_at: null, ...event },
@@ -65,4 +71,29 @@ test('TC-275 an organiser who owes an answer lands on Clarifications, replies th
   await waitFor(() => expect(reviewApi.respond).toHaveBeenCalledWith('e1', 'q1', 'It is 150.'));
   expect(onNotice).toHaveBeenCalledWith('Your clarification response was sent.');
   expect(await screen.findByText('form read-only')).toBeInTheDocument();
+});
+
+// B10 / SCRUM-101 — TC-790, TC-791 in docs/test-cases.md.
+test('TC-790 a submitted event shows the venues approved for it, or To be confirmed', async () => {
+  loadEventVenueNames.mockResolvedValue(['Harbour Hall', 'Pier Room']);
+  reviewApi.detail.mockResolvedValue(detailFor(submitted));
+  const { unmount } = render(<OrganiserEventDetail user={USER} event={submitted} />);
+  expect(await screen.findByText('Harbour Hall, Pier Room')).toBeInTheDocument();
+  expect(loadEventVenueNames).toHaveBeenCalledWith('e1');
+  unmount();
+
+  loadEventVenueNames.mockResolvedValue([]);
+  render(<OrganiserEventDetail user={USER} event={submitted} />);
+  expect(await screen.findByText('To be confirmed')).toBeInTheDocument();
+});
+
+test('TC-791 a draft asks for no venues, and a failed read says so without hiding the request', async () => {
+  render(<OrganiserEventDetail user={USER} event={{ id: 'd1', status: 'DRAFT' }} />);
+  expect(loadEventVenueNames).not.toHaveBeenCalled();
+
+  loadEventVenueNames.mockRejectedValue(new Error('down'));
+  reviewApi.detail.mockResolvedValue(detailFor(submitted));
+  render(<OrganiserEventDetail user={USER} event={submitted} />);
+  expect(await screen.findByText('Could not be loaded right now.')).toBeInTheDocument();
+  expect(screen.getByText('form read-only')).toBeInTheDocument();
 });

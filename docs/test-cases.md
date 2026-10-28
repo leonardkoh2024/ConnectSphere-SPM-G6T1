@@ -1627,14 +1627,22 @@ The request is written to `change_requests` as **Pending** (AC4). The same commi
 | TC-782 | The header offers Request a change only on the organiser's own event | Another organiser's event in Planning | Open the event | No Request a change (statuses covered by TC-765) | As expected | Pass | AC1 |
 | TC-783 | The change request notice has its own inbox label | — | notificationTypeLabel('CHANGE_REQUESTED') | "Change requested" | As expected | Pass | AC4 |
 
-## B10 — Filter My events
+## B10 — Filter My events, and see the venues secured
 
 **Scope:** My events gains a **Status** filter (All events, or any one of the ten statuses in workflow order) and a **Search** on the event name or reference, case-insensitive, as My registrations has for attendees. A filter that matches nothing says so. The list is still loaded once; filtering happens in the browser.
 
-**Test cases — `EventList.test.js`**
+Opening a submitted request now also shows **Venue** in the Review and decision panel: the names of the venues approved for the event so far, or "To be confirmed" until one is. Organisers cannot read `venue_bookings` or `venues`, so the names come from the event service (`GET /api/events/:eventId/venues`). It answers only the event's own organiser, using the venue service's `getApprovedEventVenueNames` contract, the same one the attendee listing uses. No hold, rejection reason or other booking detail reaches the organiser, and no rules change was needed. This goes beyond B10's written criteria; it is filed under B10 as the organiser's view of how far their request has got.
+
+**Test cases — `EventList.test.js`, `venues.test.js` (backend), `OrganiserEventDetail.test.js`, `eventVenuesApi.test.js`**
 
 | Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TC-784 | The Status filter shows only events in that status | A Submitted and a Draft event | Choose Draft, then All events | Only the draft; then both | As expected | Pass | B10 |
 | TC-785 | Search matches the name or the reference, whatever the case | Same | Search "partner", then "evt-100241" | Only Q4 Partner Summit; then only Volunteer Onboarding | As expected | Pass | B10 |
 | TC-786 | Filters that match nothing say so; every status is offered | Same | Read the Status options; choose Confirmed | All events plus the ten statuses; "No events match these filters." | As expected | Pass | B10 |
+| TC-787 | The organiser gets the names of the venues their event has secured, and nothing else | Own event; approved bookings at two venues | GET /api/events/e1/venues | 200 { venue_names: [both] } | As expected | Pass | B10 |
+| TC-788 | Another organiser's event, or a missing one, is refused with no venues | Event owned by o2; no event | GET as o1 | 403 "You are not authorised to view this event."; no lookup made | As expected | Pass | B10 AC5 |
+| TC-789 | Only a signed-in organiser may ask | No token; forged token; coordinator | GET | 401; 401; 403 | As expected | Pass | Guard |
+| TC-790 | A submitted event shows its approved venues, or To be confirmed | Submitted event | Open it | "Harbour Hall, Pier Room"; with none, "To be confirmed" | As expected | Pass | B10 |
+| TC-791 | A draft asks for no venues; a failed read says so without hiding the request | Draft; service down | Open each | No call for the draft; "Could not be loaded right now." and the request still shown | As expected | Pass | B10 |
+| TC-792 | The venue names are fetched with the ID token, and a refusal is passed on | — | loadEventVenueNames | GET /api/events/{id}/venues with Bearer token; 403 message thrown | As expected | Pass | B10 |

@@ -14,6 +14,7 @@ import { EVENT_TABS, clarificationSummary, initialEventTab } from "../../domain/
 import { reviewApi } from "./reviewApi";
 import EventRequestForm from "./EventRequestForm";
 import DecisionSummary from "./components/DecisionSummary";
+import { loadEventVenueNames } from "./eventVenuesApi";
 import ClarificationThread from "./components/ClarificationThread";
 import EventDetailTabs from "./components/EventDetailTabs";
 import RegistrationPanel from "./RegistrationPanel";
@@ -28,6 +29,8 @@ export default function OrganiserEventDetail({ user, event, onSaved, onNotice })
   const [cancelReason, setCancelReason] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // B10 — the venues secured so far: undefined while loading, null if they could not be read.
+  const [venues, setVenues] = useState(undefined);
   const submitted = !isDraft(event);
 
   const load = async () => {
@@ -43,6 +46,16 @@ export default function OrganiserEventDetail({ user, event, onSaved, onNotice })
     setDetail(null); setError("");
     load().then((data) => { if (data) setTab(initialEventTab(data, { organiser: true })); });
   }, [event?.id, submitted]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!submitted || !event?.id) return undefined;
+    let mounted = true;
+    setVenues(undefined);
+    loadEventVenueNames(event.id)
+      .then((names) => { if (mounted) setVenues(names); })
+      .catch(() => { if (mounted) setVenues(null); });
+    return () => { mounted = false; };
+  }, [event?.id, submitted]);
 
   if (!submitted) return <EventRequestForm user={user} draft={event} onSaved={onSaved} />;
 
@@ -82,7 +95,7 @@ export default function OrganiserEventDetail({ user, event, onSaved, onNotice })
     finally { setBusy(false); }
   };
   const requestTab = <>
-    {detail && <DecisionSummary detail={detail} />}
+    {detail && <DecisionSummary detail={detail} venues={venues} />}
     <EventRequestForm user={user} draft={event} readOnly={!amending} onSaved={onSaved} />
     {unassigned && <form className="cs-inline-form" onSubmit={cancelRequest} noValidate>
       <label className="cs-field"><span className="cs-field-name">Cancellation reason<span className="cs-required" aria-hidden="true">*</span></span><textarea rows="2" required value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} /></label>
