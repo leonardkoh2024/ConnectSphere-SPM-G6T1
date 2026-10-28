@@ -629,9 +629,11 @@ describe('C2/C3 a coordinator can read an organiser profile, one at a time', () 
     expect(getRule).toContain("hasRole('EVENT_COORDINATOR') && resource.data.role == 'EVENT_ORGANISER'");
   });
 
+  // J8 lets an organiser list active Coordinator Leads, so the rule may name the organiser
+  // as a reader; what must never appear is an organiser profile as something listed.
   test('organisers still cannot be listed or browsed', () => {
     const listRule = matchBlock('users').match(/allow list:\s*if([^;]*);/)[1];
-    expect(listRule).not.toContain('EVENT_ORGANISER');
+    expect(listRule).not.toMatch(/resource\.data\.role == 'EVENT_ORGANISER'/);
   });
 
   test('profile writes are unchanged — nobody gains a way to edit another user', () => {
@@ -1123,9 +1125,12 @@ describe('H8 the registration list reaches an organiser only through the service
     const readClauses = matchBlock('users').match(/allow\s+(?:get|list|read)[^;]*;/g) || [];
     expect(readClauses.length).toBeGreaterThan(0);
     readClauses.forEach((clause) => {
-      expect(clause).not.toContain("hasRole('EVENT_ORGANISER')");
       expect(clause).not.toContain("hasRole('ATTENDEE')");
       expect(clause).not.toMatch(/resource\.data\.role == 'ATTENDEE'/);
+      // J8 — an organiser may list active Coordinator Leads, and no other profile.
+      (clause.match(/hasRole\('EVENT_ORGANISER'\)[^|]*/g) || []).forEach((organiserRead) => {
+        expect(organiserRead).toContain("resource.data.role == 'EVENT_COORDINATOR_LEAD'");
+      });
     });
   });
 });
