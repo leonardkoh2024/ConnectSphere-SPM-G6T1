@@ -2,7 +2,7 @@
 // open events; it never reads the events collection itself (AC3).
 
 import { auth } from "../../lib/firebase";
-import { acceptInvitation, declineInvitation, joinWaitlist, loadMyRegistrations, loadOpenEvents, registerForEvent, withdrawFromEvent } from "./registrationsApi";
+import { acceptInvitation, declineInvitation, joinWaitlist, loadMyRegistrations, loadOpenEvents, registerForEvent, registeredEventsFor, withdrawFromEvent } from "./registrationsApi";
 
 jest.mock("../../lib/firebase", () => ({
   auth: { currentUser: { uid: "attendee-1", getIdToken: jest.fn() } },
@@ -146,3 +146,12 @@ test("TC-753 a refusal keeps the service's message and reason", async () => {
   await expect(acceptInvitation("e1")).rejects.toMatchObject({ message: "This invitation has expired.", reason: "invitation_expired" });
 });
 
+// J1 — the inbox names an attendee's events from their registrations.
+
+test("TC-757 the inbox's events come from the attendee's registrations, null where there is none", async () => {
+  global.fetch.mockResolvedValue(reply(200, { registrations: [{ registration_id: "e1_attendee-1", event_id: "e1", name: "Harbour Tech Forum" }] }));
+  await expect(registeredEventsFor(["e1", "e2"])).resolves.toEqual({ e1: { id: "e1", name: "Harbour Tech Forum" }, e2: null });
+
+  global.fetch.mockResolvedValue(reply(403, { error: "Only attendees can see their registrations." }));
+  await expect(registeredEventsFor(["e1"])).resolves.toEqual({ e1: null });
+});

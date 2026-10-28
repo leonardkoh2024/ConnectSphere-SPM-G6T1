@@ -56,7 +56,7 @@ describe('J1 where View on a notification goes', () => {
     expect(eventViewScreen(ROLES.COORDINATOR)).toBe('Assigned events');
     expect(eventViewScreen(ROLES.VENUE_STAFF)).toBeNull();
     expect(eventViewScreen(ROLES.TECH_SUPPORT)).toBeNull();
-    expect(eventViewScreen(ROLES.ATTENDEE)).toBeNull();
+    expect(eventViewScreen(ROLES.ATTENDEE)).toBe('My registrations');
     expect(eventViewScreen('NOT_A_ROLE')).toBeNull();
   });
 });

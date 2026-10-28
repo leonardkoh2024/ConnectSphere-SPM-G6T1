@@ -635,7 +635,7 @@ Pre-condition for the functional cases: an Event Coordinator is signed in and th
 
 **Scope:** every role's Notifications screen is the inbox (`frontend/src/features/notifications/`). The workspace holds one live subscription, so the sidebar badge and the inbox count the same list. AC2 is enforced where notifications are written and in `firestore.rules`: a user reads only notifications addressed to them, and may change nothing but the read marker. Ordering, counting and labelling are pure functions in `frontend/src/domain/notifications.js`. Each row also offers **View**, which opens the related event on the screen that role already uses for one event: the organiser's event request page, or the coordinator's Assigned events detail. Roles with no such screen yet, and events the user can no longer read, get no View.
 
-**AC coverage:** AC1 — TC-250, TC-253 – TC-255, TC-259, TC-279, TC-281. AC2 — TC-262, TC-279, TC-284. AC3 — TC-251, TC-252, TC-256, TC-257, TC-260, TC-261, TC-280, TC-282. AC4 — TC-258, TC-262, TC-282. View — TC-263 – TC-268.
+**AC coverage:** AC1 — TC-250, TC-253 – TC-255, TC-259, TC-279, TC-281. AC2 — TC-262, TC-279, TC-284. AC3 — TC-251, TC-252, TC-256, TC-257, TC-260, TC-261, TC-280, TC-282. AC4 — TC-258, TC-262, TC-282. View — TC-263 – TC-268, TC-756 – TC-759 (attendee).
 
 **Unit test cases — `frontend/src/domain/notifications.test.js`**
 
@@ -646,7 +646,7 @@ Pre-condition for the functional cases: an Event Coordinator is signed in and th
 | TC-252 | The badge is absent at zero and capped at 99+ | Counts 0, 3, 99, 100 | Call badgeText(count) | No badge at 0; "3", "99", then "99+" | | Not Executed | AC3 - badge |
 | TC-253 | The related event reads as name and reference | Events with both, either, neither; and no event | Call eventLabel(event) | "Name (EVT-...)", then name, reference, "Untitled event"; null when the event cannot be read | | Not Executed | AC1 - related event |
 | TC-254 | Each stored type has words | Known types and an unknown one | Call notificationTypeLabel(type) | Known types read in words; an unknown one reads "Update" | | Not Executed | AC1 - message heading |
-| TC-263 | View goes to each role's own event screen | Each of the five roles, and an unknown role | Call eventViewScreen(role) | Organiser: "New event request"; Coordinator: "Assigned events"; Venue Staff, Technical Support, Attendee and an unknown role: none | | Not Executed | View - routing rule |
+| TC-263 | View goes to each role's own event screen | Each of the five roles, and an unknown role | Call eventViewScreen(role) | Organiser: "New event request"; Coordinator: "Assigned events"; Attendee: "My registrations"; Venue Staff, Technical Support and an unknown role: none | | Not Executed | View - routing rule |
 
 **Functional test cases — `frontend/src/features/notifications/NotificationInbox.test.js`**
 
@@ -668,7 +668,7 @@ Pre-condition for the functional cases: an Event Coordinator is signed in and th
 | TC-261 | With nothing unread there is no badge | No unread notifications | Render the workspace | No unread badge is shown | | Not Executed | AC3 - badge |
 | TC-266 | An organiser's View opens that event request | Organiser on Notifications; a notification for E1 | Click "View" on the notification | The organiser's event request page opens for E1, with "Back to notifications" | | Not Executed | View - organiser |
 | TC-267 | A coordinator's View opens that event under Assigned events | Coordinator on Notifications; a notification for E1 | Click "View" on the notification | Assigned events opens with E1's detail, with "Back to notifications" | | Not Executed | View - coordinator |
-| TC-268 | Roles with no event screen are offered no View | Venue Staff, Technical Support, Attendee in turn, on Notifications | Render the workspace | No View button is offered | | Not Executed | View - boundary |
+| TC-268 | Roles with no event screen are offered no View | Venue Staff, Technical Support in turn, on Notifications | Render the workspace | No View button is offered | | Not Executed | View - boundary |
 
 **Functional test cases — `frontend/src/features/notifications/notificationsApi.test.js`**
 
@@ -1585,3 +1585,7 @@ H7's notice replaces J7's `PLACE_OPENED` broadcast to everyone waiting, because 
 | TC-753 | Accept and decline post to their routes with the ID token | — | acceptInvitation; declineInvitation | POST …/invitation/accept and …/decline; refusal keeps message and reason | As expected | Pass | AC2, AC4 |
 | TC-754 | Browse events points an offered place to My registrations | — | Open Browse events | "A place is offered to you. Accept it in My registrations." | As expected | Pass | AC1 |
 | TC-755 | The offer notice has its own inbox label | — | notificationTypeLabel | "Place offered" | As expected | Pass | AC1 |
+| TC-756 | An attendee's notification names its event and offers View | Attendee with a WAITLIST_PLACE_OFFERED notice for E7 | Render the inbox with the attendee's event lookup; click View | Event read from the attendee's registrations, not `events`; View hands over E7 | As expected | Pass | J1 View |
+| TC-757 | The attendee's event lookup reads their registrations | — | registeredEventsFor(["e1", "e2"]); then with the service refusing | e1 named, e2 null; a refusal gives null rather than an error | As expected | Pass | J1 View |
+| TC-758 | View from a notification opens that event's details in My registrations | Registrations for E1 and an offered place on W | Open My registrations focused on W; then on an event with no registration | W's details with Accept place and Decline; otherwise the list | As expected | Pass | J1 View |
+| TC-759 | An attendee's View lands on their registration for that event | Attendee on Notifications | Click View | My registrations opens on E1, with "Back to notifications" | As expected | Pass | J1 View |

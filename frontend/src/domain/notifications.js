@@ -75,10 +75,12 @@ export const eventLabel = (event) => {
 
 // Where "View" on a notification takes each role: the screen that role already
 // uses to open one event. A role with no such screen yet gets no View button
-// rather than one that leads nowhere.
+// rather than one that leads nowhere. An attendee's event opens on their own
+// registration for it, where an offered place is accepted or a place given up.
 export const EVENT_VIEW_SCREEN = {
   [ROLES.ORGANISER]: "New event request",
-  [ROLES.COORDINATOR]: "Assigned events"
+  [ROLES.COORDINATOR]: "Assigned events",
+  [ROLES.ATTENDEE]: "My registrations"
 };
 
 export const eventViewScreen = (role) => EVENT_VIEW_SCREEN[role] || null;

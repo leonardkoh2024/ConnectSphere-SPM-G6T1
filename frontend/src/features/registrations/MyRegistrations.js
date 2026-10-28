@@ -7,6 +7,8 @@
 //
 // H7 / SCRUM-145 — a place offered from the waiting list is accepted or declined here, while the
 // offer stands; a lapsed offer is shown, with the attendee still on the list.
+//
+// J1 — View on a notification opens here with `focusEventId`, straight on that event's details.
 
 import React, { useCallback, useEffect, useState } from "react";
 import RecordLead from "../../components/RecordLead";
@@ -37,7 +39,7 @@ const statusPill = (status) => (
   <span className={`cs-pill cs-pill-${registrationStatusTone(status)}`}>{REGISTRATION_STATUS_LABELS[status] || status}</span>
 );
 
-export default function MyRegistrations({ onNotice, onBackChange }) {
+export default function MyRegistrations({ onNotice, onBackChange, focusEventId = null }) {
   const [registrations, setRegistrations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -53,11 +55,16 @@ export default function MyRegistrations({ onNotice, onBackChange }) {
   useEffect(() => {
     let mounted = true;
     loadMyRegistrations()
-      .then((rows) => { if (mounted) setRegistrations(rows); })
+      .then((rows) => {
+        if (!mounted) return;
+        setRegistrations(rows);
+        const focused = focusEventId && rows.find((entry) => entry.event_id === focusEventId);
+        if (focused) setOpenId(focused.registration_id);
+      })
       .catch((failure) => { if (mounted) setError(failure.message || "Your registrations could not be loaded."); })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
-  }, []);
+  }, [focusEventId]);
 
   const closeDetails = useCallback(() => setOpenId(null), []);
 

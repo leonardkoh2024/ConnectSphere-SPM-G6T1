@@ -520,3 +520,23 @@ test("TC-752 H7 AC1 the details of an offered place carry Accept and Decline at 
   expect(within(details).getByRole("button", { name: "Decline" })).toBeInTheDocument();
 });
 
+// J1 — View on a notification opens My registrations on that event's details.
+
+test("TC-758 opened from a notification, the event's details show at once with its actions", async () => {
+  loadMyRegistrations.mockResolvedValue([
+    entry(),
+    entry({ registration_id: "w", event_id: "w", name: "Waitlist Demo Workshop", status: "WAITLISTED", waitlist_position: 1, can_withdraw: true, can_accept: true, invitation_active: true, invitation_expires_at: "2026-11-07T04:00:00.000Z" })
+  ]);
+  render(<MyRegistrations focusEventId="w" />);
+
+  expect(await screen.findByRole("heading", { name: "Waitlist Demo Workshop" })).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Harbour Tech Forum" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Accept place" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument();
+});
+
+test("TC-758 an event with no registration of theirs leaves the list showing", async () => {
+  loadMyRegistrations.mockResolvedValue([entry()]);
+  render(<MyRegistrations focusEventId="gone" />);
+  expect(within(await rowFor("Harbour Tech Forum")).getByRole("button", { name: "View details" })).toBeInTheDocument();
+});

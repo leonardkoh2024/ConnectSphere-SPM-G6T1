@@ -46,6 +46,15 @@ export const loadMyRegistrations = async () => {
   return result.registrations || [];
 };
 
+// J1 — the inbox names an attendee's events, and offers View, from their own registrations,
+// since an attendee cannot read `events`. Keyed by event id like the inbox's own lookup:
+// null for an event they hold no registration for, or when the list could not be loaded.
+export const registeredEventsFor = async (eventIds) => {
+  const rows = await loadMyRegistrations().catch(() => []);
+  const byEvent = Object.fromEntries(rows.map((row) => [row.event_id, { id: row.event_id, name: row.name }]));
+  return Object.fromEntries(eventIds.map((eventId) => [eventId, byEvent[eventId] || null]));
+};
+
 // H5 — withdraw the signed-in attendee from one event. Resolves with the registration as it
 // now stands and the places left; rejects with the service's message and `reason`.
 export const withdrawFromEvent = (eventId) =>

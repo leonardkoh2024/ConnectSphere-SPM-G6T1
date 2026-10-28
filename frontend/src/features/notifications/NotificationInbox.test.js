@@ -184,3 +184,24 @@ describe('an event this role may not read', () => {
     expect(screen.queryByText('Event no longer available')).not.toBeInTheDocument();
   });
 });
+
+// J1 — an attendee cannot read `events`, so the workspace hands the inbox a lookup that
+// reads their registrations instead. TC-756 in docs/test-cases.md.
+describe("J1 an attendee's notifications", () => {
+  test('TC-756 the event comes from the lookup the workspace passes, and View opens it', async () => {
+    const offer = {
+      id: 'n-offer', user_id: 'attendee-1', event_id: 'e7', type: 'WAITLIST_PLACE_OFFERED',
+      message: 'Waitlist Demo Workshop: a place is offered to you until 7 Nov 2026, 12:00.',
+      is_read: false, created_at: '2026-10-28T09:00:00.000Z', read_at: null
+    };
+    const loadEvents = jest.fn().mockResolvedValue({ e7: { id: 'e7', name: 'Waitlist Demo Workshop' } });
+    const onViewEvent = jest.fn();
+    render(<NotificationInbox notifications={[offer]} loading={false} error="" onOpen={jest.fn()} onViewEvent={onViewEvent} loadEvents={loadEvents} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'View Waitlist Demo Workshop' }));
+
+    expect(loadEvents).toHaveBeenCalledWith(['e7']);
+    expect(eventsFor).not.toHaveBeenCalled();
+    expect(onViewEvent).toHaveBeenCalledWith({ id: 'e7', name: 'Waitlist Demo Workshop' }, offer);
+  });
+});
