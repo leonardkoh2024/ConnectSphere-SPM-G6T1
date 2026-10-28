@@ -476,7 +476,7 @@ describe('TC-284 notifications are only ever addressed to people related to the 
     // then (L1) the Safety Officer waiting notice, then (J2) the organiser's own
     // submission notice, then (J4) Venue Staff for their own venue.
     const branches = ordinary().split(/\|\| \(/);
-    expect(branches).toHaveLength(8);
+    expect(branches).toHaveLength(9);
     branches.slice(0, 4).forEach((branch) => {
       expect(branch).toMatch(/request\.resource\.data\.user_id (==|in)/);
       expect(branch).toMatch(/organiser_id|coordinator_id/);
@@ -484,7 +484,8 @@ describe('TC-284 notifications are only ever addressed to people related to the 
     expect(branches[4]).toContain("request.resource.data.type == 'ARRANGEMENT_REVIEW_REQUIRED'");
     expect(branches[5]).toContain("request.resource.data.type == 'SAFETY_REVIEW_WAITING'");
     expect(branches[5]).toContain("data.role == 'SAFETY_OFFICER'");
-    expect(branches[7]).toMatch(/venue_staff\/.*\.data\.user_id == request\.resource\.data\.user_id/);
+    expect(branches[6]).toContain("request.resource.data.type in ['DATE', 'TIME', 'VENUE']");
+    expect(branches[8]).toMatch(/venue_staff\/.*\.data\.user_id == request\.resource\.data\.user_id/);
   });
 
   // J6 / SCRUM-155 AC1 — TC-313. A booking's outcome goes only to the coordinator

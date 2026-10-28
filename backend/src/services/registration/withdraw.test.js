@@ -290,3 +290,17 @@ test("TC-713 H6 an attendee who left the waiting list may join it again, at the 
   const rejoined = await joinWaitlist({ eventId: "e1", attendeeId: "attendee-1" });
   assert.equal(rejoined.registration.waitlist_position, 3);
 });
+
+test("J7 SCRUM-156 a freed place invites everyone still waiting, and does not invite the person who left", async () => {
+  const { firestore, withdraw } = setup({
+    registrations: {
+      "e1_attendee-1": record("e1", "attendee-1"),
+      e1_waiting: record("e1", "waiting", "WAITLISTED", { registered_at: null })
+    }
+  });
+  await withdraw();
+  const notice = firestore.store.notifications["PLACE_OPENED-e1-waiting"];
+  assert.equal(notice.user_id, "waiting");
+  assert.equal(notice.message, "Harbour Tech Forum: a place has opened and you are invited to apply.");
+  assert.equal(firestore.store.notifications["PLACE_OPENED-e1-attendee-1"], undefined);
+});

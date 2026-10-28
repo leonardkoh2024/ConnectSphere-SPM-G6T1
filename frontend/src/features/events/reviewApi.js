@@ -24,6 +24,7 @@ import {
 } from "../../domain/ordinaryEventChanges";
 import { equipmentActivity, equipmentArrangements } from "../../domain/eventEquipment";
 import { REGISTERED_STATUS, capacityReductionNeedsAcknowledgement } from "../../domain/registrationWindow";
+import { attendeeChangeNotices } from "../../domain/safetyAndNotices";
 
 // K5 / SCRUM-186 AC3 — one response for every event the caller may not open (someone
 // else's, one they held before it was reassigned, an unassigned one, or an id that does
@@ -424,6 +425,23 @@ const saveEventEdit = async ({
     }
   }
   const ordinary = cleanOrdinaryValues(values);
+  const attendeeChanges = [];
+  if (significantPlanned.event_date) attendeeChanges.push({ kind: "DATE", detail: significant.event_date });
+  if (significantPlanned.start_time || significantPlanned.end_time) {
+    attendeeChanges.push({ kind: "TIME", detail: `${significant.start_time}–${significant.end_time}` });
+  }
+  if (significantPlanned.preferred_location) attendeeChanges.push({ kind: "VENUE", detail: significant.preferred_location });
+  const registeredAttendees = attendeeChanges.length
+    ? (await getDocs(query(
+      collection(db, "registrations"),
+      where("event_id", "==", eventId),
+      where("status", "==", "REGISTERED")
+    ))).docs.map((item) => ({
+      user_id: item.data().attendee_id || item.data().user_id,
+      status: "REGISTERED",
+      registration_id: item.id
+    }))
+    : [];
 
   // I3 AC4 — the capacity is saved by the service (it counts who is registered and enforces the
   // acknowledgement), before the rest of the form, so a refusal leaves everything unsaved.
@@ -570,6 +588,22 @@ const saveEventEdit = async ({
         affected_arrangements: currentImpact
       });
     }
+    attendeeChanges.forEach((change) => {
+      attendeeChangeNotices({ event: { event_id: eventId, name: event.name }, attendees: registeredAttendees, change })
+        .forEach((notice) => {
+          const person = registeredAttendees.find((item) => item.user_id === notice.user_id);
+          const notificationRef = doc(collection(db, "notifications"));
+          tx.set(notificationRef, notificationRecord({
+            notificationId: notificationRef.id,
+            userId: notice.user_id,
+            eventId,
+            type: notice.type,
+            message: notice.message,
+            createdAt: changedAt,
+            registrationId: person?.registration_id
+          }));
+        });
+    });
     saved = ordinaryChanges.length + Object.keys(significantChanges).length;
   });
   const result = { ok: true, changed: saved + (capacityChanged ? 1 : 0) };

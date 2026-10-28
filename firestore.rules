@@ -706,6 +706,15 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.role == 'SAFETY_OFFICER'
             && get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.is_active == true
             && request.resource.data.created_at == request.time)
+          || (hasRole('EVENT_COORDINATOR')
+            && currentCoordinator(request.resource.data.event_id)
+            && request.resource.data.type in ['DATE', 'TIME', 'VENUE']
+            && request.resource.data.registration_id is string
+            && request.resource.data.created_at == request.time
+            && get(/databases/$(database)/documents/registrations/$(request.resource.data.registration_id)).data.event_id == request.resource.data.event_id
+            && get(/databases/$(database)/documents/registrations/$(request.resource.data.registration_id)).data.status == 'REGISTERED'
+            && (get(/databases/$(database)/documents/registrations/$(request.resource.data.registration_id)).data.attendee_id == request.resource.data.user_id
+              || get(/databases/$(database)/documents/registrations/$(request.resource.data.registration_id)).data.user_id == request.resource.data.user_id))
           || (ownsEvent(request.resource.data.event_id)
             && request.resource.data.type == 'EVENT_SUBMITTED'
             && request.resource.data.user_id == request.auth.uid

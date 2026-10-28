@@ -71,7 +71,14 @@ test("TC-573 H3 AC2 an attendee registers for an open event with a place free", 
     withdrawn_at: null,
     waitlist_position: null
   });
-  assert.deepEqual(firestore.log.writes, ["registrations/e1_attendee-1"]);
+  assert.deepEqual(firestore.log.writes, [
+    "registrations/e1_attendee-1",
+    "notifications/REGISTRATION_CONFIRMED-e1-attendee-1"
+  ]);
+  assert.equal(
+    firestore.store.notifications["REGISTRATION_CONFIRMED-e1-attendee-1"].message,
+    "Harbour Tech Forum: your registration is confirmed."
+  );
   assert.equal(result.registration.registration_id, "e1_attendee-1");
   assert.equal(result.registration.status, "REGISTERED");
 });
@@ -156,7 +163,10 @@ test("TC-580 H3 AC8 an attendee already registered is refused, and nothing is wr
   const { firestore, register } = setup();
   await register();
   await refusedWith(register(), 409, "already_registered", /already registered/i);
-  assert.deepEqual(firestore.log.writes, ["registrations/e1_attendee-1"]);
+  assert.deepEqual(firestore.log.writes, [
+    "registrations/e1_attendee-1",
+    "notifications/REGISTRATION_CONFIRMED-e1-attendee-1"
+  ]);
 });
 
 test("TC-580 H3 AC8 a registration under an older record id still counts as a duplicate", async () => {

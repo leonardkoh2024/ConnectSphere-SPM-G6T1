@@ -13,12 +13,15 @@
 // H5 (withdraw) and H6 (join the waiting list) change the same one record per attendee and
 // event, and start from the same reads, so all three live here.
 
+import { createRequire } from "node:module";
 import {
   REGISTERED_STATUS,
   registrationAttemptRefusal
 } from "../../../../frontend/src/domain/registrationWindow.mjs";
 import { myRegistrationEntry, withdrawalRefusal } from "../../../../frontend/src/domain/myRegistrations.mjs";
 import { openEventListing, remainingPlaces } from "../../../../frontend/src/domain/openRegistration.mjs";
+
+const { attendeeChangeNotices } = createRequire(import.meta.url)("../../../../frontend/src/domain/safetyAndNotices.js");
 
 const WAITLISTED_STATUS = "WAITLISTED";
 
@@ -63,8 +66,30 @@ export const createAttendeeRegistration = ({ firestore, serverTimestamp, now = (
       // The attendee's record holding `status`, their own first; null when there is none.
       holding: (status) => records.find((record) => record.data.status === status) || null,
       taken: registeredSnapshot.docs.filter((item) => item.data().status === REGISTERED_STATUS).length,
-      waiting: waitlistSnapshot ? waitlistSnapshot.docs.filter((item) => item.data().status === WAITLISTED_STATUS).length : 0
+      waiting: waitlistSnapshot ? waitlistSnapshot.docs.filter((item) => item.data().status === WAITLISTED_STATUS).length : 0,
+      waitingPeople: waitlistSnapshot
+        ? waitlistSnapshot.docs
+          .filter((item) => item.data().status === WAITLISTED_STATUS)
+          .map((item) => ({ user_id: item.data().attendee_id, status: WAITLISTED_STATUS }))
+        : []
     };
+  };
+
+  const tellAttendees = (transaction, event, attendees, change) => {
+    const named = { ...event, event_id: event.event_id || event.id };
+    attendeeChangeNotices({ event: named, attendees, change }).forEach((notice) => {
+      const notificationId = `${change.kind}-${named.event_id}-${notice.user_id}`;
+      transaction.set(firestore.collection("notifications").doc(notificationId), {
+        notification_id: notificationId,
+        user_id: notice.user_id,
+        event_id: notice.event_id,
+        type: notice.type,
+        message: notice.message,
+        is_read: false,
+        created_at: serverTimestamp(),
+        read_at: null
+      });
+    });
   };
 
   // The flag, the status and the window, by the server's clock (H1 AC4), then a usable capacity.
@@ -111,6 +136,7 @@ export const createAttendeeRegistration = ({ firestore, serverTimestamp, now = (
       withdrawn_at: null,
       waitlist_position: null
     });
+    tellAttendees(transaction, event, [{ user_id: attendeeId, status: REGISTERED_STATUS }], { kind: "REGISTRATION_CONFIRMED" });
 
     return {
       registration: { registration_id: registrationId, status: REGISTERED_STATUS, registered_at: at.toISOString() },
@@ -127,7 +153,7 @@ export const createAttendeeRegistration = ({ firestore, serverTimestamp, now = (
   // event; everyone behind moves up, since positions are worked out from who is still waiting.
   const withdraw = ({ eventId, attendeeId }) => firestore.runTransaction(async (transaction) => {
     const at = now();
-    const place = await readPlace(transaction, eventId, attendeeId);
+    const place = await readPlace(transaction, eventId, attendeeId, { withWaitlist: true });
     const { event } = place;
     const held = place.holding(REGISTERED_STATUS) || place.holding(WAITLISTED_STATUS);
 
@@ -135,6 +161,9 @@ export const createAttendeeRegistration = ({ firestore, serverTimestamp, now = (
     if (refusal) throw new RegistrationRefused(refusal.reason === "not_found" ? 404 : 409, refusal.reason, refusal.message);
 
     transaction.update(held.ref, { status: "WITHDRAWN", withdrawn_at: serverTimestamp() });
+    if (held.data.status === REGISTERED_STATUS) {
+      tellAttendees(transaction, event, place.waitingPeople, { kind: "PLACE_OPENED" });
+    }
 
     const withdrawn = { ...held.data, id: held.id, status: "WITHDRAWN", withdrawn_at: at };
     const freed = held.data.status === REGISTERED_STATUS ? 1 : 0;
