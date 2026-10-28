@@ -212,13 +212,13 @@ export default function MyRegistrations({ onNotice, onBackChange }) {
           <section className="cs-registration-group" aria-labelledby="cs-registrations-upcoming">
             <h2 id="cs-registrations-upcoming">Upcoming</h2>
             {upcoming.length
-              ? <div className="cs-record-list">{upcoming.map(row)}</div>
+              ? <div className="cs-record-list cs-attendee-list">{upcoming.map(row)}</div>
               : <p className="cs-panel-note">{filtering ? "No upcoming registrations match these filters." : "You have no upcoming registrations."}</p>}
           </section>
           {others.length > 0 && (
             <section className="cs-registration-group" aria-labelledby="cs-registrations-others">
               <h2 id="cs-registrations-others">Past, withdrawn and cancelled</h2>
-              <div className="cs-record-list">{others.map(row)}</div>
+              <div className="cs-record-list cs-attendee-list">{others.map(row)}</div>
             </section>
           )}
         </>

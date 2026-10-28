@@ -165,7 +165,7 @@ export default function BrowseEvents({ onNotice, onBackChange }) {
   }
 
   return (
-    <div className="cs-record-list" aria-label="Events open for registration">
+    <div className="cs-record-list cs-attendee-list" aria-label="Events open for registration">
       {events.map((entry) => {
         const closes = singaporeDateTime(entry.registration_closes_at);
         const row = rowState[entry.id] || {};

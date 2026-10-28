@@ -1582,6 +1582,66 @@ a.cs-btn-ghost:hover {
 .cs-browse-record .cs-record-ref { white-space: normal; }
 .cs-registration-record .cs-record-actions { justify-content: flex-start; }
 
+/* Those columns need about 940px, which the list may not have even on a wide screen once the
+   sidebar takes its share, so the rows answer to the list's own width rather than the
+   viewport's. Narrower, the title takes a line of its own with the details hung under its
+   text and the actions kept on the right; narrower still, everything stacks. */
+.cs-attendee-list { container-type: inline-size; }
+
+.cs-browse-record > .cs-record-title,
+.cs-registration-record > .cs-record-title { grid-area: title; }
+.cs-browse-record > .cs-record-ref,
+.cs-registration-record > .cs-record-ref { grid-area: venue; }
+.cs-browse-record > .cs-record-status,
+.cs-registration-record > .cs-record-status { grid-area: status; }
+.cs-browse-record > .cs-record-modified { grid-area: closes; }
+.cs-browse-record > .cs-record-actions,
+.cs-registration-record > .cs-record-actions { grid-area: actions; }
+
+.cs-record.cs-browse-record { grid-template-areas: "title venue status closes actions"; }
+.cs-record.cs-registration-record { grid-template-areas: "title venue status actions"; }
+
+/* The 60px is the 44px date tile plus the gap beside it, so the details line up with the title. */
+@container (max-width: 940px) {
+  .cs-record.cs-browse-record {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 150px;
+    grid-template-areas:
+      "title  title  actions"
+      "status status actions"
+      "venue  closes actions";
+    row-gap: 8px;
+  }
+
+  .cs-browse-record > :not(.cs-record-title):not(.cs-record-actions) { margin-left: 60px; }
+}
+
+@container (max-width: 860px) {
+  .cs-record.cs-registration-record {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 200px;
+    grid-template-areas:
+      "title  title  actions"
+      "venue  status actions";
+    row-gap: 8px;
+  }
+
+  .cs-registration-record > :not(.cs-record-title):not(.cs-record-actions) { margin-left: 60px; }
+}
+
+@container (max-width: 600px) {
+  .cs-record.cs-browse-record {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "title" "status" "venue" "closes" "actions";
+  }
+
+  .cs-record.cs-registration-record {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "title" "venue" "status" "actions";
+  }
+
+  .cs-browse-record > :not(.cs-record-title):not(.cs-record-actions),
+  .cs-registration-record > :not(.cs-record-title):not(.cs-record-actions) { margin-left: 0; }
+}
+
 .cs-browse-details-head {
   display: flex;
   align-items: flex-start;
@@ -1592,8 +1652,6 @@ a.cs-btn-ghost:hover {
 .cs-browse-details-actions { display: flex; flex-shrink: 0; gap: 8px; }
 
 @media (max-width: 900px) {
-  .cs-registration-record,
-  .cs-browse-record { grid-template-columns: minmax(0, 1fr); }
   .cs-browse-details-head { flex-direction: column; }
 }
 
