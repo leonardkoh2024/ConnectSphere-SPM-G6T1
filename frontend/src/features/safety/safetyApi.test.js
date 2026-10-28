@@ -201,6 +201,17 @@ const givenEvent = (changes = {}, role = 'SAFETY_OFFICER', bookings = [['VB-1', 
 // AC4 — Approve: one safety_reviews record, the event to Confirmed pointing at
 // it, history, and the coordinator and organiser told — all in one commit, which
 // is what safetyOutcomeUpdate in firestore.rules checks.
+test('L3 SCRUM-189 an outcome is recorded only during Safety Review, and only as Approve, Reject or Request changes', async () => {
+  givenEvent();
+  await expect(recordSafetyOutcome({ eventId: 'e1', outcome: 'CONFIRM', comment: 'x' }))
+    .rejects.toThrow('Choose an outcome: Approve, Reject or Request changes.');
+  expect(mockTransactionSet).not.toHaveBeenCalled();
+
+  givenEvent({ status: 'PLANNING' });
+  await expect(recordSafetyOutcome({ eventId: 'e1', outcome: 'APPROVE' }))
+    .rejects.toThrow('Outcomes can be recorded only by the Safety Officer, on an event in Safety Review.');
+});
+
 test('TC-358 approving writes the review, confirms the event and tells its coordinator and organiser', async () => {
   givenEvent();
   const result = await recordSafetyOutcome({ eventId: 'e1', outcome: 'APPROVE', comment: '' });
