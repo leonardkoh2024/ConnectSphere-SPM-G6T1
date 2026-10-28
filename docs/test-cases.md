@@ -1590,3 +1590,59 @@ H7's notice replaces J7's `PLACE_OPENED` broadcast to everyone waiting, because 
 | TC-758 | View from a notification opens that event's details in My registrations | Registrations for E1 and an offered place on W | Open My registrations focused on W; then on an event with no registration | W's details with Accept place and Decline; otherwise the list | As expected | Pass | J1 View |
 | TC-759 | An attendee's View lands on their registration for that event | Attendee on Notifications | Click View | My registrations opens on E1, with "Back to notifications" | As expected | Pass | J1 View |
 | TC-760 | Every kind of attendee notice reads under its own heading | — | notificationTypeLabel for each type attendeeChangeNotices writes | Registration confirmed, Date changed, Time changed, Venue changed, Event cancelled, Place opened — never "Update" | As expected | Pass | J7 labels |
+
+## I1 / SCRUM-147 — Request a change after submitting my event
+
+**Scope:** an organiser raises a change request from **Change requests** (header button **New change request**) or from **Request a change** at the top right of one of their submitted events. It is allowed from Submitted up to and including Confirmed (AC1). They tick the details to change, see each current value beside the field for the new one, and give a mandatory reason (AC2). The changeable details are name, purpose, description, expected attendance, date, start and end time, preferred location, room layout, facilities, accessibility needs and accessibility notes. Each is stored under the event's own field name as `{ old_value, new_value }`, so I2 can apply it. There is no limit on the number of requests and no cut-off before the event (AC3).
+
+The request is written to `change_requests` as **Pending** (AC4). The same commit adds a `CHANGE_REQUESTED` row to `event_history` and, when the event has a coordinator, a `CHANGE_REQUESTED` notice to them. The event itself is not changed: accepting or declining is I2. **With no coordinator assigned yet (Submitted, in the Lead's queue), nobody is notified**; the coordinator sees the request once the event is assigned (decided 28 Oct 2026, a Session 3 question). `firestore.rules` lets only the event's organiser create a request, in their own name, with the event's status, coordinator, field names and reason checked; there is no update or delete rule until I2 adds the decision. Rules live in `frontend/src/domain/changeRequests.js`.
+
+**AC coverage:** AC1 — TC-761, TC-765, TC-772, TC-779, TC-781, TC-782. AC2 — TC-762, TC-766 – TC-770, TC-773, TC-777. AC3 — TC-775, TC-776, TC-780. AC4 — TC-762, TC-763, TC-771, TC-773, TC-774, TC-776 – TC-778, TC-783. Guard — TC-764.
+
+**Test cases — `changeRequests.test.js`, `changeRequestsApi.test.js`, `ChangeRequestsScreen.test.js`, `Workspace.test.js`, `notifications.test.js`, `firestoreRules.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-761 | Only the event's organiser creates a change request, in their own name, while the event is Submitted to Confirmed | — | Read the change_requests create rule | Organiser role, own name, ownsEvent, status in the six statuses | As expected | Pass | Rules · AC1 |
+| TC-762 | A change request names known fields, gives a reason, starts Pending and is stamped now | — | Read the create rule | PENDING; reason trimmed non-empty; changes non-empty with only CHANGEABLE_FIELD_NAMES; created_at == request.time | As expected | Pass | Rules · AC2, AC4 |
+| TC-763 | A change request carries the event's coordinator as it stands | — | Read the create rule | coordinator_id must equal the event's (null if unassigned) | As expected | Pass | Rules · AC4 |
+| TC-764 | Read by its organiser and the event's current coordinator; no update or delete yet | — | Read the change_requests block | get/list as stated; no update, delete or write | As expected | Pass | Rules · guard |
+| TC-765 | Which events take a change request | — | canRequestChange for each status and another organiser | Own event Submitted…Confirmed only | As expected | Pass | AC1 |
+| TC-766 | Current values come from the event and its request records | — | currentChangeValues | Every changeable field; lists sorted | As expected | Pass | AC2 |
+| TC-767 | Each chosen field keeps its value now and the value proposed | — | proposedChanges | Only chosen fields; number and sorted list stored | As expected | Pass | AC2 |
+| TC-768 | A request needs a field, a different value and a reason | — | changeRequestProblems | Named problem for each gap; none when complete | As expected | Pass | AC2 |
+| TC-769 | The event as it would stand must still make sense | — | changeRequestProblems on attendance, date, times | Whole number > 0; no past date; end after start | As expected | Pass | AC2 |
+| TC-770 | Values read in words | — | changeValueText | Lists joined, catalogue labels, dash for nothing | As expected | Pass | AC2 |
+| TC-771 | The coordinator's notice names the event and what is to change | — | changeRequestedMessage | "… has a change request waiting for your decision: expected attendance, date." | As expected | Pass | AC4 |
+| TC-772 | Only the organiser's events from Submitted to Confirmed are offered, soonest first | — | loadChangeableEvents | Draft and Cancelled left out; by date | As expected | Pass | AC1 |
+| TC-773 | A request, its history row and the coordinator's notice are one commit | Event in Planning with coordinator c1 | submitChangeRequest | PENDING record with changes and trimmed reason; CHANGE_REQUESTED history; notice to c1; one commit | As expected | Pass | AC2, AC4 |
+| TC-774 | With no coordinator yet the request is saved and nobody is told | Event Submitted, unassigned | submitChangeRequest | coordinator_id null; no notification | As expected | Pass | AC4 · Session 3 |
+| TC-775 | Every request the organiser raised is listed, newest first | Two requests | loadMyChangeRequests | Newest first; timestamps as ISO | As expected | Pass | AC3 |
+| TC-776 | Each request shows its event, every change old → new, the reason and Pending | One Pending request | Open Change requests | "120 → 150"; facilities lists; reason; warning pill | As expected | Pass | AC3, AC4 |
+| TC-777 | A request is sent only with a new value and a reason, then joins the list | Event in Planning | Tick attendance, send; then enter 150 and a reason, send | Problems listed first; then sent with the values; toast names the coordinator being told | As expected | Pass | AC2, AC4 |
+| TC-778 | An unassigned event says the request waits, and so does the confirmation | Event Submitted, unassigned | Open the form for it and send | Note shown; "saved as Pending… once the event is assigned" | As expected | Pass | AC4 · Session 3 |
+| TC-779 | Nothing raised yet, and no event that can take one, is said plainly | No requests, no eligible events | Open the screen; open the form | Empty state; no New change request; form explains why | As expected | Pass | AC1 |
+| TC-780 | Change requests offers New change request in its header | Organiser | Open Change requests; click the button | Form opens; header reads New change request | As expected | Pass | AC3 |
+| TC-781 | Request a change in a submitted event's header opens the form for that event | Organiser viewing their own E1 in Planning | Click Request a change in the page header | Change requests, form open for E1 | As expected | Pass | AC1 |
+| TC-782 | The header offers Request a change only on the organiser's own event | Another organiser's event in Planning | Open the event | No Request a change (statuses covered by TC-765) | As expected | Pass | AC1 |
+| TC-783 | The change request notice has its own inbox label | — | notificationTypeLabel('CHANGE_REQUESTED') | "Change requested" | As expected | Pass | AC4 |
+
+## B10 — Filter My events, and see the venues secured
+
+**Scope:** My events gains a **Status** filter (All events, or any one of the ten statuses in workflow order) and a **Search** on the event name or reference, case-insensitive, as My registrations has for attendees. A filter that matches nothing says so. The list is still loaded once; filtering happens in the browser.
+
+Opening a submitted request now also shows **Venue** in the Review and decision panel: the names of the venues approved for the event so far, or "To be confirmed" until one is. Organisers cannot read `venue_bookings` or `venues`, so the names come from the event service (`GET /api/events/:eventId/venues`). It answers only the event's own organiser, using the venue service's `getApprovedEventVenueNames` contract, the same one the attendee listing uses. No hold, rejection reason or other booking detail reaches the organiser, and no rules change was needed. This goes beyond B10's written criteria; it is filed under B10 as the organiser's view of how far their request has got.
+
+**Test cases — `EventList.test.js`, `venues.test.js` (backend), `OrganiserEventDetail.test.js`, `eventVenuesApi.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-784 | The Status filter shows only events in that status | A Submitted and a Draft event | Choose Draft, then All events | Only the draft; then both | As expected | Pass | B10 |
+| TC-785 | Search matches the name or the reference, whatever the case | Same | Search "partner", then "evt-100241" | Only Q4 Partner Summit; then only Volunteer Onboarding | As expected | Pass | B10 |
+| TC-786 | Filters that match nothing say so; every status is offered | Same | Read the Status options; choose Confirmed | All events plus the ten statuses; "No events match these filters." | As expected | Pass | B10 |
+| TC-787 | The organiser gets the names of the venues their event has secured, and nothing else | Own event; approved bookings at two venues | GET /api/events/e1/venues | 200 { venue_names: [both] } | As expected | Pass | B10 |
+| TC-788 | Another organiser's event, or a missing one, is refused with no venues | Event owned by o2; no event | GET as o1 | 403 "You are not authorised to view this event."; no lookup made | As expected | Pass | B10 AC5 |
+| TC-789 | Only a signed-in organiser may ask | No token; forged token; coordinator | GET | 401; 401; 403 | As expected | Pass | Guard |
+| TC-790 | A submitted event shows its approved venues, or To be confirmed | Submitted event | Open it | "Harbour Hall, Pier Room"; with none, "To be confirmed" | As expected | Pass | B10 |
+| TC-791 | A draft asks for no venues; a failed read says so without hiding the request | Draft; service down | Open each | No call for the draft; "Could not be loaded right now." and the request still shown | As expected | Pass | B10 |
+| TC-792 | The venue names are fetched with the ID token, and a refusal is passed on | — | loadEventVenueNames | GET /api/events/{id}/venues with Bearer token; 403 message thrown | As expected | Pass | B10 |

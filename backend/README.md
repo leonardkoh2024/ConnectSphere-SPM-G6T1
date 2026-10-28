@@ -119,7 +119,7 @@ this transaction so the outcome cannot be partially applied by a browser write.
 `firestore.rules` stays at the repo root. Authorisation is enforced there regardless of what lives in this
 folder, because the browser can still reach Firestore directly.
 
-The `event` service handles completion (`POST /api/events/:eventId/complete`).
+The `event` service handles completion (`POST /api/events/:eventId/complete`), and tells an event's own organiser the names of the venues approved for it (`GET /api/events/:eventId/venues`, B10), through the venue service's `getApprovedEventVenueNames` contract.
 It verifies the caller's coordinator role and current assignment, checks the confirmed
 event's Singapore end instant against the server clock, then updates only the event's
 status/timestamps and appends an event-history row atomically. It does not modify or

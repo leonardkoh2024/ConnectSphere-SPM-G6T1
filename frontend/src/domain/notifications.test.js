@@ -212,3 +212,8 @@ describe('J7 SCRUM-156 what the attendee is told reads in words', () => {
     });
   });
 });
+
+// I1 / SCRUM-147 AC4 — TC-783 in docs/test-cases.md.
+test("TC-783 the coordinator's change request notice has its own inbox label", () => {
+  expect(notificationTypeLabel('CHANGE_REQUESTED')).toBe('Change requested');
+});
