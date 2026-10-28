@@ -1871,7 +1871,7 @@ a.cs-btn-ghost:hover {
 
 .cs-nav-badge-clash {
   background: var(--cs-danger);
-  color: #fff;
+  color: var(--cs-on-accent);
 }
 
 .cs-workspace-collapsed .cs-nav-badge {
