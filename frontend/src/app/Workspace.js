@@ -18,6 +18,8 @@ import LeadAssignmentScreen from "../features/events/LeadAssignmentScreen";
 import VenueCatalogue from "../features/venues/VenueCatalogue";
 import VenueAvailabilityCalendar from "../features/venues/VenueAvailability";
 import VenueBookings from "../features/venues/VenueBookings";
+import ChangeRequestsScreen from "../features/changeRequests/ChangeRequestsScreen";
+import { canRequestChange } from "../domain/changeRequests";
 import VenueBookingQueue from "../features/venues/VenueBookingQueue";
 import VenueSearch from "../features/venues/VenueSearch";
 import VenueSafetyInformation from "../features/venues/VenueSafetyInformation";
@@ -75,6 +77,9 @@ export default function Workspace({ user, role }) {
   const [bookingTarget, setBookingTarget] = useState({ event: null, venue: null });
   const [venueCalendarOpen, setVenueCalendarOpen] = useState(false);
   const [bookingFormOpen, setBookingFormOpen] = useState(false);
+  // I1 — the organiser's change request form, and the event it was opened for.
+  const [changeFormOpen, setChangeFormOpen] = useState(false);
+  const [changeEventId, setChangeEventId] = useState(null);
   const [reviewEventId, setReviewEventId] = useState(null);
   // Which tab of that event to open first, e.g. Arrangements from Equipment requests.
   const [reviewTab, setReviewTab] = useState(null);
@@ -110,6 +115,8 @@ export default function Workspace({ user, role }) {
     if (name !== "New event request") setSelectedDraft(null);
     setVenueCalendarOpen(false);
     setBookingFormOpen(name === "Venue bookings" && Boolean(extras.event || extras.venue));
+    setChangeFormOpen(name === "Change requests" && Boolean(extras.eventId));
+    setChangeEventId(name === "Change requests" ? extras.eventId || null : null);
     setSearchEvent(name === "Venue catalogue" ? extras.event || null : null);
     setBookingTarget(name === "Venue bookings" ? { event: extras.event || null, venue: extras.venue || null } : { event: null, venue: null });
     setReviewEventId(name === "Assigned events" ? extras.eventId || null : null);
@@ -133,6 +140,18 @@ export default function Workspace({ user, role }) {
       <Icon name="plus" />New booking request
     </button>
   );
+  // I1 — and a change request, from the header of the organiser's Change requests.
+  const newChangeRequest = changeFormOpen ? null : (
+    <button type="button" className="cs-btn cs-btn-primary" onClick={() => { setChangeEventId(null); setChangeFormOpen(true); }}>
+      <Icon name="plus" />New change request
+    </button>
+  );
+  // I1 — a submitted event, up to Confirmed, is asked to change from its page header.
+  const requestChange = role === ROLES.ORGANISER && canRequestChange(selectedDraft, user.uid) ? (
+    <button type="button" className="cs-btn cs-btn-primary" onClick={() => goTo("Change requests", { eventId: selectedDraft.id })}>
+      <Icon name="plus" />Request a change
+    </button>
+  ) : null;
   // Same placement for the organiser's own list: the action that starts a new
   // request lives in the page header, not above the rows.
   const newEventRequest = (
@@ -171,8 +190,9 @@ export default function Workspace({ user, role }) {
   );
   let contents;
   if (forbidden) contents = <>{head("Not authorised")}<p className="cs-error">You are not authorised to access this function.</p></>;
-  else if (role === ROLES.ORGANISER && screen.name === "New event request") contents = <>{head(selectedDraft ? "Event request" : screen.name, "Save a draft any time, or submit when ready.")}<OrganiserEventDetail user={user} event={selectedDraft} onNotice={showToast} onSaved={(message, savedDraft) => { showToast(message); setSelectedDraft(savedDraft); if (!savedDraft) chooseScreen("My events"); }} /></>;
+  else if (role === ROLES.ORGANISER && screen.name === "New event request") contents = <>{head(selectedDraft ? "Event request" : screen.name, "Save a draft any time, or submit when ready.", requestChange)}<OrganiserEventDetail user={user} event={selectedDraft} onNotice={showToast} onSaved={(message, savedDraft) => { showToast(message); setSelectedDraft(savedDraft); if (!savedDraft) chooseScreen("My events"); }} /></>;
   else if (role === ROLES.ORGANISER && screen.name === "My events") contents = <>{head("My events", "Your requests and drafts.", newEventRequest)}<EventList user={user} role={role} headerHosted onCreate={() => { setSelectedDraft(null); goTo("New event request"); }} onEdit={(draft) => { setSelectedDraft(draft); goTo("New event request"); }} onView={(event) => { setSelectedDraft(event); goTo("New event request"); }} onDeleted={(message) => showToast(message)} /></>;
+  else if (role === ROLES.ORGANISER && screen.name === "Change requests") contents = <>{head(changeFormOpen ? "New change request" : screen.name, changeFormOpen ? "Propose new values for a submitted event, and say why." : screen.blurb, newChangeRequest)}<ChangeRequestsScreen user={user} creating={changeFormOpen} onCreatingChange={setChangeFormOpen} initialEventId={changeEventId} onNotice={showToast} /></>;
   else if (role === ROLES.COORDINATOR && screen.name === "Review queue") contents = <>{head(screen.name, screen.blurb)}<EventReviewScreen queueOnly onNotice={showToast} onBackChange={reportBack} onFindVenues={(event) => goTo("Venue catalogue", { event })} /></>;
   else if (role === ROLES.COORDINATOR && screen.name === "Assigned events") contents = <>{head(screen.name, screen.blurb)}<EventReviewScreen onNotice={showToast} initialEventId={reviewEventId} initialTab={reviewTab} onBackChange={reportBack} onFindVenues={(event) => goTo("Venue catalogue", { event })} /></>;
   else if (role === ROLES.COORDINATOR && screen.name === "Venue catalogue") contents = <>{head(screen.name, searchEvent ? `Shortlist for ${searchEvent.name || searchEvent.reference_no}.` : screen.blurb, viewCalendar)}<VenueSearch event={searchEvent} onBookVenue={(event, venue) => goTo("Venue bookings", { event, venue })} showCalendar={venueCalendarOpen} /></>;

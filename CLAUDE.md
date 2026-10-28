@@ -208,6 +208,9 @@ on real problems.
   hashing is the whole requirement.
 - Product name is ours to choose and has not been chosen. "ConnectSphere" is the *company*.
 - Backlog stories J3, J4 and J5 all share the summary "Be told when work arrives for me".
+- I1 AC4 notifies the event's *assigned* coordinator about a change request, but an event still in Submitted
+  may have none (K1). **Decided 28 Oct 2026:** nobody is notified then; the request waits as Pending and the
+  coordinator sees it once the event is assigned. Confirm in Session 3 (alternative: notify the Leads).
 - B9 AC2 requires accessibility needs to be *answered* before submission, but not what counts as answered for
   a request that has none. Each of those sections now opens with a Yes/No question (`domain/eventRequest.js`,
   `SECTION_QUESTIONS`): an explicit No is an answer, an untouched question is not. Confirm in Session 3; the

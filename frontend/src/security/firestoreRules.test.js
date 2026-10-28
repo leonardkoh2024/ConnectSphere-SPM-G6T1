@@ -1134,3 +1134,35 @@ describe('H8 the registration list reaches an organiser only through the service
     });
   });
 });
+
+// I1 / SCRUM-147 — TC-761 – TC-764 in docs/test-cases.md.
+describe('I1 an organiser raises a change request on their own submitted event', () => {
+  const block = () => matchBlock('change_requests');
+  const create = () => block().match(/allow create: if (.*?);/)[1];
+
+  test('TC-761 only the event\'s organiser creates one, in their own name, while the event is Submitted to Confirmed', () => {
+    expect(create()).toContain("hasRole('EVENT_ORGANISER')");
+    expect(create()).toContain('request.resource.data.organiser_id == request.auth.uid');
+    expect(create()).toContain('ownsEvent(request.resource.data.event_id)');
+    expect(create()).toContain("changedEvent().status in ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PLANNING', 'SAFETY_REVIEW', 'CONFIRMED']");
+  });
+
+  test('TC-762 it names at least one known field, gives a reason, starts Pending and is stamped now', () => {
+    const { CHANGEABLE_FIELD_NAMES } = require('../domain/changeRequests');
+    expect(create()).toContain("request.resource.data.status == 'PENDING'");
+    expect(create()).toContain('request.resource.data.reason.trim().size() > 0');
+    expect(create()).toContain('request.resource.data.changes.size() > 0');
+    expect(create()).toContain(`request.resource.data.changes.keys().hasOnly([${CHANGEABLE_FIELD_NAMES.map((field) => `'${field}'`).join(', ')}])`);
+    expect(create()).toContain('request.resource.data.created_at == request.time');
+  });
+
+  test('TC-763 it carries the event\'s coordinator as it stands', () => {
+    expect(create()).toContain("request.resource.data.coordinator_id == changedEvent().get('coordinator_id', null)");
+  });
+
+  test('TC-764 it is read by its organiser and the event\'s current coordinator, and nobody may change or delete it yet', () => {
+    expect(block().match(/allow get, list: if (.*?);/)[1])
+      .toBe('signedIn() && (resource.data.organiser_id == request.auth.uid || canReadEvent(resource.data.event_id))');
+    expect(block()).not.toMatch(/allow[^:]*\b(update|delete|write)\b/);
+  });
+});

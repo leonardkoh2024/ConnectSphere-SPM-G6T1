@@ -49,7 +49,9 @@ export const NOTIFICATION_TYPE_LABEL = {
   TIME: "Time changed",
   VENUE: "Venue changed",
   CANCELLED: "Event cancelled",
-  PLACE_OPENED: "Place opened"
+  PLACE_OPENED: "Place opened",
+  // I1 / SCRUM-147 — an organiser asked for a change to an event the coordinator holds.
+  CHANGE_REQUESTED: "Change requested"
 };
 
 export const notificationTypeLabel = (type) => NOTIFICATION_TYPE_LABEL[type] || "Update";
