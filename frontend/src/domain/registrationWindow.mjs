@@ -37,7 +37,6 @@ const venueLimitMessage = (ceiling) => `Registration capacity cannot exceed the 
 export const registeredFloorMessage = (count) =>
   `Registration capacity cannot be less than the ${count} ${count === 1 ? "person" : "people"} already registered.`;
 
-const blank = (value) => !String(value ?? "").trim();
 const upper = (value) => String(value || "").toUpperCase();
 
 // "2026-12-01" + "17:00" in Singapore time, or null when either half is missing or invalid.
