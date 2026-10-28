@@ -24,7 +24,7 @@ import {
 } from "../../domain/ordinaryEventChanges";
 import { equipmentActivity, equipmentArrangements } from "../../domain/eventEquipment";
 import { REGISTERED_STATUS, capacityReductionNeedsAcknowledgement } from "../../domain/registrationWindow";
-import { attendeeChangeNotices } from "../../domain/safetyAndNotices";
+import { attendeeChangeNotices, cancelUnassignedEvent } from "../../domain/safetyAndNotices";
 
 // K5 / SCRUM-186 AC3 — one response for every event the caller may not open (someone
 // else's, one they held before it was reassigned, an unassigned one, or an id that does
@@ -730,6 +730,42 @@ const cancel = async (eventId, value) => {
   return { eventId, eventName, reason, attendees };
 };
 
+const cancelUnassigned = async (eventId, value) => {
+  const user = requireUser();
+  const reason = cleanRequiredText(value);
+  if (!reason) throw new Error("Cancellation reason is required.");
+  const eventRef = doc(db, "events", eventId);
+  const leadSnapshot = await getDocs(query(
+    collection(db, "users"),
+    where("role", "==", ROLES.COORDINATOR_LEAD),
+    where("is_active", "==", true)
+  ));
+  const leads = leadSnapshot.docs.map((item) => ({
+    user_id: item.id, role: item.data().role, active: item.data().is_active !== false
+  }));
+  await runTransaction(db, async (tx) => {
+    const snapshot = await tx.get(eventRef);
+    if (!snapshot.exists() || snapshot.data().organiser_id !== user.uid) throw new Error("Only the organiser can cancel this request.");
+    const event = { event_id: eventId, ...snapshot.data() };
+    const decision = cancelUnassignedEvent({ event, leads });
+    if (!decision.ok) throw new Error("Only an unassigned submitted request can be cancelled this way.");
+    const cancelledAt = serverTimestamp();
+    tx.update(eventRef, {
+      status: EVENT_STATUS.CANCELLED,
+      cancellation_reason: reason,
+      cancelled_at: cancelledAt,
+      updated_at: cancelledAt
+    });
+    decision.notifications.forEach((notice) => {
+      const notificationRef = doc(collection(db, "notifications"));
+      tx.set(notificationRef, notificationRecord({
+        notificationId: notificationRef.id, userId: notice.user_id, eventId, type: notice.type, message: notice.message, createdAt: cancelledAt
+      }));
+    });
+  });
+  return { ok: true };
+};
+
 const complete = async (eventId) => {
   const user = requireUser();
   const token = await user.getIdToken();
@@ -951,7 +987,7 @@ const leadReassign = async (eventId, coordinatorId) => {
 };
 
 export const reviewApi = {
-  list, detail, openReview, clarify, reject, respond, approve, cancel, complete, notifyCancelledAttendees,
+  list, detail, openReview, clarify, reject, respond, approve, cancel, cancelUnassigned, complete, notifyCancelledAttendees,
   leadBoard, assign, leadReassign,
   significantChangeImpact, saveEventEdit, registeredCount, retryRerequest
 };

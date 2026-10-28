@@ -9,6 +9,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { eventLabel, isUnread, notificationTypeLabel } from "../../domain/notifications";
+import { openLeadAssignmentNotice } from "../../domain/safetyAndNotices";
 import { eventsFor } from "./notificationsApi";
 import RecordLead from "../../components/RecordLead";
 import Icon from "../../app/Icon";
@@ -68,6 +69,8 @@ export default function NotificationInbox({ notifications, loading, error, onOpe
       const open = openId === notification.id;
       const detailId = `notification-${notification.id}`;
       const event = onViewEvent ? events[notification.event_id] : null;
+      const assignment = notification.type === "UNASSIGNED_EVENT" && event ? openLeadAssignmentNotice({ event }) : null;
+      const offerView = event && assignment?.offer_assignment !== false;
       return <li key={notification.id} className={unread ? "cs-record cs-notification cs-notification-unread" : "cs-record cs-notification"}>
         <div className="cs-notification-row">
           <button type="button" className="cs-notification-open" aria-expanded={open} aria-controls={detailId} onClick={() => toggle(notification)}>
@@ -83,10 +86,11 @@ export default function NotificationInbox({ notifications, loading, error, onOpe
             </span>
             <time className="cs-notification-time" dateTime={notification.created_at || undefined}>{shownTime(notification.created_at)}</time>
           </button>
-          {event && <button type="button" className="cs-btn cs-btn-secondary cs-record-btn cs-notification-view" aria-label={`View ${eventLabel(event)}`} onClick={() => view(notification, event)}>View<Icon name="arrow-right" /></button>}
+          {offerView && <button type="button" className="cs-btn cs-btn-secondary cs-record-btn cs-notification-view" aria-label={`View ${eventLabel(event)}`} onClick={() => view(notification, event)}>View<Icon name="arrow-right" /></button>}
         </div>
         {open && <dl className="cs-detail-grid cs-record-expanded cs-notification-detail" id={detailId}>
           <div className="cs-detail-wide"><dt>Message</dt><dd>{notification.message}</dd></div>
+          {assignment && !assignment.offer_assignment && <div><dt>Coordinator</dt><dd>{event.coordinator_name || assignment.current_coordinator_id}</dd></div>}
           <div><dt>Event</dt><dd>{eventText(notification)}</dd></div>
           <div><dt>Received</dt><dd>{shownTime(notification.created_at)}</dd></div>
         </dl>}

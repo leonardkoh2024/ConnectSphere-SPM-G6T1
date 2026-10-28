@@ -15,6 +15,8 @@ export const NOTIFICATION_TYPE_LABEL = {
   COORDINATOR_REASSIGNED: "Coordinator reassigned",
   // J2 / SCRUM-151 — the organiser's progress notices, each in its own words.
   EVENT_SUBMITTED: "Request received",
+  UNASSIGNED_EVENT: "Waiting for a coordinator",
+  UNASSIGNED_EVENT_CANCELLED: "Unassigned request cancelled",
   COORDINATOR_ASSIGNED: "Coordinator assigned",
   EVENT_APPROVED: "Request approved",
   SAFETY_CHECK_APPROVED: "Event confirmed",

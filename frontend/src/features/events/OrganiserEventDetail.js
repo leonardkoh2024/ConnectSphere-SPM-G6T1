@@ -25,6 +25,7 @@ export default function OrganiserEventDetail({ user, event, onSaved, onNotice })
   const [detail, setDetail] = useState(null);
   const [tab, setTab] = useState(EVENT_TABS.REQUEST);
   const [answer, setAnswer] = useState("");
+  const [cancelReason, setCancelReason] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const submitted = !isDraft(event);
@@ -68,9 +69,25 @@ export default function OrganiserEventDetail({ user, event, onSaved, onNotice })
 
   if (!detail && !error) return <p className="cs-panel-note">Loading event request…</p>;
 
+  const unassigned = String(current.status || "").toUpperCase() === "SUBMITTED" && !current.coordinator_id;
+  const cancelRequest = async (submitEvent) => {
+    submitEvent.preventDefault();
+    setBusy(true); setError("");
+    try {
+      await reviewApi.cancelUnassigned(event.id, cancelReason);
+      setCancelReason("");
+      await load();
+      onNotice?.("The request was cancelled and has left the unassigned queue.");
+    } catch (cancelError) { setError(cancelError.message); }
+    finally { setBusy(false); }
+  };
   const requestTab = <>
     {detail && <DecisionSummary detail={detail} />}
     <EventRequestForm user={user} draft={event} readOnly={!amending} onSaved={onSaved} />
+    {unassigned && <form className="cs-inline-form" onSubmit={cancelRequest} noValidate>
+      <label className="cs-field"><span className="cs-field-name">Cancellation reason<span className="cs-required" aria-hidden="true">*</span></span><textarea rows="2" required value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} /></label>
+      <button className="cs-btn cs-btn-ghost cs-record-danger" type="submit" disabled={busy}>{busy ? "Cancelling…" : "Cancel request"}</button>
+    </form>}
   </>;
 
   const clarificationsTab = <>

@@ -86,6 +86,9 @@ service cloud.firestore {
           && resource.data.is_active == true)
         || (hasRole('EVENT_COORDINATOR')
           && resource.data.role == 'SAFETY_OFFICER'
+          && resource.data.is_active == true)
+        || (hasRole('EVENT_ORGANISER')
+          && resource.data.role == 'EVENT_COORDINATOR_LEAD'
           && resource.data.is_active == true);
       allow update: if signedIn() && userId == request.auth.uid
         && request.resource.data.role == resource.data.role
@@ -245,6 +248,23 @@ service cloud.firestore {
       // the narrow C5 clarification-amendment window, without changing the
       // workflow marker itself, except when the organiser's response transaction
       // closes that marker atomically.
+      // J8 / SCRUM-191 — the organiser may cancel their own request while it is
+      // still submitted and nobody has been assigned. It leaves the Lead's queue.
+      function organiserUnassignedCancellation() {
+        return hasRole('EVENT_ORGANISER')
+          && resource.data.organiser_id == request.auth.uid
+          && resource.data.status == 'SUBMITTED'
+          && resource.data.get('coordinator_id', null) == null
+          && request.resource.data.status == 'CANCELLED'
+          && request.resource.data.cancellation_reason is string
+          && request.resource.data.cancellation_reason.size() > 0
+          && request.resource.data.cancelled_at == request.time
+          && request.resource.data.updated_at == request.time
+          && coordinatorUnchanged()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'cancellation_reason', 'cancelled_at', 'updated_at'
+          ]);
+      }
       function organiserMayEdit() {
         return resource.data.status == 'DRAFT'
           || (resource.data.status == 'UNDER_REVIEW'
@@ -425,6 +445,7 @@ service cloud.firestore {
         // A7 AC2 — a list query must filter on status == 'SAFETY_REVIEW'.
         || (hasRole('SAFETY_OFFICER') && resource.data.status == 'SAFETY_REVIEW');
       allow update: if (hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid && coordinatorUnchanged() && organiserMayEdit())
+        || organiserUnassignedCancellation()
         || coordinatorWorkflowUpdate()
         || leadAssignmentUpdate()
         || coordinatorEventDetailsUpdate()
@@ -715,6 +736,16 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/registrations/$(request.resource.data.registration_id)).data.status == 'REGISTERED'
             && (get(/databases/$(database)/documents/registrations/$(request.resource.data.registration_id)).data.attendee_id == request.resource.data.user_id
               || get(/databases/$(database)/documents/registrations/$(request.resource.data.registration_id)).data.user_id == request.resource.data.user_id))
+          || (ownsEvent(request.resource.data.event_id)
+            && request.resource.data.type in ['UNASSIGNED_EVENT', 'UNASSIGNED_EVENT_CANCELLED']
+            && get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.role == 'EVENT_COORDINATOR_LEAD'
+            && get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.is_active == true
+            && request.resource.data.created_at == request.time
+            && ((request.resource.data.type == 'UNASSIGNED_EVENT'
+                && get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.status == 'SUBMITTED'
+                && get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.get('coordinator_id', null) == null)
+              ||(request.resource.data.type == 'UNASSIGNED_EVENT_CANCELLED'
+                && getAfter(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.status == 'CANCELLED')))
           || (ownsEvent(request.resource.data.event_id)
             && request.resource.data.type == 'EVENT_SUBMITTED'
             && request.resource.data.user_id == request.auth.uid
