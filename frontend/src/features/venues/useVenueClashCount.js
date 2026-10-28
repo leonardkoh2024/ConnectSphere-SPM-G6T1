@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ROLES } from "../../domain/roles";
 import { venueBookingClashCount } from "../../domain/venueBookingWorkflows";
 import { loadVenueBookingQueue, loadVenueBookings } from "./venuesApi";
@@ -17,21 +17,31 @@ export default function useVenueClashCount(user, role) {
   const [count, setCount] = useState(0);
   const load = loaderFor(role);
   const userId = user?.uid;
+  const userRef = useRef(user);
+  userRef.current = user;
+  const loadUser = useMemo(() => {
+    if (!userId) return null;
+    const value = { uid: userId };
+    if (typeof userRef.current?.getIdToken === "function") {
+      value.getIdToken = (...args) => userRef.current.getIdToken(...args);
+    }
+    return value;
+  }, [userId]);
 
   const setFromBookings = useCallback((bookings) => {
     setCount(venueBookingClashCount(bookings));
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!userId || !load) { setCount(0); return; }
+    if (!loadUser || !load) { setCount(0); return; }
     try {
-      setFromBookings(await load({ user: { uid: userId } }));
+      setFromBookings(await load({ user: loadUser }));
     } catch (error) {
       // A badge must never prevent the workspace from loading. The destination
       // screen still displays its normal actionable error if the read fails.
       console.error("Could not refresh venue clash count:", error);
     }
-  }, [load, setFromBookings, userId]);
+  }, [load, loadUser, setFromBookings]);
 
   useEffect(() => {
     refresh();

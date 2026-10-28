@@ -31,6 +31,32 @@ const requiredUser = (user) => {
   if (!user?.uid) throw new Error("Sign in is required.");
   return user.uid;
 };
+// One request per signed-in user and browser page lifetime. Venue booking
+// screens and the sidebar badge often mount together; sharing this promise
+// prevents a refresh from launching the same backend scan several times.
+const workflowRefreshes = new Map();
+const refreshVenueWorkflowsOnLoad = ({ user }) => {
+  if (!user?.uid || typeof user.getIdToken !== "function") return Promise.resolve(null);
+  if (workflowRefreshes.has(user.uid)) return workflowRefreshes.get(user.uid);
+  const refresh = user.getIdToken()
+    .then((token) => fetch("/api/venues/workflows/refresh", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` }
+    }))
+    .then(async (response) => {
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Venue workflows could not be refreshed.");
+      return result;
+    })
+    .catch((error) => {
+      // The browser-side queue remains usable when the optional backend is not
+      // running; do not retry repeatedly during the same page session.
+      console.error("Could not refresh venue workflows:", error);
+      return null;
+    });
+  workflowRefreshes.set(user.uid, refresh);
+  return refresh;
+};
 const overlaps = (leftStart, leftEnd, rightStart, rightEnd) =>
   leftStart < rightEnd && rightStart < leftEnd;
 const eventDateTime = (date, time) => {
@@ -501,6 +527,7 @@ const venueStaffNames = async (venueIds) => new Map(await Promise.all(venueIds.m
 // same collection through their own queue; this view is scoped to the raiser.
 export const loadVenueBookings = async ({ user }) => {
   if (!user?.uid) return [];
+  await refreshVenueWorkflowsOnLoad({ user });
   const eventSnapshot = await getDocs(query(collection(db, "events"), where("coordinator_id", "==", user.uid)));
   const events = new Map(eventSnapshot.docs.map((item) => [item.id, item.data()]));
   const bookingSnapshots = await Promise.all(eventSnapshot.docs.map((event) =>
@@ -655,6 +682,7 @@ export const prepareClashReplacement = async ({ user, bookingId, clash }) => {
 };
 
 export const loadVenueBookingQueue = async ({ user }) => {
+  await refreshVenueWorkflowsOnLoad({ user });
   const userId = requiredUser(user);
   const assignments = await getDocs(query(collection(db, "venue_staff"), where("user_id", "==", userId)));
   const venueIds = ownedAssignments(assignments).map((item) => item.data().venue_id);
