@@ -46,6 +46,7 @@ they can be read next to the acceptance criteria and move into the service layer
 | H4 | SCRUM-142 | See the status of my registrations | TC-606 – TC-638 |
 | H5 | SCRUM-143 | Withdraw from an event | TC-639 – TC-679 |
 | H6 | SCRUM-144 | Join the waiting list when an event is full | TC-680 – TC-716 |
+| H7 | SCRUM-145 | Be invited to take a freed place | TC-717 – TC-755 |
 | E4 | SCRUM-120 | See when a venue is free | TC-200 – TC-249 |
 | J6 | SCRUM-155 | Be told the outcome of my booking and equipment requests (AC1: approval and rejection) | TC-313 – TC-346 |
 | A7 | SCRUM-170 | Use ConnectSphere as a Safety Officer | TC-348 – TC-385, TC-388 |
@@ -1530,3 +1531,57 @@ A waitlisted attendee may also **Withdraw**, from My registrations or from the e
 | TC-714 | Leaving the waiting list asks first, saying the place in the queue is lost | Waitlisted row | Withdraw | Dialog "Leave the waiting list for …?" and "You will lose your place in the queue" | As expected | Pass | Leaving the list |
 | TC-715 | Leaving confirms it and moves the event out of Upcoming | Same | Withdraw, Yes, withdraw | Toast "You have left the waiting list for …"; row under Past as Withdrawn, no position | As expected | Pass | Leaving the list |
 | TC-716 | Leaving from Browse events details returns to the list, still Full, offering Join | WAITLISTED on a full event | View details, Withdraw, Yes, withdraw | Toast; row Full with Join waiting list; no Waitlisted | As expected | Pass | Leaving the list |
+
+## H7 / SCRUM-145 — Be invited to take a freed place
+
+**Scope:** when a Registered place frees, the registration service offers it to the first person on the waiting list in the same transaction (AC1). Their record stays `WAITLISTED`, so they keep their position, and gains `invited_at` and `invitation_expires_at`: 48 hours, or the event start if sooner (AC3). They also get a `WAITLIST_PLACE_OFFERED` notification, sent to them alone. An offered place is held, so nobody else can register into it.
+
+On **My registrations** the attendee sees "Place offered until …" with **Accept place**, which registers them only when they choose (AC2), and **Decline**, which takes them off the list after a confirmation (AC4). An offer that lapses leaves them on the list (AC4), and the place passes to the next person at the next action on the event or when someone waiting opens My registrations. There is no timer, to spare Firestore reads. The person who let it lapse is offered again only when another place frees after the lapse (decided 28 Oct 2026). The 48 hours are the backlog's; the customer asked us to confirm the number, which is a Session 3 question.
+
+H7's notice replaces J7's `PLACE_OPENED` broadcast to everyone waiting, because only the person offered the place is invited to apply. That meets J7 AC2 and H7 AC1, and J7's test was updated to match.
+
+**AC coverage:** AC1 — TC-720 – TC-723, TC-727 – TC-729, TC-742, TC-744, TC-747, TC-752, TC-754, TC-755. AC2 — TC-731 – TC-733, TC-745, TC-748, TC-753. AC3 — TC-717 – TC-719, TC-734 – TC-736, TC-749. AC4 — TC-724, TC-725, TC-737 – TC-741, TC-743, TC-750, TC-751. Guards — TC-726, TC-730, TC-746.
+
+**Test cases — `waitingList.test.js`, `invitations.test.js`, `MyRegistrations.test.js`, `BrowseEvents.test.js`, `registrationsApi.test.js`, `notifications.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-717 | An offer lasts 48 hours | — | invitationExpiry | now + 48h | As expected | Pass | AC3 |
+| TC-718 | An offer ends at the event start if sooner; none once started | — | invitationExpiry | Start time; null | As expected | Pass | AC3 |
+| TC-719 | An offer is NONE, ACTIVE until it expires, then LAPSED; only a waiting record holds one | — | invitationState | As stated | As expected | Pass | AC3, AC4 |
+| TC-720 | Only an active offer holds a place | — | reservedPlaces | 1 of active, lapsed, none | As expected | Pass | AC1 |
+| TC-721 | A free place goes to the first in the queue, with its expiry | — | invitationsToIssue | First by join time; 48h expiry | As expected | Pass | AC1 |
+| TC-722 | As many offers as free places, in queue order | — | invitationsToIssue | First two | As expected | Pass | AC1 |
+| TC-723 | No offer while full, or when free places are already offered | — | invitationsToIssue | [] | As expected | Pass | AC1 |
+| TC-724 | A lapsed offer's place passes to the next person | — | invitationsToIssue | Second offered; first keeps spot | As expected | Pass | AC4 |
+| TC-725 | Someone whose offer lapsed is offered the next place freed after it, not before | — | invitationsToIssue | Offered after a later freeing; not otherwise | As expected | Pass | AC4 |
+| TC-726 | No offers once the event started, is cancelled, takes no registrations or has no capacity | — | invitationsToIssue | [] | As expected | Pass | Guard |
+| TC-727 | A Registered place freed by withdrawal is offered to the first waiting, in the same transaction | — | withdraw | First: invited_at, 48h expiry, still WAITLISTED; second untouched | As expected | Pass | AC1 |
+| TC-728 | Only the invited attendee is notified, with the event and when the offer ends | — | withdraw | WAITLIST_PLACE_OFFERED to first naming the event and "7 Nov 2026, 12:00"; none to second | As expected | Pass | AC1 |
+| TC-729 | An offered place is held: an outsider cannot register into it | — | register as outsider | 409 full | As expected | Pass | AC1 |
+| TC-730 | Leaving the waiting list frees nothing, so nobody is offered | — | withdraw a waiting place | No offer, no notice | As expected | Pass | Guard |
+| TC-731 | Accepting registers the invited attendee | — | acceptInvitation | REGISTERED with registered_at and accepted_at | As expected | Pass | AC2 |
+| TC-732 | Nobody is registered without accepting | — | withdraw | Invited attendee still WAITLISTED | As expected | Pass | AC2 |
+| TC-733 | Only someone holding an offer can accept | — | acceptInvitation as second / stranger | 409 not_invited | As expected | Pass | AC2 |
+| TC-734 | An expired offer cannot be accepted; the attendee stays on the list | — | acceptInvitation after expiry | 409 invitation_expired; WAITLISTED | As expected | Pass | AC3, AC4 |
+| TC-735 | An offer close to the event ends at its start | — | withdraw | Expiry = start | As expected | Pass | AC3 |
+| TC-736 | Nothing can be accepted once the event has started | — | acceptInvitation at start | 409 event_started | As expected | Pass | AC3 |
+| TC-737 | Declining leaves the list and the place goes to the next person | — | declineInvitation | WITHDRAWN from WAITLISTED with declined_at; second offered and notified | As expected | Pass | AC4 |
+| TC-738 | Only someone holding an offer can decline | — | declineInvitation as second | 409 not_invited | As expected | Pass | AC4 |
+| TC-739 | After a lapse, the next action on the event offers the place on; the first keeps their spot | — | register as outsider | Second offered and notified; outsider refused; first WAITLISTED | As expected | Pass | AC4 |
+| TC-740 | The one whose offer lapsed is offered the next freed place | — | withdraw a Registered place | First offered again; second not | As expected | Pass | AC4 |
+| TC-741 | Leaving the list while holding an offer passes the place on | — | withdraw the invited attendee | Second offered | As expected | Pass | AC4 |
+| TC-742 | My registrations shows the offer and when it ends | — | GET /mine | invitation_active, can_accept, expiry | As expected | Pass | AC1 |
+| TC-743 | Opening My registrations passes a lapsed place to the next in line | — | GET /mine as second, then as first | Second offered and notified; first shown lapsed at position 1 | As expected | Pass | AC4 |
+| TC-744 | Browse events counts an offered place as taken | — | GET /open-events | 0 places left | As expected | Pass | AC1 |
+| TC-745 | Accept and decline routes answer with the registration or the reason | — | POST …/invitation/accept, …/decline | 200 REGISTERED; 200 WITHDRAWN; 409 not_invited | As expected | Pass | AC2, AC4 |
+| TC-746 | Only a signed-in Attendee may accept or decline | — | No token; organiser | 401; 403; nothing changed | As expected | Pass | Guard |
+| TC-747 | An offered place shows when the offer ends, with Accept place and Decline | — | Open My registrations | "Place offered until 7 Nov 2026, 12:00"; no Withdraw | As expected | Pass | AC1, AC3 |
+| TC-748 | Accepting registers and confirms | — | Accept place | Toast; Registered | As expected | Pass | AC2 |
+| TC-749 | An offer that expired before accepting is explained | — | Accept place; service answers invitation_expired | Alert; no Accept; lapsed note | As expected | Pass | AC3 |
+| TC-750 | Declining asks first, then leaves the list | — | Decline, Yes, decline | Dialog "Decline the place at …?"; toast; row Withdrawn | As expected | Pass | AC4 |
+| TC-751 | A lapsed offer keeps the attendee on the list, saying so | — | Open My registrations | "Your invitation expired. You keep your place on the waiting list."; position; Withdraw | As expected | Pass | AC4 |
+| TC-752 | The details of an offered place carry the expiry, Accept place and Decline | — | View details | Expiry; both buttons | As expected | Pass | AC1 |
+| TC-753 | Accept and decline post to their routes with the ID token | — | acceptInvitation; declineInvitation | POST …/invitation/accept and …/decline; refusal keeps message and reason | As expected | Pass | AC2, AC4 |
+| TC-754 | Browse events points an offered place to My registrations | — | Open Browse events | "A place is offered to you. Accept it in My registrations." | As expected | Pass | AC1 |
+| TC-755 | The offer notice has its own inbox label | — | notificationTypeLabel | "Place offered" | As expected | Pass | AC1 |

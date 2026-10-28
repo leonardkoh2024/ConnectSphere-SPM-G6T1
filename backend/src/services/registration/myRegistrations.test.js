@@ -11,44 +11,17 @@ import test from "node:test";
 
 import express from "express";
 
+import { fakeFirestore as sharedFake } from "../../../testing/fakeFirestore.js";
 import { createRegistrationService } from "./service.js";
 
-const NOW = new Date("2026-11-05T12:00:00+08:00");
-
-// A plain-document Firestore stand-in: equality `where` chains, `get`, `count` and single
-// documents, recording every read so the tests can say what was and was not touched.
+// The shared stand-in, with transactions (H7 runs one when the list is opened), exposing its
+// read log as `reads` for the checks below.
 const fakeFirestore = (collections) => {
-  const reads = [];
-  const query = (name, filters = []) => ({
-    where(field, op, value) {
-      assert.equal(op, "==");
-      return query(name, [...filters, [field, value]]);
-    },
-    async get() {
-      reads.push(`${name}?${filters.map(([f, v]) => `${f}=${v}`).join("&")}`);
-      const docs = Object.entries(collections[name] || {})
-        .filter(([, data]) => filters.every(([field, value]) => data[field] === value))
-        .map(([id, data]) => ({ id, data: () => data }));
-      return { docs, size: docs.length, empty: docs.length === 0 };
-    },
-    count() {
-      return { get: async () => ({ data: () => ({ count: 0 }) }) };
-    }
-  });
-  return {
-    reads,
-    collection: (name) => ({
-      where: (field, op, value) => query(name).where(field, op, value),
-      doc: (id) => ({
-        async get() {
-          reads.push(`${name}/${id}`);
-          const data = (collections[name] || {})[id];
-          return { id, exists: Boolean(data), data: () => data };
-        }
-      })
-    })
-  };
+  const firestore = sharedFake(collections);
+  return Object.assign(firestore, { reads: firestore.log.reads });
 };
+
+const NOW = new Date("2026-11-05T12:00:00+08:00");
 
 const event = (changes = {}) => ({
   organiser_id: "organiser-1",
@@ -103,7 +76,9 @@ const request = async ({ firestore, uid = "attendee-1", authorization = "Bearer 
       if (token !== "valid-token") throw new Error("invalid");
       return { uid };
     },
-    now: () => NOW
+    now: () => NOW,
+    // Opening the list can offer a free place to someone waiting (H7), which stamps the time.
+    serverTimestamp: () => ({ serverTimestamp: true })
   }));
   app.use((_error, _request, response, _next) => response.status(500).json({ error: "Internal server error" }));
   const server = app.listen(0);
@@ -141,7 +116,11 @@ test("TC-619 H4 AC1 each entry shows the event's name, date, window, venue and t
     withdrawn_at: null,
     waitlist_position: null,
     active: true,
-    can_withdraw: true
+    can_withdraw: true,
+    invitation_expires_at: null,
+    invitation_active: false,
+    invitation_lapsed: false,
+    can_accept: false
   });
   const statuses = Object.fromEntries(body.registrations.map((entry) => [entry.event_id, entry.status]));
   assert.deepEqual(statuses, { forum: "REGISTERED", talk: "WITHDRAWN", expo: "WAITLISTED", gala: "CANCELLED" });
@@ -173,7 +152,8 @@ test("TC-622 H4 another attendee's registrations are never read into the list", 
   // attendee is waiting on, to work out their position; nothing else of the queue is returned.
   assert.ok(firestore.reads.every((read) => !read.startsWith("registrations?")
     || read.includes("attendee_id=attendee-1")
-    || read === "registrations?event_id=expo&status=WAITLISTED"));
+    || read === "registrations?event_id=expo&status=WAITLISTED"
+    || read === "registrations?event_id=expo"));
 });
 
 test("TC-623 H4 a registration whose event no longer exists is left out rather than failing the list", async () => {

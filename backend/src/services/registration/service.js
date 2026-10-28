@@ -1,7 +1,7 @@
 import express from "express";
 
 import { isOpenForRegistration, listOpenEvents } from "../../../../frontend/src/domain/openRegistration.mjs";
-import { waitlistPosition } from "../../../../frontend/src/domain/waitingList.mjs";
+import { invitationState, reservedPlaces, waitlistPosition } from "../../../../frontend/src/domain/waitingList.mjs";
 import { getApprovedEventBookings as readApprovedEventBookings, getApprovedEventVenueNames } from "../venue/approvedEventBookings.js";
 import { createRegistrationList } from "./attendeeList.js";
 import { createMyRegistrations } from "./myRegistrations.js";
@@ -34,6 +34,9 @@ import { createRegistrationSettings } from "./settings.js";
 //
 // H6 / SCRUM-144 — an attendee joins the waiting list of a full event here. Their position is
 // worked out from the event's waiting list each time either list is read, never stored.
+//
+// H7 / SCRUM-145 — an offered place is accepted or declined here. Opening My registrations also
+// hands on, for each event the attendee is waiting for, any place whose offer has lapsed.
 export function createRegistrationService({
   firestore,
   verifyIdToken,
@@ -51,6 +54,10 @@ export function createRegistrationService({
   const waitlistPositionFor = async (eventId, recordId) => {
     const snapshot = await firestore.collection("registrations").where("event_id", "==", eventId).where("status", "==", "WAITLISTED").get();
     return waitlistPosition(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })), recordId);
+  };
+  const heldPlaces = async (eventId, at) => {
+    const snapshot = await firestore.collection("registrations").where("event_id", "==", eventId).where("status", "==", "WAITLISTED").get();
+    return reservedPlaces(snapshot.docs.map((item) => item.data()), at);
   };
   const myRegistrations = createMyRegistrations({ firestore, venueNamesFor, now, waitlistPositionFor });
 
@@ -87,7 +94,7 @@ export function createRegistrationService({
     const places = {};
     snapshot.docs.forEach((item) => {
       const { event_id: eventId, status } = item.data();
-      if (status === "REGISTERED" || (status === "WAITLISTED" && places[eventId]?.status !== "REGISTERED")) places[eventId] = { status, id: item.id };
+      if (status === "REGISTERED" || (status === "WAITLISTED" && places[eventId]?.status !== "REGISTERED")) places[eventId] = { status, id: item.id, data: item.data() };
     });
     return places;
   };
@@ -124,6 +131,10 @@ export function createRegistrationService({
             venueNamesFor(event.id),
             registeredCount(event.id)
           ]);
+          // H7 — a place offered to the waiting list is held. Only read when a place is free.
+          if (registeredCountByEvent[event.id] < event.registration_capacity) {
+            registeredCountByEvent[event.id] += await heldPlaces(event.id, at);
+          }
         })
       ]);
 
@@ -132,7 +143,9 @@ export function createRegistrationService({
         .map(async (entry) => {
           const place = mine[entry.id];
           const position = place?.status === "WAITLISTED" ? await waitlistPositionFor(entry.id, place.id) : null;
-          return { ...entry, registration_status: place?.status || null, waitlist_position: position };
+          // H7 — whether the caller holds a place offered to them from the waiting list.
+          const invited = place?.status === "WAITLISTED" && invitationState(place.data, at) === "ACTIVE";
+          return { ...entry, registration_status: place?.status || null, waitlist_position: position, invitation_active: invited };
         }));
       response.json({ events });
     } catch (error) {
@@ -206,10 +219,39 @@ export function createRegistrationService({
     }
   });
 
+  // H7 — accept or decline an offered place. A refusal is answered with its reason.
+  const answerInvitation = (action) => async (request, response, next) => {
+    let user;
+    try {
+      user = await authenticateAttendee(request, response, "Only attendees can answer an offered place.");
+    } catch (error) {
+      next(error);
+      return;
+    }
+    if (!user) return;
+
+    try {
+      const result = await attendeeRegistration[action]({ eventId: request.params.eventId, attendeeId: user.uid });
+      const venueNames = await venueNamesFor(request.params.eventId);
+      response.json({ registration: { ...result.registration, venue_names: venueNames } });
+    } catch (error) {
+      if (error.statusCode) response.status(error.statusCode).json({ error: error.message, reason: error.reason });
+      else next(error);
+    }
+  };
+  router.post("/events/:eventId/invitation/accept", answerInvitation("acceptInvitation"));
+  router.post("/events/:eventId/invitation/decline", answerInvitation("declineInvitation"));
+
   router.get("/mine", async (request, response, next) => {
     try {
       const user = await authenticateAttendee(request, response, "Only attendees can see their registrations.");
       if (!user) return;
+      // H7 AC4 — before listing, pass on any lapsed offer on the events this attendee waits for,
+      // so a place offered to them is shown. One transaction per such event; nothing otherwise.
+      const waiting = await firestore.collection("registrations").where("attendee_id", "==", user.uid).where("status", "==", "WAITLISTED").get();
+      for (const eventId of new Set(waiting.docs.map((item) => item.data().event_id))) {
+        await attendeeRegistration.offerPlaces({ eventId });
+      }
       response.json(await myRegistrations.load({ attendeeId: user.uid }));
     } catch (error) {
       next(error);

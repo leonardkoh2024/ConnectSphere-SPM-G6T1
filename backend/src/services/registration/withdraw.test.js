@@ -77,7 +77,9 @@ test("TC-648 H5 AC2 a Registered attendee withdraws: their record becomes Withdr
   assert.deepEqual(firestore.store.registrations["e1_attendee-1"], {
     ...record("e1", "attendee-1"),
     status: "WITHDRAWN",
-    withdrawn_at: STAMP
+    withdrawn_at: STAMP,
+    // H7 — what the place was, so a freed place can be told from leaving the waiting list.
+    withdrawn_from: "REGISTERED"
   });
   assert.deepEqual(firestore.log.writes, ["registrations/e1_attendee-1"]);
   assert.equal(firestore.store.registrations.e1_other.status, "REGISTERED");
@@ -291,7 +293,9 @@ test("TC-713 H6 an attendee who left the waiting list may join it again, at the 
   assert.equal(rejoined.registration.waitlist_position, 3);
 });
 
-test("J7 SCRUM-156 a freed place invites everyone still waiting, and does not invite the person who left", async () => {
+// J7 AC2 ("notified when a place opens and they are invited to apply") is delivered by H7: the
+// person a freed place is offered to is told, with when the offer ends. Nobody else is.
+test("J7 SCRUM-156 a freed place invites the person waiting, and does not invite the person who left", async () => {
   const { firestore, withdraw } = setup({
     registrations: {
       "e1_attendee-1": record("e1", "attendee-1"),
@@ -299,8 +303,9 @@ test("J7 SCRUM-156 a freed place invites everyone still waiting, and does not in
     }
   });
   await withdraw();
-  const notice = firestore.store.notifications["PLACE_OPENED-e1-waiting"];
-  assert.equal(notice.user_id, "waiting");
-  assert.equal(notice.message, "Harbour Tech Forum: a place has opened and you are invited to apply.");
-  assert.equal(firestore.store.notifications["PLACE_OPENED-e1-attendee-1"], undefined);
+  const notices = Object.values(firestore.store.notifications || {});
+  const notice = notices.find((item) => item.user_id === "waiting");
+  assert.equal(notice.type, "WAITLIST_PLACE_OFFERED");
+  assert.match(notice.message, /^A place has opened at Harbour Tech Forum\./);
+  assert.equal(notices.some((item) => item.user_id === "attendee-1"), false);
 });

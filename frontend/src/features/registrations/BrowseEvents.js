@@ -194,6 +194,7 @@ export default function BrowseEvents({ onNotice, onBackChange }) {
                 <>
                   <span className={`cs-pill cs-pill-${registered ? "positive" : "warning"}`}>{registered ? "Registered" : "Waitlisted"}</span>
                   {waiting && entry.waitlist_position && <p className="cs-record-saved">{positionText(entry.waitlist_position)}</p>}
+                  {waiting && entry.invitation_active && <p className="cs-record-saved">A place is offered to you. Accept it in My registrations.</p>}
                   <button type="button" className="cs-btn cs-btn-ghost cs-record-btn" onClick={() => setDetails({ id: entry.id, registeredAt: null, justRegistered: false })}>View details</button>
                 </>
               ) : full ? (

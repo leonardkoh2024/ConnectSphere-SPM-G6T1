@@ -39,7 +39,9 @@ export const NOTIFICATION_TYPE_LABEL = {
   EQUIPMENT_REQUEST_AMENDED: "Equipment request amended",
   ON_SITE_SUPPORT_REQUIRED: "On-site support needed",
   ON_SITE_SUPPORT_CHANGED: "On-site support changed",
-  EQUIPMENT_UNABLE_TO_FULFIL: "Equipment unavailable"
+  EQUIPMENT_UNABLE_TO_FULFIL: "Equipment unavailable",
+  // H7 / SCRUM-145 — a waitlisted attendee is offered a freed place.
+  WAITLIST_PLACE_OFFERED: "Place offered"
 };
 
 export const notificationTypeLabel = (type) => NOTIFICATION_TYPE_LABEL[type] || "Update";

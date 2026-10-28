@@ -55,3 +55,11 @@ export const withdrawFromEvent = (eventId) =>
 // its position; rejects with the service's message and `reason`.
 export const joinWaitlist = (eventId) =>
   callRegistrationService(`/api/registrations/events/${encodeURIComponent(eventId)}/waitlist`, "You could not join the waiting list. Try again.", "POST");
+
+// H7 — accept or decline a place offered from the waiting list. Each resolves with the
+// registration as it now stands; a refusal keeps the service's message and `reason`.
+export const acceptInvitation = (eventId) =>
+  callRegistrationService(`/api/registrations/events/${encodeURIComponent(eventId)}/invitation/accept`, "The place could not be accepted. Try again.", "POST");
+
+export const declineInvitation = (eventId) =>
+  callRegistrationService(`/api/registrations/events/${encodeURIComponent(eventId)}/invitation/decline`, "The place could not be declined. Try again.", "POST");

@@ -1,4 +1,6 @@
 // H4 / SCRUM-142 — what an attendee's own list says about each registration.
+
+import { invitationState } from "./waitingList.mjs";
 //
 // The registration service runs these functions on the server (an attendee's browser
 // cannot read `registrations` or `events`), so they are written as an .mjs module the
@@ -85,7 +87,12 @@ export const myRegistrationEntry = (registration, event, { venueNames = [], now 
   withdrawn_at: toIso(registration.withdrawn_at),
   waitlist_position: registration.waitlist_position ?? null,
   active: ["REGISTERED", "WAITLISTED"].includes(registrationDisplayStatus(registration, event)) && isUpcoming(event, now),
-  can_withdraw: withdrawalRefusal(registration, event, now) === null
+  can_withdraw: withdrawalRefusal(registration, event, now) === null,
+  // H7 — an offered place: whether it can still be accepted, or lapsed, and when it ends.
+  invitation_expires_at: invitationState(registration, now) === "NONE" ? null : toIso(registration.invitation_expires_at),
+  invitation_active: invitationState(registration, now) === "ACTIVE" && isUpcoming(event, now),
+  invitation_lapsed: invitationState(registration, now) === "LAPSED",
+  can_accept: invitationState(registration, now) === "ACTIVE" && isUpcoming(event, now)
 });
 
 const startsAt = (entry) => `${entry.event_date || ""}T${entry.start_time || ""}`;

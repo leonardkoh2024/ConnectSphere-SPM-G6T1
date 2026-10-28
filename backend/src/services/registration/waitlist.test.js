@@ -103,8 +103,8 @@ test("TC-689 H6 the join, the count and the check are one transaction", async ()
   await join();
   assert.equal(firestore.log.transactions, 1);
   assert.ok(firestore.log.reads.includes("events/e1"));
-  assert.ok(firestore.log.reads.includes("registrations?event_id=e1&status=REGISTERED"));
-  assert.ok(firestore.log.reads.includes("registrations?event_id=e1&status=WAITLISTED"));
+  // One read of the event's registrations gives the places taken and the waiting list.
+  assert.ok(firestore.log.reads.includes("registrations?event_id=e1"));
 });
 
 test("TC-690 H6 an attendee who withdrew may join the waiting list, in the same record", async () => {

@@ -1,4 +1,4 @@
-// An in-memory Firestore stand-in for the registration service's unit tests (H3, H5).
+// An in-memory Firestore stand-in for the registration service's unit tests (H3, H5, H6, H7).
 // (Folder is "testing", not "test", so `node --test` does not run this as a test file.)
 //
 // It answers equality `where` chains, `get`, `count` and single documents, inside or outside
@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 export const fakeFirestore = (collections) => {
   const store = Object.fromEntries(Object.entries(collections).map(([name, docs]) => [name, { ...docs }]));
   const log = { reads: [], writes: [], transactions: 0 };
+  let autoId = 0;
   const read = (target) => {
     log.reads.push(target.kind === "doc" ? target.path : `${target.name}?${target.filters.map(([f, v]) => `${f}=${v}`).join("&")}`);
     if (target.kind === "doc") {
@@ -40,7 +41,8 @@ export const fakeFirestore = (collections) => {
   return {
     log,
     store,
-    collection: (name) => ({ doc: (id) => docRef(name, id), where: (field, op, value) => query(name).where(field, op, value) }),
+    // doc() with no id makes one, as Firestore does for a new notification.
+    collection: (name) => ({ doc: (id) => docRef(name, id ?? `auto-${++autoId}`), where: (field, op, value) => query(name).where(field, op, value) }),
     async runTransaction(callback) {
       log.transactions += 1;
       const pending = [];
@@ -51,6 +53,11 @@ export const fakeFirestore = (collections) => {
           return read(target);
         },
         set(target, data) { wrote = true; pending.push([target, data, "set"]); },
+        create(target, data) {
+          wrote = true;
+          assert.ok(!store[target.name]?.[target.id], `create over an existing document ${target.path}`);
+          pending.push([target, data, "set"]);
+        },
         update(target, data) {
           wrote = true;
           assert.ok(store[target.name]?.[target.id], `update of a missing document ${target.path}`);

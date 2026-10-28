@@ -94,7 +94,11 @@ describe("H4 AC1 / AC2 what an attendee is shown for each entry", () => {
       withdrawn_at: null,
       waitlist_position: null,
       active: true,
-      can_withdraw: true
+      can_withdraw: true,
+      invitation_expires_at: null,
+      invitation_active: false,
+      invitation_lapsed: false,
+      can_accept: false
     });
   });
 

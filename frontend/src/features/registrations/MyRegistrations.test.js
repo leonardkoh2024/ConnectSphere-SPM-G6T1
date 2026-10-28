@@ -4,9 +4,9 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import MyRegistrations from "./MyRegistrations";
-import { loadMyRegistrations, withdrawFromEvent } from "./registrationsApi";
+import { acceptInvitation, declineInvitation, loadMyRegistrations, withdrawFromEvent } from "./registrationsApi";
 
-jest.mock("./registrationsApi", () => ({ loadMyRegistrations: jest.fn(), withdrawFromEvent: jest.fn() }));
+jest.mock("./registrationsApi", () => ({ acceptInvitation: jest.fn(), declineInvitation: jest.fn(), loadMyRegistrations: jest.fn(), withdrawFromEvent: jest.fn() }));
 
 const entry = (changes = {}) => ({
   registration_id: "e1_attendee-1",
@@ -431,3 +431,92 @@ test("TC-715 H6 leaving the waiting list confirms it and moves the event out of 
   expect(within(row).getByText("Withdrawn")).toBeInTheDocument();
   expect(within(row).queryByText(/on the waiting list/)).not.toBeInTheDocument();
 });
+
+// ---- H7 / SCRUM-145 — Be invited to take a freed place ----------------------------
+
+const invited = (changes = {}) => entry({
+  status: "WAITLISTED",
+  waitlist_position: 1,
+  invitation_active: true,
+  invitation_lapsed: false,
+  can_accept: true,
+  invitation_expires_at: "2026-11-07T04:00:00.000Z",
+  ...changes
+});
+
+test("TC-747 H7 AC1 an offered place is shown with when the offer ends, and Accept and Decline", async () => {
+  loadMyRegistrations.mockResolvedValue([invited()]);
+  render(<MyRegistrations />);
+  const row = await rowFor("Harbour Tech Forum");
+
+  expect(within(row).getByText("Place offered until 7 Nov 2026, 12:00")).toBeInTheDocument();
+  expect(within(row).getByRole("button", { name: "Accept place" })).toBeInTheDocument();
+  expect(within(row).getByRole("button", { name: "Decline" })).toBeInTheDocument();
+  expect(within(row).queryByRole("button", { name: "Withdraw" })).not.toBeInTheDocument();
+});
+
+test("TC-748 H7 AC2 accepting registers the attendee and confirms it", async () => {
+  loadMyRegistrations.mockResolvedValue([invited()]);
+  acceptInvitation.mockResolvedValue({ registration: { ...invited(), status: "REGISTERED", invitation_active: false, can_accept: false, waitlist_position: null, can_withdraw: true } });
+  const onNotice = jest.fn();
+  render(<MyRegistrations onNotice={onNotice} />);
+
+  await userEvent.click(within(await rowFor("Harbour Tech Forum")).getByRole("button", { name: "Accept place" }));
+  expect(acceptInvitation).toHaveBeenCalledWith("e1");
+  await waitFor(() => expect(onNotice).toHaveBeenCalledWith("You are registered for Harbour Tech Forum."));
+  const row = await rowFor("Harbour Tech Forum");
+  expect(within(row).getByText("Registered")).toBeInTheDocument();
+  expect(within(row).queryByRole("button", { name: "Accept place" })).not.toBeInTheDocument();
+});
+
+test("TC-749 H7 AC3 an offer that expired before accepting is explained, and the row shows the lapse", async () => {
+  loadMyRegistrations.mockResolvedValue([invited()]);
+  acceptInvitation.mockRejectedValue(Object.assign(new Error("This invitation has expired. You are still on the waiting list."), { reason: "invitation_expired" }));
+  render(<MyRegistrations />);
+  const row = await rowFor("Harbour Tech Forum");
+
+  await userEvent.click(within(row).getByRole("button", { name: "Accept place" }));
+  expect(await within(row).findByRole("alert")).toHaveTextContent("This invitation has expired. You are still on the waiting list.");
+  expect(within(row).queryByRole("button", { name: "Accept place" })).not.toBeInTheDocument();
+  expect(within(row).getByText(/your invitation expired/i)).toBeInTheDocument();
+});
+
+test("TC-750 H7 AC4 declining asks first, then removes the attendee from the waiting list", async () => {
+  loadMyRegistrations.mockResolvedValue([invited()]);
+  declineInvitation.mockResolvedValue({ registration: { ...invited(), status: "WITHDRAWN", active: false, invitation_active: false, can_accept: false, can_withdraw: false, waitlist_position: null } });
+  const onNotice = jest.fn();
+  render(<MyRegistrations onNotice={onNotice} />);
+
+  await userEvent.click(within(await rowFor("Harbour Tech Forum")).getByRole("button", { name: "Decline" }));
+  const dialog = screen.getByRole("dialog", { name: "Decline the place at Harbour Tech Forum?" });
+  expect(within(dialog).getByText(/you will leave the waiting list/i)).toBeInTheDocument();
+  expect(within(dialog).getByRole("button", { name: "Keep my place" })).toHaveFocus();
+  await userEvent.click(within(dialog).getByRole("button", { name: "Yes, decline" }));
+
+  expect(declineInvitation).toHaveBeenCalledWith("e1");
+  await waitFor(() => expect(onNotice).toHaveBeenCalledWith("You have declined the place at Harbour Tech Forum and left the waiting list."));
+  const row = within(screen.getByRole("region", { name: "Past, withdrawn and cancelled" })).getByText("Harbour Tech Forum").closest(".cs-record");
+  expect(within(row).getByText("Withdrawn")).toBeInTheDocument();
+});
+
+test("TC-751 H7 AC4 a lapsed offer leaves the attendee on the list, saying so, with Withdraw still available", async () => {
+  loadMyRegistrations.mockResolvedValue([invited({ invitation_active: false, invitation_lapsed: true, can_accept: false, can_withdraw: true })]);
+  render(<MyRegistrations />);
+  const row = await rowFor("Harbour Tech Forum");
+
+  expect(within(row).getByText("Your invitation expired. You keep your place on the waiting list.")).toBeInTheDocument();
+  expect(within(row).getByText("Position 1 on the waiting list")).toBeInTheDocument();
+  expect(within(row).queryByRole("button", { name: "Accept place" })).not.toBeInTheDocument();
+  expect(within(row).getByRole("button", { name: "Withdraw" })).toBeInTheDocument();
+});
+
+test("TC-752 H7 AC1 the details of an offered place carry Accept and Decline at the top right", async () => {
+  loadMyRegistrations.mockResolvedValue([invited()]);
+  render(<MyRegistrations />);
+  await userEvent.click(within(await rowFor("Harbour Tech Forum")).getByRole("button", { name: "View details" }));
+  const details = await screen.findByRole("region", { name: "Harbour Tech Forum" });
+  expect(within(details).getByText("7 Nov 2026, 12:00")).toBeInTheDocument();
+  expect(within(details).getByRole("button", { name: "Accept place" })).toBeInTheDocument();
+  expect(within(details).getByRole("button", { name: "Decline" })).toBeInTheDocument();
+});
+

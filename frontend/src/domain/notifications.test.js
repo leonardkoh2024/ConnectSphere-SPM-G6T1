@@ -185,3 +185,11 @@ describe('J5 SCRUM-154 Technical Support notices read in words, not constants', 
     expect(notificationTypeLabel('ON_SITE_SUPPORT_CHANGED')).toBe('On-site support changed');
   });
 });
+
+describe('H7 SCRUM-145 the attendee is told a place is offered', () => {
+  test('TC-755 an offered place has its own label in the inbox', () => {
+    const { notificationTypeLabel } = require('./notifications');
+    expect(notificationTypeLabel('WAITLIST_PLACE_OFFERED')).toBe('Place offered');
+  });
+});
+

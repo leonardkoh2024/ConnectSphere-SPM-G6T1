@@ -101,6 +101,17 @@ the queue when a place frees.
 The H5 withdraw route also takes a waitlisted place off the list. That frees no place in the event, and
 everyone behind moves up.
 
+H7 (SCRUM-145) offers freed places to the waiting list. Every registration transaction (register, withdraw,
+join, accept, decline) ends by offering any place neither taken nor held to the first people waiting, in queue
+order. Each offer is written on their record (`invited_at`, `invitation_expires_at`: 48 hours, or the event
+start if sooner) along with a `WAITLIST_PLACE_OFFERED` notification. An offered place is held: nobody else can
+register into it. `POST …/events/{eventId}/invitation/accept` registers the attendee while the offer stands.
+`POST …/invitation/decline` takes them off the list, and the place moves to the next person. A lapsed offer
+leaves the attendee on the list; the place passes on at the next action on the event, or when someone waiting
+opens `/mine`. There is no timer. The person who let it lapse is offered again only when another place frees
+after the lapse. This notice replaces J7's `PLACE_OPENED` broadcast to everyone waiting: only the person
+offered the place is invited to apply (J7 AC2, H7 AC1). Rules: `frontend/src/domain/waitingList.mjs`.
+
 **Scoped exception — `venue` writes `event_history` and `notifications`.** F5 rejection commits the
 booking decision, audit entry and notification together. The venue endpoint uses Admin Firestore for
 this transaction so the outcome cannot be partially applied by a browser write.
