@@ -15,6 +15,7 @@ jest.mock('./EventRequestForm', () => ({
 // H1's Registration tab is its own story (RegistrationPanel.test.js); mocked so this page's tests
 // never load the real Firebase client.
 jest.mock('./RegistrationPanel', () => ({ __esModule: true, default: () => null }));
+
 // H8's registration list sits in the same tab; mocked for the same reason.
 jest.mock('./RegistrationList', () => ({ __esModule: true, default: () => null }));
 
