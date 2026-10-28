@@ -7,7 +7,8 @@
 //
 // Times are Singapore time (UTC+8, no daylight saving), as in venueHolds.js. The window is
 // half-open: registration is open from the open instant and closed from the close instant.
-// firestore.rules repeats the window check (registrationWindowOpen) on the stored instants.
+// The registration service applies the window check when an attendee registers (H3); no
+// browser can create a registration, so firestore.rules carry no copy of it.
 
 // AC1 — Approved or later. Completed, Cancelled and Rejected are past or ended, so they never
 // take registration.
@@ -36,7 +37,6 @@ const venueLimitMessage = (ceiling) => `Registration capacity cannot exceed the 
 export const registeredFloorMessage = (count) =>
   `Registration capacity cannot be less than the ${count} ${count === 1 ? "person" : "people"} already registered.`;
 
-const blank = (value) => !String(value ?? "").trim();
 const upper = (value) => String(value || "").toUpperCase();
 
 // "2026-12-01" + "17:00" in Singapore time, or null when either half is missing or invalid.

@@ -251,16 +251,13 @@ describe('D2 significant event details require an acknowledged audit record', ()
     expect(matchBlock('event_history')).toContain('request.resource.data.warning_acknowledged == true');
   });
 
-  test('registrations are readable only by the current coordinator; the only write is the H1 attendee create', () => {
+  test('registrations are readable only by the current coordinator, and no browser writes them', () => {
     const block = matchBlock('registrations');
     expect(block).toContain("hasRole('EVENT_COORDINATOR') && currentCoordinator(resource.data.event_id)");
     // D2 still never edits or removes registrations, and nobody gets a blanket write.
     expect(block).not.toMatch(/allow\s+(update|delete|write)/);
-    // H1 (SCRUM-139) added one create clause: an attendee, for themselves, inside the open window.
-    const creates = block.match(/allow\s+create/g) || [];
-    expect(creates).toHaveLength(1);
-    expect(block).toMatch(/allow create:[^;]*hasRole\('ATTENDEE'\)[^;]*registrationWindowOpen\(/);
-    expect(block).not.toMatch(/allow create:[^;]*EVENT_COORDINATOR/);
+    // H3 (SCRUM-141) registers through the registration service, so no browser creates one.
+    expect(block).not.toMatch(/allow\s+[a-z,\s]*create/);
   });
 });
 
@@ -476,15 +473,21 @@ describe('TC-284 notifications are only ever addressed to people related to the 
 
   test("every branch ties the recipient to the event's organiser or coordinator", () => {
     // The coordinator, organiser, safety-officer and (A6) Lead branches, in order,
-    // then (J2) the organiser's own submission notice, then (J4) Venue Staff for their
-    // own venue. J2 added the fifth of these six, so the count was 5 before it.
+    // then (L1) the Safety Officer waiting notice, then (J2) the organiser's own
+    // submission notice, then (J4) Venue Staff for their own venue.
     const branches = ordinary().split(/\|\| \(/);
-    expect(branches).toHaveLength(6);
+    expect(branches).toHaveLength(11);
     branches.slice(0, 4).forEach((branch) => {
       expect(branch).toMatch(/request\.resource\.data\.user_id (==|in)/);
       expect(branch).toMatch(/organiser_id|coordinator_id/);
     });
-    expect(branches[5]).toMatch(/venue_staff\/.*\.data\.user_id == request\.resource\.data\.user_id/);
+    expect(branches[4]).toContain("request.resource.data.type == 'ARRANGEMENT_REVIEW_REQUIRED'");
+    expect(branches[5]).toContain("request.resource.data.type == 'SAFETY_REVIEW_CANCELLED'");
+    expect(branches[6]).toContain("request.resource.data.type == 'SAFETY_REVIEW_WAITING'");
+    expect(branches[6]).toContain("data.role == 'SAFETY_OFFICER'");
+    expect(branches[7]).toContain("request.resource.data.type in ['DATE', 'TIME', 'VENUE']");
+    expect(branches[8]).toContain("request.resource.data.type in ['UNASSIGNED_EVENT', 'UNASSIGNED_EVENT_CANCELLED']");
+    expect(branches[10]).toMatch(/venue_staff\/.*\.data\.user_id == request\.resource\.data\.user_id/);
   });
 
   // J6 / SCRUM-155 AC1 — TC-313. A booking's outcome goes only to the coordinator
@@ -626,9 +629,11 @@ describe('C2/C3 a coordinator can read an organiser profile, one at a time', () 
     expect(getRule).toContain("hasRole('EVENT_COORDINATOR') && resource.data.role == 'EVENT_ORGANISER'");
   });
 
+  // J8 lets an organiser list active Coordinator Leads, so the rule may name the organiser
+  // as a reader; what must never appear is an organiser profile as something listed.
   test('organisers still cannot be listed or browsed', () => {
     const listRule = matchBlock('users').match(/allow list:\s*if([^;]*);/)[1];
-    expect(listRule).not.toContain('EVENT_ORGANISER');
+    expect(listRule).not.toMatch(/resource\.data\.role == 'EVENT_ORGANISER'/);
   });
 
   test('profile writes are unchanged — nobody gains a way to edit another user', () => {
@@ -744,9 +749,23 @@ describe('A7 the Safety Officer reaches only events under review, and writes onl
       "review.outcome == 'APPROVE' && request.resource.data.status == 'CONFIRMED'",
       'approvedVenueBookingFor(approvedBookingId)',
       "review.outcome in ['REJECT', 'REQUEST_CHANGES'] && request.resource.data.status == 'PLANNING'",
-      "affectedKeys().hasOnly(['status', 'last_safety_review_id', 'updated_at'])"
+      "affectedKeys().hasOnly(['status', 'last_safety_review_id', 'updated_at', 'returned_to_planning_at', 'technical_review_status'])"
     ].forEach((clause) => expect(update).toContain(clause));
     expect(matchBlock('events').match(/allow update: if (.*?);/)[1]).toContain('safetyOutcomeUpdate()');
+  });
+
+  test('L1 SCRUM-187 the assigned coordinator may move Approved or Planning to Safety Review', () => {
+    const update = functionBody('sendForSafetyCheckUpdate');
+    [
+      "hasRole('EVENT_COORDINATOR')",
+      'resource.data.coordinator_id == request.auth.uid',
+      "resource.data.status in ['APPROVED', 'PLANNING']",
+      "request.resource.data.status == 'SAFETY_REVIEW'",
+      'request.resource.data.safety_review_requested_at == request.time',
+      "affectedKeys().hasOnly(['status', 'safety_review_requested_at', 'updated_at'])"
+    ].forEach((clause) => expect(update).toContain(clause));
+    expect(matchBlock('events').match(/allow update: if (.*?);/)[1]).toContain('sendForSafetyCheckUpdate()');
+    expect(matchBlock('notifications')).toContain("request.resource.data.type == 'SAFETY_REVIEW_WAITING'");
   });
 
   // AC6 — every other write is refused to the Safety Officer server-side: only
@@ -754,7 +773,7 @@ describe('A7 the Safety Officer reaches only events under review, and writes onl
   test('TC-376 the Safety Officer can write only the outcome, its history and its notices', () => {
     const writable = collections.filter((collection) => writeConditions(collection)
       .some((condition) => /'SAFETY_OFFICER'|safetyReviewing\(|safetyOutcomeUpdate\(\)|safetyOutcomeCommit\(/.test(condition)));
-    expect(writable.sort()).toEqual(['event_history', 'events', 'notifications', 'safety_reviews']);
+    expect(writable.sort()).toEqual(['event_history', 'events', 'notifications', 'safety_reviews', 'venue_bookings']);
   });
 
   // AC3 — equipment placement and crowd movement come from the event's coordinator,
@@ -1033,14 +1052,12 @@ describe('I3 SCRUM-149 re-request marks and notices come only from the arrangeme
 //     Review with a clarification open);
 //   - keep the booking and venue records closed to organisers, so the service is the only
 //     route to the ceiling;
-//   - AC4: refuse a registration outside the open window, by the SERVER's clock.
+//   - AC4: give no browser a way to create a registration at all. H3 (SCRUM-141) registers
+//     through the registration service, which refuses one outside the open window by the
+//     server's clock (backend register.test.js, TC-583 – TC-588), because a rule cannot
+//     count places or see a duplicate.
 describe('H1 SCRUM-139 registration capacity and window are set through the service, and the window is enforced', () => {
   const flat = RULES.replace(/\/\/[^\n]*/g, '').replace(/\s+/g, ' ');
-  const windowFunction = () => {
-    const found = flat.match(/function registrationWindowOpen\(eventId\) \{ (.*?) \}(?= function| allow| match|$)/);
-    if (!found) throw new Error('registrationWindowOpen(eventId) is not defined in firestore.rules');
-    return found[1];
-  };
 
   test('H1-RT1 AC2 the instants the window is judged on are written by the service alone: no event update clause names them', () => {
     const events = flat.slice(flat.indexOf('match /events/'), flat.indexOf('match /event_venue_requirements/'));
@@ -1071,38 +1088,17 @@ describe('H1 SCRUM-139 registration capacity and window are set through the serv
     expect(venuesRead).not.toContain('EVENT_ORGANISER');
   });
 
-  test('H1-RT4 AC4 a registration can be created only through registrationWindowOpen, for the event it names', () => {
-    const create = matchBlock('registrations').match(/allow create:\s*if([^;]*);/);
-    expect(create).not.toBeNull();
-    expect(create[1]).toContain("hasRole('ATTENDEE')");
-    expect(create[1]).toContain('registrationWindowOpen(request.resource.data.event_id)');
+  test('H1-RT4 AC4 no browser can create, change or remove a registration: the service is the only way in', () => {
+    const block = matchBlock('registrations');
+    expect(block).not.toMatch(/allow\s+[a-z,\s]*(create|update|delete|write)/);
   });
 
-  test('H1-RT5 AC4 the window is open only for a flagged event in Approved or later, from the open instant until the close instant', () => {
-    const body = windowFunction();
-    expect(body).toContain("registration_required == true");
-    expect(body).toContain("['APPROVED', 'PLANNING', 'SAFETY_REVIEW', 'CONFIRMED']");
-    expect(body).toContain('request.time >=');
-    expect(body).toContain('registration_opens_at');
-    expect(body).toContain('request.time <');
-    expect(body).toContain('registration_closes_at');
+  test('H1-RT5 AC4 no clause on registrations names the Attendee role', () => {
+    expect(matchBlock('registrations')).not.toContain(ROLES.ATTENDEE);
   });
 
-  test('H1-RT6 AC4 the clock is the server\'s: the window is never judged on a time the client sends', () => {
-    const body = windowFunction();
-    expect(body).toContain('request.time');
-    expect(body).not.toMatch(/request\.resource\.data\.(registered_at|created_at|submitted_at|time|timestamp)/);
-    // The event record is read from the database, not taken from the request.
-    expect(body).toContain('get(/databases/$(database)/documents/events/$(eventId))');
-  });
-
-  test('H1-RT7 AC4 an event with no window written yet is never open: a missing instant refuses the registration', () => {
-    const body = windowFunction();
-    expect(body).toMatch(/registration_opens_at.*registration_closes_at|registration_closes_at.*registration_opens_at/);
-    // get(..., null) style defaults would let a missing field read as "no limit"; the
-    // instants must be compared as present timestamps.
-    expect(body).toMatch(/registration_opens_at is timestamp|get\('registration_opens_at', null\) is timestamp/);
-    expect(body).toMatch(/registration_closes_at is timestamp|get\('registration_closes_at', null\) is timestamp/);
+  test('H1-RT6 AC4 the browser-side window rule is gone, so nothing can rely on it instead of the service', () => {
+    expect(flat).not.toContain('registrationWindowOpen');
   });
 });
 
@@ -1129,9 +1125,44 @@ describe('H8 the registration list reaches an organiser only through the service
     const readClauses = matchBlock('users').match(/allow\s+(?:get|list|read)[^;]*;/g) || [];
     expect(readClauses.length).toBeGreaterThan(0);
     readClauses.forEach((clause) => {
-      expect(clause).not.toContain("hasRole('EVENT_ORGANISER')");
       expect(clause).not.toContain("hasRole('ATTENDEE')");
       expect(clause).not.toMatch(/resource\.data\.role == 'ATTENDEE'/);
+      // J8 — an organiser may list active Coordinator Leads, and no other profile.
+      (clause.match(/hasRole\('EVENT_ORGANISER'\)[^|]*/g) || []).forEach((organiserRead) => {
+        expect(organiserRead).toContain("resource.data.role == 'EVENT_COORDINATOR_LEAD'");
+      });
     });
+  });
+});
+
+// I1 / SCRUM-147 — TC-761 – TC-764 in docs/test-cases.md.
+describe('I1 an organiser raises a change request on their own submitted event', () => {
+  const block = () => matchBlock('change_requests');
+  const create = () => block().match(/allow create: if (.*?);/)[1];
+
+  test('TC-761 only the event\'s organiser creates one, in their own name, while the event is Submitted to Confirmed', () => {
+    expect(create()).toContain("hasRole('EVENT_ORGANISER')");
+    expect(create()).toContain('request.resource.data.organiser_id == request.auth.uid');
+    expect(create()).toContain('ownsEvent(request.resource.data.event_id)');
+    expect(create()).toContain("changedEvent().status in ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PLANNING', 'SAFETY_REVIEW', 'CONFIRMED']");
+  });
+
+  test('TC-762 it names at least one known field, gives a reason, starts Pending and is stamped now', () => {
+    const { CHANGEABLE_FIELD_NAMES } = require('../domain/changeRequests');
+    expect(create()).toContain("request.resource.data.status == 'PENDING'");
+    expect(create()).toContain('request.resource.data.reason.trim().size() > 0');
+    expect(create()).toContain('request.resource.data.changes.size() > 0');
+    expect(create()).toContain(`request.resource.data.changes.keys().hasOnly([${CHANGEABLE_FIELD_NAMES.map((field) => `'${field}'`).join(', ')}])`);
+    expect(create()).toContain('request.resource.data.created_at == request.time');
+  });
+
+  test('TC-763 it carries the event\'s coordinator as it stands', () => {
+    expect(create()).toContain("request.resource.data.coordinator_id == changedEvent().get('coordinator_id', null)");
+  });
+
+  test('TC-764 it is read by its organiser and the event\'s current coordinator, and nobody may change or delete it yet', () => {
+    expect(block().match(/allow get, list: if (.*?);/)[1])
+      .toBe('signedIn() && (resource.data.organiser_id == request.auth.uid || canReadEvent(resource.data.event_id))');
+    expect(block()).not.toMatch(/allow[^:]*\b(update|delete|write)\b/);
   });
 });

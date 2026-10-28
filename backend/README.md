@@ -64,7 +64,53 @@ the events with `registration_required == true`, keeps those open now by the sha
 `frontend/src/domain/openRegistration.mjs`, and returns only their public fields with the remaining places
 (capacity less `REGISTERED` registrations). Venue names come through the venue service's
 `getApprovedEventVenueNames` read contract in `src/services/venue/approvedEventBookings.js`, not a query of
-its own. It writes nothing.
+its own. Each entry also carries the caller's own `registration_status`. The list writes nothing.
+
+H3 (SCRUM-141) adds `POST /api/registrations/events/{eventId}/register` (Attendee ID token required). It is
+the only way a registration is created: `firestore.rules` give no browser a create, update or delete on
+`registrations`, because a rule cannot count an event's places or see a second registration by the same
+attendee. One Admin transaction reads the event, checks the window, status and flag (H1 AC4, through
+`registrationAttemptRefusal` in `frontend/src/domain/registrationWindow.mjs`), refuses a duplicate, counts the
+`REGISTERED` places and writes `registrations/{eventId}_{attendeeId}`, with the attendee in `attendee_id`. A
+refusal answers 409 with a `reason` (`closed`, `not_open_yet`, `status`, `not_enabled`, `no_capacity`, `full`,
+`already_registered`), or 404 `not_found`. See `src/services/registration/register.js`.
+
+H4 (SCRUM-142) adds `GET /api/registrations/mine` (Attendee ID token required): the caller's own registrations,
+queried by `attendee_id` only, each with its event's name, description, date, window, approved venues and the
+status shown. A registration on a cancelled event reads `CANCELLED`, since D4 cancels the event without
+touching its registrations; the event's cancellation reason and internal fields are not sent. The rules live
+in `frontend/src/domain/myRegistrations.mjs`. See `src/services/registration/myRegistrations.js`.
+
+H5 (SCRUM-143) adds `POST /api/registrations/events/{eventId}/withdraw` (Attendee ID token required). One Admin
+transaction finds the caller's `REGISTERED` record for the event (under `{eventId}_{attendeeId}` or an older
+id) and sets it to `WITHDRAWN` with a server `withdrawn_at`. That gives the place back at once, because H3
+counts only `REGISTERED`. It is refused with nothing written when the caller holds no Registered place
+(`not_registered`), or the event has started (`event_started`) or is completed, cancelled or rejected
+(`event_closed`). There is no deadline before the start. The waiting list is not touched: inviting the next
+person is H7's. Each `/mine` entry also carries `active` and `can_withdraw`, from `withdrawalRefusal` in
+`frontend/src/domain/myRegistrations.mjs`.
+
+H6 (SCRUM-144) adds `POST /api/registrations/events/{eventId}/waitlist` (Attendee ID token required). In one
+Admin transaction it refuses unless the event is taking registrations (the same window check as H3) and is
+full (`places_available` otherwise). It also refuses when the caller already holds a place
+(`already_registered`, `already_waitlisted`). Otherwise it sets `registrations/{eventId}_{attendeeId}` to
+`WAITLISTED` with a server `waitlisted_at`. The position is never stored: it is worked out from join times,
+first come first served, each time `/mine` or `/open-events` is read (`frontend/src/domain/waitingList.mjs`).
+Registering while waitlisted is refused (`waitlisted`), so nobody holds both statuses and nobody steps past
+the queue when a place frees.
+The H5 withdraw route also takes a waitlisted place off the list. That frees no place in the event, and
+everyone behind moves up.
+
+H7 (SCRUM-145) offers freed places to the waiting list. Every registration transaction (register, withdraw,
+join, accept, decline) ends by offering any place neither taken nor held to the first people waiting, in queue
+order. Each offer is written on their record (`invited_at`, `invitation_expires_at`: 48 hours, or the event
+start if sooner) along with a `WAITLIST_PLACE_OFFERED` notification. An offered place is held: nobody else can
+register into it. `POST …/events/{eventId}/invitation/accept` registers the attendee while the offer stands.
+`POST …/invitation/decline` takes them off the list, and the place moves to the next person. A lapsed offer
+leaves the attendee on the list; the place passes on at the next action on the event, or when someone waiting
+opens `/mine`. There is no timer. The person who let it lapse is offered again only when another place frees
+after the lapse. This notice replaces J7's `PLACE_OPENED` broadcast to everyone waiting: only the person
+offered the place is invited to apply (J7 AC2, H7 AC1). Rules: `frontend/src/domain/waitingList.mjs`.
 
 **Scoped exception — `venue` writes `event_history` and `notifications`.** F5 rejection commits the
 booking decision, audit entry and notification together. The venue endpoint uses Admin Firestore for
@@ -73,7 +119,7 @@ this transaction so the outcome cannot be partially applied by a browser write.
 `firestore.rules` stays at the repo root. Authorisation is enforced there regardless of what lives in this
 folder, because the browser can still reach Firestore directly.
 
-The `event` service handles completion (`POST /api/events/:eventId/complete`).
+The `event` service handles completion (`POST /api/events/:eventId/complete`), and tells an event's own organiser the names of the venues approved for it (`GET /api/events/:eventId/venues`, B10), through the venue service's `getApprovedEventVenueNames` contract.
 It verifies the caller's coordinator role and current assignment, checks the confirmed
 event's Singapore end instant against the server clock, then updates only the event's
 status/timestamps and appends an event-history row atomically. It does not modify or

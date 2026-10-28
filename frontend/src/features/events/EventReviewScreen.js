@@ -15,6 +15,7 @@ import { auth } from "../../lib/firebase";
 import { releaseCancelledEventBookings } from "../venues/venuesApi";
 import { releaseCancelledEventReservations } from "../equipment/equipmentApi";
 import SafetyPlanningNotes from "../safety/SafetyPlanningNotes";
+import { sendEventForSafetyCheck } from "../safety/safetyApi";
 
 const shownTime = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Not recorded";
 
@@ -123,7 +124,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
 
   const act = async (action, success) => {
     // J2 / SCRUM-151 AC3 — approve and reject each need a reason, worded by one function.
-    const problem = action === "complete"
+    const problem = action === "complete" || action === "safety"
       ? null
       : action === "clarify"
         ? (message.trim() ? null : "Clarification message is required.")
@@ -158,6 +159,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
       if (action === "reject") await reviewApi.reject(selected, message);
       if (action === "approve") await reviewApi.approve(selected, message);
       if (action === "complete") await reviewApi.complete(selected);
+      if (action === "safety") await sendEventForSafetyCheck(selected);
       await loadList(); await loadDetail(selected, false); onNotice?.(success); setMode(""); setMessage("");
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
@@ -182,6 +184,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     // D1 / D2 — one Edit event form, in Approved, Planning and Confirmed only (D1 AC3).
     // An open clarification locks just its date, size and venue fields.
     const canEdit = event.editable && editableEventStatuses.includes(event.status);
+    const canSendForSafetyCheck = event.editable && ["APPROVED", "PLANNING"].includes(event.status);
     const editing = mode === "edit";
     const showFindVenues = typeof onFindVenues === "function";
     const canRequestVenue = showFindVenues && event.editable && canFindVenues(event);
@@ -269,6 +272,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
         {canDecide && <button className="cs-btn cs-btn-ghost cs-record-danger" type="button" disabled={busy} onClick={() => startMode("reject")}>Reject request</button>}
         {canCancel && <button className="cs-btn cs-btn-ghost cs-record-danger" type="button" disabled={busy} onClick={() => { setMode("cancel"); setMessage(""); setError(""); setCancellationConfirmed(false); }}>Cancel event</button>}
         {mayComplete && <button className="cs-btn cs-btn-secondary" type="button" disabled={busy} onClick={() => act("complete", "Event marked completed.")}>Mark completed</button>}
+        {canSendForSafetyCheck && <button className="cs-btn cs-btn-primary" type="button" disabled={busy} onClick={() => act("safety", "Event sent for its safety check.")}>Send for safety check</button>}
         {canEdit && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => startMode("edit")}>Edit event</button>}
       </div>}
       {mayComplete && <p className="cs-panel-note">Completion is checked against the event end time on the server.</p>}

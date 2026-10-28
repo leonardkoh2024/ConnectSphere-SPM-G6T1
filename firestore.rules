@@ -25,22 +25,6 @@ service cloud.firestore {
         // Written in this same commit, so an old acknowledgement cannot cover a later write.
         && change.created_at == request.time;
     }
-    // H1 / SCRUM-139 AC4 — a registration is accepted only inside the event's open window,
-    // judged on the SERVER's clock (request.time), never on a time the client sends. The
-    // instants are written by the registration service when the organiser saves the window
-    // (the same Singapore-time reading as domain/registrationWindow.mjs); an event with no
-    // window written has no instants, so nothing can register. The window is half-open: open
-    // from the open instant, closed from the close instant. Only a flagged event in Approved or
-    // later can take registrations.
-    function registrationWindowOpen(eventId) {
-      let eventRecord = get(/databases/$(database)/documents/events/$(eventId)).data;
-      return eventRecord.registration_required == true
-        && eventRecord.status in ['APPROVED', 'PLANNING', 'SAFETY_REVIEW', 'CONFIRMED']
-        && eventRecord.get('registration_opens_at', null) is timestamp
-        && eventRecord.get('registration_closes_at', null) is timestamp
-        && request.time >= eventRecord.registration_opens_at
-        && request.time < eventRecord.registration_closes_at;
-    }
     function assignedVenueStaff(venueId) {
       return hasRole('VENUE_STAFF')
         && exists(/databases/$(database)/documents/venue_staff/$(venueId))
@@ -97,9 +81,15 @@ service cloud.firestore {
         || hasRole('EVENT_COORDINATOR_LEAD')
         || (hasRole('EVENT_COORDINATOR') && resource.data.role == 'EVENT_ORGANISER')
         || (resource.data.role == 'EVENT_COORDINATOR' && resource.data.is_active == true));
-      allow list: if (hasRole('EVENT_COORDINATOR') || hasRole('EVENT_COORDINATOR_LEAD'))
-        && resource.data.role == 'EVENT_COORDINATOR'
-        && resource.data.is_active == true;
+      allow list: if ((hasRole('EVENT_COORDINATOR') || hasRole('EVENT_COORDINATOR_LEAD'))
+          && resource.data.role == 'EVENT_COORDINATOR'
+          && resource.data.is_active == true)
+        || (hasRole('EVENT_COORDINATOR')
+          && resource.data.role == 'SAFETY_OFFICER'
+          && resource.data.is_active == true)
+        || (hasRole('EVENT_ORGANISER')
+          && resource.data.role == 'EVENT_COORDINATOR_LEAD'
+          && resource.data.is_active == true);
       allow update: if signedIn() && userId == request.auth.uid
         && request.resource.data.role == resource.data.role
         && request.resource.data.user_id == resource.data.user_id
@@ -258,6 +248,23 @@ service cloud.firestore {
       // the narrow C5 clarification-amendment window, without changing the
       // workflow marker itself, except when the organiser's response transaction
       // closes that marker atomically.
+      // J8 / SCRUM-191 — the organiser may cancel their own request while it is
+      // still submitted and nobody has been assigned. It leaves the Lead's queue.
+      function organiserUnassignedCancellation() {
+        return hasRole('EVENT_ORGANISER')
+          && resource.data.organiser_id == request.auth.uid
+          && resource.data.status == 'SUBMITTED'
+          && resource.data.get('coordinator_id', null) == null
+          && request.resource.data.status == 'CANCELLED'
+          && request.resource.data.cancellation_reason is string
+          && request.resource.data.cancellation_reason.size() > 0
+          && request.resource.data.cancelled_at == request.time
+          && request.resource.data.updated_at == request.time
+          && coordinatorUnchanged()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'cancellation_reason', 'cancelled_at', 'updated_at'
+          ]);
+      }
       function organiserMayEdit() {
         return resource.data.status == 'DRAFT'
           || (resource.data.status == 'UNDER_REVIEW'
@@ -275,6 +282,19 @@ service cloud.firestore {
       // move, so no event reaches Confirmed without an approved check (L1 AC4).
       // A7 — the review must be the one written in this commit (decided now), so
       // an earlier record can never confirm a later check.
+      // L1 / SCRUM-187 — the assigned coordinator sends the event for its check.
+      // The outstanding-arrangement gate is decided in the client from the
+      // event's bookings; this clause is the status move itself.
+      function sendForSafetyCheckUpdate() {
+        return hasRole('EVENT_COORDINATOR')
+          && resource.data.coordinator_id == request.auth.uid
+          && resource.data.status in ['APPROVED', 'PLANNING']
+          && request.resource.data.status == 'SAFETY_REVIEW'
+          && request.resource.data.safety_review_requested_at == request.time
+          && request.resource.data.updated_at == request.time
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'safety_review_requested_at', 'updated_at']);
+      }
+
       function safetyOutcomeUpdate() {
         let review = getAfter(/databases/$(database)/documents/safety_reviews/$(request.resource.data.last_safety_review_id)).data;
         let approvedBookingId = request.resource.data.get('approved_venue_booking_id', '');
@@ -290,7 +310,7 @@ service cloud.firestore {
               && approvedBookingId.size() > 0
               && approvedVenueBookingFor(approvedBookingId))
             || (review.outcome in ['REJECT', 'REQUEST_CHANGES'] && request.resource.data.status == 'PLANNING'))
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'last_safety_review_id', 'updated_at']);
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'last_safety_review_id', 'updated_at', 'returned_to_planning_at', 'technical_review_status']);
       }
 
       // Called only on Approve, after the id is known to be present, so a Reject
@@ -425,10 +445,12 @@ service cloud.firestore {
         // A7 AC2 — a list query must filter on status == 'SAFETY_REVIEW'.
         || (hasRole('SAFETY_OFFICER') && resource.data.status == 'SAFETY_REVIEW');
       allow update: if (hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid && coordinatorUnchanged() && organiserMayEdit())
+        || organiserUnassignedCancellation()
         || coordinatorWorkflowUpdate()
         || leadAssignmentUpdate()
         || coordinatorEventDetailsUpdate()
         || safetyOutcomeUpdate()
+        || sendForSafetyCheckUpdate()
         || coordinatorSafetyNotesUpdate()
         || venueBookingApprovalLinkUpdate()
         || coordinatorVenueReleaseLinkUpdate()
@@ -538,6 +560,31 @@ service cloud.firestore {
         && request.resource.data.responder_id == request.auth.uid
         && ownsEvent(clarification().event_id)
         && clarification().status == 'OPEN';
+    }
+
+    // I1 / SCRUM-147 — an organiser asks for a change to their own event, from Submitted
+    // up to Confirmed (AC1), naming at least one field and giving a reason (AC2). It is
+    // written Pending (AC4), stamped now, and carries the event's coordinator as it stands,
+    // so the request cannot claim a coordinator the event does not have. The field names
+    // repeat CHANGEABLE_FIELD_NAMES in domain/changeRequests.js. No update or delete yet:
+    // the coordinator's decision is I2's to add.
+    match /change_requests/{requestId} {
+      function changedEvent() { return get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data; }
+      allow get, list: if signedIn()
+        && (resource.data.organiser_id == request.auth.uid || canReadEvent(resource.data.event_id));
+      allow create: if hasRole('EVENT_ORGANISER')
+        && request.resource.data.change_request_id == requestId
+        && request.resource.data.organiser_id == request.auth.uid
+        && ownsEvent(request.resource.data.event_id)
+        && changedEvent().status in ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PLANNING', 'SAFETY_REVIEW', 'CONFIRMED']
+        && request.resource.data.coordinator_id == changedEvent().get('coordinator_id', null)
+        && request.resource.data.status == 'PENDING'
+        && request.resource.data.reason is string
+        && request.resource.data.reason.trim().size() > 0
+        && request.resource.data.changes is map
+        && request.resource.data.changes.size() > 0
+        && request.resource.data.changes.keys().hasOnly(['name', 'purpose', 'description', 'expected_attendance', 'event_date', 'start_time', 'end_time', 'preferred_location', 'required_layout', 'facilities', 'accessibility', 'accessibility_notes'])
+        && request.resource.data.created_at == request.time;
     }
 
     // A7 AC4 / L3 — one record per check. Reject and Request changes need a
@@ -694,6 +741,44 @@ service cloud.firestore {
           // J2 AC1 — submission received. A new request has no coordinator yet, so the
           // organiser records the notice in their own inbox: for their own event, one
           // type only, and only while that event is Submitted.
+          || (safetyOutcomeCommit(request.resource.data.event_id)
+            && request.resource.data.type == 'ARRANGEMENT_REVIEW_REQUIRED'
+            && request.resource.data.created_at == request.time)
+          || (hasRole('EVENT_COORDINATOR')
+            && request.resource.data.type == 'SAFETY_REVIEW_CANCELLED'
+            && get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.status == 'SAFETY_REVIEW'
+            && getAfter(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.status == 'CANCELLED'
+            && get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.coordinator_id == request.auth.uid
+            && get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.role == 'SAFETY_OFFICER'
+            && get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.is_active == true
+            && request.resource.data.created_at == request.time)
+          || (hasRole('EVENT_COORDINATOR')
+            && request.resource.data.type == 'SAFETY_REVIEW_WAITING'
+            && getAfter(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.status == 'SAFETY_REVIEW'
+            && getAfter(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.coordinator_id == request.auth.uid
+            && getAfter(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.safety_review_requested_at == request.time
+            && get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.role == 'SAFETY_OFFICER'
+            && get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.is_active == true
+            && request.resource.data.created_at == request.time)
+          || (hasRole('EVENT_COORDINATOR')
+            && currentCoordinator(request.resource.data.event_id)
+            && request.resource.data.type in ['DATE', 'TIME', 'VENUE']
+            && request.resource.data.registration_id is string
+            && request.resource.data.created_at == request.time
+            && get(/databases/$(database)/documents/registrations/$(request.resource.data.registration_id)).data.event_id == request.resource.data.event_id
+            && get(/databases/$(database)/documents/registrations/$(request.resource.data.registration_id)).data.status == 'REGISTERED'
+            && (get(/databases/$(database)/documents/registrations/$(request.resource.data.registration_id)).data.attendee_id == request.resource.data.user_id
+              || get(/databases/$(database)/documents/registrations/$(request.resource.data.registration_id)).data.user_id == request.resource.data.user_id))
+          || (ownsEvent(request.resource.data.event_id)
+            && request.resource.data.type in ['UNASSIGNED_EVENT', 'UNASSIGNED_EVENT_CANCELLED']
+            && get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.role == 'EVENT_COORDINATOR_LEAD'
+            && get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.is_active == true
+            && request.resource.data.created_at == request.time
+            && ((request.resource.data.type == 'UNASSIGNED_EVENT'
+                && get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.status == 'SUBMITTED'
+                && get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.get('coordinator_id', null) == null)
+              ||(request.resource.data.type == 'UNASSIGNED_EVENT_CANCELLED'
+                && getAfter(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.status == 'CANCELLED')))
           || (ownsEvent(request.resource.data.event_id)
             && request.resource.data.type == 'EVENT_SUBMITTED'
             && request.resource.data.user_id == request.auth.uid
@@ -919,7 +1004,16 @@ service cloud.firestore {
             || (resource.data.status in ['PENDING', 'HELD'] && request.resource.data.status == 'WITHDRAWN'))
           && request.resource.data.released_at is timestamp
           && request.resource.data.release_reason is string
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'released_at', 'release_reason']));
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'released_at', 'release_reason']))
+        // L4 / SCRUM-190 — a safety concern flags the booking for review, and the
+        // assigned coordinator clears that flag once the booking is acceptable again.
+        || (safetyOutcomeCommit(resource.data.event_id)
+          && request.resource.data.review_status == 'Review required'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['review_status']))
+        || (hasRole('EVENT_COORDINATOR')
+          && currentCoordinator(resource.data.event_id)
+          && request.resource.data.review_status == 'Reviewed'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['review_status']));
     }
     match /venue_booking_conflicts/{conflictId} {
       // F10's trusted backend owns persisted detection and notification. Venue
@@ -997,11 +1091,10 @@ service cloud.firestore {
     }
     match /registrations/{registrationId} {
       allow get, list: if hasRole('EVENT_COORDINATOR') && currentCoordinator(resource.data.event_id);
-      // H1 / SCRUM-139 AC4 — an attendee can register only while the event's window is open.
-      // H3 builds on this clause (one place per attendee, capacity, duplicates); this is its floor.
-      allow create: if hasRole('ATTENDEE')
-        && request.resource.data.attendee_id == request.auth.uid
-        && registrationWindowOpen(request.resource.data.event_id);
+      // H3 / SCRUM-141 — no browser creates, changes or removes a registration. Attendees
+      // register through the registration service, which checks the open window (H1 AC4) by
+      // the server's clock, counts the places left and refuses a duplicate in one transaction:
+      // things a rule cannot do, since it cannot count documents.
     }
   }
 }

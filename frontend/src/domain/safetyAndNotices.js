@@ -18,7 +18,7 @@ const VENUE_STAFF = "VENUE_STAFF";
 const TECH_SUPPORT = "TECHNICAL_SUPPORT_STAFF";
 
 const OUTCOMES = ["APPROVE", "REJECT", "REQUEST_CHANGES"];
-const INACTIVE_BOOKING = new Set(["RELEASED", "REPLACED", "REJECTED", "CANCELLED", "EXPIRED", "WITHDRAWN"]);
+const INACTIVE_BOOKING = new Set(["RELEASED", "REPLACED", "CANCELLED", "EXPIRED", "WITHDRAWN"]);
 const SENDABLE = new Set([PLANNING, APPROVED]);
 
 const text = (value) => {
@@ -30,18 +30,28 @@ const activePeople = (people = [], role) =>
   people.filter((person) => person.role === role && person.active !== false && person.user_id);
 
 const activeBookings = (bookings = []) =>
-  bookings.filter((booking) => !INACTIVE_BOOKING.has(String(booking.status || "").toUpperCase()));
+  bookings.filter((booking) => {
+    const status = String(booking.status || "").toUpperCase();
+    if (status === "REJECTED") {
+      return booking.requires_re_request === true || booking.replacement_needed === true;
+    }
+    return !INACTIVE_BOOKING.has(status);
+  });
 
 const requestedTechnical = (arrangements = []) =>
   arrangements.filter((item) => item.requested !== false);
 
-const arrangementLabel = (item, fallback) => item.label || item.venue_name || item.arrangement_id || item.booking_id || item.venue_id || fallback;
+const arrangementLabel = (item, fallback) => item.label || item.booking_label || item.venue_name
+  || item.arrangement_id || item.booking_id || item.venue_id || fallback;
 
 function outstandingForSafetyCheck({ bookings = [], technicalArrangements = [] } = {}) {
   const outstanding = [];
-  activeBookings(bookings).forEach((booking) => {
+  const activeVenueBookings = activeBookings(bookings);
+  if (!activeVenueBookings.length) outstanding.push("an approved venue booking");
+  activeVenueBookings.forEach((booking) => {
     const label = arrangementLabel(booking, "venue booking");
     if (String(booking.status || "").toUpperCase() !== "APPROVED") outstanding.push(label);
+    else if (booking.replacement_needed === true) outstanding.push(`${label} needs a replacement`);
     if (booking.review_status === REVIEW_REQUIRED) outstanding.push(`${label} still needs review`);
   });
   requestedTechnical(technicalArrangements).forEach((item) => {

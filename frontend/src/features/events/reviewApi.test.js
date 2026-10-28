@@ -563,6 +563,27 @@ describe('D1 SCRUM-111 / D2 SCRUM-112 saving an Edit event form', () => {
     expect(writes.updates).toHaveLength(1);
   });
 
+  test('J7 SCRUM-156 a date change tells registered attendees, and a time or venue change names what changed', async () => {
+    firestore.getDocs.mockImplementation(async (q) => {
+      if (q.name !== 'registrations') return { docs: [], size: 0 };
+      const registeredOnly = (q.constraints || []).some((item) => item.field === 'status' && item.value === 'REGISTERED');
+      const people = registeredOnly ? [snapshot('e1_reg', { attendee_id: 'attendee-1', status: 'REGISTERED', event_id: 'e1' })] : [];
+      return { docs: people, size: people.length };
+    });
+
+    await reviewApi.saveEventEdit({
+      eventId: 'e1', before: planning, organiser, impact: noImpact, acknowledged: true,
+      values: { ...formFor(planning), event_date: '2026-11-05', start_time: '10:00', preferred_location: 'Harbour Hall' }
+    });
+
+    const notices = writes.sets.filter(([, data]) => ['DATE', 'TIME', 'VENUE'].includes(data.type)).map(([, data]) => data);
+    expect(notices.map((notice) => notice.type).sort()).toEqual(['DATE', 'TIME', 'VENUE']);
+    expect(notices.find((notice) => notice.type === 'DATE').message).toBe('Partner Summit: the date changed to 2026-11-05.');
+    expect(notices.find((notice) => notice.type === 'TIME').message).toBe('Partner Summit: the time changed to 10:00–17:00.');
+    expect(notices.find((notice) => notice.type === 'VENUE').message).toBe('Partner Summit: the venue changed to Harbour Hall.');
+    expect(notices.every((notice) => notice.user_id === 'attendee-1' && notice.is_read === false)).toBe(true);
+  });
+
   test('TC-464 D2 a venue-requirement change rewrites the requirement, facility and accessibility rows with the acknowledged record', async () => {
     const withNeeds = { ...planning, facilities_required: true, facilities: ['WIFI'], accessibility_needed: false };
     const rows = {
@@ -739,6 +760,23 @@ describe('D4 cancel an assigned event', () => {
         created_at: 'TS'
       })]
     ]));
+  });
+
+  test('J9 SCRUM-192 cancelling an event in Safety Review tells each active Safety Officer', async () => {
+    storedEvent.status = 'SAFETY_REVIEW';
+    firestore.getDocs.mockImplementation(async (q) => {
+      if (q.name === 'users') return docs([['so-1', { role: 'SAFETY_OFFICER', is_active: true }], ['so-2', { role: 'SAFETY_OFFICER', is_active: false }]]);
+      return docs([]);
+    });
+
+    await reviewApi.cancel('e4', 'Venue lost');
+
+    const notices = writes.sets.filter(([, data]) => data.type === 'SAFETY_REVIEW_CANCELLED').map(([, data]) => data);
+    expect(notices).toEqual([expect.objectContaining({
+      user_id: 'so-1',
+      message: 'Partner Summit was cancelled and has left the safety review queue.'
+    })]);
+    storedEvent.status = 'PLANNING';
   });
 
   test('D4 sends cancellation notices to registered attendees only', async () => {

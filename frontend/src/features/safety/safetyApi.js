@@ -22,6 +22,7 @@ import {
   validatePlanningNotes,
   validateSafetyOutcome
 } from "../../domain/safetyReview";
+import { REVIEW_REQUIRED, recordSafetyOutcome as planSafetyReturn, sendForSafetyCheck } from "../../domain/safetyAndNotices";
 
 const requireUser = () => {
   if (!auth.currentUser) throw new Error("Please sign in again.");
@@ -121,7 +122,7 @@ export const safetyReviewDetail = async (eventId) => {
 // the status it names, the history entry, and the coordinator and organiser
 // told. firestore.rules (safetyOutcomeUpdate) refuses the event move unless the
 // record written alongside it matches.
-export const recordSafetyOutcome = async ({ eventId, outcome, comment }) => {
+export const recordSafetyOutcome = async ({ eventId, outcome, comment, marked }) => {
   const user = requireUser();
   const invalid = validateSafetyOutcome({ outcome, comment });
   if (invalid) throw new Error(invalid);
@@ -129,11 +130,18 @@ export const recordSafetyOutcome = async ({ eventId, outcome, comment }) => {
   const status = safetyOutcomeStatus(outcome);
   const type = safetyNotificationType(outcome);
 
-  // F12 — Approve needs every active booking approved. A query cannot run
+  // F12 — Approve needs every active booking approved. L4 also reads them so a
+  // concern can flag the ones the Safety Officer named. A query cannot run
   // inside a transaction, so the bookings are read just before it.
-  const bookings = outcome === SAFETY_OUTCOME.APPROVE
-    ? (await byEvent("venue_bookings", eventId)).docs.map((item) => ({ booking_id: item.id, ...item.data() }))
-    : [];
+  const bookingRows = await byEvent("venue_bookings", eventId);
+  const bookings = bookingRows.docs.map((item) => ({
+    booking_id: item.id,
+    venue_name: item.data().venue_name || item.data().booking_label,
+    ...item.data()
+  }));
+  const loadedRequest = outcome === SAFETY_OUTCOME.APPROVE ? null : await getDoc(doc(db, "equipment_requests", eventId));
+  const requestSnapshot = loadedRequest || null;
+  const technicalArrangements = technicalArrangementsFrom(requestSnapshot?.exists?.() ? requestSnapshot.data() : null);
   const eventRef = doc(db, "events", eventId);
   const actorRef = doc(db, "users", user.uid);
   const reviewRef = doc(collection(db, "safety_reviews"));
@@ -150,8 +158,26 @@ export const recordSafetyOutcome = async ({ eventId, outcome, comment }) => {
     }
 
     const decidedAt = serverTimestamp();
+    const planned = outcome === SAFETY_OUTCOME.APPROVE ? null : planSafetyReturn({
+      event: { event_id: eventId, ...event },
+      outcome,
+      comment: note,
+      marked: marked || ["both"],
+      officerId: user.uid,
+      bookings,
+      technicalArrangements
+    });
+    if (planned && !planned.ok) throw new Error("The safety outcome could not be recorded.");
+    const eventUpdate = { status, last_safety_review_id: reviewRef.id, updated_at: decidedAt };
+    if (status === EVENT_STATUS.PLANNING) eventUpdate.returned_to_planning_at = decidedAt;
+    if (planned?.technicalArrangements.some((item) => item.review_status === REVIEW_REQUIRED)) {
+      eventUpdate.technical_review_status = REVIEW_REQUIRED;
+    }
     tx.set(reviewRef, { review_id: reviewRef.id, event_id: eventId, reviewer_id: user.uid, outcome, comment: note, decided_at: decidedAt });
-    tx.update(eventRef, { status, last_safety_review_id: reviewRef.id, updated_at: decidedAt });
+    tx.update(eventRef, eventUpdate);
+    (planned?.bookings || []).filter((booking) => booking.review_status === REVIEW_REQUIRED).forEach((booking) => {
+      tx.update(doc(db, "venue_bookings", booking.booking_id), { review_status: REVIEW_REQUIRED });
+    });
     tx.set(historyRef, eventHistoryRecord({
       historyId: historyRef.id, eventId, actorId: user.uid, actionType: type,
       fieldName: "status", oldValue: EVENT_STATUS.SAFETY_REVIEW, newValue: status,
@@ -162,8 +188,88 @@ export const recordSafetyOutcome = async ({ eventId, outcome, comment }) => {
       const notificationRef = doc(collection(db, "notifications"));
       tx.set(notificationRef, notificationRecord({ notificationId: notificationRef.id, userId: recipient, eventId, type, message, createdAt: decidedAt }));
     });
+    (planned?.notifications || []).filter((notice) => notice.type === "ARRANGEMENT_REVIEW_REQUIRED").forEach((notice) => {
+      const notificationRef = doc(collection(db, "notifications"));
+      tx.set(notificationRef, notificationRecord({
+        notificationId: notificationRef.id, userId: notice.user_id, eventId, type: notice.type, message: notice.message, createdAt: decidedAt
+      }));
+    });
   });
   return { ok: true, reviewId: reviewRef.id, status };
+};
+
+const technicalArrangementsFrom = (request) => (request?.lines || []).map((line, index) => ({
+  arrangement_id: line.line_id || line.equipment_type || `line-${index}`,
+  label: line.label || line.equipment_type || `Technical arrangement ${index + 1}`,
+  requested: true,
+  status: ["RESERVED", "CONFIRMED"].includes(String(line.status || "").toUpperCase()) ? "CONFIRMED" : "PENDING",
+  review_status: line.review_status,
+  assigned_staff_id: line.assigned_staff_id || request.assigned_staff_id || null
+}));
+
+// L1 / SCRUM-187 — the assigned coordinator sends the event once every active
+// booking is approved and every requested technical arrangement is confirmed.
+export const sendEventForSafetyCheck = async (eventId) => {
+  const user = requireUser();
+  const eventRef = doc(db, "events", eventId);
+  const eventSnapshot = await getDoc(eventRef);
+  if (!eventSnapshot.exists()) throw new Error("Event not found.");
+  const event = { event_id: eventId, ...eventSnapshot.data() };
+  if (event.coordinator_id !== user.uid) throw new Error("Only the assigned coordinator can send this event for its safety check.");
+
+  const [bookingRows, requestSnapshot, reviewRows, officerRows] = await Promise.all([
+    byEvent("venue_bookings", eventId),
+    getDoc(doc(db, "equipment_requests", eventId)).catch(() => null),
+    byEvent("safety_reviews", eventId),
+    getDocs(query(collection(db, "users"), where("role", "==", "SAFETY_OFFICER"), where("is_active", "==", true)))
+  ]);
+  const decision = sendForSafetyCheck({
+    event,
+    bookings: bookingRows.docs.map((item) => ({ booking_id: item.id, venue_name: item.data().venue_name || item.data().booking_label, ...item.data() })),
+    technicalArrangements: [
+      ...technicalArrangementsFrom(requestSnapshot?.exists?.() ? requestSnapshot.data() : null),
+      ...(event.technical_review_status === REVIEW_REQUIRED ? [{
+        arrangement_id: "technical",
+        label: "Technical arrangements",
+        requested: true,
+        status: "CONFIRMED",
+        review_status: REVIEW_REQUIRED
+      }] : [])
+    ],
+    safetyOfficers: officerRows.docs.map((item) => ({ user_id: item.id, role: item.data().role, active: item.data().is_active !== false })),
+    previousReviews: reviewRows.docs.map((item) => item.data())
+  });
+  if (!decision.ok) {
+    if (decision.reason === "outstanding") {
+      throw new Error(`Send for safety check is unavailable. Outstanding: ${decision.outstanding.join(", ")}.`);
+    }
+    throw new Error("Send for safety check is not available for this event.");
+  }
+
+  const sentAt = serverTimestamp();
+  await runTransaction(db, async (tx) => {
+    const current = await tx.get(eventRef);
+    if (!current.exists() || current.data().coordinator_id !== user.uid) {
+      throw new Error("Only the assigned coordinator can send this event for its safety check.");
+    }
+    tx.update(eventRef, { status: EVENT_STATUS.SAFETY_REVIEW, safety_review_requested_at: sentAt, updated_at: sentAt });
+    decision.notifications.forEach((notice) => {
+      const notificationRef = doc(collection(db, "notifications"));
+      tx.set(notificationRef, {
+        ...notificationRecord({
+          notificationId: notificationRef.id,
+          userId: notice.user_id,
+          eventId,
+          type: notice.type,
+          message: notice.message,
+          createdAt: sentAt
+        }),
+        link_screen: notice.link?.screen || "Safety review",
+        checked_before: notice.checked_before === true
+      });
+    });
+  });
+  return { ok: true, status: EVENT_STATUS.SAFETY_REVIEW };
 };
 
 // AC3 — the coordinator's equipment placement and crowd movement notes, kept in

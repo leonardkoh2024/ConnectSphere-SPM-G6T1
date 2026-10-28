@@ -22,6 +22,11 @@ import useVenueClashCount from '../features/venues/useVenueClashCount';
 jest.mock('../lib/firebase', () => ({ auth: {}, db: {} }));
 jest.mock('firebase/auth', () => ({ signOut: jest.fn() }));
 jest.mock('../features/events/OrganiserEventDetail', () => ({ __esModule: true, default: () => null }));
+// I1 — reports whether the form is open, and for which event.
+jest.mock('../features/changeRequests/ChangeRequestsScreen', () => ({
+  __esModule: true,
+  default: (props) => `change requests ${props.creating ? 'form' : 'list'}${props.initialEventId ? ` for ${props.initialEventId}` : ''}`
+}));
 jest.mock('../features/events/EventList', () => ({ __esModule: true, default: () => null }));
 // Reports the event it was asked to open, which is all View on a notification decides (J1).
 jest.mock('../features/events/EventReviewScreen', () => ({ __esModule: true, default: (props) => (props.initialEventId ? `review of ${props.initialEventId}` : null) }));
@@ -40,8 +45,14 @@ jest.mock('../features/equipment/EquipmentQueueScreen', () => ({ __esModule: tru
 // G2 / G3 — Technical Support's catalogue and reservation list report only that they were opened.
 jest.mock('../features/equipment/EquipmentCatalogueScreen', () => ({ __esModule: true, default: () => 'equipment catalogue' }));
 jest.mock('../features/equipment/EquipmentReservationsScreen', () => ({ __esModule: true, default: () => 'equipment reservations' }));
-// H2 — the attendee's list of open events reports only that it was opened.
-jest.mock('../features/registrations/BrowseEvents', () => ({ __esModule: true, default: () => 'open events list' }));
+// H2 — the attendee's list of open events reports only that it was opened. H3 — and,
+// since registering confirms with a toast and opens the event's details, that the shell
+// handed it both the toast and the way back.
+jest.mock('../features/registrations/BrowseEvents', () => ({ __esModule: true, default: (props) => (props.onNotice && props.onBackChange ? 'open events list' : 'open events list without its handlers') }));
+// H4 — the attendee's own registrations report that they were opened, with the way back.
+// H5 — withdrawing confirms with a toast, so it is handed that too. J1 — View on a
+// notification names the event to open.
+jest.mock('../features/registrations/MyRegistrations', () => ({ __esModule: true, default: (props) => (props.focusEventId ? `registration for ${props.focusEventId}` : props.onBackChange && props.onNotice ? 'my registrations list' : 'my registrations without its handlers') }));
 // J1 — the live inbox is stubbed so the badge can be driven by hand.
 jest.mock('../features/notifications/useNotifications', () => ({ __esModule: true, default: jest.fn() }));
 jest.mock('../features/venues/useVenueClashCount', () => ({ __esModule: true, default: jest.fn() }));
@@ -51,7 +62,7 @@ jest.mock('../features/notifications/NotificationInbox', () => ({
   default: (props) => {
     if (!props.onViewEvent) return 'inbox';
     const { createElement, Fragment } = require('react');
-    const event = { id: 'e1', name: 'Q4 Partner Summit', status: 'REJECTED' };
+    const event = { id: 'e1', name: 'Q4 Partner Summit', status: 'PLANNING', organiser_id: 'o1' };
     const view = (label, notification) => createElement('button', { type: 'button', onClick: () => props.onViewEvent(event, notification) }, label);
     return createElement(Fragment, null,
       view('View event', { type: 'EVENT_REJECTED', event_id: 'e1' }),
@@ -196,6 +207,8 @@ describe('TC-015 requesting a screen that belongs to another role', () => {
 
     expect(screen.getByRole('heading', { name: 'My registrations' })).toBeInTheDocument();
     expect(screen.queryByText(/not authorised/i)).not.toBeInTheDocument();
+    // H4 (TC-638) — the screen is the attendee's own list, handed the shell's way back.
+    expect(screen.getByText('my registrations list')).toBeInTheDocument();
   });
 });
 
@@ -332,7 +345,17 @@ describe('J1 viewing an event from a notification', () => {
     expect(screen.getByRole('button', { name: 'Back to notifications' })).toBeInTheDocument();
   });
 
-  test.each([ROLES.VENUE_STAFF, ROLES.TECH_SUPPORT, ROLES.ATTENDEE])('TC-268 %s is offered no View', (role) => {
+  test('TC-759 an attendee lands on their registration for that event, with a way back to the inbox', async () => {
+    openInbox(ROLES.ATTENDEE);
+
+    await userEvent.click(screen.getByRole('button', { name: 'View event' }));
+
+    expect(window.location.hash).toBe(screenHash(ROLES.ATTENDEE, 'My registrations'));
+    expect(screen.getByText('registration for e1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Back to notifications' })).toBeInTheDocument();
+  });
+
+  test.each([ROLES.VENUE_STAFF, ROLES.TECH_SUPPORT])('TC-268 %s is offered no View', (role) => {
     openInbox(role);
 
     expect(screen.queryByRole('button', { name: 'View event' })).not.toBeInTheDocument();
@@ -439,5 +462,41 @@ describe('TC-371 the Safety Officer reaches only safety review functions', () =>
       expect(sidebarScreens(container)).not.toContain('Safety reviews');
       unmount();
     });
+  });
+});
+
+// I1 / SCRUM-147 — TC-780, TC-781 in docs/test-cases.md.
+describe('I1 the organiser reaches the change request form', () => {
+  test('TC-780 Change requests offers New change request in its header, which opens the form', async () => {
+    window.location.hash = screenHash(ROLES.ORGANISER, 'Change requests');
+    render(<Workspace user={USER} role={ROLES.ORGANISER} />);
+
+    expect(screen.getByText('change requests list')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'New change request' }));
+
+    expect(screen.getByText('change requests form')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'New change request' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New change request' })).not.toBeInTheDocument();
+  });
+
+  test("TC-781 Request a change in a submitted event's header opens the form for that event", async () => {
+    window.location.hash = screenHash(ROLES.ORGANISER, 'Notifications');
+    render(<Workspace user={{ ...USER, uid: 'o1' }} role={ROLES.ORGANISER} />);
+    await userEvent.click(screen.getByRole('button', { name: 'View event' }));
+
+    await userEvent.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Request a change' }));
+
+    expect(window.location.hash).toBe(screenHash(ROLES.ORGANISER, 'Change requests'));
+    expect(screen.getByText('change requests form for e1')).toBeInTheDocument();
+  });
+
+  test("TC-782 the header offers Request a change only on the organiser's own event", async () => {
+    window.location.hash = screenHash(ROLES.ORGANISER, 'Notifications');
+    render(<Workspace user={USER} role={ROLES.ORGANISER} />);
+    await userEvent.click(screen.getByRole('button', { name: 'View event' }));
+
+    // The stubbed inbox hands over a Planning event owned by o1, not this user.
+    expect(screen.getByRole('heading', { name: 'Event request' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Request a change' })).not.toBeInTheDocument();
   });
 });

@@ -33,9 +33,8 @@ Only our own section's customer answers count. Other sections were given differe
 Event Coordinator Lead (internal), Venue Staff (internal), Technical Support Staff (internal),
 Safety Officer (internal), Attendee (external). The Lead and the Safety Officer were added by Week 7 changes
 5 and 6 (stories A6, A7); like every other role they are seeded, never self-registered.
-In code the canonical list is `ROLES` / `ROLE_META` in `frontend/src/domain/roles.js`, which still holds only the
-original five — add the two new roles there, and nowhere else. Do not introduce an eighth role or a parallel
-string literal.
+In code the canonical list is `ROLES` / `ROLE_META` in `frontend/src/domain/roles.js`, which holds all seven.
+Do not introduce an eighth role or a parallel string literal.
 
 **Event status — exactly these ten**: the nine from core feature F6, plus **Safety Review**, which story L1
 adds between Planning and Confirmed for Week 7 change 6:
@@ -177,15 +176,11 @@ on real problems.
 
 ## Working agreement
 
-- **Commit straight to `main`.** No feature branches, no PRs. Pull before starting and before pushing.
-  The per-person branches on the remote are from the earlier convention and are not used any more.
-- Keep commits small and self-contained — direct-to-main means someone else pulls your work immediately,
-  so a half-finished change on `main` blocks the whole team rather than sitting in a branch.
+- Pull before starting and before pushing. Keep commits small and self-contained.
 - **Start every commit message with the backlog ID and the Jira ticket ID** —
   `B4; SCRUM-95; state the equipment my event needs`. The backlog IDs are `A1`–`L4` (from
   `docs/Final Product Backlog.csv`); the Jira IDs are `SCRUM-nn`. Both, separated by semicolons, then the
-  summary. With no PRs, the commit message is the only record of story-to-code traceability, and that
-  traceability is marked. People write these by hand, so small deviations in spacing or punctuation are fine —
+  summary. The commit message is the record of story-to-code traceability, and that traceability is marked. People write these by hand, so small deviations in spacing or punctuation are fine —
   what must not be missing is either ID.
 - One story per commit where you can. If a commit genuinely covers several, list each `backlog; jira; summary`
   triple on its own line in the body rather than running them together in the subject.
@@ -212,6 +207,9 @@ on real problems.
   hashing is the whole requirement.
 - Product name is ours to choose and has not been chosen. "ConnectSphere" is the *company*.
 - Backlog stories J3, J4 and J5 all share the summary "Be told when work arrives for me".
+- I1 AC4 notifies the event's *assigned* coordinator about a change request, but an event still in Submitted
+  may have none (K1). **Decided 28 Oct 2026:** nobody is notified then; the request waits as Pending and the
+  coordinator sees it once the event is assigned. Confirm in Session 3 (alternative: notify the Leads).
 - B9 AC2 requires accessibility needs to be *answered* before submission, but not what counts as answered for
   a request that has none. Each of those sections now opens with a Yes/No question (`domain/eventRequest.js`,
   `SECTION_QUESTIONS`): an explicit No is an answer, an untouched question is not. Confirm in Session 3; the

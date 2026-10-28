@@ -58,7 +58,9 @@ describe("F11/F13/F14 booking workflow", () => {
 
   test("requires every active venue requirement to be approved", () => {
     expect(venueReadyForSafety([{ status: "APPROVED" }, { status: "REJECTED", requires_re_request: true }])).toBe(false);
+    expect(venueReadyForSafety([{ status: "APPROVED" }, { status: "APPROVED", replacement_needed: true }])).toBe(false);
     expect(venueReadyForSafety([{ status: "APPROVED" }, { status: "RELEASED" }])).toBe(true);
+    expect(venueReadyForSafety([{ status: "RELEASED" }])).toBe(false);
     expect(activeVenueBookings([{ status: "EXPIRED" }, { status: "PENDING" }])).toEqual([{ status: "PENDING" }]);
   });
 });

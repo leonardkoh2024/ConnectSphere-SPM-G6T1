@@ -4,18 +4,21 @@
 // View opens the related event on the screen the workspace picks for the role
 // (J6: a booking or equipment outcome opens that booking or request instead);
 // with no `onViewEvent`, or an event this user can no longer read, there is none.
+// `loadEvents` replaces the Firestore lookup for a role that reads its events
+// another way (an attendee, through their registrations).
 // The list itself comes from the workspace (useNotifications), which also feeds
 // the sidebar badge, so the two never disagree.
 
 import React, { useEffect, useMemo, useState } from "react";
 import { eventLabel, isUnread, notificationTypeLabel } from "../../domain/notifications";
+import { openLeadAssignmentNotice, openSafetyReviewNotice } from "../../domain/safetyAndNotices";
 import { eventsFor } from "./notificationsApi";
 import RecordLead from "../../components/RecordLead";
 import Icon from "../../app/Icon";
 
 const shownTime = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Just now";
 
-export default function NotificationInbox({ notifications, loading, error, onOpen, onViewEvent }) {
+export default function NotificationInbox({ notifications, loading, error, onOpen, onViewEvent, loadEvents = eventsFor }) {
   const [openId, setOpenId] = useState(null);
   const [events, setEvents] = useState({});
 
@@ -26,9 +29,9 @@ export default function NotificationInbox({ notifications, loading, error, onOpe
   useEffect(() => {
     if (!eventKey) return undefined;
     let mounted = true;
-    eventsFor(eventKey.split("|")).then((found) => { if (mounted) setEvents(found); });
+    loadEvents(eventKey.split("|")).then((found) => { if (mounted) setEvents(found); });
     return () => { mounted = false; };
-  }, [eventKey]);
+  }, [eventKey, loadEvents]);
 
   const toggle = (notification) => {
     const opening = openId !== notification.id;
@@ -68,6 +71,9 @@ export default function NotificationInbox({ notifications, loading, error, onOpe
       const open = openId === notification.id;
       const detailId = `notification-${notification.id}`;
       const event = onViewEvent ? events[notification.event_id] : null;
+      const assignment = notification.type === "UNASSIGNED_EVENT" && event ? openLeadAssignmentNotice({ event }) : null;
+      const safety = notification.type === "SAFETY_REVIEW_WAITING" && event ? openSafetyReviewNotice({ event }) : null;
+      const offerView = event && assignment?.offer_assignment !== false && !safety?.left_queue;
       return <li key={notification.id} className={unread ? "cs-record cs-notification cs-notification-unread" : "cs-record cs-notification"}>
         <div className="cs-notification-row">
           <button type="button" className="cs-notification-open" aria-expanded={open} aria-controls={detailId} onClick={() => toggle(notification)}>
@@ -78,16 +84,17 @@ export default function NotificationInbox({ notifications, loading, error, onOpe
                 <strong>{notificationTypeLabel(notification.type)}</strong>
                 {unread && <span className="cs-visually-hidden">Unread</span>}
               </span>
-              <span className="cs-notification-message">{notification.message}</span>
-              <span className="cs-notification-event">{eventText(notification)}</span>
+              <span className="cs-notification-message">{open && safety?.left_queue ? safety.message : notification.message}</span>
+              {!safety?.left_queue && <span className="cs-notification-event">{eventText(notification)}</span>}
             </span>
             <time className="cs-notification-time" dateTime={notification.created_at || undefined}>{shownTime(notification.created_at)}</time>
           </button>
-          {event && <button type="button" className="cs-btn cs-btn-secondary cs-record-btn cs-notification-view" aria-label={`View ${eventLabel(event)}`} onClick={() => view(notification, event)}>View<Icon name="arrow-right" /></button>}
+          {offerView && <button type="button" className="cs-btn cs-btn-secondary cs-record-btn cs-notification-view" aria-label={`View ${eventLabel(event)}`} onClick={() => view(notification, event)}>View<Icon name="arrow-right" /></button>}
         </div>
         {open && <dl className="cs-detail-grid cs-record-expanded cs-notification-detail" id={detailId}>
-          <div className="cs-detail-wide"><dt>Message</dt><dd>{notification.message}</dd></div>
-          <div><dt>Event</dt><dd>{eventText(notification)}</dd></div>
+          <div className="cs-detail-wide"><dt>Message</dt><dd>{safety?.left_queue ? safety.message : notification.message}</dd></div>
+          {assignment && !assignment.offer_assignment && <div><dt>Coordinator</dt><dd>{event.coordinator_name || assignment.current_coordinator_id}</dd></div>}
+          {!safety?.left_queue && <div><dt>Event</dt><dd>{eventText(notification)}</dd></div>}
           <div><dt>Received</dt><dd>{shownTime(notification.created_at)}</dd></div>
         </dl>}
       </li>;

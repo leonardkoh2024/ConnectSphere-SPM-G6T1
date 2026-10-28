@@ -13,7 +13,7 @@ import React, { useEffect, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { ROLES, eventScopeField } from "../../domain/roles";
-import { statusTone } from "../../domain/events";
+import { STATUS_TONE, statusTone } from "../../domain/events";
 import deleteEventRequest from "./deleteEventRequest";
 import RecordLead from "../../components/RecordLead";
 import Icon from "../../app/Icon";
@@ -37,6 +37,16 @@ const whenText = (event) => {
 
 const sortKey = (event) => event.updated_at?.toMillis?.() ?? event.created_at?.toMillis?.() ?? 0;
 
+// B10 — the list narrows by status and by a search on the name or reference, as My
+// registrations does for attendees. Every status is offered, in workflow order.
+const SHOW = [["all", "All events"], ...Object.keys(STATUS_TONE).map((status) => [status, status.charAt(0) + status.slice(1).toLowerCase().replaceAll("_", " ")])];
+
+const matchesSearch = (event, text) => {
+  const wanted = text.trim().toLowerCase();
+  if (!wanted) return true;
+  return [event.name, event.reference_no].some((value) => String(value || "").toLowerCase().includes(wanted));
+};
+
 const VIEWABLE = ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "PLANNING", "CONFIRMED", "COMPLETED", "CANCELLED", "REJECTED"];
 
 export default function EventList({ user, role, onEdit, onView, onCreate, onDeleted, headerHosted = false }) {
@@ -50,6 +60,8 @@ export default function EventList({ user, role, onEdit, onView, onCreate, onDele
   // dialog name what is about to go.
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deletingId, setDeletingId] = useState("");
+  const [show, setShow] = useState("all");
+  const [search, setSearch] = useState("");
   const scopeField = eventScopeField(role);
 
   useEffect(() => {
@@ -118,10 +130,25 @@ export default function EventList({ user, role, onEdit, onView, onCreate, onDele
     </div>;
   }
 
+  const shown = events.filter((event) => (show === "all" || String(event.status || "").toUpperCase() === show) && matchesSearch(event, search));
+
   return <>
     {error && <p className="cs-error">{error}</p>}
     {!headerHosted && role === ROLES.ORGANISER && createButton && <div className="cs-list-actions">{createButton}</div>}
-    <div className="cs-record-list">{events.map((event) => {
+    <div className="cs-list-filters">
+      <label className="cs-field">
+        <span className="cs-field-name">Status</span>
+        <select value={show} onChange={(changeEvent) => setShow(changeEvent.target.value)}>
+          {SHOW.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+      </label>
+      <label className="cs-field">
+        <span className="cs-field-name">Search</span>
+        <input type="search" value={search} placeholder="Event name or reference" onChange={(changeEvent) => setSearch(changeEvent.target.value)} />
+      </label>
+    </div>
+    {!shown.length && <p className="cs-panel-note">No events match these filters.</p>}
+    <div className="cs-record-list">{shown.map((event) => {
       const status = String(event.status || "").toUpperCase();
       const isDraft = status === "DRAFT";
       const saved = savedAt(event.updated_at);

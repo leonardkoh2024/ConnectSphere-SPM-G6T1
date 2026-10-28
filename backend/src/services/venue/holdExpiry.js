@@ -109,12 +109,3 @@ export function createProcessVenueHolds({ firestore, serverTimestamp }) {
     return outcomes;
   };
 }
-
-export function startVenueHoldExpiryScheduler({ firestore, serverTimestamp, intervalMs = 60000, onError = console.error }) {
-  const process = createProcessVenueHolds({ firestore, serverTimestamp });
-  const run = () => process().catch((error) => onError("Venue hold expiry job failed:", error));
-  run();
-  const timer = setInterval(run, intervalMs);
-  timer.unref?.();
-  return () => clearInterval(timer);
-}

@@ -56,7 +56,7 @@ describe('J1 where View on a notification goes', () => {
     expect(eventViewScreen(ROLES.COORDINATOR)).toBe('Assigned events');
     expect(eventViewScreen(ROLES.VENUE_STAFF)).toBeNull();
     expect(eventViewScreen(ROLES.TECH_SUPPORT)).toBeNull();
-    expect(eventViewScreen(ROLES.ATTENDEE)).toBeNull();
+    expect(eventViewScreen(ROLES.ATTENDEE)).toBe('My registrations');
     expect(eventViewScreen('NOT_A_ROLE')).toBeNull();
   });
 });
@@ -184,4 +184,36 @@ describe('J5 SCRUM-154 Technical Support notices read in words, not constants', 
     expect(notificationTypeLabel('ON_SITE_SUPPORT_REQUIRED')).toBe('On-site support needed');
     expect(notificationTypeLabel('ON_SITE_SUPPORT_CHANGED')).toBe('On-site support changed');
   });
+});
+
+describe('H7 SCRUM-145 the attendee is told a place is offered', () => {
+  test('TC-755 an offered place has its own label in the inbox', () => {
+    const { notificationTypeLabel } = require('./notifications');
+    expect(notificationTypeLabel('WAITLIST_PLACE_OFFERED')).toBe('Place offered');
+  });
+});
+
+// J7 / SCRUM-156 — each notice an attendee is sent reads under its own heading, not "Update".
+describe('J7 SCRUM-156 what the attendee is told reads in words', () => {
+  test('TC-760 every kind of attendee notice has its own label in the inbox', () => {
+    const { attendeeChangeNotices } = require('./safetyAndNotices');
+    const labels = {
+      REGISTRATION_CONFIRMED: 'Registration confirmed',
+      DATE: 'Date changed',
+      TIME: 'Time changed',
+      VENUE: 'Venue changed',
+      CANCELLED: 'Event cancelled',
+      PLACE_OPENED: 'Place opened'
+    };
+    Object.entries(labels).forEach(([kind, label]) => {
+      const status = kind === 'PLACE_OPENED' ? 'WAITLISTED' : 'REGISTERED';
+      const [notice] = attendeeChangeNotices({ event: { event_id: 'e1', name: 'Harbour Tech Forum' }, attendees: [{ user_id: 'a1', status }], change: { kind, detail: 'x' } });
+      expect(notificationTypeLabel(notice.type)).toBe(label);
+    });
+  });
+});
+
+// I1 / SCRUM-147 AC4 — TC-783 in docs/test-cases.md.
+test("TC-783 the coordinator's change request notice has its own inbox label", () => {
+  expect(notificationTypeLabel('CHANGE_REQUESTED')).toBe('Change requested');
 });

@@ -12,6 +12,8 @@ import { LAYOUTS, FACILITIES, ACCESSIBILITY_OPTIONS, PREFERRED_LOCATIONS, EQUIPM
 import { NO, UNANSWERED, YES, createReferenceNo, equipmentLinesWithContent, todayIso, validateEventRequest } from "../../domain/eventRequest";
 import { notificationRecord } from "../../domain/eventReviewRecords";
 import { eventSubmittedMessage } from "../../domain/notifications";
+import { eventEnteredUnassignedQueue } from "../../domain/safetyAndNotices";
+import { ROLES } from "../../domain/roles";
 import ToggleList from "./components/ToggleList";
 import YesNo from "./components/YesNo";
 import Icon from "../../app/Icon";
@@ -264,6 +266,36 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
           const noticeRef = doc(collection(db, "notifications"));
           await setDoc(noticeRef, notificationRecord({ notificationId: noticeRef.id, userId: user.uid, eventId: eventRef.id, type: "EVENT_SUBMITTED", message: eventSubmittedMessage({ eventName: fieldData.name || referenceNo }), createdAt: serverTimestamp() }));
         } catch (noticeError) { console.error("Could not record the submission notice:", noticeError); }
+        // J8 / SCRUM-191 — every active Lead is told the request is waiting, unassigned.
+        try {
+          const [profile, leadSnapshot] = await Promise.all([
+            getDoc(doc(db, "users", user.uid)),
+            getDocs(query(collection(db, "users"), where("role", "==", ROLES.COORDINATOR_LEAD), where("is_active", "==", true)))
+          ]);
+          const waiting = eventEnteredUnassignedQueue({
+            event: {
+              event_id: eventRef.id,
+              status: "SUBMITTED",
+              name: fieldData.name || referenceNo,
+              organiser_name: profile.exists() ? (profile.data().name || user.email) : user.email,
+              event_date: fieldData.event_date,
+              submitted_at: new Date().toISOString()
+            },
+            leads: leadSnapshot.docs.map((item) => ({
+              user_id: item.id, role: item.data().role, active: item.data().is_active !== false
+            }))
+          });
+          await Promise.all(waiting.notifications.map(async (notice) => {
+            const leadRef = doc(collection(db, "notifications"));
+            await setDoc(leadRef, {
+              ...notificationRecord({
+                notificationId: leadRef.id, userId: notice.user_id, eventId: eventRef.id,
+                type: notice.type, message: notice.message, createdAt: serverTimestamp()
+              }),
+              link_screen: notice.link?.screen || "Unassigned queue"
+            });
+          }));
+        } catch (leadError) { console.error("Could not tell the Event Coordinator Leads:", leadError); }
       }
       if (isAmend) {
         onSaved("Request details updated.", { ...draft, ...eventData, id: eventRef.id, status: draft.status, open_clarification_id: draft.open_clarification_id });

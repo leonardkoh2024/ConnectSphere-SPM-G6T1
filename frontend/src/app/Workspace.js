@@ -18,11 +18,15 @@ import LeadAssignmentScreen from "../features/events/LeadAssignmentScreen";
 import VenueCatalogue from "../features/venues/VenueCatalogue";
 import VenueAvailabilityCalendar from "../features/venues/VenueAvailability";
 import VenueBookings from "../features/venues/VenueBookings";
+import ChangeRequestsScreen from "../features/changeRequests/ChangeRequestsScreen";
+import { canRequestChange } from "../domain/changeRequests";
 import VenueBookingQueue from "../features/venues/VenueBookingQueue";
 import VenueSearch from "../features/venues/VenueSearch";
 import VenueSafetyInformation from "../features/venues/VenueSafetyInformation";
 import SafetyReviewScreen from "../features/safety/SafetyReviewScreen";
 import BrowseEvents from "../features/registrations/BrowseEvents";
+import MyRegistrations from "../features/registrations/MyRegistrations";
+import { registeredEventsFor } from "../features/registrations/registrationsApi";
 import EquipmentRequestsScreen from "../features/equipment/EquipmentRequestsScreen";
 import EquipmentQueueScreen from "../features/equipment/EquipmentQueueScreen";
 import EquipmentAvailabilityScreen from "../features/equipment/EquipmentAvailabilityScreen";
@@ -68,10 +72,14 @@ export default function Workspace({ user, role }) {
   const [selectedDraft, setSelectedDraft] = useState(null);
   const [focusBookingId, setFocusBookingId] = useState(null);
   const [focusEquipmentEventId, setFocusEquipmentEventId] = useState(null);
+  const [focusRegistrationEventId, setFocusRegistrationEventId] = useState(null);
   const [searchEvent, setSearchEvent] = useState(null);
   const [bookingTarget, setBookingTarget] = useState({ event: null, venue: null });
   const [venueCalendarOpen, setVenueCalendarOpen] = useState(false);
   const [bookingFormOpen, setBookingFormOpen] = useState(false);
+  // I1 — the organiser's change request form, and the event it was opened for.
+  const [changeFormOpen, setChangeFormOpen] = useState(false);
+  const [changeEventId, setChangeEventId] = useState(null);
   const [reviewEventId, setReviewEventId] = useState(null);
   // Which tab of that event to open first, e.g. Arrangements from Equipment requests.
   const [reviewTab, setReviewTab] = useState(null);
@@ -107,12 +115,15 @@ export default function Workspace({ user, role }) {
     if (name !== "New event request") setSelectedDraft(null);
     setVenueCalendarOpen(false);
     setBookingFormOpen(name === "Venue bookings" && Boolean(extras.event || extras.venue));
+    setChangeFormOpen(name === "Change requests" && Boolean(extras.eventId));
+    setChangeEventId(name === "Change requests" ? extras.eventId || null : null);
     setSearchEvent(name === "Venue catalogue" ? extras.event || null : null);
     setBookingTarget(name === "Venue bookings" ? { event: extras.event || null, venue: extras.venue || null } : { event: null, venue: null });
     setReviewEventId(name === "Assigned events" ? extras.eventId || null : null);
     setReviewTab(name === "Assigned events" ? extras.tab || null : null);
     setFocusBookingId(name === "Venue bookings" ? extras.bookingId || null : null);
     setFocusEquipmentEventId(name === "Equipment requests" ? extras.eventId || null : null);
+    setFocusRegistrationEventId(name === "My registrations" ? extras.eventId || null : null);
     window.location.hash = screenHash(role, name);
   };
   // E4 — one availability calendar shared by every venue, opened from the top
@@ -129,6 +140,18 @@ export default function Workspace({ user, role }) {
       <Icon name="plus" />New booking request
     </button>
   );
+  // I1 — and a change request, from the header of the organiser's Change requests.
+  const newChangeRequest = changeFormOpen ? null : (
+    <button type="button" className="cs-btn cs-btn-primary" onClick={() => { setChangeEventId(null); setChangeFormOpen(true); }}>
+      <Icon name="plus" />New change request
+    </button>
+  );
+  // I1 — a submitted event, up to Confirmed, is asked to change from its page header.
+  const requestChange = role === ROLES.ORGANISER && canRequestChange(selectedDraft, user.uid) ? (
+    <button type="button" className="cs-btn cs-btn-primary" onClick={() => goTo("Change requests", { eventId: selectedDraft.id })}>
+      <Icon name="plus" />Request a change
+    </button>
+  ) : null;
   // Same placement for the organiser's own list: the action that starts a new
   // request lives in the page header, not above the rows.
   const newEventRequest = (
@@ -140,7 +163,7 @@ export default function Workspace({ user, role }) {
 
   // J1 — View on a notification. The organiser's request page takes the event
   // record itself, as My events hands it over; the coordinator's review screen
-  // loads the event by id.
+  // loads the event by id, and an attendee's registrations open on that event.
   // J6 AC2/AC4 — a booking or equipment outcome opens that record instead.
   const viewEvent = (event, notification) => {
     const target = notificationViewScreen(role, notification);
@@ -167,8 +190,9 @@ export default function Workspace({ user, role }) {
   );
   let contents;
   if (forbidden) contents = <>{head("Not authorised")}<p className="cs-error">You are not authorised to access this function.</p></>;
-  else if (role === ROLES.ORGANISER && screen.name === "New event request") contents = <>{head(selectedDraft ? "Event request" : screen.name, "Save a draft any time, or submit when ready.")}<OrganiserEventDetail user={user} event={selectedDraft} onNotice={showToast} onSaved={(message, savedDraft) => { showToast(message); setSelectedDraft(savedDraft); if (!savedDraft) chooseScreen("My events"); }} /></>;
+  else if (role === ROLES.ORGANISER && screen.name === "New event request") contents = <>{head(selectedDraft ? "Event request" : screen.name, "Save a draft any time, or submit when ready.", requestChange)}<OrganiserEventDetail user={user} event={selectedDraft} onNotice={showToast} onSaved={(message, savedDraft) => { showToast(message); setSelectedDraft(savedDraft); if (!savedDraft) chooseScreen("My events"); }} /></>;
   else if (role === ROLES.ORGANISER && screen.name === "My events") contents = <>{head("My events", "Your requests and drafts.", newEventRequest)}<EventList user={user} role={role} headerHosted onCreate={() => { setSelectedDraft(null); goTo("New event request"); }} onEdit={(draft) => { setSelectedDraft(draft); goTo("New event request"); }} onView={(event) => { setSelectedDraft(event); goTo("New event request"); }} onDeleted={(message) => showToast(message)} /></>;
+  else if (role === ROLES.ORGANISER && screen.name === "Change requests") contents = <>{head(changeFormOpen ? "New change request" : screen.name, changeFormOpen ? "Propose new values for a submitted event, and say why." : screen.blurb, newChangeRequest)}<ChangeRequestsScreen user={user} creating={changeFormOpen} onCreatingChange={setChangeFormOpen} initialEventId={changeEventId} onNotice={showToast} /></>;
   else if (role === ROLES.COORDINATOR && screen.name === "Review queue") contents = <>{head(screen.name, screen.blurb)}<EventReviewScreen queueOnly onNotice={showToast} onBackChange={reportBack} onFindVenues={(event) => goTo("Venue catalogue", { event })} /></>;
   else if (role === ROLES.COORDINATOR && screen.name === "Assigned events") contents = <>{head(screen.name, screen.blurb)}<EventReviewScreen onNotice={showToast} initialEventId={reviewEventId} initialTab={reviewTab} onBackChange={reportBack} onFindVenues={(event) => goTo("Venue catalogue", { event })} /></>;
   else if (role === ROLES.COORDINATOR && screen.name === "Venue catalogue") contents = <>{head(screen.name, searchEvent ? `Shortlist for ${searchEvent.name || searchEvent.reference_no}.` : screen.blurb, viewCalendar)}<VenueSearch event={searchEvent} onBookVenue={(event, venue) => goTo("Venue bookings", { event, venue })} showCalendar={venueCalendarOpen} /></>;
@@ -183,10 +207,11 @@ export default function Workspace({ user, role }) {
   else if (role === ROLES.VENUE_STAFF && screen.name === "Availability calendar") contents = <>{head(screen.name, screen.blurb)}<VenueAvailabilityCalendar user={user} role={role} /></>;
   else if (role === ROLES.SAFETY_OFFICER && screen.name === "Safety reviews") contents = <>{head(screen.name, screen.blurb)}<SafetyReviewScreen onNotice={showToast} onBackChange={reportBack} /></>;
   else if (role === ROLES.SAFETY_OFFICER && screen.name === "Venue safety information") contents = <>{head(screen.name, screen.blurb)}<VenueSafetyInformation /></>;
-  else if (role === ROLES.ATTENDEE && screen.name === "Browse events") contents = <>{head(screen.name, screen.blurb)}<BrowseEvents /></>;
+  else if (role === ROLES.ATTENDEE && screen.name === "Browse events") contents = <>{head(screen.name, screen.blurb)}<BrowseEvents onNotice={showToast} onBackChange={reportBack} /></>;
+  else if (role === ROLES.ATTENDEE && screen.name === "My registrations") contents = <>{head(screen.name, screen.blurb)}<MyRegistrations onNotice={showToast} onBackChange={reportBack} focusEventId={focusRegistrationEventId} /></>;
   else if (role === ROLES.COORDINATOR_LEAD && screen.name === "Unassigned queue") contents = <>{head(screen.name, screen.blurb)}<LeadAssignmentScreen view="queue" onNotice={showToast} /></>;
   else if (role === ROLES.COORDINATOR_LEAD && screen.name === "Oversight") contents = <>{head(screen.name, screen.blurb)}<LeadAssignmentScreen view="oversight" onNotice={showToast} /></>;
-  else if (screen.name === "Notifications") contents = <>{head(screen.name, screen.blurb)}<NotificationInbox notifications={inbox.notifications} loading={inbox.loading} error={inbox.error} onOpen={inbox.markRead} onViewEvent={viewScreen ? viewEvent : undefined} /></>;
+  else if (screen.name === "Notifications") contents = <>{head(screen.name, screen.blurb)}<NotificationInbox notifications={inbox.notifications} loading={inbox.loading} error={inbox.error} onOpen={inbox.markRead} onViewEvent={viewScreen ? viewEvent : undefined} loadEvents={role === ROLES.ATTENDEE ? registeredEventsFor : undefined} /></>;
   else contents = <>{head(screen.name, screen.blurb)}<p className="cs-panel-note">This screen is ready to be connected to its workflow in a later increment.</p></>;
 
   return <div className={navCollapsed ? "cs-workspace cs-workspace-collapsed" : "cs-workspace"}><div className="cs-workspace-body"><nav className="cs-sidebar" aria-label="Your screens"><div className="cs-sidebar-head"><span className="cs-brand"><span className="cs-brand-mark" aria-hidden="true" /><span className="cs-sidebar-label">ConnectSphere</span></span><button type="button" className="cs-sidebar-toggle" aria-expanded={!navCollapsed} aria-label={navCollapsed ? "Expand navigation" : "Collapse navigation"} title={navCollapsed ? "Expand navigation" : "Collapse navigation"} onClick={() => setNavCollapsed((value) => !value)}><Icon name={navCollapsed ? "chevron-right" : "chevron-left"} /></button></div><div className="cs-sidebar-screens">{meta.screens.filter((item) => !item.hidden).map((item) => <button key={item.name} type="button" title={item.name} className={item.name === screen.name && !forbidden ? "cs-sidebar-item cs-sidebar-item-active" : "cs-sidebar-item"} onClick={() => chooseScreen(item.name)}><Icon name={item.icon} /><span className="cs-sidebar-label">{item.name}</span>{item.name === clashScreen && clashBadge && <span className="cs-nav-badge cs-nav-badge-clash" aria-label={`${venueClashes.count} active booking clash${venueClashes.count === 1 ? "" : "es"}`}>{clashBadge}</span>}{item.name === "Notifications" && unreadBadge && <span className="cs-nav-badge" aria-label={`${inbox.unread} unread`}>{unreadBadge}</span>}</button>)}</div><div className="cs-sidebar-user"><div className="cs-sidebar-user-row"><span className="cs-sidebar-avatar" aria-hidden="true">{(user.email || "?").charAt(0).toUpperCase()}</span><div className="cs-sidebar-label cs-sidebar-user-detail"><span className="cs-pill">{meta.label}</span><span className="cs-user-email" title={user.email}>{user.email}</span></div></div><button className="cs-btn cs-btn-ghost cs-sidebar-logout" type="button" title="Log out" aria-label="Log out" onClick={() => { window.location.hash = "#/sign-in"; signOut(auth); }}><Icon name="log-out" /><span className="cs-sidebar-label">Log out</span></button></div></nav><main className="cs-panel-scroll"><div className="cs-panel">{contents}</div></main></div><Toasts toasts={toasts} onDismiss={dismissToast} /></div>;

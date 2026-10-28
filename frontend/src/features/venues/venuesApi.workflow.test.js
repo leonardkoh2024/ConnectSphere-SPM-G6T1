@@ -44,6 +44,32 @@ beforeEach(() => {
   mockTransactionDocuments.clear();
 });
 
+test('a browser refresh runs venue workflows once when concurrent venue views load', async () => {
+  const originalFetch = global.fetch;
+  const fetchMock = jest.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ holds_processed: 0, venues_checked: 0, active_conflicts: 0 })
+  });
+  global.fetch = fetchMock;
+  mockGetDocs.mockResolvedValue({ docs: [] });
+  const user = { uid: 'COORD-REFRESH-1', getIdToken: jest.fn().mockResolvedValue('refresh-token') };
+  try {
+    await Promise.all([
+      loadVenueBookings({ user }),
+      loadVenueBookings({ user })
+    ]);
+    expect(user.getIdToken).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('/api/venues/workflows/refresh', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer refresh-token' }
+    });
+  } finally {
+    if (originalFetch) global.fetch = originalFetch;
+    else delete global.fetch;
+  }
+});
+
 test('F4/F7 approval links the event to the approved booking in the same transaction', async () => {
   const booking = {
     event_id: 'EVT-001', venue_id: 'VEN-001', status: 'PENDING',

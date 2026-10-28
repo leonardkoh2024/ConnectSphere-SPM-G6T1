@@ -1542,6 +1542,131 @@ a.cs-btn-ghost:hover {
   overflow: hidden;
 }
 
+/* H3 — an event's details after registering, laid out as one card like a record row. */
+.cs-browse-details {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--cs-line);
+  border-radius: var(--cs-radius);
+  background: var(--cs-surface);
+  box-shadow: var(--cs-elevation-card);
+}
+
+.cs-browse-details h2 { margin: 0 0 4px; font-size: 18px; }
+.cs-browse-details .cs-record-title p { margin: 0; color: var(--cs-muted); font-size: 14px; }
+
+/* H5 — My registrations in two groups: Upcoming, then past, withdrawn and cancelled. Rows
+   in a group take an h3, styled as a record's h2. */
+/* B10 — the organiser's My events filters the same way (.cs-list-filters). */
+.cs-registration-filters,
+.cs-list-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+  margin-bottom: 24px;
+}
+
+.cs-registration-filters .cs-field,
+.cs-list-filters .cs-field { min-width: 200px; }
+.cs-registration-filters input[type="search"],
+.cs-list-filters input[type="search"] { min-width: 260px; }
+
+/* On a phone each filter takes the full width rather than forcing a sideways scroll. */
+@media (max-width: 560px) {
+  .cs-registration-filters .cs-field,
+  .cs-list-filters .cs-field { flex: 1 1 100%; min-width: 0; }
+  .cs-registration-filters input[type="search"],
+  .cs-list-filters input[type="search"] { min-width: 0; }
+}
+
+.cs-registration-group { display: grid; gap: 12px; }
+.cs-registration-group + .cs-registration-group { margin-top: 28px; }
+.cs-registration-group > h2 { margin: 0; color: var(--cs-muted); font-size: 14px; font-weight: 600; }
+.cs-record h3 { margin: 0 0 2px; font-size: 16px; }
+
+/* The attendee lists use fixed columns, so venue, status and buttons line up from row to row
+   however long a title or venue is. Venue names wrap rather than push the row wider. */
+.cs-registration-record { grid-template-columns: minmax(0, 1fr) 220px 120px 220px; }
+.cs-browse-record { grid-template-columns: minmax(0, 1fr) 200px 130px 190px 150px; }
+.cs-registration-record .cs-record-ref,
+.cs-browse-record .cs-record-ref { white-space: normal; }
+.cs-registration-record .cs-record-actions { justify-content: flex-start; }
+
+/* Those columns need about 940px, which the list may not have even on a wide screen once the
+   sidebar takes its share, so the rows answer to the list's own width rather than the
+   viewport's. Narrower, the title takes a line of its own with the details hung under its
+   text and the actions kept on the right; narrower still, everything stacks. */
+.cs-attendee-list { container-type: inline-size; }
+
+.cs-browse-record > .cs-record-title,
+.cs-registration-record > .cs-record-title { grid-area: title; }
+.cs-browse-record > .cs-record-ref,
+.cs-registration-record > .cs-record-ref { grid-area: venue; }
+.cs-browse-record > .cs-record-status,
+.cs-registration-record > .cs-record-status { grid-area: status; }
+.cs-browse-record > .cs-record-modified { grid-area: closes; }
+.cs-browse-record > .cs-record-actions,
+.cs-registration-record > .cs-record-actions { grid-area: actions; }
+
+.cs-record.cs-browse-record { grid-template-areas: "title venue status closes actions"; }
+.cs-record.cs-registration-record { grid-template-areas: "title venue status actions"; }
+
+/* The 60px is the 44px date tile plus the gap beside it, so the details line up with the title. */
+@container (max-width: 940px) {
+  .cs-record.cs-browse-record {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 150px;
+    grid-template-areas:
+      "title  title  actions"
+      "status status actions"
+      "venue  closes actions";
+    row-gap: 8px;
+  }
+
+  .cs-browse-record > :not(.cs-record-title):not(.cs-record-actions) { margin-left: 60px; }
+}
+
+@container (max-width: 860px) {
+  .cs-record.cs-registration-record {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 200px;
+    grid-template-areas:
+      "title  title  actions"
+      "venue  status actions";
+    row-gap: 8px;
+  }
+
+  .cs-registration-record > :not(.cs-record-title):not(.cs-record-actions) { margin-left: 60px; }
+}
+
+@container (max-width: 600px) {
+  .cs-record.cs-browse-record {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "title" "status" "venue" "closes" "actions";
+  }
+
+  .cs-record.cs-registration-record {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "title" "venue" "status" "actions";
+  }
+
+  .cs-browse-record > :not(.cs-record-title):not(.cs-record-actions),
+  .cs-registration-record > :not(.cs-record-title):not(.cs-record-actions) { margin-left: 0; }
+}
+
+.cs-browse-details-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cs-browse-details-actions { display: flex; flex-shrink: 0; gap: 8px; }
+
+@media (max-width: 900px) {
+  .cs-browse-details-head { flex-direction: column; }
+}
+
 /* Venue catalogue rows can contain user-managed names, locations and many
    facilities. Keep each column bounded so one verbose venue cannot distort the
    entire list; the full values remain available through their title text and
@@ -1651,6 +1776,9 @@ a.cs-btn-ghost:hover {
   min-width: 132px;
 }
 
+/* A status pill stretched to the column's width keeps its word centred over the buttons. */
+.cs-record-actions-stacked > .cs-pill { justify-content: center; }
+
 .cs-record-danger { color: var(--cs-danger); }
 .cs-record-danger:hover:enabled { border-color: var(--cs-danger); background: var(--cs-danger-faded); }
 
@@ -1743,7 +1871,7 @@ a.cs-btn-ghost:hover {
 
 .cs-nav-badge-clash {
   background: var(--cs-danger);
-  color: #fff;
+  color: var(--cs-on-accent);
 }
 
 .cs-workspace-collapsed .cs-nav-badge {
@@ -1935,6 +2063,24 @@ a.cs-btn-ghost:hover {
 
 .cs-inline-form { display: grid; gap: 12px; margin-top: 24px; }
 .cs-inline-form .cs-btn { justify-self: end; }
+
+/* ---------- change requests (I1) ---------- */
+
+/* Each ticked detail: its current value, then the field for the new one. */
+.cs-change-field {
+  display: grid;
+  gap: 12px;
+  padding-top: 20px;
+  border-top: 1px solid var(--cs-line);
+}
+
+/* A request reads as its event and status on one line, and what it asks for under them. */
+.cs-record.cs-change-record { grid-template-columns: minmax(0, 1fr) auto; }
+.cs-change-record > .cs-change-details {
+  grid-column: 1 / -1;
+  padding-top: 16px;
+  border-top: 1px solid var(--cs-line);
+}
 .cs-attention { margin: 24px 0 0; padding: 16px; border-radius: var(--cs-radius-l); background: var(--cs-danger-faded); color: var(--cs-danger); }
 .cs-review-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
 .cs-action-box { margin-top: 20px; }

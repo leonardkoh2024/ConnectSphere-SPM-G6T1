@@ -42,6 +42,11 @@ they can be read next to the acceptance criteria and move into the service layer
 | F15 | SCRUM-180 | Place a tentative hold on a venue | TC-512 – TC-536 |
 | J4 | SCRUM-153 | Be told when work arrives for me (Venue Staff see which event) | TC-537 – TC-540 |
 | H2 | SCRUM-140 | Find events I can register for | TC-541 – TC-572 |
+| H3 | SCRUM-141 | Register for an event | TC-573 – TC-605 |
+| H4 | SCRUM-142 | See the status of my registrations | TC-606 – TC-638 |
+| H5 | SCRUM-143 | Withdraw from an event | TC-639 – TC-679 |
+| H6 | SCRUM-144 | Join the waiting list when an event is full | TC-680 – TC-716 |
+| H7 | SCRUM-145 | Be invited to take a freed place | TC-717 – TC-755 |
 | E4 | SCRUM-120 | See when a venue is free | TC-200 – TC-249 |
 | J6 | SCRUM-155 | Be told the outcome of my booking and equipment requests (AC1: approval and rejection) | TC-313 – TC-346 |
 | A7 | SCRUM-170 | Use ConnectSphere as a Safety Officer | TC-348 – TC-385, TC-388 |
@@ -630,7 +635,7 @@ Pre-condition for the functional cases: an Event Coordinator is signed in and th
 
 **Scope:** every role's Notifications screen is the inbox (`frontend/src/features/notifications/`). The workspace holds one live subscription, so the sidebar badge and the inbox count the same list. AC2 is enforced where notifications are written and in `firestore.rules`: a user reads only notifications addressed to them, and may change nothing but the read marker. Ordering, counting and labelling are pure functions in `frontend/src/domain/notifications.js`. Each row also offers **View**, which opens the related event on the screen that role already uses for one event: the organiser's event request page, or the coordinator's Assigned events detail. Roles with no such screen yet, and events the user can no longer read, get no View.
 
-**AC coverage:** AC1 — TC-250, TC-253 – TC-255, TC-259, TC-279, TC-281. AC2 — TC-262, TC-279, TC-284. AC3 — TC-251, TC-252, TC-256, TC-257, TC-260, TC-261, TC-280, TC-282. AC4 — TC-258, TC-262, TC-282. View — TC-263 – TC-268.
+**AC coverage:** AC1 — TC-250, TC-253 – TC-255, TC-259, TC-279, TC-281. AC2 — TC-262, TC-279, TC-284. AC3 — TC-251, TC-252, TC-256, TC-257, TC-260, TC-261, TC-280, TC-282. AC4 — TC-258, TC-262, TC-282. View — TC-263 – TC-268, TC-756 – TC-759 (attendee).
 
 **Unit test cases — `frontend/src/domain/notifications.test.js`**
 
@@ -641,7 +646,7 @@ Pre-condition for the functional cases: an Event Coordinator is signed in and th
 | TC-252 | The badge is absent at zero and capped at 99+ | Counts 0, 3, 99, 100 | Call badgeText(count) | No badge at 0; "3", "99", then "99+" | | Not Executed | AC3 - badge |
 | TC-253 | The related event reads as name and reference | Events with both, either, neither; and no event | Call eventLabel(event) | "Name (EVT-...)", then name, reference, "Untitled event"; null when the event cannot be read | | Not Executed | AC1 - related event |
 | TC-254 | Each stored type has words | Known types and an unknown one | Call notificationTypeLabel(type) | Known types read in words; an unknown one reads "Update" | | Not Executed | AC1 - message heading |
-| TC-263 | View goes to each role's own event screen | Each of the five roles, and an unknown role | Call eventViewScreen(role) | Organiser: "New event request"; Coordinator: "Assigned events"; Venue Staff, Technical Support, Attendee and an unknown role: none | | Not Executed | View - routing rule |
+| TC-263 | View goes to each role's own event screen | Each of the five roles, and an unknown role | Call eventViewScreen(role) | Organiser: "New event request"; Coordinator: "Assigned events"; Attendee: "My registrations"; Venue Staff, Technical Support and an unknown role: none | | Not Executed | View - routing rule |
 
 **Functional test cases — `frontend/src/features/notifications/NotificationInbox.test.js`**
 
@@ -663,7 +668,7 @@ Pre-condition for the functional cases: an Event Coordinator is signed in and th
 | TC-261 | With nothing unread there is no badge | No unread notifications | Render the workspace | No unread badge is shown | | Not Executed | AC3 - badge |
 | TC-266 | An organiser's View opens that event request | Organiser on Notifications; a notification for E1 | Click "View" on the notification | The organiser's event request page opens for E1, with "Back to notifications" | | Not Executed | View - organiser |
 | TC-267 | A coordinator's View opens that event under Assigned events | Coordinator on Notifications; a notification for E1 | Click "View" on the notification | Assigned events opens with E1's detail, with "Back to notifications" | | Not Executed | View - coordinator |
-| TC-268 | Roles with no event screen are offered no View | Venue Staff, Technical Support, Attendee in turn, on Notifications | Render the workspace | No View button is offered | | Not Executed | View - boundary |
+| TC-268 | Roles with no event screen are offered no View | Venue Staff, Technical Support in turn, on Notifications | Render the workspace | No View button is offered | | Not Executed | View - boundary |
 
 **Functional test cases — `frontend/src/features/notifications/notificationsApi.test.js`**
 
@@ -1284,3 +1289,360 @@ An approved request used to vanish from the Venue Staff Booking requests screen,
 | TC-570 | Loading and failure are shown | Pending, then rejected load | Open Browse events | "Loading events…"; failure in an alert, no empty-list message | As expected | Pass | Guard |
 | TC-571 | An attendee lands on Browse events; no other role reaches it | Attendee; organiser with the attendee hash | Render the workspace | List shown to the attendee; organiser told "not authorised" | As expected | Pass | AC3 |
 | TC-572 | Attendees get no browser read of events or registrations | — | Read the events and registrations rules | Neither names ATTENDEE; registrations not open to any signed-in user | As expected | Pass | AC3 - server side |
+
+## H3 / SCRUM-141 — Register for an event
+
+**Scope:** on **Browse events**, an Attendee can **Register** for an open event with a place free. The registration service (`POST /api/registrations/events/{eventId}/register`) does everything in one Admin transaction: it checks the registration flag, the status (Approved, Planning, Safety Review or Confirmed) and the window by the server's clock, refuses a second registration by the same attendee, counts the `REGISTERED` places and writes `registrations/{eventId}_{attendeeId}` with the attendee in `attendee_id`. The attendee is then shown a confirmation and the event's details. A full event shows "This event is full." with no Register, and an event already registered for shows **Registered** with **View details**.
+
+No browser can create a registration any more. H1 had added a window-gated attendee create to `firestore.rules`, but a rule cannot count places or detect a duplicate, so that clause and `registrationWindowOpen` are removed (agreed with the H1 owner). H1 AC4 (a registration outside the window is refused) is now covered by the service tests TC-583 – TC-588. H1-RT4 – H1-RT7 in `firestoreRules.test.js` became H1-RT4 – H1-RT6 below, and the D2 registrations test now asserts there is no create.
+
+**AC coverage:** AC1 (open events listed) — H2's TC-541 – TC-572. AC2 (register when a place is free) — TC-573, TC-591, TC-595, TC-597. AC3 (confirmation) — TC-578, TC-591, TC-598. AC4 (event details after registering) — TC-578, TC-599, TC-600. AC5 (full) — TC-579, TC-601, TC-602. AC6 (closed window) — TC-583, TC-585, TC-603. AC7 (capacity goes down) — TC-575, TC-576, TC-599. AC8 (no duplicate) — TC-580 – TC-582, TC-594, TC-600, TC-604, TC-605, H1-RT4. H1 AC4 — TC-583 – TC-588.
+
+**Service test cases — `backend/src/services/registration/register.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-573 | An attendee registers for an open event with a place free | Confirmed event, window open, capacity 3, none registered | register | registrations/e1_attendee-1 written: event_id, attendee_id, REGISTERED, server registered_at; reply confirms | As expected | Pass | AC2 |
+| TC-574 | One record per attendee and event | — | registrationIdFor | `{eventId}_{attendeeId}`; differs per event | As expected | Pass | AC8 |
+| TC-575 | Each registration reduces the places left by one | Capacity 3 | Register three attendees | 2, 1, 0 places left | As expected | Pass | AC7 |
+| TC-576 | Only Registered places count | Registered, withdrawn, waitlisted, cancelled and another event's registrations | register | 1 place left of 3 | As expected | Pass | AC7 |
+| TC-577 | Count, duplicate check and write are one transaction | — | register | One transaction reads the event, the attendee's record and the Registered count | As expected | Pass | AC5, AC7, AC8 |
+| TC-578 | The reply confirms and carries the event's public details | — | register | Registration id, status, time; event name, description, date, window, places; no internal fields | As expected | Pass | AC3, AC4 |
+| TC-579 | A full event is refused; the last place goes to the first | 3 of 3 registered; then 2 of 3 and two attempts | register | 409 full, nothing written; first succeeds, second refused full | As expected | Pass | AC5 |
+| TC-580 | An attendee already registered is refused | Same attendee twice; a registration under an older record id | register | 409 already_registered, nothing more written | As expected | Pass | AC8 |
+| TC-581 | A duplicate is reported as such even when the event is also full | Attendee holds one of 3 taken places | register | 409 already_registered | As expected | Pass | AC8 |
+| TC-582 | An attendee who withdrew may register again | Their record is WITHDRAWN | register | Same record back to REGISTERED, withdrawn_at cleared | As expected | Pass | AC8 |
+| TC-583 | Registration after the window has closed is refused | Window closed yesterday | register | 409 closed, "Registration has closed.", nothing written | As expected | Pass | AC6, H1 AC4 |
+| TC-584 | Registration before the window opens is refused | Window opens tomorrow | register | 409 not_open_yet, nothing written | As expected | Pass | H1 AC4 |
+| TC-585 | The window opens at its opening minute and closes at its closing minute, by the server clock | — | register at 08:59:59, 09:00, 16:59:59, 17:00 (Singapore) | Refused, accepted, accepted, refused | As expected | Pass | H1 AC4 - boundary |
+| TC-586 | An event with no window set is refused | No open or close date | register | 409 not_open_yet, nothing written | As expected | Pass | H1 AC4 |
+| TC-587 | Only Approved, Planning, Safety Review and Confirmed take registrations | Each of the ten statuses | register | Six refused (status), four accepted | As expected | Pass | H1 AC4 |
+| TC-588 | An event that does not use registration is refused | registration_required false | register | 409 not_enabled, nothing written | As expected | Pass | H1 AC4 |
+| TC-589 | An event without a usable capacity is refused | Capacity null | register | 409 no_capacity, nothing written | As expected | Pass | Guard |
+| TC-590 | An event that does not exist is refused | — | register a missing id | 404 not_found, nothing written | As expected | Pass | Guard |
+| TC-591 | The route answers 201 with the registration and the event, venues included | Attendee | POST /api/registrations/events/e1/register | 201; REGISTERED; venue names; 2 places left | As expected | Pass | AC2, AC3, AC4 |
+| TC-592 | A refusal is answered with its reason and message | Attendee already registered | Same request | 409 with reason already_registered and its message | As expected | Pass | AC5, AC8 |
+| TC-593 | Only a signed-in Attendee may register | No token; bad token; organiser | Same request | 401, 401, 403 "Only attendees …"; no transaction run | As expected | Pass | Guard |
+| TC-594 | The open-events list says which events the attendee is registered for | Registered for one, withdrew from another | GET /api/registrations/open-events | registration_status REGISTERED and null | As expected | Pass | AC8 |
+
+**Client and screen test cases — `registrationsApi.test.js`, `BrowseEvents.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-595 | Registering posts to the event's register route with the ID token | Signed-in attendee | registerForEvent | POST /api/registrations/events/{id}/register with Bearer token; id escaped | As expected | Pass | AC2 |
+| TC-596 | A refusal keeps the service's message and reason; a backend that is down is named | 409 reply; network failure | registerForEvent | Error with message and reason; "registration service is not responding" | As expected | Pass | Guard |
+| TC-597 | An event with places left offers Register | Open event, 110 places | Click Register | registerForEvent called for that event; details open | As expected | Pass | AC2 |
+| TC-598 | A successful registration is confirmed | Same | Click Register | Toast "You are registered for …"; "You are registered for this event." status | As expected | Pass | AC3 |
+| TC-599 | After registering, the event's details are shown; back returns to the list | Same | Click Register, then back | Description, date, window, venues, 109 places left, registered time; the row then shows Registered and no Register | As expected | Pass | AC4, AC7 |
+| TC-600 | An event already registered for offers View details, never Register | registration_status REGISTERED | Open Browse events; View details | Registered pill; details open; no register call | As expected | Pass | AC4, AC8 |
+| TC-601 | A full event says so and offers no Register | 0 places left | Open Browse events | "This event is full."; no Register | As expected | Pass | AC5 |
+| TC-602 | An event that fills while the list is open says so on its row | Service refuses full | Click Register | Alert "This event is full."; Full; no Register | As expected | Pass | AC5 |
+| TC-603 | Registering after the window has closed is refused | Service refuses closed | Click Register | Alert "Registration has closed."; no Register; no toast | As expected | Pass | AC6 |
+| TC-604 | A duplicate refused by the service marks the row Registered | Service refuses already_registered | Click Register | Alert with the message; Registered pill | As expected | Pass | AC8 |
+| TC-605 | Register cannot be pressed twice; an unexplained failure can be retried | Pending call; empty error | Click twice; click once | One call, button "Registering…" disabled; "You could not be registered. Try again." with Register enabled | As expected | Pass | AC8, Guard |
+
+**Shell and rules — `Workspace.test.js`, `firestoreRules.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-571 | The shell hands Browse events its toast and its way back | Attendee | Render the workspace | Browse events receives onNotice and onBackChange | As expected | Pass | AC3, AC4 |
+| H1-RT4 | No browser can create, change or remove a registration | — | Read the registrations rules | No create, update, delete or write clause | As expected | Pass | AC5, AC7, AC8 - server side |
+| H1-RT5 | No registrations clause names the Attendee role | — | Same | ATTENDEE absent | As expected | Pass | Server side |
+| H1-RT6 | The browser-side window rule is gone | — | Read firestore.rules | No registrationWindowOpen | As expected | Pass | H1 AC4 now in TC-583 – TC-588 |
+
+## H4 / SCRUM-142 — See the status of my registrations
+
+**Scope:** an Attendee's **My registrations** screen lists every event they have registered for, soonest first, with the event's name, date, time window, venue and their status: Registered, Waitlisted, Withdrawn or Cancelled. **View details** opens the event as an attendee may see it. The list comes from the registration service (`GET /api/registrations/mine`, Attendee ID token only), which queries the caller's registrations by `attendee_id`. Attendees still have no browser read of `registrations` or `events`.
+
+D4 cancels an event without touching its registrations, so the status shown is worked out: a registration on a cancelled event reads **Cancelled**, and the entry stays in the list (AC3). The cancellation reason is not sent. The rules live in `frontend/src/domain/myRegistrations.mjs`, shared with the service.
+
+**AC coverage:** AC1 (name, date, window, venue, status) — TC-606, TC-607, TC-610, TC-611, TC-614, TC-616, TC-618, TC-619, TC-624, TC-627 – TC-629, TC-634, TC-635. AC2 (view the event as an attendee) — TC-612, TC-621, TC-630 – TC-633, TC-638. AC3 (cancelled events stay, marked Cancelled) — TC-608, TC-616, TC-620, TC-628, TC-629, TC-632. Guards — TC-609, TC-613, TC-615, TC-617, TC-622, TC-623, TC-625, TC-626, TC-636, TC-637.
+
+**Unit test cases — `frontend/src/domain/myRegistrations.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-606 | The four statuses and their wording | — | Read REGISTRATION_STATUS_LABELS | Registered, Waitlisted, Withdrawn, Cancelled | As expected | Pass | AC1 |
+| TC-607 | A registration on a running event keeps its own status | Confirmed event | registrationDisplayStatus for each status | Unchanged | As expected | Pass | AC1 |
+| TC-608 | Any registration on a cancelled event shows Cancelled | Cancelled event; Registered, Waitlisted, Withdrawn | registrationDisplayStatus; mixed case | CANCELLED for each; case ignored | As expected | Pass | AC3 |
+| TC-609 | An unknown status is not shown | — | registrationDisplayStatus | null | As expected | Pass | Guard |
+| TC-610 | Each status has a tone | — | registrationStatusTone | positive, warning, neutral, danger; neutral otherwise | As expected | Pass | AC1, AC3 |
+| TC-611 | An entry carries name, date, window, venue, status and times | Registered, one venue | myRegistrationEntry | Exactly the attendee-facing fields | As expected | Pass | AC1 |
+| TC-612 | Internal fields never reach the attendee | Cancelled event with a reason | myRegistrationEntry | No ids, reference, capacity or cancellation reason | As expected | Pass | AC2 |
+| TC-613 | Timestamps come back as ISO text or null | Timestamp, text, null | myRegistrationEntry | ISO text; null | As expected | Pass | Guard |
+| TC-614 | A waitlisted entry keeps its queue position | Position 3 | myRegistrationEntry | 3 | As expected | Pass | AC1 |
+| TC-615 | A registration id falls back to the document's own field | No id | myRegistrationEntry | registration_id used; no venues | As expected | Pass | Guard |
+| TC-616 | The list is soonest first and keeps cancelled events | Four registrations | listMyRegistrations | Morning, Afternoon, Cancelled, Later | As expected | Pass | AC1, AC3 |
+| TC-617 | Missing events and unknown statuses are left out; venues attached | — | listMyRegistrations | Kept only the valid one; venue names by event; [] for none | As expected | Pass | Guard |
+
+**Service test cases — `backend/src/services/registration/myRegistrations.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-618 | An attendee is given their own registrations, soonest first | Four of their own, one of another attendee's | GET /api/registrations/mine | 200; forum, talk, expo, gala | As expected | Pass | AC1 |
+| TC-619 | Each entry shows the event and the attendee's status | Registered, Withdrawn, Waitlisted, and a cancelled event | Same | Full entry for forum; statuses REGISTERED, WITHDRAWN, WAITLISTED, CANCELLED | As expected | Pass | AC1 |
+| TC-620 | A registration on a cancelled event stays, marked Cancelled | Gala cancelled with a reason | Same | CANCELLED; its venue named; the reason not sent | As expected | Pass | AC3 |
+| TC-621 | No internal event field is sent | — | Same | No ids, reference, reason or capacity | As expected | Pass | AC2 |
+| TC-622 | Another attendee's registrations are never read | — | Same | Not listed; their event not read; every query names this attendee | As expected | Pass | Guard |
+| TC-623 | A registration whose event is gone is left out | Event deleted | Same | 200 without it | As expected | Pass | Guard |
+| TC-624 | An attendee with no registrations gets an empty list | — | Same as a new attendee | [] | As expected | Pass | AC1 |
+| TC-625 | Only a signed-in Attendee may read the list | No token; bad token; organiser | Same | 401, 401, 403; nothing read | As expected | Pass | Guard |
+| TC-626 | A failed read is a server error | Registrations read throws | Same | 500 | As expected | Pass | Guard |
+
+**Screen, client and shell test cases — `MyRegistrations.test.js`, `registrationsApi.test.js`, `Workspace.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-627 | Each registration shows name, date, window, venue and status | One Registered | Open My registrations | "Thu, 12 Nov 2026 · 09:00 – 17:00", both venues, Registered (positive) | As expected | Pass | AC1 |
+| TC-628 | Waitlisted, Withdrawn and Cancelled read as themselves | One of each | Open My registrations | Warning, neutral, danger pills | As expected | Pass | AC1, AC3 |
+| TC-629 | No venue yet, or a cancelled event's released venue, is said plainly | No venues; cancelled with none | Open; View details | "Venue to be confirmed"; "No venue — event cancelled" in the row and the details | As expected | Pass | AC1, AC3 |
+| TC-630 | Selecting an entry shows the event for an attendee | Registered | View details | Description, date, window, venues, Registered, registered time | As expected | Pass | AC2 |
+| TC-631 | A waitlisted entry's details give the queue position | Position 2 | View details | Waitlisted; 2 | As expected | Pass | AC2 |
+| TC-632 | Withdrawn and cancelled details say so | One of each | View details on each | Withdrawn with its time; "This event has been cancelled." | As expected | Pass | AC2, AC3 |
+| TC-633 | The details view hands the shell its way back | — | View details; shell back | No own back button; back returns to the list | As expected | Pass | AC2 |
+| TC-634 | The service's order is kept | Two entries | Open My registrations | In the order given | As expected | Pass | AC1 |
+| TC-635 | No registrations is said plainly | Empty list | Open My registrations | "You have not registered for any events yet." | As expected | Pass | AC1 |
+| TC-636 | Loading and failure are shown | Pending, then rejected | Open My registrations | Loading text; failure in an alert, no empty message | As expected | Pass | Guard |
+| TC-637 | The list is fetched from the service with the ID token | Signed-in attendee | loadMyRegistrations | GET /api/registrations/mine with Bearer token; refusal passed on | As expected | Pass | Guard |
+| TC-638 | My registrations opens the attendee's own list, with the shell's way back | Attendee | Open the My registrations hash | Screen rendered with onBackChange | As expected | Pass | AC2 |
+
+## H5 / SCRUM-143 — Withdraw from an event
+
+**Scope:** **My registrations** has a **Show** filter (all, or one status) and a **Search** on event name or venue, kept while details are open. It now lists an attendee's active places (Registered or Waitlisted, on an event that is running and has not started) under **Upcoming**, and everything else under **Past, withdrawn and cancelled**, which keeps H4 AC3. A Registered place under Upcoming offers **Withdraw**. After a confirmation, the registration service (`POST /api/registrations/events/{eventId}/withdraw`) sets the attendee's own record to `WITHDRAWN` in one transaction. The place is free for the next registration at once, since H3 counts only `REGISTERED`. The attendee gets a toast, and the event moves out of Upcoming.
+
+An attendee without a Registered place is refused (AC6), as is any withdrawal once the event has started or ended. Release 1 has no change deadlines, so there is no earlier cut-off. A waitlisted place is not withdrawn here: leaving the waiting list belongs to H6/H7. Inviting the next person on the waiting list into the freed place is H7, which the customer said is "invited to apply", never automatic.
+
+**AC coverage:** AC1 (upcoming registrations) — TC-639, TC-641, TC-642, TC-664. AC2 (withdraw) — TC-643, TC-648, TC-651, TC-659, TC-661, TC-665 – TC-667, TC-670 – TC-672. AC3 (confirmation) — TC-650, TC-661, TC-667. AC4 (place given back) — TC-649. AC5 (no longer in active registrations) — TC-640, TC-664, TC-667. AC6 (not currently registered) — TC-644, TC-652 – TC-656, TC-662, TC-665, TC-668. Guards — TC-645 – TC-647, TC-657, TC-658, TC-660, TC-663, TC-669.
+
+**Unit test cases — `frontend/src/domain/myRegistrations.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-639 | A Registered or Waitlisted place on an event still to come is active | Event 12 Nov 09:00; now 5 Nov | myRegistrationEntry | active true | As expected | Pass | AC1 |
+| TC-640 | A withdrawn registration is not active | Same | myRegistrationEntry | active false | As expected | Pass | AC5 |
+| TC-641 | A cancelled, completed or rejected event's registration is not active | Each status | myRegistrationEntry | active false | As expected | Pass | AC1 |
+| TC-642 | Once the event starts its registration is no longer active; no start, not upcoming | One second before / at the start; no start time | myRegistrationEntry | true, false; false | As expected | Pass | AC1 - boundary |
+| TC-643 | A Registered attendee may withdraw from an event still to come | — | withdrawalRefusal; can_withdraw | null; true | As expected | Pass | AC2 |
+| TC-644 | No registration, or a withdrawn or cancelled one, cannot be withdrawn | Each | withdrawalRefusal | not_registered, "You are not registered for this event."; can_withdraw false (a waitlisted place can, since H6: TC-710) | As expected | Pass | AC6 |
+| TC-645 | Nothing can be withdrawn from a cancelled, completed or rejected event | Each status | withdrawalRefusal | event_closed; can_withdraw false | As expected | Pass | Guard |
+| TC-646 | Withdrawal closes at the Singapore start; a missing event is refused | One second before / at 09:00; null event | withdrawalRefusal | null; event_started; not_found | As expected | Pass | Boundary |
+| TC-647 | Statuses are read whatever their case | registered / confirmed | withdrawalRefusal | null | As expected | Pass | Guard |
+
+**Service test cases — `backend/src/services/registration/withdraw.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-648 | A Registered attendee withdraws | Two registered | withdraw | Their record WITHDRAWN with server withdrawn_at; the other untouched; one write | As expected | Pass | AC2 |
+| TC-649 | The withdrawn place is free again | Capacity 2, full | register newcomer; withdraw; register newcomer | Refused full; 1 place left; then registered | As expected | Pass | AC4 |
+| TC-650 | The reply describes the registration as the attendee now sees it | — | withdraw | WITHDRAWN, withdrawn time, active and can_withdraw false; no internal fields | As expected | Pass | AC3 |
+| TC-651 | A registration under an older record id is withdrawn in that record | Mock-style id | withdraw | That record WITHDRAWN; one write | As expected | Pass | AC2 |
+| TC-652 | The check and the write are one transaction | — | withdraw | One transaction reading the event and the attendee's record | As expected | Pass | AC6 |
+| TC-653 | An attendee with no registration is refused | — | withdraw as a stranger | 409 not_registered; nothing written | As expected | Pass | AC6 |
+| TC-654 | A withdrawn or cancelled attendee holds no place, so is refused | Each | withdraw | 409 not_registered; nothing written | As expected | Pass | AC6 |
+| TC-655 | Withdrawing twice is refused the second time | — | withdraw twice | Second 409 not_registered; one write | As expected | Pass | AC6 |
+| TC-656 | One attendee cannot withdraw another's place | Only another attendee registered | withdraw | 409; their record untouched | As expected | Pass | AC6 |
+| TC-657 | Once the event has started there is nothing to withdraw from | Now = start | withdraw | 409 event_started; nothing written | As expected | Pass | Guard |
+| TC-658 | A cancelled, completed or rejected event cannot be withdrawn from | Each status | withdraw | 409 event_closed; nothing written | As expected | Pass | Guard |
+| TC-659 | Withdrawal is allowed after registration has closed, until the event starts | Window closed, event tomorrow | withdraw | WITHDRAWN | As expected | Pass | AC2 |
+| TC-660 | A missing event is refused | — | withdraw from a missing id | 404 not_found; nothing written | As expected | Pass | Guard |
+| TC-661 | POST withdraw answers 200 with the updated registration | Attendee | POST /api/registrations/events/e1/withdraw | 200; WITHDRAWN; venue names; 2 places left | As expected | Pass | AC2, AC3 |
+| TC-662 | A refusal is answered with its reason and message | Not registered | Same | 409 not_registered | As expected | Pass | AC6 |
+| TC-663 | Only a signed-in Attendee may withdraw | No token; bad token; organiser | Same | 401, 401, 403; no transaction; record unchanged | As expected | Pass | Guard |
+
+**Screen and client test cases — `MyRegistrations.test.js`, `registrationsApi.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-664 | Active registrations are under Upcoming, the rest apart | Registered, waitlisted, withdrawn, cancelled | Open My registrations | Upcoming: Going, Waiting; Past, withdrawn and cancelled: Left, Called off; "You have no upcoming registrations." when none | As expected | Pass | AC1, AC5 |
+| TC-665 | Withdraw is offered only on a place that can be withdrawn | Registered, waitlisted, withdrawn | Open My registrations | Withdraw on the Registered and waitlisted rows; none on the withdrawn one | As expected | Pass | AC2, AC6 |
+| TC-666 | Withdrawing asks first; keeping the place changes nothing | Registered | Withdraw, then Keep my place | Dialog names the event, focus on Keep my place; closed; no call | As expected | Pass | AC2 |
+| TC-667 | Confirming withdraws, confirms it, and moves the event out of Upcoming | Registered | Withdraw, then Yes, withdraw | Called for the event; toast "You have withdrawn from …"; row under Past with Withdrawn and no Withdraw | As expected | Pass | AC2, AC3, AC5 |
+| TC-668 | A refusal is shown in the dialog, and Withdraw is taken away | Service refuses not_registered | Withdraw, then Yes, withdraw | Alert with the message; only Close left; no Withdraw on the row; no toast | As expected | Pass | AC6 |
+| TC-669 | A failure that might pass on a retry can be retried; the button cannot be pressed twice | Empty error; pending call | Confirm; confirm twice | "You could not be withdrawn. Try again." with Yes, withdraw enabled; one call while "Withdrawing…" | As expected | Pass | Guard |
+| TC-670 | Withdrawing posts to the withdraw route with the ID token | Signed-in attendee | withdrawFromEvent | POST /api/registrations/events/{id}/withdraw, id escaped; refusal keeps message and reason | As expected | Pass | AC2 |
+| TC-671 | The details view on My registrations offers Withdraw, and updates in place | Registered; then a waitlisted place | View details, Withdraw, Yes, withdraw | Called for the event; toast; details now read Withdrawn with no Withdraw; none offered on the waitlisted place | As expected | Pass | AC2, AC3, AC6 |
+| TC-672 | The details of an event registered for on Browse events offer Withdraw | Registered, 109 places left | View details, Withdraw, Yes, withdraw; then a refusal | Back on the list with Register and 110 places left, toast; a refusal is explained and Withdraw taken away | As expected | Pass | AC2, AC3, AC4, AC6 |
+| TC-673 | Rows on both attendee lists share fixed columns | — | Render each list | Rows carry cs-registration-record / cs-browse-record, whose fixed columns line venue, status and buttons up | As expected | Pass | Layout |
+| TC-674 | The Show filter offers every status and starts on all | Four registrations, one of each status | Open My registrations | Options All registrations, Registered, Waitlisted, Withdrawn, Cancelled; all four listed | As expected | Pass | Filters |
+| TC-675 | Showing one status lists only those registrations | Same | Choose each status | Only the matching registration | As expected | Pass | Filters |
+| TC-676 | Search matches the event name or the venue, whatever the case | Same | Type "summit", then "WOODLANDS", then clear | Data Summit; Coding Workshop; all four | As expected | Pass | Filters |
+| TC-677 | The two filters combine | Same | Registered + "gala" | Nothing listed; "No registrations match these filters." | As expected | Pass | Filters |
+| TC-678 | While filtering, an empty Upcoming says nothing matches | Same | Show Withdrawn | "No upcoming registrations match these filters."; the withdrawn one listed below | As expected | Pass | Filters, AC5 |
+| TC-679 | A filter is kept after viewing details and coming back | Same | Show Waitlisted, View details, back | Still Waitlisted; only Data Summit | As expected | Pass | Filters |
+
+## H6 / SCRUM-144 — Join the waiting list when an event is full
+
+**Scope:** on **Browse events**, a full event that is still taking registrations offers **Join waiting list**. The registration service (`POST /api/registrations/events/{eventId}/waitlist`) sets the attendee's one record for the event to `WAITLISTED` at once, with the server's `waitlisted_at`, in one transaction (AC1). The position is never stored. Each time Browse events or My registrations is read, it is worked out from join times, first come first served, so it stays exact as people ahead leave (AC2, `frontend/src/domain/waitingList.mjs`). Older records with no `waitlisted_at` fall back to their registration time, then their stored position.
+
+An attendee holds one record per event, so they can never be both Registered and Waitlisted (AC3). Joining while already registered or already waiting is refused, and so is registering while waitlisted. That keeps the queue in order when a place frees: H7 invites people in turn. Joining is refused while a place is free (`places_available`), and the screen then reloads the list so Register reappears.
+
+A waitlisted attendee may also **Withdraw**, from My registrations or from the event's details, after a "Leave the waiting list?" confirmation (decided 27 Oct 2026). It frees no place in the event. Everyone behind them moves up, since positions are worked out from who is still waiting, and they may join again at the back. The same limits as H5 apply: not once the event has started or ended.
+
+**AC coverage:** AC1 (join, Waitlisted at once) — TC-686, TC-688, TC-690, TC-698, TC-700 – TC-703, TC-706. AC2 (exact FCFS position) — TC-680 – TC-685, TC-687, TC-696, TC-697, TC-702, TC-704, TC-705, TC-709. AC3 (never both) — TC-691 – TC-693, TC-704, TC-707, TC-708. Leaving the list — TC-710 – TC-716. Guards — TC-689, TC-694, TC-695, TC-699.
+
+**Unit test cases — `frontend/src/domain/waitingList.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-680 | The order follows join time, earliest first | Three waiting, joined 03:00, 01:00, 02:00 | waitlistOrder; waitlistPosition | a, b, c; a 1st, c 3rd | As expected | Pass | AC2 |
+| TC-681 | Only Waitlisted records hold a place in the queue | Withdrawn, registered, waiting | waitlistPosition | The waiting one is 1st; the withdrawn has none | As expected | Pass | AC2 |
+| TC-682 | Timestamps and dates are ordered by their instant | Timestamp and Date | waitlistOrder | Earlier first | As expected | Pass | AC2 |
+| TC-683 | No join time falls back to registration time, then stored position | Older records | waitlistOrder | By registered_at, then position 1, 2 | As expected | Pass | AC2 |
+| TC-684 | Simultaneous joins are settled by record id | Same instant | waitlistOrder both ways round | Same order each time | As expected | Pass | AC2 |
+| TC-685 | Someone ahead leaving moves everyone up; an absent id has no position | Two waiting | Withdraw the first | Second becomes 1st; null for none | As expected | Pass | AC2 |
+
+**Service test cases — `backend/src/services/registration/waitlist.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-686 | An attendee joins the waiting list of a full event | Two of two places taken | joinWaitlist | Own record WAITLISTED with server waitlisted_at; position 1; one write | As expected | Pass | AC1 |
+| TC-687 | Each later joiner is placed behind everyone waiting | One already waiting | Two more join | Positions 2 and 3 | As expected | Pass | AC2 |
+| TC-688 | While a place is free the attendee is told to register | One of two taken | joinWaitlist | 409 places_available; nothing written | As expected | Pass | AC1 |
+| TC-689 | The join, the count and the check are one transaction | — | joinWaitlist | One transaction reading the event, Registered and Waitlisted records | As expected | Pass | AC1, AC2 |
+| TC-690 | An attendee who withdrew may join, in the same record | Own record WITHDRAWN | joinWaitlist | Same record WAITLISTED, withdrawn_at cleared | As expected | Pass | AC1 |
+| TC-691 | A registered attendee cannot also join | Attendee registered | joinWaitlist | 409 already_registered; nothing written | As expected | Pass | AC3 |
+| TC-692 | A waiting attendee cannot join twice, even under an older id | Joined; legacy waiting record | joinWaitlist again | 409 already_waitlisted; nothing more written | As expected | Pass | AC3 |
+| TC-693 | A waitlisted attendee cannot register past the queue | Waiting, a place free | register | 409 waitlisted; still WAITLISTED; nothing written | As expected | Pass | AC3 |
+| TC-694 | The waiting list closes with registration | Window closed; not yet open; cancelled; registration off | joinWaitlist | closed, not_open_yet, status, not_enabled; nothing written | As expected | Pass | Guard |
+| TC-695 | A missing event or one without capacity is refused | — | joinWaitlist | 404 not_found; 409 no_capacity | As expected | Pass | Guard |
+| TC-696 | My registrations gives the exact position from join times | Three waiting; attendee joined 2nd | GET /api/registrations/mine | WAITLISTED, position 2 | As expected | Pass | AC2 |
+| TC-697 | Browse events gives the attendee's status and position | Same | GET /api/registrations/open-events | WAITLISTED, position 2, 0 places left | As expected | Pass | AC2 |
+| TC-698 | POST waitlist answers 201 with the Waitlisted registration | Full event | POST /api/registrations/events/e1/waitlist | 201; WAITLISTED; position 1; venue names | As expected | Pass | AC1 |
+| TC-699 | A refusal answers with its reason; only Attendees may join | Place free; no token; organiser | Same | 409 places_available; 401; 403 | As expected | Pass | Guard |
+
+**Screen and client test cases — `BrowseEvents.test.js`, `MyRegistrations.test.js`, `registrationsApi.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-700 | Joining posts to the waitlist route with the ID token | Signed-in attendee | joinWaitlist | POST /api/registrations/events/{id}/waitlist, id escaped; refusal keeps message and reason | As expected | Pass | AC1 |
+| TC-701 | A full event offers Join waiting list | 0 places left | Click Join waiting list | "This event is full."; called for the event; Waitlisted shown | As expected | Pass | AC1 |
+| TC-702 | Joining confirms Waitlisted and the position at once | Same | Click Join waiting list | Toast "… at position 3."; Waitlisted pill; "Position 3 on the waiting list"; no Join | As expected | Pass | AC1, AC2 |
+| TC-703 | An event with places left offers Register, not the waiting list | 110 places | Open Browse events | Register; no Join | As expected | Pass | AC1 |
+| TC-704 | An event being waited for shows Waitlisted and the position, never Register or Join | WAITLISTED, position 2 | Open Browse events | Waitlisted; "Position 2 on the waiting list"; no Register or Join | As expected | Pass | AC2, AC3 |
+| TC-705 | Its details give the status and position, and offer Withdraw | WAITLISTED, position 2 | View details | Waitlisted; 2; Withdraw | As expected | Pass | AC2 |
+| TC-706 | A place freed before joining is explained and the list reloaded | Service answers places_available | Click Join waiting list | Alert; list reloaded; Register with 1 place left | As expected | Pass | AC1 |
+| TC-707 | Registering refused because the attendee is waiting marks the row Waitlisted | Service answers waitlisted | Click Register | Alert; Waitlisted; no Register | As expected | Pass | AC3 |
+| TC-708 | Join cannot be pressed twice while the first is on its way | Pending call | Click twice | One call; "Joining…" disabled | As expected | Pass | AC3 |
+| TC-709 | A waitlisted row on My registrations gives the exact position | WAITLISTED, position 4; a Registered row | Open My registrations | "Position 4 on the waiting list"; none on the other | As expected | Pass | AC2 |
+| TC-710 | A waitlisted attendee may withdraw, within the same limits | Event still to come; started; cancelled | withdrawalRefusal; can_withdraw | null and true; event_started; event_closed | As expected | Pass | Leaving the list |
+| TC-711 | Withdrawing from the waiting list frees no place | Full, attendee 2nd in the queue | withdraw | Own record WITHDRAWN with server time; 0 places left; one write | As expected | Pass | Leaving the list |
+| TC-712 | Everyone behind the one who left moves up | Queue first, attendee, last | GET /mine as last; withdraw as attendee; GET /mine again | last at 3, then 2 | As expected | Pass | AC2 |
+| TC-713 | Someone who left may join again, at the back | Left the queue | joinWaitlist | Position 3 | As expected | Pass | AC1, AC2 |
+| TC-714 | Leaving the waiting list asks first, saying the place in the queue is lost | Waitlisted row | Withdraw | Dialog "Leave the waiting list for …?" and "You will lose your place in the queue" | As expected | Pass | Leaving the list |
+| TC-715 | Leaving confirms it and moves the event out of Upcoming | Same | Withdraw, Yes, withdraw | Toast "You have left the waiting list for …"; row under Past as Withdrawn, no position | As expected | Pass | Leaving the list |
+| TC-716 | Leaving from Browse events details returns to the list, still Full, offering Join | WAITLISTED on a full event | View details, Withdraw, Yes, withdraw | Toast; row Full with Join waiting list; no Waitlisted | As expected | Pass | Leaving the list |
+
+## H7 / SCRUM-145 — Be invited to take a freed place
+
+**Scope:** when a Registered place frees, the registration service offers it to the first person on the waiting list in the same transaction (AC1). Their record stays `WAITLISTED`, so they keep their position, and gains `invited_at` and `invitation_expires_at`: 48 hours, or the event start if sooner (AC3). They also get a `WAITLIST_PLACE_OFFERED` notification, sent to them alone. An offered place is held, so nobody else can register into it.
+
+On **My registrations** the attendee sees "Place offered until …" with **Accept place**, which registers them only when they choose (AC2), and **Decline**, which takes them off the list after a confirmation (AC4). An offer that lapses leaves them on the list (AC4), and the place passes to the next person at the next action on the event or when someone waiting opens My registrations. There is no timer, to spare Firestore reads. The person who let it lapse is offered again only when another place frees after the lapse (decided 28 Oct 2026). The 48 hours are the backlog's; the customer asked us to confirm the number, which is a Session 3 question.
+
+H7's notice replaces J7's `PLACE_OPENED` broadcast to everyone waiting, because only the person offered the place is invited to apply. That meets J7 AC2 and H7 AC1, and J7's test was updated to match.
+
+**AC coverage:** AC1 — TC-720 – TC-723, TC-727 – TC-729, TC-742, TC-744, TC-747, TC-752, TC-754, TC-755. AC2 — TC-731 – TC-733, TC-745, TC-748, TC-753. AC3 — TC-717 – TC-719, TC-734 – TC-736, TC-749. AC4 — TC-724, TC-725, TC-737 – TC-741, TC-743, TC-750, TC-751. Guards — TC-726, TC-730, TC-746.
+
+**Test cases — `waitingList.test.js`, `invitations.test.js`, `MyRegistrations.test.js`, `BrowseEvents.test.js`, `registrationsApi.test.js`, `notifications.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-717 | An offer lasts 48 hours | — | invitationExpiry | now + 48h | As expected | Pass | AC3 |
+| TC-718 | An offer ends at the event start if sooner; none once started | — | invitationExpiry | Start time; null | As expected | Pass | AC3 |
+| TC-719 | An offer is NONE, ACTIVE until it expires, then LAPSED; only a waiting record holds one | — | invitationState | As stated | As expected | Pass | AC3, AC4 |
+| TC-720 | Only an active offer holds a place | — | reservedPlaces | 1 of active, lapsed, none | As expected | Pass | AC1 |
+| TC-721 | A free place goes to the first in the queue, with its expiry | — | invitationsToIssue | First by join time; 48h expiry | As expected | Pass | AC1 |
+| TC-722 | As many offers as free places, in queue order | — | invitationsToIssue | First two | As expected | Pass | AC1 |
+| TC-723 | No offer while full, or when free places are already offered | — | invitationsToIssue | [] | As expected | Pass | AC1 |
+| TC-724 | A lapsed offer's place passes to the next person | — | invitationsToIssue | Second offered; first keeps spot | As expected | Pass | AC4 |
+| TC-725 | Someone whose offer lapsed is offered the next place freed after it, not before | — | invitationsToIssue | Offered after a later freeing; not otherwise | As expected | Pass | AC4 |
+| TC-726 | No offers once the event started, is cancelled, takes no registrations or has no capacity | — | invitationsToIssue | [] | As expected | Pass | Guard |
+| TC-727 | A Registered place freed by withdrawal is offered to the first waiting, in the same transaction | — | withdraw | First: invited_at, 48h expiry, still WAITLISTED; second untouched | As expected | Pass | AC1 |
+| TC-728 | Only the invited attendee is notified, with the event and when the offer ends | — | withdraw | WAITLIST_PLACE_OFFERED to first naming the event and "7 Nov 2026, 12:00"; none to second | As expected | Pass | AC1 |
+| TC-729 | An offered place is held: an outsider cannot register into it | — | register as outsider | 409 full | As expected | Pass | AC1 |
+| TC-730 | Leaving the waiting list frees nothing, so nobody is offered | — | withdraw a waiting place | No offer, no notice | As expected | Pass | Guard |
+| TC-731 | Accepting registers the invited attendee | — | acceptInvitation | REGISTERED with registered_at and accepted_at | As expected | Pass | AC2 |
+| TC-732 | Nobody is registered without accepting | — | withdraw | Invited attendee still WAITLISTED | As expected | Pass | AC2 |
+| TC-733 | Only someone holding an offer can accept | — | acceptInvitation as second / stranger | 409 not_invited | As expected | Pass | AC2 |
+| TC-734 | An expired offer cannot be accepted; the attendee stays on the list | — | acceptInvitation after expiry | 409 invitation_expired; WAITLISTED | As expected | Pass | AC3, AC4 |
+| TC-735 | An offer close to the event ends at its start | — | withdraw | Expiry = start | As expected | Pass | AC3 |
+| TC-736 | Nothing can be accepted once the event has started | — | acceptInvitation at start | 409 event_started | As expected | Pass | AC3 |
+| TC-737 | Declining leaves the list and the place goes to the next person | — | declineInvitation | WITHDRAWN from WAITLISTED with declined_at; second offered and notified | As expected | Pass | AC4 |
+| TC-738 | Only someone holding an offer can decline | — | declineInvitation as second | 409 not_invited | As expected | Pass | AC4 |
+| TC-739 | After a lapse, the next action on the event offers the place on; the first keeps their spot | — | register as outsider | Second offered and notified; outsider refused; first WAITLISTED | As expected | Pass | AC4 |
+| TC-740 | The one whose offer lapsed is offered the next freed place | — | withdraw a Registered place | First offered again; second not | As expected | Pass | AC4 |
+| TC-741 | Leaving the list while holding an offer passes the place on | — | withdraw the invited attendee | Second offered | As expected | Pass | AC4 |
+| TC-742 | My registrations shows the offer and when it ends | — | GET /mine | invitation_active, can_accept, expiry | As expected | Pass | AC1 |
+| TC-743 | Opening My registrations passes a lapsed place to the next in line | — | GET /mine as second, then as first | Second offered and notified; first shown lapsed at position 1 | As expected | Pass | AC4 |
+| TC-744 | Browse events counts an offered place as taken | — | GET /open-events | 0 places left | As expected | Pass | AC1 |
+| TC-745 | Accept and decline routes answer with the registration or the reason | — | POST …/invitation/accept, …/decline | 200 REGISTERED; 200 WITHDRAWN; 409 not_invited | As expected | Pass | AC2, AC4 |
+| TC-746 | Only a signed-in Attendee may accept or decline | — | No token; organiser | 401; 403; nothing changed | As expected | Pass | Guard |
+| TC-747 | An offered place shows when the offer ends, with Accept place and Decline | — | Open My registrations | "Place offered until 7 Nov 2026, 12:00"; no Withdraw | As expected | Pass | AC1, AC3 |
+| TC-748 | Accepting registers and confirms | — | Accept place | Toast; Registered | As expected | Pass | AC2 |
+| TC-749 | An offer that expired before accepting is explained | — | Accept place; service answers invitation_expired | Alert; no Accept; lapsed note | As expected | Pass | AC3 |
+| TC-750 | Declining asks first, then leaves the list | — | Decline, Yes, decline | Dialog "Decline the place at …?"; toast; row Withdrawn | As expected | Pass | AC4 |
+| TC-751 | A lapsed offer keeps the attendee on the list, saying so | — | Open My registrations | "Your invitation expired. You keep your place on the waiting list."; position; Withdraw | As expected | Pass | AC4 |
+| TC-752 | The details of an offered place carry the expiry, Accept place and Decline | — | View details | Expiry; both buttons | As expected | Pass | AC1 |
+| TC-753 | Accept and decline post to their routes with the ID token | — | acceptInvitation; declineInvitation | POST …/invitation/accept and …/decline; refusal keeps message and reason | As expected | Pass | AC2, AC4 |
+| TC-754 | Browse events points an offered place to My registrations | — | Open Browse events | "A place is offered to you. Accept it in My registrations." | As expected | Pass | AC1 |
+| TC-755 | The offer notice has its own inbox label | — | notificationTypeLabel | "Place offered" | As expected | Pass | AC1 |
+| TC-756 | An attendee's notification names its event and offers View | Attendee with a WAITLIST_PLACE_OFFERED notice for E7 | Render the inbox with the attendee's event lookup; click View | Event read from the attendee's registrations, not `events`; View hands over E7 | As expected | Pass | J1 View |
+| TC-757 | The attendee's event lookup reads their registrations | — | registeredEventsFor(["e1", "e2"]); then with the service refusing | e1 named, e2 null; a refusal gives null rather than an error | As expected | Pass | J1 View |
+| TC-758 | View from a notification opens that event's details in My registrations | Registrations for E1 and an offered place on W | Open My registrations focused on W; then on an event with no registration | W's details with Accept place and Decline; otherwise the list | As expected | Pass | J1 View |
+| TC-759 | An attendee's View lands on their registration for that event | Attendee on Notifications | Click View | My registrations opens on E1, with "Back to notifications" | As expected | Pass | J1 View |
+| TC-760 | Every kind of attendee notice reads under its own heading | — | notificationTypeLabel for each type attendeeChangeNotices writes | Registration confirmed, Date changed, Time changed, Venue changed, Event cancelled, Place opened — never "Update" | As expected | Pass | J7 labels |
+
+## I1 / SCRUM-147 — Request a change after submitting my event
+
+**Scope:** an organiser raises a change request from **Change requests** (header button **New change request**) or from **Request a change** at the top right of one of their submitted events. It is allowed from Submitted up to and including Confirmed (AC1). They tick the details to change, see each current value beside the field for the new one, and give a mandatory reason (AC2). The changeable details are name, purpose, description, expected attendance, date, start and end time, preferred location, room layout, facilities, accessibility needs and accessibility notes. Each is stored under the event's own field name as `{ old_value, new_value }`, so I2 can apply it. There is no limit on the number of requests and no cut-off before the event (AC3).
+
+The request is written to `change_requests` as **Pending** (AC4). The same commit adds a `CHANGE_REQUESTED` row to `event_history` and, when the event has a coordinator, a `CHANGE_REQUESTED` notice to them. The event itself is not changed: accepting or declining is I2. **With no coordinator assigned yet (Submitted, in the Lead's queue), nobody is notified**; the coordinator sees the request once the event is assigned (decided 28 Oct 2026, a Session 3 question). `firestore.rules` lets only the event's organiser create a request, in their own name, with the event's status, coordinator, field names and reason checked; there is no update or delete rule until I2 adds the decision. Rules live in `frontend/src/domain/changeRequests.js`.
+
+**AC coverage:** AC1 — TC-761, TC-765, TC-772, TC-779, TC-781, TC-782. AC2 — TC-762, TC-766 – TC-770, TC-773, TC-777. AC3 — TC-775, TC-776, TC-780. AC4 — TC-762, TC-763, TC-771, TC-773, TC-774, TC-776 – TC-778, TC-783. Guard — TC-764.
+
+**Test cases — `changeRequests.test.js`, `changeRequestsApi.test.js`, `ChangeRequestsScreen.test.js`, `Workspace.test.js`, `notifications.test.js`, `firestoreRules.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-761 | Only the event's organiser creates a change request, in their own name, while the event is Submitted to Confirmed | — | Read the change_requests create rule | Organiser role, own name, ownsEvent, status in the six statuses | As expected | Pass | Rules · AC1 |
+| TC-762 | A change request names known fields, gives a reason, starts Pending and is stamped now | — | Read the create rule | PENDING; reason trimmed non-empty; changes non-empty with only CHANGEABLE_FIELD_NAMES; created_at == request.time | As expected | Pass | Rules · AC2, AC4 |
+| TC-763 | A change request carries the event's coordinator as it stands | — | Read the create rule | coordinator_id must equal the event's (null if unassigned) | As expected | Pass | Rules · AC4 |
+| TC-764 | Read by its organiser and the event's current coordinator; no update or delete yet | — | Read the change_requests block | get/list as stated; no update, delete or write | As expected | Pass | Rules · guard |
+| TC-765 | Which events take a change request | — | canRequestChange for each status and another organiser | Own event Submitted…Confirmed only | As expected | Pass | AC1 |
+| TC-766 | Current values come from the event and its request records | — | currentChangeValues | Every changeable field; lists sorted | As expected | Pass | AC2 |
+| TC-767 | Each chosen field keeps its value now and the value proposed | — | proposedChanges | Only chosen fields; number and sorted list stored | As expected | Pass | AC2 |
+| TC-768 | A request needs a field, a different value and a reason | — | changeRequestProblems | Named problem for each gap; none when complete | As expected | Pass | AC2 |
+| TC-769 | The event as it would stand must still make sense | — | changeRequestProblems on attendance, date, times | Whole number > 0; no past date; end after start | As expected | Pass | AC2 |
+| TC-770 | Values read in words | — | changeValueText | Lists joined, catalogue labels, dash for nothing | As expected | Pass | AC2 |
+| TC-771 | The coordinator's notice names the event and what is to change | — | changeRequestedMessage | "… has a change request waiting for your decision: expected attendance, date." | As expected | Pass | AC4 |
+| TC-772 | Only the organiser's events from Submitted to Confirmed are offered, soonest first | — | loadChangeableEvents | Draft and Cancelled left out; by date | As expected | Pass | AC1 |
+| TC-773 | A request, its history row and the coordinator's notice are one commit | Event in Planning with coordinator c1 | submitChangeRequest | PENDING record with changes and trimmed reason; CHANGE_REQUESTED history; notice to c1; one commit | As expected | Pass | AC2, AC4 |
+| TC-774 | With no coordinator yet the request is saved and nobody is told | Event Submitted, unassigned | submitChangeRequest | coordinator_id null; no notification | As expected | Pass | AC4 · Session 3 |
+| TC-775 | Every request the organiser raised is listed, newest first | Two requests | loadMyChangeRequests | Newest first; timestamps as ISO | As expected | Pass | AC3 |
+| TC-776 | Each request shows its event, every change old → new, the reason and Pending | One Pending request | Open Change requests | "120 → 150"; facilities lists; reason; warning pill | As expected | Pass | AC3, AC4 |
+| TC-777 | A request is sent only with a new value and a reason, then joins the list | Event in Planning | Tick attendance, send; then enter 150 and a reason, send | Problems listed first; then sent with the values; toast names the coordinator being told | As expected | Pass | AC2, AC4 |
+| TC-778 | An unassigned event says the request waits, and so does the confirmation | Event Submitted, unassigned | Open the form for it and send | Note shown; "saved as Pending… once the event is assigned" | As expected | Pass | AC4 · Session 3 |
+| TC-779 | Nothing raised yet, and no event that can take one, is said plainly | No requests, no eligible events | Open the screen; open the form | Empty state; no New change request; form explains why | As expected | Pass | AC1 |
+| TC-780 | Change requests offers New change request in its header | Organiser | Open Change requests; click the button | Form opens; header reads New change request | As expected | Pass | AC3 |
+| TC-781 | Request a change in a submitted event's header opens the form for that event | Organiser viewing their own E1 in Planning | Click Request a change in the page header | Change requests, form open for E1 | As expected | Pass | AC1 |
+| TC-782 | The header offers Request a change only on the organiser's own event | Another organiser's event in Planning | Open the event | No Request a change (statuses covered by TC-765) | As expected | Pass | AC1 |
+| TC-783 | The change request notice has its own inbox label | — | notificationTypeLabel('CHANGE_REQUESTED') | "Change requested" | As expected | Pass | AC4 |
+
+## B10 — Filter My events, and see the venues secured
+
+**Scope:** My events gains a **Status** filter (All events, or any one of the ten statuses in workflow order) and a **Search** on the event name or reference, case-insensitive, as My registrations has for attendees. A filter that matches nothing says so. The list is still loaded once; filtering happens in the browser.
+
+Opening a submitted request now also shows **Venue** in the Review and decision panel: the names of the venues approved for the event so far, or "To be confirmed" until one is. Organisers cannot read `venue_bookings` or `venues`, so the names come from the event service (`GET /api/events/:eventId/venues`). It answers only the event's own organiser, using the venue service's `getApprovedEventVenueNames` contract, the same one the attendee listing uses. No hold, rejection reason or other booking detail reaches the organiser, and no rules change was needed. This goes beyond B10's written criteria; it is filed under B10 as the organiser's view of how far their request has got.
+
+**Test cases — `EventList.test.js`, `venues.test.js` (backend), `OrganiserEventDetail.test.js`, `eventVenuesApi.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-784 | The Status filter shows only events in that status | A Submitted and a Draft event | Choose Draft, then All events | Only the draft; then both | As expected | Pass | B10 |
+| TC-785 | Search matches the name or the reference, whatever the case | Same | Search "partner", then "evt-100241" | Only Q4 Partner Summit; then only Volunteer Onboarding | As expected | Pass | B10 |
+| TC-786 | Filters that match nothing say so; every status is offered | Same | Read the Status options; choose Confirmed | All events plus the ten statuses; "No events match these filters." | As expected | Pass | B10 |
+| TC-787 | The organiser gets the names of the venues their event has secured, and nothing else | Own event; approved bookings at two venues | GET /api/events/e1/venues | 200 { venue_names: [both] } | As expected | Pass | B10 |
+| TC-788 | Another organiser's event, or a missing one, is refused with no venues | Event owned by o2; no event | GET as o1 | 403 "You are not authorised to view this event."; no lookup made | As expected | Pass | B10 AC5 |
+| TC-789 | Only a signed-in organiser may ask | No token; forged token; coordinator | GET | 401; 401; 403 | As expected | Pass | Guard |
+| TC-790 | A submitted event shows its approved venues, or To be confirmed | Submitted event | Open it | "Harbour Hall, Pier Room"; with none, "To be confirmed" | As expected | Pass | B10 |
+| TC-791 | A draft asks for no venues; a failed read says so without hiding the request | Draft; service down | Open each | No call for the draft; "Could not be loaded right now." and the request still shown | As expected | Pass | B10 |
+| TC-792 | The venue names are fetched with the ID token, and a refusal is passed on | — | loadEventVenueNames | GET /api/events/{id}/venues with Bearer token; 403 message thrown | As expected | Pass | B10 |

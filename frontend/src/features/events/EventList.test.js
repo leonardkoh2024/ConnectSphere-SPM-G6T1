@@ -245,3 +245,47 @@ describe('B8 deleting a draft', () => {
     expect(screen.getByText('Q4 Partner Summit')).toBeInTheDocument();
   });
 });
+
+// B10 — the organiser narrows My events by status and by name or reference.
+// TC-784 – TC-786 in docs/test-cases.md.
+describe('B10 filtering My events', () => {
+  test('TC-784 the Status filter shows only events in that status', async () => {
+    givenEvents();
+    render(<EventList user={USER} role={ROLES.ORGANISER} />);
+    await screen.findByText('Q4 Partner Summit');
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Status' }), 'DRAFT');
+    expect(screen.getByText('Volunteer Onboarding')).toBeInTheDocument();
+    expect(screen.queryByText('Q4 Partner Summit')).not.toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Status' }), 'all');
+    expect(screen.getByText('Q4 Partner Summit')).toBeInTheDocument();
+  });
+
+  test('TC-785 Search matches the event name or its reference, whatever the case', async () => {
+    givenEvents();
+    render(<EventList user={USER} role={ROLES.ORGANISER} />);
+    await screen.findByText('Q4 Partner Summit');
+
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'partner');
+    expect(screen.getByText('Q4 Partner Summit')).toBeInTheDocument();
+    expect(screen.queryByText('Volunteer Onboarding')).not.toBeInTheDocument();
+
+    await userEvent.clear(screen.getByRole('searchbox', { name: 'Search' }));
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'evt-100241');
+    expect(screen.getByText('Volunteer Onboarding')).toBeInTheDocument();
+    expect(screen.queryByText('Q4 Partner Summit')).not.toBeInTheDocument();
+  });
+
+  test('TC-786 filters that match nothing say so, and every status is offered', async () => {
+    givenEvents();
+    render(<EventList user={USER} role={ROLES.ORGANISER} />);
+    await screen.findByText('Q4 Partner Summit');
+
+    const options = within(screen.getByRole('combobox', { name: 'Status' })).getAllByRole('option').map((option) => option.textContent);
+    expect(options).toEqual(['All events', 'Draft', 'Submitted', 'Under review', 'Approved', 'Planning', 'Safety review', 'Confirmed', 'Completed', 'Cancelled', 'Rejected']);
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Status' }), 'CONFIRMED');
+    expect(screen.getByText('No events match these filters.')).toBeInTheDocument();
+  });
+});

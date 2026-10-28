@@ -835,4 +835,26 @@ describe('J2 SCRUM-151 the organiser is told the request was received', () => {
     expect(screen.queryByText(/could not save your event request/i)).not.toBeInTheDocument();
     console.error.mockRestore();
   });
+
+  test('J8 SCRUM-191 submitting tells every active Event Coordinator Lead the request is unassigned', async () => {
+    firestore.query.mockImplementation((source) => source);
+    getDocs.mockImplementation(async (name) => (name === 'users'
+      ? { docs: [
+        { id: 'lead-1', data: () => ({ role: 'EVENT_COORDINATOR_LEAD', is_active: true }) },
+        { id: 'lead-2', data: () => ({ role: 'EVENT_COORDINATOR_LEAD', is_active: false }) }
+      ] }
+      : { docs: [] }));
+    getDoc.mockResolvedValue({ exists: () => true, data: () => ({ name: 'Nadia Organiser' }) });
+    render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
+    fillValidRequest();
+    await submit();
+
+    await waitFor(() => expect(setDoc.mock.calls.filter(([, data]) => data?.type === 'UNASSIGNED_EVENT')).toHaveLength(1));
+    const [, data] = setDoc.mock.calls.find(([, item]) => item?.type === 'UNASSIGNED_EVENT');
+    expect(data.user_id).toBe('lead-1');
+    expect(data.message).toContain('Q4 Partner Summit');
+    expect(data.message).toContain('Nadia Organiser');
+    expect(data.message).toContain(EVENT_DAY);
+    expect(data.link_screen).toBe('Unassigned queue');
+  });
 });

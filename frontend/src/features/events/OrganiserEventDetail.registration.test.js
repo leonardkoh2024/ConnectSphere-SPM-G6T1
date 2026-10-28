@@ -10,6 +10,8 @@ import OrganiserEventDetail from './OrganiserEventDetail';
 import { reviewApi } from './reviewApi';
 
 jest.mock('./reviewApi', () => ({ reviewApi: { detail: jest.fn(), respond: jest.fn() } }));
+// B10 — the venue line's read is stubbed so this page never loads the real Firebase client.
+jest.mock('./eventVenuesApi', () => ({ loadEventVenueNames: () => Promise.resolve([]) }));
 jest.mock('./EventRequestForm', () => ({
   __esModule: true,
   default: () => require('react').createElement('p', null, 'form')

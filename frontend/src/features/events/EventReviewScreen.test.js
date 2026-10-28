@@ -2,11 +2,15 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import EventReviewScreen from './EventReviewScreen';
 import { reviewApi } from './reviewApi';
+import { sendEventForSafetyCheck } from '../safety/safetyApi';
 import { releaseCancelledEventBookings } from '../venues/venuesApi';
 import { releaseCancelledEventReservations } from '../equipment/equipmentApi';
 
 // A7 — the safety planning notes section saves through its own API.
-jest.mock('../safety/safetyApi', () => ({ savePlanningNotes: jest.fn(() => Promise.resolve({ ok: true })) }));
+jest.mock('../safety/safetyApi', () => ({
+  savePlanningNotes: jest.fn(() => Promise.resolve({ ok: true })),
+  sendEventForSafetyCheck: jest.fn(() => Promise.resolve({ ok: true, status: 'SAFETY_REVIEW' }))
+}));
 jest.mock('../../lib/firebase', () => ({ auth: { currentUser: { uid: 'c1' } } }));
 jest.mock('./reviewApi', () => ({ reviewApi: {
   list: jest.fn(), detail: jest.fn(), openReview: jest.fn(), clarify: jest.fn(), approve: jest.fn(), reject: jest.fn(),
@@ -112,6 +116,15 @@ test('TC-072/073 requires a rejection reason and sends the recorded reason', asy
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: /reject event/i }));
   await waitFor(() => expect(reviewApi.reject).toHaveBeenCalledWith('e1', 'No suitable venue can be secured.'));
+});
+
+test('L1 SCRUM-187 the coordinator can send a planning event for its safety check', async () => {
+  const onNotice = jest.fn();
+  reviewApi.detail.mockResolvedValue(detail({ status: 'PLANNING' }));
+  await openRequest({ onNotice });
+  await userEvent.click(screen.getByRole('button', { name: /send for safety check/i }));
+  await waitFor(() => expect(sendEventForSafetyCheck).toHaveBeenCalledWith('e1'));
+  expect(onNotice).toHaveBeenCalledWith('Event sent for its safety check.');
 });
 
 test('D4 cancellation requires a reason and explicit confirmation, then releases arrangements', async () => {

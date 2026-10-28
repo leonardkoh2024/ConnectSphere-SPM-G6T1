@@ -132,7 +132,9 @@ test('TC-365 Request changes without a comment is refused on screen; with one it
   listSafetyQueue.mockResolvedValueOnce([]);
   await userEvent.type(within(form).getByLabelText(/Comment/), 'Move the stage away from the exit.');
   await userEvent.click(within(form).getByRole('button', { name: 'Record outcome' }));
-  expect(recordSafetyOutcome).toHaveBeenCalledWith({ eventId: 'e1', outcome: 'REQUEST_CHANGES', comment: 'Move the stage away from the exit.' });
+  expect(recordSafetyOutcome).toHaveBeenCalledWith({
+    eventId: 'e1', outcome: 'REQUEST_CHANGES', comment: 'Move the stage away from the exit.', marked: ['venue', 'technical']
+  });
   await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Safety outcome recorded: Request changes.'));
   expect(await screen.findByText('No events are awaiting a safety check.')).toBeInTheDocument();
   expect(listSafetyQueue).toHaveBeenCalledTimes(2);

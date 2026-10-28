@@ -24,6 +24,7 @@ import {
 } from "../../domain/ordinaryEventChanges";
 import { equipmentActivity, equipmentArrangements } from "../../domain/eventEquipment";
 import { REGISTERED_STATUS, capacityReductionNeedsAcknowledgement } from "../../domain/registrationWindow";
+import { attendeeChangeNotices, cancelSafetyReview, cancelUnassignedEvent } from "../../domain/safetyAndNotices";
 
 // K5 / SCRUM-186 AC3 — one response for every event the caller may not open (someone
 // else's, one they held before it was reassigned, an unassigned one, or an id that does
@@ -424,6 +425,23 @@ const saveEventEdit = async ({
     }
   }
   const ordinary = cleanOrdinaryValues(values);
+  const attendeeChanges = [];
+  if (significantPlanned.event_date) attendeeChanges.push({ kind: "DATE", detail: significant.event_date });
+  if (significantPlanned.start_time || significantPlanned.end_time) {
+    attendeeChanges.push({ kind: "TIME", detail: `${significant.start_time}–${significant.end_time}` });
+  }
+  if (significantPlanned.preferred_location) attendeeChanges.push({ kind: "VENUE", detail: significant.preferred_location });
+  const registeredAttendees = attendeeChanges.length
+    ? (await getDocs(query(
+      collection(db, "registrations"),
+      where("event_id", "==", eventId),
+      where("status", "==", "REGISTERED")
+    ))).docs.map((item) => ({
+      user_id: item.data().attendee_id || item.data().user_id,
+      status: "REGISTERED",
+      registration_id: item.id
+    }))
+    : [];
 
   // I3 AC4 — the capacity is saved by the service (it counts who is registered and enforces the
   // acknowledgement), before the rest of the form, so a refusal leaves everything unsaved.
@@ -570,6 +588,22 @@ const saveEventEdit = async ({
         affected_arrangements: currentImpact
       });
     }
+    attendeeChanges.forEach((change) => {
+      attendeeChangeNotices({ event: { event_id: eventId, name: event.name }, attendees: registeredAttendees, change })
+        .forEach((notice) => {
+          const person = registeredAttendees.find((item) => item.user_id === notice.user_id);
+          const notificationRef = doc(collection(db, "notifications"));
+          tx.set(notificationRef, notificationRecord({
+            notificationId: notificationRef.id,
+            userId: notice.user_id,
+            eventId,
+            type: notice.type,
+            message: notice.message,
+            createdAt: changedAt,
+            registrationId: person?.registration_id
+          }));
+        });
+    });
     saved = ordinaryChanges.length + Object.keys(significantChanges).length;
   });
   const result = { ok: true, changed: saved + (capacityChanged ? 1 : 0) };
@@ -647,6 +681,12 @@ const cancel = async (eventId, value) => {
     collection(db, "registrations"),
     where("event_id", "==", eventId)
   ));
+  const officerSnapshot = currentEvent.data().status === EVENT_STATUS.SAFETY_REVIEW
+    ? await getDocs(query(collection(db, "users"), where("role", "==", ROLES.SAFETY_OFFICER), where("is_active", "==", true)))
+    : { docs: [] };
+  const safetyOfficers = officerSnapshot.docs.map((item) => ({
+    user_id: item.id, role: item.data().role, active: item.data().is_active !== false
+  }));
   const attendees = registrationSnapshot.docs
     .filter((item) => String(item.data().status || "").toUpperCase() === "REGISTERED")
     .map((item) => ({
@@ -692,8 +732,51 @@ const cancel = async (eventId, value) => {
       message: eventCancelledMessage({ eventName, reason }),
       createdAt: cancelledAt
     }));
+    const leftReview = cancelSafetyReview({ event: { event_id: eventId, ...event }, safetyOfficers });
+    (leftReview.notifications || []).forEach((notice) => {
+      const officerRef = doc(collection(db, "notifications"));
+      tx.set(officerRef, notificationRecord({
+        notificationId: officerRef.id, userId: notice.user_id, eventId, type: notice.type, message: notice.message, createdAt: cancelledAt
+      }));
+    });
   });
   return { eventId, eventName, reason, attendees };
+};
+
+const cancelUnassigned = async (eventId, value) => {
+  const user = requireUser();
+  const reason = cleanRequiredText(value);
+  if (!reason) throw new Error("Cancellation reason is required.");
+  const eventRef = doc(db, "events", eventId);
+  const leadSnapshot = await getDocs(query(
+    collection(db, "users"),
+    where("role", "==", ROLES.COORDINATOR_LEAD),
+    where("is_active", "==", true)
+  ));
+  const leads = leadSnapshot.docs.map((item) => ({
+    user_id: item.id, role: item.data().role, active: item.data().is_active !== false
+  }));
+  await runTransaction(db, async (tx) => {
+    const snapshot = await tx.get(eventRef);
+    if (!snapshot.exists() || snapshot.data().organiser_id !== user.uid) throw new Error("Only the organiser can cancel this request.");
+    const event = { event_id: eventId, ...snapshot.data() };
+    const decision = cancelUnassignedEvent({ event, leads });
+    if (!decision.ok) throw new Error("Only an unassigned submitted request can be cancelled this way.");
+    const cancelledAt = serverTimestamp();
+    tx.update(eventRef, {
+      status: EVENT_STATUS.CANCELLED,
+      cancellation_reason: reason,
+      cancelled_at: cancelledAt,
+      updated_at: cancelledAt
+    });
+    decision.notifications.forEach((notice) => {
+      const notificationRef = doc(collection(db, "notifications"));
+      tx.set(notificationRef, notificationRecord({
+        notificationId: notificationRef.id, userId: notice.user_id, eventId, type: notice.type, message: notice.message, createdAt: cancelledAt
+      }));
+    });
+  });
+  return { ok: true };
 };
 
 const complete = async (eventId) => {
@@ -917,7 +1000,7 @@ const leadReassign = async (eventId, coordinatorId) => {
 };
 
 export const reviewApi = {
-  list, detail, openReview, clarify, reject, respond, approve, cancel, complete, notifyCancelledAttendees,
+  list, detail, openReview, clarify, reject, respond, approve, cancel, cancelUnassigned, complete, notifyCancelledAttendees,
   leadBoard, assign, leadReassign,
   significantChangeImpact, saveEventEdit, registeredCount, retryRerequest
 };
