@@ -161,6 +161,21 @@ describe('an event this role may not read', () => {
     expect(screen.queryByRole('button', { name: /^View/ })).not.toBeInTheDocument();
   });
 
+  test('J9 SCRUM-192 opening a safety notice after the event has left the queue hides its details', async () => {
+    const waiting = {
+      id: 'n-safety', user_id: 'so-1', event_id: 'e1', type: 'SAFETY_REVIEW_WAITING',
+      message: 'Q4 Partner Summit on 2026-11-04 at Harbour Hall for 180 is waiting for its safety check.',
+      is_read: false, created_at: '2026-10-20T09:00:00.000Z', read_at: null
+    };
+    render(<NotificationInbox notifications={[waiting]} loading={false} error="" onOpen={jest.fn()} onViewEvent={jest.fn()} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Waiting for a safety check/i }));
+
+    expect(screen.getAllByText('Q4 Partner Summit has left the safety review queue.').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /^View/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('Q4 Partner Summit (EVT-100234)')).not.toBeInTheDocument();
+  });
+
   test('TC-539 an older notice with no stored name says the event is not shared, not that it is gone', async () => {
     eventsFor.mockResolvedValue({ e9: false });
     render(<NotificationInbox notifications={[notice()]} loading={false} error="" onOpen={jest.fn()} />);

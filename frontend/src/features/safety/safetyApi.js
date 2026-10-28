@@ -255,14 +255,18 @@ export const sendEventForSafetyCheck = async (eventId) => {
     tx.update(eventRef, { status: EVENT_STATUS.SAFETY_REVIEW, safety_review_requested_at: sentAt, updated_at: sentAt });
     decision.notifications.forEach((notice) => {
       const notificationRef = doc(collection(db, "notifications"));
-      tx.set(notificationRef, notificationRecord({
-        notificationId: notificationRef.id,
-        userId: notice.user_id,
-        eventId,
-        type: notice.type,
-        message: notice.message,
-        createdAt: sentAt
-      }));
+      tx.set(notificationRef, {
+        ...notificationRecord({
+          notificationId: notificationRef.id,
+          userId: notice.user_id,
+          eventId,
+          type: notice.type,
+          message: notice.message,
+          createdAt: sentAt
+        }),
+        link_screen: notice.link?.screen || "Safety review",
+        checked_before: notice.checked_before === true
+      });
     });
   });
   return { ok: true, status: EVENT_STATUS.SAFETY_REVIEW };

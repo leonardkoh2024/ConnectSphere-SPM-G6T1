@@ -24,7 +24,7 @@ import {
 } from "../../domain/ordinaryEventChanges";
 import { equipmentActivity, equipmentArrangements } from "../../domain/eventEquipment";
 import { REGISTERED_STATUS, capacityReductionNeedsAcknowledgement } from "../../domain/registrationWindow";
-import { attendeeChangeNotices, cancelUnassignedEvent } from "../../domain/safetyAndNotices";
+import { attendeeChangeNotices, cancelSafetyReview, cancelUnassignedEvent } from "../../domain/safetyAndNotices";
 
 // K5 / SCRUM-186 AC3 — one response for every event the caller may not open (someone
 // else's, one they held before it was reassigned, an unassigned one, or an id that does
@@ -681,6 +681,12 @@ const cancel = async (eventId, value) => {
     collection(db, "registrations"),
     where("event_id", "==", eventId)
   ));
+  const officerSnapshot = currentEvent.data().status === EVENT_STATUS.SAFETY_REVIEW
+    ? await getDocs(query(collection(db, "users"), where("role", "==", ROLES.SAFETY_OFFICER), where("is_active", "==", true)))
+    : { docs: [] };
+  const safetyOfficers = officerSnapshot.docs.map((item) => ({
+    user_id: item.id, role: item.data().role, active: item.data().is_active !== false
+  }));
   const attendees = registrationSnapshot.docs
     .filter((item) => String(item.data().status || "").toUpperCase() === "REGISTERED")
     .map((item) => ({
@@ -726,6 +732,13 @@ const cancel = async (eventId, value) => {
       message: eventCancelledMessage({ eventName, reason }),
       createdAt: cancelledAt
     }));
+    const leftReview = cancelSafetyReview({ event: { event_id: eventId, ...event }, safetyOfficers });
+    (leftReview.notifications || []).forEach((notice) => {
+      const officerRef = doc(collection(db, "notifications"));
+      tx.set(officerRef, notificationRecord({
+        notificationId: officerRef.id, userId: notice.user_id, eventId, type: notice.type, message: notice.message, createdAt: cancelledAt
+      }));
+    });
   });
   return { eventId, eventName, reason, attendees };
 };

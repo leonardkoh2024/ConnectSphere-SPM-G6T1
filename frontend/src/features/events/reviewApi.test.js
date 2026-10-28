@@ -762,6 +762,23 @@ describe('D4 cancel an assigned event', () => {
     ]));
   });
 
+  test('J9 SCRUM-192 cancelling an event in Safety Review tells each active Safety Officer', async () => {
+    storedEvent.status = 'SAFETY_REVIEW';
+    firestore.getDocs.mockImplementation(async (q) => {
+      if (q.name === 'users') return docs([['so-1', { role: 'SAFETY_OFFICER', is_active: true }], ['so-2', { role: 'SAFETY_OFFICER', is_active: false }]]);
+      return docs([]);
+    });
+
+    await reviewApi.cancel('e4', 'Venue lost');
+
+    const notices = writes.sets.filter(([, data]) => data.type === 'SAFETY_REVIEW_CANCELLED').map(([, data]) => data);
+    expect(notices).toEqual([expect.objectContaining({
+      user_id: 'so-1',
+      message: 'Partner Summit was cancelled and has left the safety review queue.'
+    })]);
+    storedEvent.status = 'PLANNING';
+  });
+
   test('D4 sends cancellation notices to registered attendees only', async () => {
     const committed = {
       eventId: 'e4',

@@ -17,6 +17,8 @@ export const NOTIFICATION_TYPE_LABEL = {
   EVENT_SUBMITTED: "Request received",
   UNASSIGNED_EVENT: "Waiting for a coordinator",
   UNASSIGNED_EVENT_CANCELLED: "Unassigned request cancelled",
+  SAFETY_REVIEW_WAITING: "Waiting for a safety check",
+  SAFETY_REVIEW_CANCELLED: "Safety review cancelled",
   COORDINATOR_ASSIGNED: "Coordinator assigned",
   EVENT_APPROVED: "Request approved",
   SAFETY_CHECK_APPROVED: "Event confirmed",
