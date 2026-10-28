@@ -562,6 +562,31 @@ service cloud.firestore {
         && clarification().status == 'OPEN';
     }
 
+    // I1 / SCRUM-147 — an organiser asks for a change to their own event, from Submitted
+    // up to Confirmed (AC1), naming at least one field and giving a reason (AC2). It is
+    // written Pending (AC4), stamped now, and carries the event's coordinator as it stands,
+    // so the request cannot claim a coordinator the event does not have. The field names
+    // repeat CHANGEABLE_FIELD_NAMES in domain/changeRequests.js. No update or delete yet:
+    // the coordinator's decision is I2's to add.
+    match /change_requests/{requestId} {
+      function changedEvent() { return get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data; }
+      allow get, list: if signedIn()
+        && (resource.data.organiser_id == request.auth.uid || canReadEvent(resource.data.event_id));
+      allow create: if hasRole('EVENT_ORGANISER')
+        && request.resource.data.change_request_id == requestId
+        && request.resource.data.organiser_id == request.auth.uid
+        && ownsEvent(request.resource.data.event_id)
+        && changedEvent().status in ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PLANNING', 'SAFETY_REVIEW', 'CONFIRMED']
+        && request.resource.data.coordinator_id == changedEvent().get('coordinator_id', null)
+        && request.resource.data.status == 'PENDING'
+        && request.resource.data.reason is string
+        && request.resource.data.reason.trim().size() > 0
+        && request.resource.data.changes is map
+        && request.resource.data.changes.size() > 0
+        && request.resource.data.changes.keys().hasOnly(['name', 'purpose', 'description', 'expected_attendance', 'event_date', 'start_time', 'end_time', 'preferred_location', 'required_layout', 'facilities', 'accessibility', 'accessibility_notes'])
+        && request.resource.data.created_at == request.time;
+    }
+
     // A7 AC4 / L3 — one record per check. Reject and Request changes need a
     // comment. No update or delete: a recorded outcome is history (L2 AC4 shows
     // earlier ones), and a fresh check after a return to Planning is a new record.

@@ -22,6 +22,11 @@ import useVenueClashCount from '../features/venues/useVenueClashCount';
 jest.mock('../lib/firebase', () => ({ auth: {}, db: {} }));
 jest.mock('firebase/auth', () => ({ signOut: jest.fn() }));
 jest.mock('../features/events/OrganiserEventDetail', () => ({ __esModule: true, default: () => null }));
+// I1 — reports whether the form is open, and for which event.
+jest.mock('../features/changeRequests/ChangeRequestsScreen', () => ({
+  __esModule: true,
+  default: (props) => `change requests ${props.creating ? 'form' : 'list'}${props.initialEventId ? ` for ${props.initialEventId}` : ''}`
+}));
 jest.mock('../features/events/EventList', () => ({ __esModule: true, default: () => null }));
 // Reports the event it was asked to open, which is all View on a notification decides (J1).
 jest.mock('../features/events/EventReviewScreen', () => ({ __esModule: true, default: (props) => (props.initialEventId ? `review of ${props.initialEventId}` : null) }));
@@ -57,7 +62,7 @@ jest.mock('../features/notifications/NotificationInbox', () => ({
   default: (props) => {
     if (!props.onViewEvent) return 'inbox';
     const { createElement, Fragment } = require('react');
-    const event = { id: 'e1', name: 'Q4 Partner Summit', status: 'REJECTED' };
+    const event = { id: 'e1', name: 'Q4 Partner Summit', status: 'PLANNING', organiser_id: 'o1' };
     const view = (label, notification) => createElement('button', { type: 'button', onClick: () => props.onViewEvent(event, notification) }, label);
     return createElement(Fragment, null,
       view('View event', { type: 'EVENT_REJECTED', event_id: 'e1' }),
@@ -457,5 +462,41 @@ describe('TC-371 the Safety Officer reaches only safety review functions', () =>
       expect(sidebarScreens(container)).not.toContain('Safety reviews');
       unmount();
     });
+  });
+});
+
+// I1 / SCRUM-147 — TC-780, TC-781 in docs/test-cases.md.
+describe('I1 the organiser reaches the change request form', () => {
+  test('TC-780 Change requests offers New change request in its header, which opens the form', async () => {
+    window.location.hash = screenHash(ROLES.ORGANISER, 'Change requests');
+    render(<Workspace user={USER} role={ROLES.ORGANISER} />);
+
+    expect(screen.getByText('change requests list')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'New change request' }));
+
+    expect(screen.getByText('change requests form')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'New change request' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New change request' })).not.toBeInTheDocument();
+  });
+
+  test("TC-781 Request a change in a submitted event's header opens the form for that event", async () => {
+    window.location.hash = screenHash(ROLES.ORGANISER, 'Notifications');
+    render(<Workspace user={{ ...USER, uid: 'o1' }} role={ROLES.ORGANISER} />);
+    await userEvent.click(screen.getByRole('button', { name: 'View event' }));
+
+    await userEvent.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Request a change' }));
+
+    expect(window.location.hash).toBe(screenHash(ROLES.ORGANISER, 'Change requests'));
+    expect(screen.getByText('change requests form for e1')).toBeInTheDocument();
+  });
+
+  test("TC-782 the header offers Request a change only on the organiser's own event", async () => {
+    window.location.hash = screenHash(ROLES.ORGANISER, 'Notifications');
+    render(<Workspace user={USER} role={ROLES.ORGANISER} />);
+    await userEvent.click(screen.getByRole('button', { name: 'View event' }));
+
+    // The stubbed inbox hands over a Planning event owned by o1, not this user.
+    expect(screen.getByRole('heading', { name: 'Event request' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Request a change' })).not.toBeInTheDocument();
   });
 });

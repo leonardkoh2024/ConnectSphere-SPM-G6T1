@@ -2051,6 +2051,24 @@ a.cs-btn-ghost:hover {
 
 .cs-inline-form { display: grid; gap: 12px; margin-top: 24px; }
 .cs-inline-form .cs-btn { justify-self: end; }
+
+/* ---------- change requests (I1) ---------- */
+
+/* Each ticked detail: its current value, then the field for the new one. */
+.cs-change-field {
+  display: grid;
+  gap: 12px;
+  padding-top: 20px;
+  border-top: 1px solid var(--cs-line);
+}
+
+/* A request reads as its event and status on one line, and what it asks for under them. */
+.cs-record.cs-change-record { grid-template-columns: minmax(0, 1fr) auto; }
+.cs-change-record > .cs-change-details {
+  grid-column: 1 / -1;
+  padding-top: 16px;
+  border-top: 1px solid var(--cs-line);
+}
 .cs-attention { margin: 24px 0 0; padding: 16px; border-radius: var(--cs-radius-l); background: var(--cs-danger-faded); color: var(--cs-danger); }
 .cs-review-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
 .cs-action-box { margin-top: 20px; }
