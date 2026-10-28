@@ -1558,7 +1558,9 @@ a.cs-btn-ghost:hover {
 
 /* H5 — My registrations in two groups: Upcoming, then past, withdrawn and cancelled. Rows
    in a group take an h3, styled as a record's h2. */
-.cs-registration-filters {
+/* B10 — the organiser's My events filters the same way (.cs-list-filters). */
+.cs-registration-filters,
+.cs-list-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
@@ -1566,8 +1568,18 @@ a.cs-btn-ghost:hover {
   margin-bottom: 24px;
 }
 
-.cs-registration-filters .cs-field { min-width: 200px; }
-.cs-registration-filters input[type="search"] { min-width: 260px; }
+.cs-registration-filters .cs-field,
+.cs-list-filters .cs-field { min-width: 200px; }
+.cs-registration-filters input[type="search"],
+.cs-list-filters input[type="search"] { min-width: 260px; }
+
+/* On a phone each filter takes the full width rather than forcing a sideways scroll. */
+@media (max-width: 560px) {
+  .cs-registration-filters .cs-field,
+  .cs-list-filters .cs-field { flex: 1 1 100%; min-width: 0; }
+  .cs-registration-filters input[type="search"],
+  .cs-list-filters input[type="search"] { min-width: 0; }
+}
 
 .cs-registration-group { display: grid; gap: 12px; }
 .cs-registration-group + .cs-registration-group { margin-top: 28px; }

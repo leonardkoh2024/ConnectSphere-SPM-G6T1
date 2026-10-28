@@ -1626,3 +1626,15 @@ The request is written to `change_requests` as **Pending** (AC4). The same commi
 | TC-781 | Request a change in a submitted event's header opens the form for that event | Organiser viewing their own E1 in Planning | Click Request a change in the page header | Change requests, form open for E1 | As expected | Pass | AC1 |
 | TC-782 | The header offers Request a change only on the organiser's own event | Another organiser's event in Planning | Open the event | No Request a change (statuses covered by TC-765) | As expected | Pass | AC1 |
 | TC-783 | The change request notice has its own inbox label | — | notificationTypeLabel('CHANGE_REQUESTED') | "Change requested" | As expected | Pass | AC4 |
+
+## B10 — Filter My events
+
+**Scope:** My events gains a **Status** filter (All events, or any one of the ten statuses in workflow order) and a **Search** on the event name or reference, case-insensitive, as My registrations has for attendees. A filter that matches nothing says so. The list is still loaded once; filtering happens in the browser.
+
+**Test cases — `EventList.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-784 | The Status filter shows only events in that status | A Submitted and a Draft event | Choose Draft, then All events | Only the draft; then both | As expected | Pass | B10 |
+| TC-785 | Search matches the name or the reference, whatever the case | Same | Search "partner", then "evt-100241" | Only Q4 Partner Summit; then only Volunteer Onboarding | As expected | Pass | B10 |
+| TC-786 | Filters that match nothing say so; every status is offered | Same | Read the Status options; choose Confirmed | All events plus the ten statuses; "No events match these filters." | As expected | Pass | B10 |
