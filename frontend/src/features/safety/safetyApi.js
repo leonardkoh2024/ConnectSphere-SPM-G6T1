@@ -22,6 +22,7 @@ import {
   validatePlanningNotes,
   validateSafetyOutcome
 } from "../../domain/safetyReview";
+import { sendForSafetyCheck } from "../../domain/safetyAndNotices";
 
 const requireUser = () => {
   if (!auth.currentUser) throw new Error("Please sign in again.");
@@ -164,6 +165,67 @@ export const recordSafetyOutcome = async ({ eventId, outcome, comment }) => {
     });
   });
   return { ok: true, reviewId: reviewRef.id, status };
+};
+
+const technicalArrangementsFrom = (request) => (request?.lines || []).map((line, index) => ({
+  arrangement_id: line.line_id || line.equipment_type || `line-${index}`,
+  label: line.label || line.equipment_type || `Technical arrangement ${index + 1}`,
+  requested: true,
+  status: ["RESERVED", "CONFIRMED"].includes(String(line.status || "").toUpperCase()) ? "CONFIRMED" : "PENDING",
+  review_status: line.review_status,
+  assigned_staff_id: line.assigned_staff_id || request.assigned_staff_id || null
+}));
+
+// L1 / SCRUM-187 — the assigned coordinator sends the event once every active
+// booking is approved and every requested technical arrangement is confirmed.
+export const sendEventForSafetyCheck = async (eventId) => {
+  const user = requireUser();
+  const eventRef = doc(db, "events", eventId);
+  const eventSnapshot = await getDoc(eventRef);
+  if (!eventSnapshot.exists()) throw new Error("Event not found.");
+  const event = { event_id: eventId, ...eventSnapshot.data() };
+  if (event.coordinator_id !== user.uid) throw new Error("Only the assigned coordinator can send this event for its safety check.");
+
+  const [bookingRows, requestSnapshot, reviewRows, officerRows] = await Promise.all([
+    byEvent("venue_bookings", eventId),
+    getDoc(doc(db, "equipment_requests", eventId)).catch(() => null),
+    byEvent("safety_reviews", eventId),
+    getDocs(query(collection(db, "users"), where("role", "==", "SAFETY_OFFICER"), where("is_active", "==", true)))
+  ]);
+  const decision = sendForSafetyCheck({
+    event,
+    bookings: bookingRows.docs.map((item) => ({ booking_id: item.id, venue_name: item.data().venue_name || item.data().booking_label, ...item.data() })),
+    technicalArrangements: technicalArrangementsFrom(requestSnapshot?.exists?.() ? requestSnapshot.data() : null),
+    safetyOfficers: officerRows.docs.map((item) => ({ user_id: item.id, role: item.data().role, active: item.data().is_active !== false })),
+    previousReviews: reviewRows.docs.map((item) => item.data())
+  });
+  if (!decision.ok) {
+    if (decision.reason === "outstanding") {
+      throw new Error(`Send for safety check is unavailable. Outstanding: ${decision.outstanding.join(", ")}.`);
+    }
+    throw new Error("Send for safety check is not available for this event.");
+  }
+
+  const sentAt = serverTimestamp();
+  await runTransaction(db, async (tx) => {
+    const current = await tx.get(eventRef);
+    if (!current.exists() || current.data().coordinator_id !== user.uid) {
+      throw new Error("Only the assigned coordinator can send this event for its safety check.");
+    }
+    tx.update(eventRef, { status: EVENT_STATUS.SAFETY_REVIEW, safety_review_requested_at: sentAt, updated_at: sentAt });
+    decision.notifications.forEach((notice) => {
+      const notificationRef = doc(collection(db, "notifications"));
+      tx.set(notificationRef, notificationRecord({
+        notificationId: notificationRef.id,
+        userId: notice.user_id,
+        eventId,
+        type: notice.type,
+        message: notice.message,
+        createdAt: sentAt
+      }));
+    });
+  });
+  return { ok: true, status: EVENT_STATUS.SAFETY_REVIEW };
 };
 
 // AC3 — the coordinator's equipment placement and crowd movement notes, kept in

@@ -473,15 +473,17 @@ describe('TC-284 notifications are only ever addressed to people related to the 
 
   test("every branch ties the recipient to the event's organiser or coordinator", () => {
     // The coordinator, organiser, safety-officer and (A6) Lead branches, in order,
-    // then (J2) the organiser's own submission notice, then (J4) Venue Staff for their
-    // own venue. J2 added the fifth of these six, so the count was 5 before it.
+    // then (L1) the Safety Officer waiting notice, then (J2) the organiser's own
+    // submission notice, then (J4) Venue Staff for their own venue.
     const branches = ordinary().split(/\|\| \(/);
-    expect(branches).toHaveLength(6);
+    expect(branches).toHaveLength(7);
     branches.slice(0, 4).forEach((branch) => {
       expect(branch).toMatch(/request\.resource\.data\.user_id (==|in)/);
       expect(branch).toMatch(/organiser_id|coordinator_id/);
     });
-    expect(branches[5]).toMatch(/venue_staff\/.*\.data\.user_id == request\.resource\.data\.user_id/);
+    expect(branches[4]).toContain("request.resource.data.type == 'SAFETY_REVIEW_WAITING'");
+    expect(branches[4]).toContain("data.role == 'SAFETY_OFFICER'");
+    expect(branches[6]).toMatch(/venue_staff\/.*\.data\.user_id == request\.resource\.data\.user_id/);
   });
 
   // J6 / SCRUM-155 AC1 — TC-313. A booking's outcome goes only to the coordinator
@@ -744,6 +746,20 @@ describe('A7 the Safety Officer reaches only events under review, and writes onl
       "affectedKeys().hasOnly(['status', 'last_safety_review_id', 'updated_at'])"
     ].forEach((clause) => expect(update).toContain(clause));
     expect(matchBlock('events').match(/allow update: if (.*?);/)[1]).toContain('safetyOutcomeUpdate()');
+  });
+
+  test('L1 SCRUM-187 the assigned coordinator may move Approved or Planning to Safety Review', () => {
+    const update = functionBody('sendForSafetyCheckUpdate');
+    [
+      "hasRole('EVENT_COORDINATOR')",
+      'resource.data.coordinator_id == request.auth.uid',
+      "resource.data.status in ['APPROVED', 'PLANNING']",
+      "request.resource.data.status == 'SAFETY_REVIEW'",
+      'request.resource.data.safety_review_requested_at == request.time',
+      "affectedKeys().hasOnly(['status', 'safety_review_requested_at', 'updated_at'])"
+    ].forEach((clause) => expect(update).toContain(clause));
+    expect(matchBlock('events').match(/allow update: if (.*?);/)[1]).toContain('sendForSafetyCheckUpdate()');
+    expect(matchBlock('notifications')).toContain("request.resource.data.type == 'SAFETY_REVIEW_WAITING'");
   });
 
   // AC6 — every other write is refused to the Safety Officer server-side: only

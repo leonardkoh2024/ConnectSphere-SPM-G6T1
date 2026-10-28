@@ -2,7 +2,7 @@
 // the coordinator's safety planning notes. TC-356 to TC-361 and TC-381 in
 // docs/test-cases.md.
 
-import { listSafetyQueue, recordSafetyOutcome, safetyReviewDetail, savePlanningNotes } from './safetyApi';
+import { listSafetyQueue, recordSafetyOutcome, safetyReviewDetail, savePlanningNotes, sendEventForSafetyCheck } from './safetyApi';
 
 const mockTransactionUpdate = jest.fn();
 const mockTransactionSet = jest.fn();
@@ -272,6 +272,44 @@ test('TC-381 approving an event with a booking not yet approved is refused and n
   await expect(recordSafetyOutcome({ eventId: 'e1', outcome: 'APPROVE' }))
     .rejects.toThrow('Every active venue booking must be approved before the event can be confirmed. Not yet approved: Breakout 1.');
   expect(mockTransactionSet).not.toHaveBeenCalled();
+  expect(mockTransactionUpdate).not.toHaveBeenCalled();
+});
+
+test('L1 SCRUM-187 sending a ready event moves it to Safety Review and notifies active Safety Officers', async () => {
+  mockAuth.currentUser = { uid: 'COORD-1' };
+  mockGetDoc.mockImplementation((reference) => {
+    if (reference.path === 'events/e1') return Promise.resolve(snapshot('e1', { ...EVENT, status: 'PLANNING', coordinator_id: 'COORD-1' }));
+    return Promise.resolve(snapshot(reference.id, undefined));
+  });
+  mockGetDocs.mockImplementation((reference) => {
+    if (reference.path === 'venue_bookings') return Promise.resolve(rows([['VB-1', { event_id: 'e1', venue_id: 'V-1', venue_name: 'Harbour Hall', status: 'APPROVED' }]]));
+    if (reference.path === 'users') return Promise.resolve(rows([
+      ['SO-1', { role: 'SAFETY_OFFICER', is_active: true }],
+      ['SO-2', { role: 'SAFETY_OFFICER', is_active: false }]
+    ]));
+    return Promise.resolve(rows([]));
+  });
+  mockTransactionDocuments.set('events/e1', snapshot('e1', { ...EVENT, status: 'PLANNING', coordinator_id: 'COORD-1' }));
+
+  await expect(sendEventForSafetyCheck('e1')).resolves.toEqual({ ok: true, status: 'SAFETY_REVIEW' });
+
+  expect(mockTransactionUpdate).toHaveBeenCalledWith({ path: 'events/e1', id: 'e1' }, {
+    status: 'SAFETY_REVIEW', safety_review_requested_at: 'SERVER_TIMESTAMP', updated_at: 'SERVER_TIMESTAMP'
+  });
+  expect(written('notifications').map(({ data }) => data.user_id)).toEqual(['SO-1']);
+  expect(written('notifications')[0].data.type).toBe('SAFETY_REVIEW_WAITING');
+});
+
+test('L1 SCRUM-187 a pending booking is named and nothing is written', async () => {
+  mockAuth.currentUser = { uid: 'COORD-1' };
+  mockGetDoc.mockImplementation((reference) => Promise.resolve(snapshot(reference.id, reference.path === 'events/e1'
+    ? { ...EVENT, status: 'PLANNING', coordinator_id: 'COORD-1' }
+    : undefined)));
+  mockGetDocs.mockImplementation((reference) => Promise.resolve(rows(reference.path === 'venue_bookings'
+    ? [['VB-2', { event_id: 'e1', venue_name: 'Breakout', status: 'PENDING' }]]
+    : [])));
+
+  await expect(sendEventForSafetyCheck('e1')).rejects.toThrow(/Outstanding: Breakout/);
   expect(mockTransactionUpdate).not.toHaveBeenCalled();
 });
 
