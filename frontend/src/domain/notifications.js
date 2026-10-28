@@ -41,7 +41,15 @@ export const NOTIFICATION_TYPE_LABEL = {
   ON_SITE_SUPPORT_CHANGED: "On-site support changed",
   EQUIPMENT_UNABLE_TO_FULFIL: "Equipment unavailable",
   // H7 / SCRUM-145 — a waitlisted attendee is offered a freed place.
-  WAITLIST_PLACE_OFFERED: "Place offered"
+  WAITLIST_PLACE_OFFERED: "Place offered",
+  // J7 / SCRUM-156 — what an attendee is told about an event they registered for or wait on,
+  // stored under the change's kind (attendeeChangeNotices in domain/safetyAndNotices.js).
+  REGISTRATION_CONFIRMED: "Registration confirmed",
+  DATE: "Date changed",
+  TIME: "Time changed",
+  VENUE: "Venue changed",
+  CANCELLED: "Event cancelled",
+  PLACE_OPENED: "Place opened"
 };
 
 export const notificationTypeLabel = (type) => NOTIFICATION_TYPE_LABEL[type] || "Update";
