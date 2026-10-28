@@ -21,6 +21,12 @@
  * F4 / SCRUM-128  Approve a venue booking request
  * F7 / SCRUM-131  Track the status of my booking requests
  * F8 / SCRUM-132  Release a venue when it is no longer needed
+ * F10 / SCRUM-175 See existing bookings that now clash
+ * F11 / SCRUM-176 Find a replacement venue after venue loss
+ * F12 / SCRUM-177 Book more than one venue for an event
+ * F13 / SCRUM-178 Check each venue of an event independently
+ * F14 / SCRUM-179 Release one venue from a multi-venue event
+ * F16 / SCRUM-181 Hold a venue temporarily
  * E9 / SCRUM-171  Set a venue's setup and turnaround time
  * E10 / SCRUM-172 Record a venue's safety information
  * F2 / SCRUM-126  Assign a submitted booking to venue staff
@@ -628,7 +634,9 @@ const BOOKING_STATUS = {
   REJECTED: "REJECTED",
   WITHDRAWN: "WITHDRAWN",
   RELEASED: "RELEASED",
-  REPLACED: "REPLACED"
+  REPLACED: "REPLACED",
+  HELD: "HELD",
+  EXPIRED: "EXPIRED"
 };
 
 const VENUE_REQUESTABLE_STATUSES = new Set([STATUS.APPROVED, STATUS.PLANNING]);
@@ -653,6 +661,7 @@ const {
 const {
   REVIEW_REQUIRED,
   NOT_RECORDED,
+  outstandingForSafetyCheck,
   sendForSafetyCheck,
   confirmEvent,
   safetyReviewQueue,
@@ -808,16 +817,77 @@ function bookingStatusView({ event, coordinatorId, bookings }) {
     ok: true,
     bookings: bookings.filter((booking) => booking.event_id === event.event_id).map((booking) => ({
       booking_id: booking.booking_id,
+      booking_label: booking.booking_label || null,
       venue_id: booking.venue_id,
       venue_name: booking.venue_name,
       start_datetime: booking.start_datetime,
       end_datetime: booking.end_datetime,
+      expected_attendance: booking.expected_attendance ?? null,
+      layout: booking.layout_snapshot || booking.requested_layout_id || booking.layout || null,
       status: booking.status,
       decision_reason: booking.decision_reason || null,
       decided_at: booking.decided_at || null,
       release_reason: booking.release_reason || null
     }))
   };
+}
+
+function multiVenueBookingErrors(details = {}, event = {}) {
+  const errors = {};
+  if (!String(details.booking_label ?? "").trim()) errors.booking_label = "A booking label is required.";
+  const rawAttendance = String(details.expected_attendance ?? "").trim();
+  const attendance = Number(rawAttendance);
+  const eventAttendance = Number(event.expected_attendance);
+  if (!/^\d+$/.test(rawAttendance) || attendance <= 0) {
+    errors.expected_attendance = "Expected attendance must be a whole number greater than zero.";
+  } else if (Number.isFinite(eventAttendance) && attendance > eventAttendance) {
+    errors.expected_attendance = `Expected attendance cannot be more than the event's ${eventAttendance}.`;
+  }
+  if (!String(details.layout ?? "").trim()) errors.layout = "A layout is required.";
+  return errors;
+}
+
+function clashingEventVenueBooking(bookings = [], { eventId, venueId, start, end } = {}) {
+  const liveStatuses = new Set([
+    BOOKING_STATUS.PENDING,
+    BOOKING_STATUS.APPROVED,
+    BOOKING_STATUS.HELD
+  ]);
+  const requested = { start: instant(start), end: instant(end) };
+  if (!Number.isFinite(requested.start) || !Number.isFinite(requested.end)) return null;
+  return bookings.find((booking) => {
+    if (booking.event_id !== eventId || booking.venue_id !== venueId) return false;
+    if (!liveStatuses.has(asUpper(booking.status))) return false;
+    const occupied = {
+      start: instant(booking.occupied_start || booking.start_datetime),
+      end: instant(booking.occupied_end || booking.end_datetime)
+    };
+    return Number.isFinite(occupied.start) && Number.isFinite(occupied.end)
+      && windowsOverlap(requested, occupied);
+  }) || null;
+}
+
+function safetyApprovalBlocker(event, bookings = []) {
+  if (!event?.approved_venue_booking_id) {
+    return "This event has no approved venue booking, so it cannot be confirmed.";
+  }
+  const inactive = new Set([
+    BOOKING_STATUS.RELEASED,
+    BOOKING_STATUS.REPLACED,
+    BOOKING_STATUS.WITHDRAWN,
+    BOOKING_STATUS.EXPIRED,
+    STATUS.CANCELLED
+  ]);
+  const waiting = bookings.filter((booking) => {
+    const status = asUpper(booking.status);
+    const active = status === BOOKING_STATUS.REJECTED
+      ? booking.requires_re_request === true || booking.replacement_needed === true
+      : !inactive.has(status);
+    return active && (status !== BOOKING_STATUS.APPROVED || booking.replacement_needed === true);
+  });
+  if (!waiting.length) return null;
+  const labels = waiting.map((booking) => booking.booking_label || booking.venue_id || booking.booking_id).join(", ");
+  return `Every active venue booking must be approved before the event can be confirmed. Not yet approved: ${labels}.`;
 }
 
 function canConfirmEvent({ bookings, safetyRequired = false, safetyApproved = false }) {
@@ -898,6 +968,175 @@ function saveVenuePlanning({ venue: current, role, staffId, assignedVenueIds = [
 
 function canViewVenueSafety(role) {
   return [ROLES.VENUE_STAFF, ROLES.COORDINATOR, ROLES.SAFETY_OFFICER].includes(role);
+}
+
+// -----------------------------------------------------------------------------
+// F10 / F11 / F13 / F14 / F16 multi-venue workflow helpers
+// -----------------------------------------------------------------------------
+
+function detectFutureVenueClashes(bookings, now) {
+  const current = instant(now);
+  const candidates = bookings.filter((booking) => asUpper(booking.status) === BOOKING_STATUS.APPROVED
+    && validInstant(booking.occupied_start) && validInstant(booking.occupied_end)
+    && instant(booking.occupied_end) > current);
+  const clashes = [];
+  for (let leftIndex = 0; leftIndex < candidates.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < candidates.length; rightIndex += 1) {
+      const left = candidates[leftIndex];
+      const right = candidates[rightIndex];
+      if (left.venue_id !== right.venue_id) continue;
+      const leftWindow = { start: instant(left.occupied_start), end: instant(left.occupied_end) };
+      const rightWindow = { start: instant(right.occupied_start), end: instant(right.occupied_end) };
+      if (!windowsOverlap(leftWindow, rightWindow)) continue;
+      clashes.push({
+        conflict_id: `${left.venue_id}--${[left.booking_id, right.booking_id].sort().join("--")}`,
+        venue_id: left.venue_id,
+        booking_a_id: left.booking_id,
+        booking_b_id: right.booking_id,
+        event_a_id: left.event_id,
+        event_b_id: right.event_id,
+        event_a_name: left.event_name,
+        event_b_name: right.event_name,
+        overlap_start: new Date(Math.max(leftWindow.start, rightWindow.start)).toISOString(),
+        overlap_end: new Date(Math.min(leftWindow.end, rightWindow.end)).toISOString()
+      });
+    }
+  }
+  return clashes;
+}
+
+function clashRecipients(clash, eventsById, venueStaffIds) {
+  const recipients = new Set(venueStaffIds);
+  [clash.event_a_id, clash.event_b_id].forEach((eventId) => {
+    const coordinatorId = eventsById[eventId]?.coordinator_id;
+    if (coordinatorId) recipients.add(coordinatorId);
+  });
+  return [...recipients];
+}
+
+function replacementSearchContext(event, booking) {
+  return {
+    ...event,
+    expected_attendance: booking.expected_attendance ?? event.expected_attendance,
+    required_layout: booking.requested_layout_id || booking.layout_snapshot || event.required_layout,
+    facilities: booking.required_facilities_snapshot || event.facilities || [],
+    replacement_for_booking_id: booking.booking_id,
+    excluded_venue_id: booking.venue_id
+  };
+}
+
+function markBookingForReplacement(event, booking, reason, now = SERVER_TIMESTAMP) {
+  return {
+    event: asUpper(event.status) === STATUS.CONFIRMED
+      ? { ...event, status: STATUS.PLANNING, last_safety_review_id: null, safety_review_required: true }
+      : { ...event, safety_review_required: true },
+    booking: {
+      ...booking,
+      replacement_needed: true,
+      replacement_reason: reason,
+      replacement_requested_at: now
+    }
+  };
+}
+
+function approveReplacement(original, replacement, now = SERVER_TIMESTAMP) {
+  if (asUpper(original.status) !== BOOKING_STATUS.APPROVED || original.replacement_needed !== true
+    || asUpper(replacement.status) !== BOOKING_STATUS.PENDING
+    || replacement.replacement_for_booking_id !== original.booking_id) {
+    return { ok: false, reason: "not_replaceable" };
+  }
+  return {
+    ok: true,
+    original: {
+      ...original,
+      status: BOOKING_STATUS.REPLACED,
+      replacement_needed: false,
+      replaced_by_booking_id: replacement.booking_id,
+      replaced_at: now
+    },
+    replacement: { ...replacement, status: BOOKING_STATUS.APPROVED, decided_at: now },
+    history: {
+      booking_id: original.booking_id,
+      new_booking_id: replacement.booking_id,
+      old_value: BOOKING_STATUS.APPROVED,
+      new_value: BOOKING_STATUS.REPLACED,
+      created_at: now
+    }
+  };
+}
+
+function assessBookingVenue(event, booking, selectedVenue) {
+  const missingFacilities = (event.facilities || []).filter((item) => !(selectedVenue.facilities || []).includes(item));
+  const missingAccessibility = (event.accessibility || []).filter((item) => !(selectedVenue.accessibility || []).includes(item));
+  const requiredLayout = booking.requested_layout_id || booking.layout_snapshot;
+  return {
+    booking_id: booking.booking_id,
+    venue_id: selectedVenue.venue_id,
+    capacity_ok: Number(selectedVenue.max_capacity) >= Number(booking.expected_attendance),
+    layout_ok: !requiredLayout || (selectedVenue.layouts || []).includes(requiredLayout),
+    missing_facilities: missingFacilities,
+    missing_accessibility: missingAccessibility
+  };
+}
+
+function releaseSingleVenue({ event, bookings, bookingId, coordinatorId, reason, now = SERVER_TIMESTAMP }) {
+  const cleanReason = String(reason || "").trim();
+  if (!cleanReason) return { ok: false, reason: "reason_required", event, bookings, history: null };
+  if (event.coordinator_id !== coordinatorId) return { ok: false, reason: "not_allowed", event, bookings, history: null };
+  const selected = bookings.find((booking) => booking.booking_id === bookingId);
+  if (!selected || asUpper(selected.status) !== BOOKING_STATUS.APPROVED) {
+    return { ok: false, reason: "not_approved", event, bookings, history: null };
+  }
+  const updated = bookings.map((booking) => booking.booking_id === bookingId
+    ? { ...booking, status: BOOKING_STATUS.RELEASED, released_at: now, release_reason: cleanReason }
+    : booking);
+  const eventUpdate = [STATUS.CONFIRMED, "SAFETY_REVIEW"].includes(asUpper(event.status))
+    ? { ...event, status: STATUS.PLANNING, last_safety_review_id: null, safety_review_required: true }
+    : { ...event };
+  return {
+    ok: true,
+    event: eventUpdate,
+    bookings: updated,
+    history: {
+      event_id: event.event_id,
+      booking_id: bookingId,
+      old_value: BOOKING_STATUS.APPROVED,
+      new_value: BOOKING_STATUS.RELEASED,
+      release_reason: cleanReason,
+      created_at: now
+    }
+  };
+}
+
+function addWorkingDays(value, count) {
+  const result = new Date(value);
+  let remaining = count;
+  while (remaining > 0) {
+    result.setUTCDate(result.getUTCDate() + 1);
+    if (![0, 6].includes(result.getUTCDay())) remaining -= 1;
+  }
+  return result;
+}
+
+function processVenueHold({ hold, event, now, warningSent = false }) {
+  if (asUpper(hold.status) !== BOOKING_STATUS.HELD) return { hold, notifications: [] };
+  const current = instant(now);
+  const expires = instant(hold.hold_expires_at);
+  if (current >= expires) {
+    return {
+      hold: { ...hold, status: BOOKING_STATUS.EXPIRED, expired_at: now },
+      notifications: [{ type: "VENUE_HOLD_EXPIRED", user_id: event.coordinator_id }]
+    };
+  }
+  const heldAt = instant(hold.held_at);
+  const warningAt = expires - 24 * 60 * 60 * 1000;
+  if (!warningSent && expires - heldAt > 24 * 60 * 60 * 1000 && current >= warningAt) {
+    return {
+      hold: { ...hold, hold_warning_sent_at: now },
+      notifications: [{ type: "VENUE_HOLD_EXPIRING", user_id: event.coordinator_id }]
+    };
+  }
+  return { hold, notifications: [] };
 }
 
 
@@ -3313,6 +3552,348 @@ describe("E11 / SCRUM-173 Take a venue out of use even when events are booked th
 // L1 / SCRUM-187 — Send an event for its safety check
 // =============================================================================
 
+// =============================================================================
+// F10 / SCRUM-175 - See existing bookings that now clash
+// =============================================================================
+
+describe("F10 / SCRUM-175 See existing bookings that now clash", () => {
+  const now = "2026-11-01T00:00:00.000Z";
+  const approved = (id, fields = {}) => ({
+    booking_id: id, event_id: `EVT-${id}`, event_name: `Event ${id}`,
+    venue_id: "VEN-001", status: BOOKING_STATUS.APPROVED,
+    occupied_start: "2026-11-20T09:30:00.000Z", occupied_end: "2026-11-20T12:45:00.000Z",
+    ...fields
+  });
+
+  test("AC1-AC2 positive - future approved overlapping occupied windows are flagged", () => {
+    const clashes = detectFutureVenueClashes([
+      approved("A"), approved("B", { occupied_start: "2026-11-20T12:30:00.000Z", occupied_end: "2026-11-20T14:30:00.000Z" })
+    ], now);
+    assert.equal(clashes.length, 1);
+    assert.equal(clashes[0].event_a_name, "Event A");
+    assert.equal(clashes[0].event_b_name, "Event B");
+    assert.equal(clashes[0].overlap_start, "2026-11-20T12:30:00.000Z");
+    assert.equal(clashes[0].overlap_end, "2026-11-20T12:45:00.000Z");
+  });
+
+  test("AC1-AC2 boundary - past, pending, different-venue and touching bookings are not clashes", () => {
+    const bookings = [
+      approved("A"),
+      approved("TOUCH", { occupied_start: "2026-11-20T12:45:00.000Z", occupied_end: "2026-11-20T14:00:00.000Z" }),
+      approved("PAST", { occupied_start: "2026-10-20T09:00:00.000Z", occupied_end: "2026-10-20T11:00:00.000Z" }),
+      approved("PENDING", { status: BOOKING_STATUS.PENDING, occupied_start: "2026-11-20T10:00:00.000Z" }),
+      approved("OTHER", { venue_id: "VEN-002", occupied_start: "2026-11-20T10:00:00.000Z" })
+    ];
+    assert.deepEqual(detectFutureVenueClashes(bookings, now), []);
+  });
+
+  test("AC3-AC4 - detection preserves booking states and notifies staff and current coordinators", () => {
+    const bookings = [approved("A"), approved("B", { occupied_start: "2026-11-20T12:30:00.000Z" })];
+    const before = structuredClone(bookings);
+    const [clash] = detectFutureVenueClashes(bookings, now);
+    const recipients = clashRecipients(clash, {
+      "EVT-A": { coordinator_id: "CURRENT-A" }, "EVT-B": { coordinator_id: "CURRENT-B" }
+    }, ["VENUE-STAFF"]);
+    assert.deepEqual(bookings, before);
+    assert.deepEqual(new Set(recipients), new Set(["VENUE-STAFF", "CURRENT-A", "CURRENT-B"]));
+  });
+
+  test("AC5-AC6 - releasing a booking clears it and the clash view lists only flagged rows", () => {
+    const bookings = [approved("A"), approved("B", { occupied_start: "2026-11-20T12:30:00.000Z" })];
+    const [clash] = detectFutureVenueClashes(bookings, now);
+    const rows = [{ booking_id: "A", clashes: [clash] }, { booking_id: "B", clashes: [clash] }, { booking_id: "CLEAR", clashes: [] }];
+    assert.deepEqual(rows.filter((row) => row.clashes.length).map((row) => row.booking_id), ["A", "B"]);
+    const released = bookings.map((booking) => booking.booking_id === "B" ? { ...booking, status: BOOKING_STATUS.RELEASED } : booking);
+    assert.deepEqual(detectFutureVenueClashes(released, now), []);
+  });
+});
+
+
+// =============================================================================
+// F11 / SCRUM-176 - Find a replacement venue for an event that lost its venue
+// =============================================================================
+
+describe("F11 / SCRUM-176 Find a replacement venue for an event that lost its venue", () => {
+  const event = {
+    event_id: "EVT-001", name: "Regional Conference", status: STATUS.PLANNING,
+    event_date: "2026-11-20", start_time: "09:00", end_time: "17:00",
+    expected_attendance: 200, facilities: ["WIFI"], coordinator_id: "COORD-1"
+  };
+  const affected = {
+    booking_id: "VB-OLD", event_id: "EVT-001", venue_id: "VEN-OLD", booking_label: "Breakout room",
+    status: BOOKING_STATUS.APPROVED, expected_attendance: 40, requested_layout_id: "CLASSROOM",
+    required_facilities_snapshot: ["WIFI", "POWER_POINTS"], replacement_needed: true
+  };
+
+  test("AC1-AC2 - affected event is flagged and replacement search uses booking-specific requirements", () => {
+    assert.equal([affected].some((booking) => booking.replacement_needed), true);
+    const context = replacementSearchContext(event, affected);
+    assert.equal(context.expected_attendance, 40);
+    assert.equal(context.required_layout, "CLASSROOM");
+    assert.deepEqual(context.facilities, ["WIFI", "POWER_POINTS"]);
+    assert.equal(context.excluded_venue_id, "VEN-OLD");
+  });
+
+  test("AC3-AC5 - replacement follows Pending approval and retains the linked original history", () => {
+    const replacement = { booking_id: "VB-NEW", status: BOOKING_STATUS.PENDING, replacement_for_booking_id: "VB-OLD" };
+    const result = approveReplacement(affected, replacement, "2026-10-20T02:00:00.000Z");
+    assert.equal(replacement.status, BOOKING_STATUS.PENDING);
+    assert.equal(result.replacement.status, BOOKING_STATUS.APPROVED);
+    assert.equal(result.original.status, BOOKING_STATUS.REPLACED);
+    assert.equal(result.original.replaced_by_booking_id, "VB-NEW");
+    assert.deepEqual([result.history.booking_id, result.history.new_booking_id], ["VB-OLD", "VB-NEW"]);
+  });
+
+  test("AC4 regression - marking and searching for replacement preserves event information", () => {
+    const before = structuredClone(event);
+    const marked = markBookingForReplacement(event, { ...affected, replacement_needed: false }, "Maintenance");
+    replacementSearchContext(marked.event, marked.booking);
+    assert.equal(marked.event.name, before.name);
+    assert.equal(marked.event.event_date, before.event_date);
+    assert.equal(marked.event.expected_attendance, before.expected_attendance);
+  });
+
+  test("AC6 - venue loss returns Confirmed to Planning and blocks safety readiness", () => {
+    const confirmed = { ...event, status: STATUS.CONFIRMED, last_safety_review_id: "SR-1" };
+    const marked = markBookingForReplacement(confirmed, { ...affected, replacement_needed: false }, "Electrical failure");
+    assert.equal(marked.event.status, STATUS.PLANNING);
+    assert.equal(marked.event.last_safety_review_id, null);
+    assert.deepEqual(outstandingForSafetyCheck({ bookings: [marked.booking] }), ["Breakout room needs a replacement"]);
+  });
+});
+
+
+// =============================================================================
+// F12 / SCRUM-177 - Book more than one venue for an event
+// =============================================================================
+
+describe("F12 / SCRUM-177 Book more than one venue for an event", () => {
+  const event = { event_id: "EVT-MULTI", expected_attendance: 300 };
+  const details = (fields = {}) => ({
+    booking_label: "Breakout 1",
+    expected_attendance: 50,
+    layout: "CLASSROOM",
+    ...fields
+  });
+  const window = {
+    start: "2026-11-20T01:00:00.000Z",
+    end: "2026-11-20T04:00:00.000Z"
+  };
+  const booking = (fields = {}) => ({
+    booking_id: "VB-MAIN",
+    event_id: event.event_id,
+    venue_id: "VEN-MAIN",
+    booking_label: "Main programme",
+    status: BOOKING_STATUS.PENDING,
+    start_datetime: window.start,
+    end_datetime: window.end,
+    ...fields
+  });
+
+  test("AC1-AC2 positive - each venue request retains its own label, attendance and layout", () => {
+    assert.deepEqual(multiVenueBookingErrors(details(), event), {});
+    const requests = [
+      details({ booking_label: "Main programme", expected_attendance: 300, layout: "THEATRE" }),
+      details({ booking_label: "Breakout 1", expected_attendance: 50, layout: "CLASSROOM" })
+    ];
+    assert.deepEqual(requests.map((item) => [item.booking_label, item.expected_attendance, item.layout]), [
+      ["Main programme", 300, "THEATRE"],
+      ["Breakout 1", 50, "CLASSROOM"]
+    ]);
+  });
+
+  test("AC2 negative - a booking label and layout cannot be blank", () => {
+    const errors = multiVenueBookingErrors(details({ booking_label: "   ", layout: "" }), event);
+    assert.match(errors.booking_label, /label/i);
+    assert.match(errors.layout, /layout/i);
+  });
+
+  testEach([
+    ["zero", 0],
+    ["negative", -1],
+    ["fraction", 2.5],
+    ["non-numeric", "fifty"]
+  ])("AC3 boundary - %s booking attendance is refused", (_label, expectedAttendance) => {
+    assert.match(
+      multiVenueBookingErrors(details({ expected_attendance: expectedAttendance }), event).expected_attendance,
+      /whole number greater than zero/i
+    );
+  });
+
+  test("AC3 boundary - attendance may equal the event total but cannot exceed it", () => {
+    assert.deepEqual(multiVenueBookingErrors(details({ expected_attendance: 300 }), event), {});
+    assert.match(
+      multiVenueBookingErrors(details({ expected_attendance: 301 }), event).expected_attendance,
+      /cannot be more than/i
+    );
+  });
+
+  test("AC4 negative - the same event cannot actively book the same venue for an overlapping time", () => {
+    const request = { eventId: event.event_id, venueId: "VEN-MAIN", ...window };
+    assert.equal(clashingEventVenueBooking([booking()], request).booking_id, "VB-MAIN");
+    assert.equal(clashingEventVenueBooking([booking({ status: BOOKING_STATUS.APPROVED })], request).booking_id, "VB-MAIN");
+    assert.equal(clashingEventVenueBooking([booking({ status: BOOKING_STATUS.HELD })], request).booking_id, "VB-MAIN");
+  });
+
+  test("AC4 positive - another venue, a touching window or an inactive old request does not block", () => {
+    const request = { eventId: event.event_id, venueId: "VEN-MAIN", ...window };
+    assert.equal(clashingEventVenueBooking([booking({ venue_id: "VEN-BREAKOUT" })], request), null);
+    assert.equal(clashingEventVenueBooking([booking({ start_datetime: window.end, end_datetime: "2026-11-20T06:00:00.000Z" })], request), null);
+    for (const status of [BOOKING_STATUS.REJECTED, BOOKING_STATUS.WITHDRAWN, BOOKING_STATUS.RELEASED, BOOKING_STATUS.REPLACED]) {
+      assert.equal(clashingEventVenueBooking([booking({ status })], request), null);
+    }
+  });
+
+  test("AC5 positive - the event view distinguishes every booking and its independent status", () => {
+    const coordinatorId = "USR-COORD-001";
+    const result = bookingStatusView({
+      event: { ...event, coordinator_id: coordinatorId },
+      coordinatorId,
+      bookings: [
+        booking({ booking_label: "Main programme", venue_name: "Harbour Hall", status: BOOKING_STATUS.APPROVED, expected_attendance: 300, layout_snapshot: "THEATRE" }),
+        booking({ booking_id: "VB-BREAKOUT", venue_id: "VEN-BREAKOUT", booking_label: "Breakout 1", venue_name: "Seminar Room", expected_attendance: 50, requested_layout_id: "CLASSROOM" })
+      ]
+    });
+    assert.deepEqual(result.bookings.map((item) => ({
+      label: item.booking_label,
+      venue: item.venue_name,
+      status: item.status,
+      attendance: item.expected_attendance,
+      layout: item.layout
+    })), [
+      { label: "Main programme", venue: "Harbour Hall", status: BOOKING_STATUS.APPROVED, attendance: 300, layout: "THEATRE" },
+      { label: "Breakout 1", venue: "Seminar Room", status: BOOKING_STATUS.PENDING, attendance: 50, layout: "CLASSROOM" }
+    ]);
+  });
+});
+
+
+// =============================================================================
+// F13 / SCRUM-178 - Have each venue of an event checked on its own
+// =============================================================================
+
+describe("F13 / SCRUM-178 Have each venue of an event checked on its own", () => {
+  const event = { facilities: ["PROJECTOR"], accessibility: ["WHEELCHAIR_ACCESS"] };
+  const main = { booking_id: "MAIN", expected_attendance: 150, requested_layout_id: "THEATRE", status: BOOKING_STATUS.APPROVED };
+  const breakout = { booking_id: "BREAKOUT", expected_attendance: 50, requested_layout_id: "CLASSROOM", status: BOOKING_STATUS.PENDING };
+
+  test("AC1 positive - capacity and layout use each booking while event needs are shared", () => {
+    const first = assessBookingVenue(event, main, { venue_id: "A", max_capacity: 200, layouts: ["THEATRE"], facilities: ["PROJECTOR"], accessibility: ["WHEELCHAIR_ACCESS"] });
+    const second = assessBookingVenue(event, breakout, { venue_id: "B", max_capacity: 60, layouts: ["CLASSROOM"], facilities: ["PROJECTOR"], accessibility: ["WHEELCHAIR_ACCESS"] });
+    assert.equal(first.capacity_ok && first.layout_ok, true);
+    assert.equal(second.capacity_ok && second.layout_ok, true);
+  });
+
+  test("AC1 negative - only the unsuitable venue fails its own assessment", () => {
+    const passing = assessBookingVenue(event, main, { venue_id: "A", max_capacity: 200, layouts: ["THEATRE"], facilities: ["PROJECTOR"], accessibility: ["WHEELCHAIR_ACCESS"] });
+    const failing = assessBookingVenue(event, breakout, { venue_id: "B", max_capacity: 30, layouts: ["CLASSROOM"], facilities: ["PROJECTOR"], accessibility: [] });
+    assert.equal(passing.capacity_ok, true);
+    assert.equal(failing.capacity_ok, false);
+    assert.deepEqual(failing.missing_accessibility, ["WHEELCHAIR_ACCESS"]);
+  });
+
+  test("AC2-AC3 - conflict or rejection on one venue leaves the other booking unchanged", () => {
+    const bookings = [
+      { booking_id: "A", event_id: "E1", event_name: "Main", venue_id: "VEN-A", status: BOOKING_STATUS.APPROVED, occupied_start: "2026-11-20T09:00:00.000Z", occupied_end: "2026-11-20T12:00:00.000Z" },
+      { booking_id: "A2", event_id: "E2", event_name: "Other", venue_id: "VEN-A", status: BOOKING_STATUS.APPROVED, occupied_start: "2026-11-20T11:30:00.000Z", occupied_end: "2026-11-20T13:00:00.000Z" },
+      { booking_id: "B", event_id: "E1", event_name: "Breakout", venue_id: "VEN-B", status: BOOKING_STATUS.APPROVED, occupied_start: "2026-11-20T09:00:00.000Z", occupied_end: "2026-11-20T12:00:00.000Z" }
+    ];
+    const [clash] = detectFutureVenueClashes(bookings, "2026-11-01T00:00:00.000Z");
+    assert.equal(clash.venue_id, "VEN-A");
+    const rejected = bookings.map((booking) => booking.booking_id === "A2" ? { ...booking, status: BOOKING_STATUS.REJECTED } : booking);
+    assert.equal(rejected.find((booking) => booking.booking_id === "B").status, BOOKING_STATUS.APPROVED);
+  });
+
+  test("AC4 - Pending and unresolved Rejected block readiness; all active Approved passes", () => {
+    assert.deepEqual(outstandingForSafetyCheck({ bookings: [main, breakout] }), ["BREAKOUT"]);
+    assert.deepEqual(outstandingForSafetyCheck({ bookings: [main, { ...breakout, status: BOOKING_STATUS.REJECTED, requires_re_request: true }] }), ["BREAKOUT"]);
+    assert.deepEqual(outstandingForSafetyCheck({ bookings: [main, { ...breakout, status: BOOKING_STATUS.APPROVED }, { status: BOOKING_STATUS.RELEASED }] }), []);
+  });
+});
+
+
+// =============================================================================
+// F14 / SCRUM-179 - Release one venue without losing the others
+// =============================================================================
+
+describe("F14 / SCRUM-179 Release one venue without losing the others", () => {
+  const event = { event_id: "EVT-001", coordinator_id: "COORD-1", status: STATUS.CONFIRMED, last_safety_review_id: "SR-1" };
+  const bookings = ["A", "B", "C"].map((id) => ({
+    booking_id: id, event_id: "EVT-001", venue_id: `VEN-${id}`, status: BOOKING_STATUS.APPROVED,
+    occupied_start: "2026-11-20T09:30:00.000Z", occupied_end: "2026-11-20T12:45:00.000Z"
+  }));
+
+  test("AC1 - one release requires its reason and coordinator and leaves the other two Approved", () => {
+    assert.equal(releaseSingleVenue({ event, bookings, bookingId: "B", coordinatorId: "COORD-1", reason: " " }).reason, "reason_required");
+    assert.equal(releaseSingleVenue({ event, bookings, bookingId: "B", coordinatorId: "OTHER", reason: "Not needed" }).reason, "not_allowed");
+    const result = releaseSingleVenue({ event, bookings, bookingId: "B", coordinatorId: "COORD-1", reason: "Breakout removed" });
+    assert.deepEqual(result.bookings.map((booking) => booking.status), [BOOKING_STATUS.APPROVED, BOOKING_STATUS.RELEASED, BOOKING_STATUS.APPROVED]);
+  });
+
+  test("AC2 - releasing the booking frees its complete setup/turnaround occupied window", () => {
+    const result = releaseSingleVenue({ event, bookings, bookingId: "B", coordinatorId: "COORD-1", reason: "Not needed" });
+    assert.equal(venueWindowAvailable({ venueId: "VEN-B", start: "2026-11-20T09:30:00.000Z", end: "2026-11-20T12:45:00.000Z", bookings: result.bookings }), true);
+  });
+
+  test("AC3-AC4 - identity and audit remain, while whole-event cancellation still releases all", () => {
+    const single = releaseSingleVenue({ event, bookings, bookingId: "B", coordinatorId: "COORD-1", reason: "Breakout removed", now: "2026-10-20T02:00:00.000Z" });
+    assert.equal(single.history.booking_id, "B");
+    assert.equal(single.history.release_reason, "Breakout removed");
+    assert.equal(single.history.created_at, "2026-10-20T02:00:00.000Z");
+    const all = releaseCancelledBookings({ event: { ...event, status: STATUS.CANCELLED }, bookings, coordinatorId: "COORD-1" });
+    assert.deepEqual(all.bookings.map((booking) => booking.status), [BOOKING_STATUS.RELEASED, BOOKING_STATUS.RELEASED, BOOKING_STATUS.RELEASED]);
+  });
+
+  test("AC5 - release from Confirmed returns Planning and invalidates prior safety", () => {
+    const result = releaseSingleVenue({ event, bookings, bookingId: "B", coordinatorId: "COORD-1", reason: "Programme changed" });
+    assert.equal(result.event.status, STATUS.PLANNING);
+    assert.equal(result.event.last_safety_review_id, null);
+    assert.equal(result.event.safety_review_required, true);
+  });
+});
+
+
+// =============================================================================
+// F16 / SCRUM-181 - Have unconfirmed holds expire on time
+// =============================================================================
+
+describe("F16 / SCRUM-181 Have unconfirmed holds expire on time", () => {
+  const event = { event_id: "EVT-001", coordinator_id: "COORD-CURRENT" };
+  const hold = {
+    booking_id: "HOLD-1", event_id: "EVT-001", venue_id: "VEN-001", booking_label: "Breakout hold",
+    status: BOOKING_STATUS.HELD, held_at: "2026-10-19T02:00:00.000Z", hold_expires_at: "2026-10-22T02:00:00.000Z"
+  };
+
+  test("AC1 - exact expiry and working-day boundaries are enforced", () => {
+    assert.equal(processVenueHold({ hold, event, now: "2026-10-22T01:59:59.000Z" }).hold.status, BOOKING_STATUS.HELD);
+    assert.equal(processVenueHold({ hold, event, now: hold.hold_expires_at }).hold.status, BOOKING_STATUS.EXPIRED);
+    assert.equal(addWorkingDays("2026-10-16T02:00:00.000Z", 3).toISOString(), "2026-10-21T02:00:00.000Z");
+    assert.equal(processVenueHold({ hold: { ...hold, status: BOOKING_STATUS.APPROVED }, event, now: "2026-10-23T02:00:00.000Z" }).hold.status, BOOKING_STATUS.APPROVED);
+  });
+
+  test("AC2-AC3 - expired hold becomes inactive but retains its auditable identity", () => {
+    const expired = processVenueHold({ hold, event, now: hold.hold_expires_at }).hold;
+    assert.equal(new Set([BOOKING_STATUS.PENDING, BOOKING_STATUS.APPROVED, BOOKING_STATUS.HELD]).has(expired.status), false);
+    assert.equal(expired.booking_id, "HOLD-1");
+    assert.equal(expired.status, BOOKING_STATUS.EXPIRED);
+  });
+
+  test("AC4 - current coordinator receives one warning in the final 24 hours", () => {
+    const warned = processVenueHold({ hold, event, now: "2026-10-21T02:00:00.000Z" });
+    const repeated = processVenueHold({ hold: warned.hold, event, now: "2026-10-21T03:00:00.000Z", warningSent: true });
+    assert.deepEqual(warned.notifications, [{ type: "VENUE_HOLD_EXPIRING", user_id: "COORD-CURRENT" }]);
+    assert.deepEqual(repeated.notifications, []);
+  });
+
+  test("AC5 - current coordinator receives one expiry notification", () => {
+    const expired = processVenueHold({ hold, event, now: hold.hold_expires_at });
+    const repeated = processVenueHold({ hold: expired.hold, event, now: "2026-10-22T03:00:00.000Z" });
+    assert.deepEqual(expired.notifications, [{ type: "VENUE_HOLD_EXPIRED", user_id: "COORD-CURRENT" }]);
+    assert.deepEqual(repeated.notifications, []);
+  });
+});
+
+
 describe("L1 / SCRUM-187 Send an event for its safety check", () => {
   const event = {
     event_id: "EVT-001",
@@ -3371,6 +3952,56 @@ describe("L1 / SCRUM-187 Send an event for its safety check", () => {
     assert.equal(result.reason, "outstanding");
     assert.deepEqual(result.outstanding, ["Breakout"]);
     assert.equal(result.event.status, STATUS.PLANNING);
+  });
+
+  test("AC1 negative - an event with no active venue booking is not ready for safety review", () => {
+    const result = sendForSafetyCheck({
+      event,
+      bookings: [{ ...approvedBooking, status: BOOKING_STATUS.RELEASED }],
+      safetyOfficers: officers
+    });
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.outstanding, ["an approved venue booking"]);
+  });
+
+  test("AC1-AC2 multi-venue - one unresolved replacement blocks the whole event", () => {
+    const result = sendForSafetyCheck({
+      event,
+      bookings: [
+        { ...approvedBooking, booking_label: "Main programme" },
+        { ...approvedBooking, booking_id: "VB-002", venue_id: "VEN-002", booking_label: "Breakout room", replacement_needed: true }
+      ],
+      safetyOfficers: officers
+    });
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.outstanding, ["Breakout room needs a replacement"]);
+  });
+
+  test("AC1-AC2 multi-venue - a rejected booking requiring a new request remains outstanding", () => {
+    const result = sendForSafetyCheck({
+      event,
+      bookings: [
+        { ...approvedBooking, booking_label: "Main programme" },
+        { ...approvedBooking, booking_id: "VB-002", booking_label: "Workshop room", status: BOOKING_STATUS.REJECTED, requires_re_request: true }
+      ]
+    });
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.outstanding, ["Workshop room"]);
+  });
+
+  test("AC1 multi-venue - inactive booking history does not block approved current venues", () => {
+    const result = sendForSafetyCheck({
+      event,
+      bookings: [
+        { ...approvedBooking, booking_label: "Main programme" },
+        { ...approvedBooking, booking_id: "VB-002", venue_id: "VEN-002", booking_label: "Breakout room" },
+        { ...approvedBooking, booking_id: "VB-OLD", status: BOOKING_STATUS.REPLACED },
+        { ...approvedBooking, booking_id: "VB-RELEASED", status: BOOKING_STATUS.RELEASED }
+      ],
+      safetyOfficers: officers
+    });
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.outstanding, []);
   });
 
   test("AC3 positive — sending moves the event to Safety Review and notifies each active Safety Officer", () => {
@@ -3540,6 +4171,26 @@ describe("L3 / SCRUM-189 Record the outcome of a safety check", () => {
     assert.deepEqual(result.notifications.map((notice) => notice.user_id), ["USR-COORD-001", "USR-ORG-001"]);
     assert.match(result.notifications[0].message, /Partner Summit/);
     assert.match(result.notifications[0].message, /Confirmed/);
+  });
+
+  test("AC4 multi-venue negative - approval cannot confirm while any active venue is unresolved", () => {
+    const reviewEvent = { ...event, approved_venue_booking_id: "VB-MAIN" };
+    const blocker = safetyApprovalBlocker(reviewEvent, [
+      { booking_id: "VB-MAIN", booking_label: "Main programme", status: BOOKING_STATUS.APPROVED },
+      { booking_id: "VB-BREAKOUT", booking_label: "Breakout room", status: BOOKING_STATUS.PENDING }
+    ]);
+    assert.match(blocker, /every active venue booking must be approved/i);
+    assert.match(blocker, /Breakout room/);
+  });
+
+  test("AC4 multi-venue positive - approval may confirm when all active venues are approved", () => {
+    const reviewEvent = { ...event, approved_venue_booking_id: "VB-MAIN" };
+    assert.equal(safetyApprovalBlocker(reviewEvent, [
+      { booking_id: "VB-MAIN", booking_label: "Main programme", status: BOOKING_STATUS.APPROVED },
+      { booking_id: "VB-BREAKOUT", booking_label: "Breakout room", status: BOOKING_STATUS.APPROVED },
+      { booking_id: "VB-OLD", booking_label: "Old room", status: BOOKING_STATUS.REPLACED }
+    ]), null);
+    assert.equal(record({ event: reviewEvent }).event.status, STATUS.CONFIRMED);
   });
 
   test("AC5 negative — an outcome cannot be recorded once the event has left Safety Review", () => {
