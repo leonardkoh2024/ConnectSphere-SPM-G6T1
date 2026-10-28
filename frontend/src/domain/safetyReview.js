@@ -67,6 +67,10 @@ export const activeBookings = (bookings = []) =>
     return !INACTIVE_BOOKING_STATUSES.has(status);
   });
 
+const bookingNeedsAction = (booking = {}) =>
+  String(booking.status || "").toUpperCase() !== "APPROVED"
+  || booking.replacement_needed === true;
+
 // firestore.rules confirms an event only when it points at an approved venue
 // booking (safetyOutcomeUpdate), so an approval without one is refused here
 // with a reason rather than by Firestore with none. An event may book several
@@ -74,7 +78,7 @@ export const activeBookings = (bookings = []) =>
 // a rule Firestore cannot check across documents, so it is checked here.
 export const safetyApprovalBlocker = (event, bookings = []) => {
   if (!event?.approved_venue_booking_id) return "This event has no approved venue booking, so it cannot be confirmed.";
-  const waiting = activeBookings(bookings).filter((booking) => String(booking.status || "").toUpperCase() !== "APPROVED");
+  const waiting = activeBookings(bookings).filter(bookingNeedsAction);
   if (!waiting.length) return null;
   const names = waiting.map((booking) => booking.booking_label || booking.venue_id || booking.booking_id).join(", ");
   return `Every active venue booking must be approved before the event can be confirmed. Not yet approved: ${names}.`;

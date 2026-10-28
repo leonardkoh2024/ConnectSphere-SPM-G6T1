@@ -99,6 +99,8 @@ test('TC-381 Approve is refused while any active venue booking is not yet approv
   expect(safetyApprovalBlocker(event, [bookings[0], bookings[2]])).toBeNull();
   expect(safetyApprovalBlocker(event, [{ ...bookings[1], booking_label: undefined, venue_id: 'V-2' }]))
     .toBe('Every active venue booking must be approved before the event can be confirmed. Not yet approved: V-2.');
+  expect(safetyApprovalBlocker(event, [{ ...bookings[0], replacement_needed: true }]))
+    .toBe('Every active venue booking must be approved before the event can be confirmed. Not yet approved: Main programme.');
 });
 
 // AC3 — each active booking, with its expected attendance against capacity.

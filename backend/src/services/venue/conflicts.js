@@ -108,7 +108,15 @@ export function createRecheckAllVenueConflicts({ firestore, serverTimestamp }) {
   const recheck = createRecheckVenueConflicts({ firestore, serverTimestamp });
   return async function recheckAllVenueConflicts() {
     const assignments = await firestore.collection("venue_staff").get();
-    const owners = assignments.docs.filter((item) => item.id === item.data().venue_id);
+    // venue_staff_id is independent from venue_id. Pick one assigned staff user
+    // per venue without assuming a particular Firestore document ID shape.
+    const owners = [...assignments.docs.reduce((byVenue, item) => {
+      const assignment = item.data();
+      if (assignment.venue_id && assignment.user_id && !byVenue.has(assignment.venue_id)) {
+        byVenue.set(assignment.venue_id, item);
+      }
+      return byVenue;
+    }, new Map()).values()];
     const outcomes = await Promise.all(owners.map((item) => recheck({
       venueId: item.data().venue_id,
       userId: item.data().user_id

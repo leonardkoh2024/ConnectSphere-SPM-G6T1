@@ -76,11 +76,16 @@ export const activeVenueBookings = (bookings = []) =>
       : !INACTIVE.has(status);
   });
 
+export const venueBookingNeedsAction = (booking = {}) => {
+  const status = String(booking.status || "").toUpperCase();
+  return status !== "APPROVED" || booking.replacement_needed === true;
+};
+
 // A rejected request still represents an unresolved venue requirement until it
 // is withdrawn/replaced, so it intentionally blocks readiness.
 export const venueReadyForSafety = (bookings = []) => {
   const active = activeVenueBookings(bookings);
-  return active.length > 0 && active.every((booking) => String(booking.status || "").toUpperCase() === "APPROVED");
+  return active.length > 0 && active.every((booking) => !venueBookingNeedsAction(booking));
 };
 
 export const replacementSearchEvent = (event, booking) => ({
