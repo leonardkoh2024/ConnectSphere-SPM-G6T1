@@ -94,7 +94,6 @@ export function createRecheckVenueConflicts({ firestore, serverTimestamp }) {
     });
   };
 }
-
 export class VenueNotFoundForConflictError extends Error {
   constructor() { super("Venue not found."); this.name = "VenueNotFoundForConflictError"; }
 }
@@ -102,17 +101,23 @@ export class VenueConflictAssignmentError extends Error {
   constructor() { super("You are not assigned to manage this venue."); this.name = "VenueConflictAssignmentError"; }
 }
 
-export function startVenueConflictScheduler({ firestore, serverTimestamp, intervalMs = 60000, onError = console.error }) {
+// One complete pass, used by the authenticated page-refresh endpoint. Keeping
+// this separate from the timer makes the expensive catalogue-wide scan an
+// explicit user action instead of a permanent once-per-minute background job.
+export function createRecheckAllVenueConflicts({ firestore, serverTimestamp }) {
   const recheck = createRecheckVenueConflicts({ firestore, serverTimestamp });
-  const run = async () => {
-    try {
-      const assignments = await firestore.collection("venue_staff").get();
-      const owners = assignments.docs.filter((item) => item.id === item.data().venue_id);
-      await Promise.all(owners.map((item) => recheck({ venueId: item.data().venue_id, userId: item.data().user_id })));
-    } catch (error) { onError("Venue conflict recheck job failed:", error); }
+  return async function recheckAllVenueConflicts() {
+    const assignments = await firestore.collection("venue_staff").get();
+    const owners = assignments.docs.filter((item) => item.id === item.data().venue_id);
+    const outcomes = await Promise.all(owners.map((item) => recheck({
+      venueId: item.data().venue_id,
+      userId: item.data().user_id
+    })));
+    return {
+      venues_checked: owners.length,
+      active_conflicts: outcomes.reduce((total, outcome) => total + (outcome.active_conflicts || 0), 0)
+    };
   };
-  run();
-  const timer = setInterval(run, intervalMs);
-  timer.unref?.();
-  return () => clearInterval(timer);
 }
+
+// Deliberately no timer: the authenticated page-refresh route invokes this pass.

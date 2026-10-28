@@ -9,16 +9,19 @@ import {
   VenueNotFoundError,
   UnavailabilityNotFoundError
 } from "./unavailability.js";
-export { createProcessVenueHolds, startVenueHoldExpiryScheduler } from "./holdExpiry.js";
-import { createRecheckVenueConflicts, VenueConflictAssignmentError, VenueNotFoundForConflictError } from "./conflicts.js";
-export { createRecheckVenueConflicts, startVenueConflictScheduler } from "./conflicts.js";
+import { createProcessVenueHolds } from "./holdExpiry.js";
+export { createProcessVenueHolds } from "./holdExpiry.js";
+import { createRecheckAllVenueConflicts, createRecheckVenueConflicts, VenueConflictAssignmentError, VenueNotFoundForConflictError } from "./conflicts.js";
+export { createRecheckAllVenueConflicts, createRecheckVenueConflicts } from "./conflicts.js";
 
 export function createVenueService({ firestore, verifyIdToken, serverTimestamp }) {
   const router = express.Router();
   const saveUnavailability = createSaveVenueUnavailability({ firestore, serverTimestamp });
   const recheckConflicts = createRecheckVenueConflicts({ firestore, serverTimestamp });
+  const recheckAllConflicts = createRecheckAllVenueConflicts({ firestore, serverTimestamp });
+  const processVenueHolds = createProcessVenueHolds({ firestore, serverTimestamp });
 
-  const authenticateVenueStaff = async (request, response) => {
+  const authenticate = async (request, response) => {
     const token = request.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
     if (!token) {
       response.status(401).json({ error: "Sign in is required." });
@@ -32,12 +35,39 @@ export function createVenueService({ firestore, verifyIdToken, serverTimestamp }
       return null;
     }
     const profile = await firestore.collection("users").doc(user.uid).get();
-    if (!profile.exists || profile.data().role !== "VENUE_STAFF") {
+    if (!profile.exists) {
+      response.status(403).json({ error: "Your user profile could not be found." });
+      return null;
+    }
+    return { ...user, role: profile.data().role };
+  };
+
+  const authenticateVenueStaff = async (request, response) => {
+    const user = await authenticate(request, response);
+    if (!user) return null;
+    if (user.role !== "VENUE_STAFF") {
       response.status(403).json({ error: "Only Venue Staff can manage venue operations." });
       return null;
     }
     return user;
   };
+
+  // A browser refresh invokes this once before loading the venue queues. The
+  // frontend deduplicates simultaneous callers, so the badge and screen share
+  // one workflow pass rather than starting competing catalogue scans.
+  router.post("/workflows/refresh", async (request, response, next) => {
+    let user;
+    try { user = await authenticate(request, response); } catch (error) { next(error); return; }
+    if (!user) return;
+    if (!["EVENT_COORDINATOR", "VENUE_STAFF"].includes(user.role)) {
+      response.status(403).json({ error: "Only Event Coordinators and Venue Staff can refresh venue workflows." });
+      return;
+    }
+    try {
+      const [holds, conflicts] = await Promise.all([processVenueHolds(), recheckAllConflicts()]);
+      response.json({ holds_processed: holds.length, ...conflicts });
+    } catch (error) { next(error); }
+  });
 
   router.put("/unavailability", async (request, response, next) => {
     let user;
