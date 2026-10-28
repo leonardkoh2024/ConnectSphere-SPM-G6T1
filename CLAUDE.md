@@ -33,9 +33,8 @@ Only our own section's customer answers count. Other sections were given differe
 Event Coordinator Lead (internal), Venue Staff (internal), Technical Support Staff (internal),
 Safety Officer (internal), Attendee (external). The Lead and the Safety Officer were added by Week 7 changes
 5 and 6 (stories A6, A7); like every other role they are seeded, never self-registered.
-In code the canonical list is `ROLES` / `ROLE_META` in `frontend/src/domain/roles.js`, which still holds only the
-original five — add the two new roles there, and nowhere else. Do not introduce an eighth role or a parallel
-string literal.
+In code the canonical list is `ROLES` / `ROLE_META` in `frontend/src/domain/roles.js`, which holds all seven.
+Do not introduce an eighth role or a parallel string literal.
 
 **Event status — exactly these ten**: the nine from core feature F6, plus **Safety Review**, which story L1
 adds between Planning and Confirmed for Week 7 change 6:
