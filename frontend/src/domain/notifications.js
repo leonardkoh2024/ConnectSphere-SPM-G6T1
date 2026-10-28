@@ -39,7 +39,17 @@ export const NOTIFICATION_TYPE_LABEL = {
   EQUIPMENT_REQUEST_AMENDED: "Equipment request amended",
   ON_SITE_SUPPORT_REQUIRED: "On-site support needed",
   ON_SITE_SUPPORT_CHANGED: "On-site support changed",
-  EQUIPMENT_UNABLE_TO_FULFIL: "Equipment unavailable"
+  EQUIPMENT_UNABLE_TO_FULFIL: "Equipment unavailable",
+  // H7 / SCRUM-145 — a waitlisted attendee is offered a freed place.
+  WAITLIST_PLACE_OFFERED: "Place offered",
+  // J7 / SCRUM-156 — what an attendee is told about an event they registered for or wait on,
+  // stored under the change's kind (attendeeChangeNotices in domain/safetyAndNotices.js).
+  REGISTRATION_CONFIRMED: "Registration confirmed",
+  DATE: "Date changed",
+  TIME: "Time changed",
+  VENUE: "Venue changed",
+  CANCELLED: "Event cancelled",
+  PLACE_OPENED: "Place opened"
 };
 
 export const notificationTypeLabel = (type) => NOTIFICATION_TYPE_LABEL[type] || "Update";
@@ -73,10 +83,12 @@ export const eventLabel = (event) => {
 
 // Where "View" on a notification takes each role: the screen that role already
 // uses to open one event. A role with no such screen yet gets no View button
-// rather than one that leads nowhere.
+// rather than one that leads nowhere. An attendee's event opens on their own
+// registration for it, where an offered place is accepted or a place given up.
 export const EVENT_VIEW_SCREEN = {
   [ROLES.ORGANISER]: "New event request",
-  [ROLES.COORDINATOR]: "Assigned events"
+  [ROLES.COORDINATOR]: "Assigned events",
+  [ROLES.ATTENDEE]: "My registrations"
 };
 
 export const eventViewScreen = (role) => EVENT_VIEW_SCREEN[role] || null;

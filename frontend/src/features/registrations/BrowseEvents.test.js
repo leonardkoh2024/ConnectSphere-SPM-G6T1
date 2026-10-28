@@ -394,3 +394,12 @@ test("TC-708 H6 Join waiting list cannot be pressed twice while the first is on 
   await act(async () => finish(waitlistedReply()));
   expect(within(row).getByText("Waitlisted")).toBeInTheDocument();
 });
+
+// ---- H7 / SCRUM-145 — an offered place on Browse events ---------------------------
+
+test("TC-754 H7 AC1 an event whose place is offered to the attendee points them to My registrations", async () => {
+  loadOpenEvents.mockResolvedValue([entry({ remaining_places: 0, registration_status: "WAITLISTED", waitlist_position: 1, invitation_active: true })]);
+  render(<BrowseEvents />);
+  const row = await rowFor("Harbour Tech Forum");
+  expect(within(row).getByText("A place is offered to you. Accept it in My registrations.")).toBeInTheDocument();
+});

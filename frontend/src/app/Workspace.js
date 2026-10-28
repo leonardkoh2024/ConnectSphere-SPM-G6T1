@@ -24,6 +24,7 @@ import VenueSafetyInformation from "../features/venues/VenueSafetyInformation";
 import SafetyReviewScreen from "../features/safety/SafetyReviewScreen";
 import BrowseEvents from "../features/registrations/BrowseEvents";
 import MyRegistrations from "../features/registrations/MyRegistrations";
+import { registeredEventsFor } from "../features/registrations/registrationsApi";
 import EquipmentRequestsScreen from "../features/equipment/EquipmentRequestsScreen";
 import EquipmentQueueScreen from "../features/equipment/EquipmentQueueScreen";
 import EquipmentAvailabilityScreen from "../features/equipment/EquipmentAvailabilityScreen";
@@ -69,6 +70,7 @@ export default function Workspace({ user, role }) {
   const [selectedDraft, setSelectedDraft] = useState(null);
   const [focusBookingId, setFocusBookingId] = useState(null);
   const [focusEquipmentEventId, setFocusEquipmentEventId] = useState(null);
+  const [focusRegistrationEventId, setFocusRegistrationEventId] = useState(null);
   const [searchEvent, setSearchEvent] = useState(null);
   const [bookingTarget, setBookingTarget] = useState({ event: null, venue: null });
   const [venueCalendarOpen, setVenueCalendarOpen] = useState(false);
@@ -114,6 +116,7 @@ export default function Workspace({ user, role }) {
     setReviewTab(name === "Assigned events" ? extras.tab || null : null);
     setFocusBookingId(name === "Venue bookings" ? extras.bookingId || null : null);
     setFocusEquipmentEventId(name === "Equipment requests" ? extras.eventId || null : null);
+    setFocusRegistrationEventId(name === "My registrations" ? extras.eventId || null : null);
     window.location.hash = screenHash(role, name);
   };
   // E4 — one availability calendar shared by every venue, opened from the top
@@ -141,7 +144,7 @@ export default function Workspace({ user, role }) {
 
   // J1 — View on a notification. The organiser's request page takes the event
   // record itself, as My events hands it over; the coordinator's review screen
-  // loads the event by id.
+  // loads the event by id, and an attendee's registrations open on that event.
   // J6 AC2/AC4 — a booking or equipment outcome opens that record instead.
   const viewEvent = (event, notification) => {
     const target = notificationViewScreen(role, notification);
@@ -185,10 +188,10 @@ export default function Workspace({ user, role }) {
   else if (role === ROLES.SAFETY_OFFICER && screen.name === "Safety reviews") contents = <>{head(screen.name, screen.blurb)}<SafetyReviewScreen onNotice={showToast} onBackChange={reportBack} /></>;
   else if (role === ROLES.SAFETY_OFFICER && screen.name === "Venue safety information") contents = <>{head(screen.name, screen.blurb)}<VenueSafetyInformation /></>;
   else if (role === ROLES.ATTENDEE && screen.name === "Browse events") contents = <>{head(screen.name, screen.blurb)}<BrowseEvents onNotice={showToast} onBackChange={reportBack} /></>;
-  else if (role === ROLES.ATTENDEE && screen.name === "My registrations") contents = <>{head(screen.name, screen.blurb)}<MyRegistrations onNotice={showToast} onBackChange={reportBack} /></>;
+  else if (role === ROLES.ATTENDEE && screen.name === "My registrations") contents = <>{head(screen.name, screen.blurb)}<MyRegistrations onNotice={showToast} onBackChange={reportBack} focusEventId={focusRegistrationEventId} /></>;
   else if (role === ROLES.COORDINATOR_LEAD && screen.name === "Unassigned queue") contents = <>{head(screen.name, screen.blurb)}<LeadAssignmentScreen view="queue" onNotice={showToast} /></>;
   else if (role === ROLES.COORDINATOR_LEAD && screen.name === "Oversight") contents = <>{head(screen.name, screen.blurb)}<LeadAssignmentScreen view="oversight" onNotice={showToast} /></>;
-  else if (screen.name === "Notifications") contents = <>{head(screen.name, screen.blurb)}<NotificationInbox notifications={inbox.notifications} loading={inbox.loading} error={inbox.error} onOpen={inbox.markRead} onViewEvent={viewScreen ? viewEvent : undefined} /></>;
+  else if (screen.name === "Notifications") contents = <>{head(screen.name, screen.blurb)}<NotificationInbox notifications={inbox.notifications} loading={inbox.loading} error={inbox.error} onOpen={inbox.markRead} onViewEvent={viewScreen ? viewEvent : undefined} loadEvents={role === ROLES.ATTENDEE ? registeredEventsFor : undefined} /></>;
   else contents = <>{head(screen.name, screen.blurb)}<p className="cs-panel-note">This screen is ready to be connected to its workflow in a later increment.</p></>;
 
   return <div className={navCollapsed ? "cs-workspace cs-workspace-collapsed" : "cs-workspace"}><div className="cs-workspace-body"><nav className="cs-sidebar" aria-label="Your screens"><div className="cs-sidebar-head"><span className="cs-brand"><span className="cs-brand-mark" aria-hidden="true" /><span className="cs-sidebar-label">ConnectSphere</span></span><button type="button" className="cs-sidebar-toggle" aria-expanded={!navCollapsed} aria-label={navCollapsed ? "Expand navigation" : "Collapse navigation"} title={navCollapsed ? "Expand navigation" : "Collapse navigation"} onClick={() => setNavCollapsed((value) => !value)}><Icon name={navCollapsed ? "chevron-right" : "chevron-left"} /></button></div><div className="cs-sidebar-screens">{meta.screens.filter((item) => !item.hidden).map((item) => <button key={item.name} type="button" title={item.name} className={item.name === screen.name && !forbidden ? "cs-sidebar-item cs-sidebar-item-active" : "cs-sidebar-item"} onClick={() => chooseScreen(item.name)}><Icon name={item.icon} /><span className="cs-sidebar-label">{item.name}</span>{item.name === clashScreen && clashBadge && <span className="cs-nav-badge cs-nav-badge-clash" aria-label={`${venueClashes.count} active booking clash${venueClashes.count === 1 ? "" : "es"}`}>{clashBadge}</span>}{item.name === "Notifications" && unreadBadge && <span className="cs-nav-badge" aria-label={`${inbox.unread} unread`}>{unreadBadge}</span>}</button>)}</div><div className="cs-sidebar-user"><div className="cs-sidebar-user-row"><span className="cs-sidebar-avatar" aria-hidden="true">{(user.email || "?").charAt(0).toUpperCase()}</span><div className="cs-sidebar-label cs-sidebar-user-detail"><span className="cs-pill">{meta.label}</span><span className="cs-user-email" title={user.email}>{user.email}</span></div></div><button className="cs-btn cs-btn-ghost cs-sidebar-logout" type="button" title="Log out" aria-label="Log out" onClick={() => { window.location.hash = "#/sign-in"; signOut(auth); }}><Icon name="log-out" /><span className="cs-sidebar-label">Log out</span></button></div></nav><main className="cs-panel-scroll"><div className="cs-panel">{contents}</div></main></div><Toasts toasts={toasts} onDismiss={dismissToast} /></div>;

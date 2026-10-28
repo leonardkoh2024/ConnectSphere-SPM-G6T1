@@ -100,7 +100,8 @@ test("TC-576 H3 AC7 only Registered places count; withdrawn, waitlisted and canc
     registrations: {
       r1: registered("e1", "x1"),
       r2: registered("e1", "x2", "WITHDRAWN"),
-      r3: registered("e1", "x3", "WAITLISTED"),
+      // Waiting, but their offer lapsed with no place freed since (H7), so they hold nothing.
+      r3: { ...registered("e1", "x3", "WAITLISTED"), invitation_expires_at: "2026-11-01T00:00:00.000Z" },
       r4: registered("e1", "x4", "CANCELLED"),
       r5: registered("other-event", "x5")
     }
@@ -115,7 +116,8 @@ test("TC-577 H3 the count, the duplicate check and the write are one transaction
   assert.equal(firestore.log.transactions, 1);
   assert.ok(firestore.log.reads.includes("events/e1"));
   assert.ok(firestore.log.reads.includes("registrations/e1_attendee-1"));
-  assert.ok(firestore.log.reads.includes("registrations?event_id=e1&status=REGISTERED"));
+  // One read of the event's registrations gives the places taken and (H7) the offers held.
+  assert.ok(firestore.log.reads.includes("registrations?event_id=e1"));
 });
 
 // ---- AC3, AC4: confirmation and the event's details -------------------------------

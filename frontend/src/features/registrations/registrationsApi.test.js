@@ -2,7 +2,7 @@
 // open events; it never reads the events collection itself (AC3).
 
 import { auth } from "../../lib/firebase";
-import { joinWaitlist, loadMyRegistrations, loadOpenEvents, registerForEvent, withdrawFromEvent } from "./registrationsApi";
+import { acceptInvitation, declineInvitation, joinWaitlist, loadMyRegistrations, loadOpenEvents, registerForEvent, registeredEventsFor, withdrawFromEvent } from "./registrationsApi";
 
 jest.mock("../../lib/firebase", () => ({
   auth: { currentUser: { uid: "attendee-1", getIdToken: jest.fn() } },
@@ -127,4 +127,31 @@ test("TC-700 joining the waiting list posts to the event's waitlist route with t
 test("TC-700 a refusal keeps the service's message and reason", async () => {
   global.fetch.mockResolvedValue(reply(409, { error: "A place is free, so register instead.", reason: "places_available" }));
   await expect(joinWaitlist("e1")).rejects.toMatchObject({ message: "A place is free, so register instead.", reason: "places_available" });
+});
+
+// H7 / SCRUM-145 — accepting or declining an offered place goes through the service.
+
+test("TC-753 accepting and declining post to the event's invitation routes with the ID token", async () => {
+  global.fetch.mockResolvedValue(reply(200, { registration: { status: "REGISTERED" } }));
+  await expect(acceptInvitation("e/1")).resolves.toEqual({ registration: { status: "REGISTERED" } });
+  expect(global.fetch).toHaveBeenLastCalledWith("/api/registrations/events/e%2F1/invitation/accept", { method: "POST", headers: { Authorization: "Bearer id-token" } });
+
+  global.fetch.mockResolvedValue(reply(200, { registration: { status: "WITHDRAWN" } }));
+  await declineInvitation("e1");
+  expect(global.fetch).toHaveBeenLastCalledWith("/api/registrations/events/e1/invitation/decline", { method: "POST", headers: { Authorization: "Bearer id-token" } });
+});
+
+test("TC-753 a refusal keeps the service's message and reason", async () => {
+  global.fetch.mockResolvedValue(reply(409, { error: "This invitation has expired.", reason: "invitation_expired" }));
+  await expect(acceptInvitation("e1")).rejects.toMatchObject({ message: "This invitation has expired.", reason: "invitation_expired" });
+});
+
+// J1 — the inbox names an attendee's events from their registrations.
+
+test("TC-757 the inbox's events come from the attendee's registrations, null where there is none", async () => {
+  global.fetch.mockResolvedValue(reply(200, { registrations: [{ registration_id: "e1_attendee-1", event_id: "e1", name: "Harbour Tech Forum" }] }));
+  await expect(registeredEventsFor(["e1", "e2"])).resolves.toEqual({ e1: { id: "e1", name: "Harbour Tech Forum" }, e2: null });
+
+  global.fetch.mockResolvedValue(reply(403, { error: "Only attendees can see their registrations." }));
+  await expect(registeredEventsFor(["e1"])).resolves.toEqual({ e1: null });
 });

@@ -45,8 +45,9 @@ jest.mock('../features/equipment/EquipmentReservationsScreen', () => ({ __esModu
 // handed it both the toast and the way back.
 jest.mock('../features/registrations/BrowseEvents', () => ({ __esModule: true, default: (props) => (props.onNotice && props.onBackChange ? 'open events list' : 'open events list without its handlers') }));
 // H4 — the attendee's own registrations report that they were opened, with the way back.
-// H5 — withdrawing confirms with a toast, so it is handed that too.
-jest.mock('../features/registrations/MyRegistrations', () => ({ __esModule: true, default: (props) => (props.onBackChange && props.onNotice ? 'my registrations list' : 'my registrations without its handlers') }));
+// H5 — withdrawing confirms with a toast, so it is handed that too. J1 — View on a
+// notification names the event to open.
+jest.mock('../features/registrations/MyRegistrations', () => ({ __esModule: true, default: (props) => (props.focusEventId ? `registration for ${props.focusEventId}` : props.onBackChange && props.onNotice ? 'my registrations list' : 'my registrations without its handlers') }));
 // J1 — the live inbox is stubbed so the badge can be driven by hand.
 jest.mock('../features/notifications/useNotifications', () => ({ __esModule: true, default: jest.fn() }));
 jest.mock('../features/venues/useVenueClashCount', () => ({ __esModule: true, default: jest.fn() }));
@@ -339,7 +340,17 @@ describe('J1 viewing an event from a notification', () => {
     expect(screen.getByRole('button', { name: 'Back to notifications' })).toBeInTheDocument();
   });
 
-  test.each([ROLES.VENUE_STAFF, ROLES.TECH_SUPPORT, ROLES.ATTENDEE])('TC-268 %s is offered no View', (role) => {
+  test('TC-759 an attendee lands on their registration for that event, with a way back to the inbox', async () => {
+    openInbox(ROLES.ATTENDEE);
+
+    await userEvent.click(screen.getByRole('button', { name: 'View event' }));
+
+    expect(window.location.hash).toBe(screenHash(ROLES.ATTENDEE, 'My registrations'));
+    expect(screen.getByText('registration for e1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Back to notifications' })).toBeInTheDocument();
+  });
+
+  test.each([ROLES.VENUE_STAFF, ROLES.TECH_SUPPORT])('TC-268 %s is offered no View', (role) => {
     openInbox(role);
 
     expect(screen.queryByRole('button', { name: 'View event' })).not.toBeInTheDocument();

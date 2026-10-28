@@ -4,6 +4,11 @@
 //
 // H5 / SCRUM-143 — places still to come are listed under Upcoming, where a Registered one
 // can be withdrawn after a confirmation. A withdrawn place moves out of Upcoming at once.
+//
+// H7 / SCRUM-145 — a place offered from the waiting list is accepted or declined here, while the
+// offer stands; a lapsed offer is shown, with the attendee still on the list.
+//
+// J1 — View on a notification opens here with `focusEventId`, straight on that event's details.
 
 import React, { useCallback, useEffect, useState } from "react";
 import RecordLead from "../../components/RecordLead";
@@ -12,7 +17,7 @@ import { venueLabel } from "../../domain/openRegistration";
 import EventDetails from "./components/EventDetails";
 import WithdrawDialog, { FINAL_WITHDRAW_REFUSALS, WITHDRAW_FAILED } from "./components/WithdrawDialog";
 import { eventDay, singaporeDateTime, timeWindow } from "./format";
-import { loadMyRegistrations, withdrawFromEvent } from "./registrationsApi";
+import { acceptInvitation, declineInvitation, loadMyRegistrations, withdrawFromEvent } from "./registrationsApi";
 
 const CANCELLED = "CANCELLED";
 
@@ -34,13 +39,15 @@ const statusPill = (status) => (
   <span className={`cs-pill cs-pill-${registrationStatusTone(status)}`}>{REGISTRATION_STATUS_LABELS[status] || status}</span>
 );
 
-export default function MyRegistrations({ onNotice, onBackChange }) {
+export default function MyRegistrations({ onNotice, onBackChange, focusEventId = null }) {
   const [registrations, setRegistrations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState(null);
   // The registration being withdrawn from: { entry, busy, error, final }.
   const [withdrawing, setWithdrawing] = useState(null);
+  // H7 — accepting an offered place, per registration: { busy, error }.
+  const [accepting, setAccepting] = useState({});
   // Filters, kept while an event's details are open so coming back finds the same list.
   const [show, setShow] = useState("all");
   const [search, setSearch] = useState("");
@@ -48,11 +55,16 @@ export default function MyRegistrations({ onNotice, onBackChange }) {
   useEffect(() => {
     let mounted = true;
     loadMyRegistrations()
-      .then((rows) => { if (mounted) setRegistrations(rows); })
+      .then((rows) => {
+        if (!mounted) return;
+        setRegistrations(rows);
+        const focused = focusEventId && rows.find((entry) => entry.event_id === focusEventId);
+        if (focused) setOpenId(focused.registration_id);
+      })
       .catch((failure) => { if (mounted) setError(failure.message || "Your registrations could not be loaded."); })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
-  }, []);
+  }, [focusEventId]);
 
   const closeDetails = useCallback(() => setOpenId(null), []);
 
@@ -68,19 +80,38 @@ export default function MyRegistrations({ onNotice, onBackChange }) {
 
   const confirmWithdraw = async () => {
     if (!withdrawing || withdrawing.busy) return;
-    const { entry } = withdrawing;
-    setWithdrawing({ entry, busy: true, error: "" });
+    const { entry, declining } = withdrawing;
+    setWithdrawing({ entry, declining, busy: true, error: "" });
     try {
-      const result = await withdrawFromEvent(entry.event_id);
+      const result = await (declining ? declineInvitation : withdrawFromEvent)(entry.event_id);
       replaceEntry(entry.registration_id, { ...result.registration, registration_id: entry.registration_id });
       setWithdrawing(null);
-      onNotice?.(entry.status === "WAITLISTED"
-        ? `You have left the waiting list for ${entry.name || "this event"}.`
-        : `You have withdrawn from ${entry.name || "this event"}.`);
+      onNotice?.(declining
+        ? `You have declined the place at ${entry.name || "this event"} and left the waiting list.`
+        : entry.status === "WAITLISTED"
+          ? `You have left the waiting list for ${entry.name || "this event"}.`
+          : `You have withdrawn from ${entry.name || "this event"}.`);
     } catch (failure) {
       const final = FINAL_WITHDRAW_REFUSALS.includes(failure.reason);
       if (final) replaceEntry(entry.registration_id, { can_withdraw: false });
-      setWithdrawing({ entry, busy: false, error: failure.message || WITHDRAW_FAILED, final });
+      setWithdrawing({ entry, declining, busy: false, error: failure.message || WITHDRAW_FAILED, final });
+    }
+  };
+
+  // H7 AC2 — accept an offered place: the attendee is registered only when they ask.
+  const accept = async (entry) => {
+    if (accepting[entry.registration_id]?.busy) return;
+    setAccepting((current) => ({ ...current, [entry.registration_id]: { busy: true, error: "" } }));
+    try {
+      const result = await acceptInvitation(entry.event_id);
+      replaceEntry(entry.registration_id, { ...result.registration, registration_id: entry.registration_id });
+      setAccepting((current) => ({ ...current, [entry.registration_id]: { busy: false, error: "" } }));
+      onNotice?.(`You are registered for ${entry.name || "this event"}.`);
+    } catch (failure) {
+      // AC3, AC4 — an offer that ran out leaves them on the list, now without it.
+      if (failure.reason === "invitation_expired") replaceEntry(entry.registration_id, { invitation_active: false, invitation_lapsed: true, can_accept: false });
+      if (failure.reason === "not_invited") replaceEntry(entry.registration_id, { invitation_active: false, can_accept: false });
+      setAccepting((current) => ({ ...current, [entry.registration_id]: { busy: false, error: failure.message || "The place could not be accepted. Try again." } }));
     }
   };
 
@@ -89,9 +120,26 @@ export default function MyRegistrations({ onNotice, onBackChange }) {
   if (!registrations.length) return <p className="cs-panel-note">You have not registered for any events yet.</p>;
 
   const askToWithdraw = (entry) => setWithdrawing({ entry, busy: false, error: "" });
-  const withdrawButton = (entry) => entry.can_withdraw && (
-    <button type="button" className="cs-btn cs-btn-ghost cs-record-btn cs-record-danger" onClick={() => askToWithdraw(entry)}>Withdraw</button>
-  );
+  // H7 — while a place is offered, the choice is to accept or decline it, not to withdraw.
+  const withdrawButton = (entry) => {
+    if (entry.can_accept) {
+      const busy = accepting[entry.registration_id]?.busy;
+      return (
+        <>
+          <button type="button" className="cs-btn cs-btn-primary cs-record-btn" disabled={busy} onClick={() => accept(entry)}>{busy ? "Accepting…" : "Accept place"}</button>
+          <button type="button" className="cs-btn cs-btn-ghost cs-record-btn cs-record-danger" onClick={() => setWithdrawing({ entry, declining: true, busy: false, error: "" })}>Decline</button>
+        </>
+      );
+    }
+    return entry.can_withdraw && (
+      <button type="button" className="cs-btn cs-btn-ghost cs-record-btn cs-record-danger" onClick={() => askToWithdraw(entry)}>Withdraw</button>
+    );
+  };
+  const offerNote = (entry) => {
+    if (entry.invitation_active && entry.invitation_expires_at) return <p className="cs-record-saved">Place offered until {singaporeDateTime(entry.invitation_expires_at)}</p>;
+    if (entry.invitation_lapsed && entry.status === "WAITLISTED") return <p className="cs-record-saved">Your invitation expired. You keep your place on the waiting list.</p>;
+    return null;
+  };
   const dialog = withdrawing && (
     <WithdrawDialog state={{ ...withdrawing, name: withdrawing.entry.name, waitlisted: withdrawing.entry.status === "WAITLISTED" }} onKeep={() => setWithdrawing(null)} onConfirm={confirmWithdraw} />
   );
@@ -110,7 +158,8 @@ export default function MyRegistrations({ onNotice, onBackChange }) {
             ["Your registration", REGISTRATION_STATUS_LABELS[open.status] || open.status],
             open.status === "WAITLISTED" && open.waitlist_position !== null && ["Place on the waiting list", String(open.waitlist_position)],
             singaporeDateTime(open.registered_at) && ["Registered on", singaporeDateTime(open.registered_at)],
-            open.status === "WITHDRAWN" && singaporeDateTime(open.withdrawn_at) && ["Withdrawn on", singaporeDateTime(open.withdrawn_at)]
+            open.status === "WITHDRAWN" && singaporeDateTime(open.withdrawn_at) && ["Withdrawn on", singaporeDateTime(open.withdrawn_at)],
+          open.invitation_active && singaporeDateTime(open.invitation_expires_at) && ["Place offered until", singaporeDateTime(open.invitation_expires_at)]
           ]}
           actions={withdrawButton(open) || null}
           backLabel="my registrations"
@@ -134,6 +183,8 @@ export default function MyRegistrations({ onNotice, onBackChange }) {
       <div className="cs-record-status">
         {statusPill(entry.status)}
         {entry.status === "WAITLISTED" && entry.waitlist_position && <p className="cs-record-saved">Position {entry.waitlist_position} on the waiting list</p>}
+        {offerNote(entry)}
+        {accepting[entry.registration_id]?.error && <p className="cs-error" role="alert">{accepting[entry.registration_id].error}</p>}
       </div>
       <div className="cs-record-actions">
         <button type="button" className="cs-btn cs-btn-ghost cs-record-btn" onClick={() => setOpenId(entry.registration_id)}>View details</button>
@@ -168,13 +219,13 @@ export default function MyRegistrations({ onNotice, onBackChange }) {
           <section className="cs-registration-group" aria-labelledby="cs-registrations-upcoming">
             <h2 id="cs-registrations-upcoming">Upcoming</h2>
             {upcoming.length
-              ? <div className="cs-record-list">{upcoming.map(row)}</div>
+              ? <div className="cs-record-list cs-attendee-list">{upcoming.map(row)}</div>
               : <p className="cs-panel-note">{filtering ? "No upcoming registrations match these filters." : "You have no upcoming registrations."}</p>}
           </section>
           {others.length > 0 && (
             <section className="cs-registration-group" aria-labelledby="cs-registrations-others">
               <h2 id="cs-registrations-others">Past, withdrawn and cancelled</h2>
-              <div className="cs-record-list">{others.map(row)}</div>
+              <div className="cs-record-list cs-attendee-list">{others.map(row)}</div>
             </section>
           )}
         </>

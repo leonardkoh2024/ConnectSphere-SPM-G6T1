@@ -4,6 +4,8 @@
 // View opens the related event on the screen the workspace picks for the role
 // (J6: a booking or equipment outcome opens that booking or request instead);
 // with no `onViewEvent`, or an event this user can no longer read, there is none.
+// `loadEvents` replaces the Firestore lookup for a role that reads its events
+// another way (an attendee, through their registrations).
 // The list itself comes from the workspace (useNotifications), which also feeds
 // the sidebar badge, so the two never disagree.
 
@@ -16,7 +18,7 @@ import Icon from "../../app/Icon";
 
 const shownTime = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Just now";
 
-export default function NotificationInbox({ notifications, loading, error, onOpen, onViewEvent }) {
+export default function NotificationInbox({ notifications, loading, error, onOpen, onViewEvent, loadEvents = eventsFor }) {
   const [openId, setOpenId] = useState(null);
   const [events, setEvents] = useState({});
 
@@ -27,9 +29,9 @@ export default function NotificationInbox({ notifications, loading, error, onOpe
   useEffect(() => {
     if (!eventKey) return undefined;
     let mounted = true;
-    eventsFor(eventKey.split("|")).then((found) => { if (mounted) setEvents(found); });
+    loadEvents(eventKey.split("|")).then((found) => { if (mounted) setEvents(found); });
     return () => { mounted = false; };
-  }, [eventKey]);
+  }, [eventKey, loadEvents]);
 
   const toggle = (notification) => {
     const opening = openId !== notification.id;

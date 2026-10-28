@@ -177,15 +177,11 @@ on real problems.
 
 ## Working agreement
 
-- **Commit straight to `main`.** No feature branches, no PRs. Pull before starting and before pushing.
-  The per-person branches on the remote are from the earlier convention and are not used any more.
-- Keep commits small and self-contained — direct-to-main means someone else pulls your work immediately,
-  so a half-finished change on `main` blocks the whole team rather than sitting in a branch.
+- Pull before starting and before pushing. Keep commits small and self-contained.
 - **Start every commit message with the backlog ID and the Jira ticket ID** —
   `B4; SCRUM-95; state the equipment my event needs`. The backlog IDs are `A1`–`L4` (from
   `docs/Final Product Backlog.csv`); the Jira IDs are `SCRUM-nn`. Both, separated by semicolons, then the
-  summary. With no PRs, the commit message is the only record of story-to-code traceability, and that
-  traceability is marked. People write these by hand, so small deviations in spacing or punctuation are fine —
+  summary. The commit message is the record of story-to-code traceability, and that traceability is marked. People write these by hand, so small deviations in spacing or punctuation are fine —
   what must not be missing is either ID.
 - One story per commit where you can. If a commit genuinely covers several, list each `backlog; jira; summary`
   triple on its own line in the body rather than running them together in the subject.
