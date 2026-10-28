@@ -476,14 +476,15 @@ describe('TC-284 notifications are only ever addressed to people related to the 
     // then (L1) the Safety Officer waiting notice, then (J2) the organiser's own
     // submission notice, then (J4) Venue Staff for their own venue.
     const branches = ordinary().split(/\|\| \(/);
-    expect(branches).toHaveLength(7);
+    expect(branches).toHaveLength(8);
     branches.slice(0, 4).forEach((branch) => {
       expect(branch).toMatch(/request\.resource\.data\.user_id (==|in)/);
       expect(branch).toMatch(/organiser_id|coordinator_id/);
     });
-    expect(branches[4]).toContain("request.resource.data.type == 'SAFETY_REVIEW_WAITING'");
-    expect(branches[4]).toContain("data.role == 'SAFETY_OFFICER'");
-    expect(branches[6]).toMatch(/venue_staff\/.*\.data\.user_id == request\.resource\.data\.user_id/);
+    expect(branches[4]).toContain("request.resource.data.type == 'ARRANGEMENT_REVIEW_REQUIRED'");
+    expect(branches[5]).toContain("request.resource.data.type == 'SAFETY_REVIEW_WAITING'");
+    expect(branches[5]).toContain("data.role == 'SAFETY_OFFICER'");
+    expect(branches[7]).toMatch(/venue_staff\/.*\.data\.user_id == request\.resource\.data\.user_id/);
   });
 
   // J6 / SCRUM-155 AC1 — TC-313. A booking's outcome goes only to the coordinator
@@ -743,7 +744,7 @@ describe('A7 the Safety Officer reaches only events under review, and writes onl
       "review.outcome == 'APPROVE' && request.resource.data.status == 'CONFIRMED'",
       'approvedVenueBookingFor(approvedBookingId)',
       "review.outcome in ['REJECT', 'REQUEST_CHANGES'] && request.resource.data.status == 'PLANNING'",
-      "affectedKeys().hasOnly(['status', 'last_safety_review_id', 'updated_at'])"
+      "affectedKeys().hasOnly(['status', 'last_safety_review_id', 'updated_at', 'returned_to_planning_at', 'technical_review_status'])"
     ].forEach((clause) => expect(update).toContain(clause));
     expect(matchBlock('events').match(/allow update: if (.*?);/)[1]).toContain('safetyOutcomeUpdate()');
   });
@@ -767,7 +768,7 @@ describe('A7 the Safety Officer reaches only events under review, and writes onl
   test('TC-376 the Safety Officer can write only the outcome, its history and its notices', () => {
     const writable = collections.filter((collection) => writeConditions(collection)
       .some((condition) => /'SAFETY_OFFICER'|safetyReviewing\(|safetyOutcomeUpdate\(\)|safetyOutcomeCommit\(/.test(condition)));
-    expect(writable.sort()).toEqual(['event_history', 'events', 'notifications', 'safety_reviews']);
+    expect(writable.sort()).toEqual(['event_history', 'events', 'notifications', 'safety_reviews', 'venue_bookings']);
   });
 
   // AC3 — equipment placement and crowd movement come from the event's coordinator,

@@ -290,7 +290,7 @@ service cloud.firestore {
               && approvedBookingId.size() > 0
               && approvedVenueBookingFor(approvedBookingId))
             || (review.outcome in ['REJECT', 'REQUEST_CHANGES'] && request.resource.data.status == 'PLANNING'))
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'last_safety_review_id', 'updated_at']);
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'last_safety_review_id', 'updated_at', 'returned_to_planning_at', 'technical_review_status']);
       }
 
       // Called only on Approve, after the id is known to be present, so a Reject
@@ -695,6 +695,9 @@ service cloud.firestore {
           // J2 AC1 — submission received. A new request has no coordinator yet, so the
           // organiser records the notice in their own inbox: for their own event, one
           // type only, and only while that event is Submitted.
+          || (safetyOutcomeCommit(request.resource.data.event_id)
+            && request.resource.data.type == 'ARRANGEMENT_REVIEW_REQUIRED'
+            && request.resource.data.created_at == request.time)
           || (hasRole('EVENT_COORDINATOR')
             && request.resource.data.type == 'SAFETY_REVIEW_WAITING'
             && getAfter(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.status == 'SAFETY_REVIEW'
@@ -928,7 +931,16 @@ service cloud.firestore {
             || (resource.data.status in ['PENDING', 'HELD'] && request.resource.data.status == 'WITHDRAWN'))
           && request.resource.data.released_at is timestamp
           && request.resource.data.release_reason is string
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'released_at', 'release_reason']));
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'released_at', 'release_reason']))
+        // L4 / SCRUM-190 — a safety concern flags the booking for review, and the
+        // assigned coordinator clears that flag once the booking is acceptable again.
+        || (safetyOutcomeCommit(resource.data.event_id)
+          && request.resource.data.review_status == 'Review required'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['review_status']))
+        || (hasRole('EVENT_COORDINATOR')
+          && currentCoordinator(resource.data.event_id)
+          && request.resource.data.review_status == 'Reviewed'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['review_status']));
     }
     match /venue_booking_conflicts/{conflictId} {
       // F10's trusted backend owns persisted detection and notification. Venue

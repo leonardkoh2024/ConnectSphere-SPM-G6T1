@@ -249,7 +249,7 @@ test.each([
 
   expect(written('safety_reviews')[0].data).toEqual(expect.objectContaining({ outcome, comment: 'Move the stage.' }));
   expect(mockTransactionUpdate).toHaveBeenCalledWith({ path: 'events/e1', id: 'e1' },
-    { status: 'PLANNING', last_safety_review_id: 'safety_reviews-auto', updated_at: 'SERVER_TIMESTAMP' });
+    { status: 'PLANNING', last_safety_review_id: 'safety_reviews-auto', updated_at: 'SERVER_TIMESTAMP', returned_to_planning_at: 'SERVER_TIMESTAMP' });
   expect(written('event_history')[0].data).toEqual(expect.objectContaining({ action_type: type, new_value: 'PLANNING', description: 'Move the stage.' }));
   expect(written('notifications').map(({ data }) => [data.user_id, data.type, data.message]))
     .toEqual([['COORD-1', type, message], ['ORG-1', type, message]]);
@@ -300,6 +300,25 @@ test('TC-381 approving an event with a booking not yet approved is refused and n
     .rejects.toThrow('Every active venue booking must be approved before the event can be confirmed. Not yet approved: Breakout 1.');
   expect(mockTransactionSet).not.toHaveBeenCalled();
   expect(mockTransactionUpdate).not.toHaveBeenCalled();
+});
+
+test('L4 SCRUM-190 Request changes flags only the venue booking and tells its staff', async () => {
+  givenEvent({}, 'SAFETY_OFFICER', [[
+    'VB-1',
+    { event_id: 'e1', venue_id: 'V-1', status: 'APPROVED', venue_name: 'Harbour Hall', assigned_staff_id: 'STAFF-1' }
+  ]]);
+  mockGetDoc.mockResolvedValue(snapshot('e1', undefined));
+
+  await recordSafetyOutcome({ eventId: 'e1', outcome: 'REQUEST_CHANGES', comment: 'Move the stage.', marked: ['venue'] });
+
+  expect(mockTransactionUpdate).toHaveBeenCalledWith({ path: 'venue_bookings/VB-1', id: 'VB-1' }, { review_status: 'Review required' });
+  expect(mockTransactionUpdate).toHaveBeenCalledWith({ path: 'events/e1', id: 'e1' }, expect.objectContaining({
+    status: 'PLANNING', returned_to_planning_at: 'SERVER_TIMESTAMP'
+  }));
+  expect(mockTransactionUpdate).not.toHaveBeenCalledWith({ path: 'events/e1', id: 'e1' }, expect.objectContaining({
+    technical_review_status: 'Review required'
+  }));
+  expect(written('notifications').some(({ data }) => data.user_id === 'STAFF-1' && data.type === 'ARRANGEMENT_REVIEW_REQUIRED')).toBe(true);
 });
 
 test('L1 SCRUM-187 sending a ready event moves it to Safety Review and notifies active Safety Officers', async () => {

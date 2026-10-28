@@ -46,6 +46,7 @@ function BookingFacts({ booking }) {
 function OutcomeForm({ eventId, onRecorded }) {
   const [outcome, setOutcome] = useState("");
   const [comment, setComment] = useState("");
+  const [marked, setMarked] = useState({ venue: true, technical: true });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const needsComment = outcomeNeedsComment(outcome);
@@ -56,7 +57,14 @@ function OutcomeForm({ eventId, onRecorded }) {
     if (invalid) { setError(invalid); return; }
     setBusy(true); setError("");
     try {
-      await recordSafetyOutcome({ eventId, outcome, comment });
+      await recordSafetyOutcome({
+        eventId,
+        outcome,
+        comment,
+        ...(outcome === SAFETY_OUTCOME.REQUEST_CHANGES ? {
+          marked: Object.entries(marked).filter(([, on]) => on).map(([key]) => key)
+        } : {})
+      });
       onRecorded(outcome);
     } catch (failure) {
       setError(failure.message || "The outcome could not be recorded.");
@@ -78,6 +86,17 @@ function OutcomeForm({ eventId, onRecorded }) {
           ))}
         </div>
       </fieldset>
+      {outcome === SAFETY_OUTCOME.REQUEST_CHANGES && (
+        <fieldset className="cs-choice-group">
+          <legend>Arrangements to review</legend>
+          {["venue", "technical"].map((key) => (
+            <label key={key} className="cs-check">
+              <input type="checkbox" checked={marked[key]} onChange={() => setMarked((current) => ({ ...current, [key]: !current[key] }))} />
+              {key === "venue" ? "Venue" : "Technical"}
+            </label>
+          ))}
+        </fieldset>
+      )}
       <label className="cs-field">
         <span className="cs-field-name">Comment{needsComment && <span className="cs-required" aria-hidden="true">*</span>}</span>
         <textarea rows="4" value={comment} required={needsComment} disabled={busy}
