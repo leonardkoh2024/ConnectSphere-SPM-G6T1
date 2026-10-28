@@ -76,7 +76,7 @@ const USER = { uid: 'u1', email: 'nadia.organiser@connectsphere.com' };
 // What the sidebar offers. "New event request" is deliberately absent: an
 // organiser starts one from the button on My events, not from the navigation.
 const PERMITTED_SCREENS = {
-  [ROLES.ORGANISER]: ['My events', 'Change requests', 'Registrations', 'Notifications'],
+  [ROLES.ORGANISER]: ['My events', 'Change requests', 'Notifications'],
   [ROLES.COORDINATOR]: ['Review queue', 'Assigned events', 'Venue catalogue', 'Venue bookings', 'Equipment requests', 'Registrations', 'Notifications'],
   [ROLES.VENUE_STAFF]: ['Booking requests', 'Venue catalogue', 'Availability calendar', 'Notifications'],
   [ROLES.SAFETY_OFFICER]: ['Safety reviews', 'Venue safety information', 'Notifications'],

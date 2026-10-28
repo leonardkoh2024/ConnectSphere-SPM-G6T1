@@ -77,12 +77,6 @@ export const ROLE_META = {
           "Request changes to a submitted event."
       },
       {
-        name: "Registrations",
-        icon: "people",
-        blurb:
-          "Who has registered for your events."
-      },
-      {
         name: "Notifications",
         icon: "bell",
         blurb:
