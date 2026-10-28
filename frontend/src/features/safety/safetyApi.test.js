@@ -86,6 +86,22 @@ test('TC-356 the queue reads only events in Safety Review and names the venues e
   expect(queue[1].venue_names).toEqual([]);
 });
 
+test('L2 SCRUM-188 the queue is oldest first by when the event was sent for its check', async () => {
+  mockGetDocs.mockImplementation((reference) => {
+    if (reference.path === 'events') return Promise.resolve(rows([
+      ['newer', { ...EVENT, name: 'Later Forum', safety_review_requested_at: '2026-10-12T00:00:00.000Z', updated_at: '2026-10-01T00:00:00.000Z' }],
+      ['older', { ...EVENT, name: 'Earlier Forum', safety_review_requested_at: '2026-10-10T00:00:00.000Z', updated_at: '2026-10-20T00:00:00.000Z', event_date: '2026-11-20', expected_attendance: 40 }]
+    ]));
+    return Promise.resolve(rows([]));
+  });
+  mockGetDoc.mockResolvedValue(snapshot('none', undefined));
+
+  const queue = await listSafetyQueue();
+
+  expect(queue.map((event) => event.id)).toEqual(['older', 'newer']);
+  expect(queue[0]).toEqual(expect.objectContaining({ name: 'Earlier Forum', event_date: '2026-11-20', expected_attendance: 40 }));
+});
+
 // AC3 — everything the review needs, read in one go. Released bookings and
 // returned equipment are not part of what will happen, so they are left out.
 test('TC-357 the review gathers capacity, layout, emergency access, restrictions, accessibility, equipment and earlier checks', async () => {
