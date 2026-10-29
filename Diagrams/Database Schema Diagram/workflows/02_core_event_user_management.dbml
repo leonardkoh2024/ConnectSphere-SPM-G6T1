@@ -1,0 +1,205 @@
+// ConnectSphere - Core Event & User Management
+
+Enum user_role {
+  EVENT_ORGANISER
+  EVENT_COORDINATOR
+  EVENT_COORDINATOR_LEAD
+  VENUE_STAFF
+  TECHNICAL_SUPPORT_STAFF
+  ATTENDEE
+  SAFETY_OFFICER
+}
+
+Enum event_status {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  PLANNING
+  SAFETY_REVIEW
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  REJECTED
+}
+
+Enum clarification_status {
+  OPEN
+  ANSWERED
+}
+
+Enum change_request_status {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
+Table users {
+  user_id varchar [pk, note: 'Firebase Authentication UID and Firestore document ID']
+  name varchar [not null]
+  email varchar [not null, unique]
+  role user_role [not null]
+  organisation_name varchar
+  mobile_number varchar
+  preferred_contact_method varchar
+  is_active boolean [not null, default: true]
+  created_at timestamp
+  updated_at timestamp
+
+  Note: 'Password hashes are owned by Firebase Authentication and are not stored here.'
+}
+
+Table events {
+  event_id varchar [pk, note: 'Firestore document ID']
+  reference_no varchar [not null, unique]
+  organiser_id varchar [not null, ref: > users.user_id]
+  coordinator_id varchar [ref: > users.user_id]
+  created_by varchar [ref: > users.user_id]
+  name varchar [not null]
+  purpose varchar
+  description text
+  event_date date
+  start_time time
+  end_time time
+  expected_attendance int
+  status event_status [not null]
+  registration_required boolean
+  equipment_required boolean
+  open_clarification_id varchar
+  approved_venue_booking_id varchar
+  assigned_at timestamp
+  created_at timestamp
+  submitted_at timestamp
+  updated_at timestamp
+  last_activity_at timestamp
+  returned_to_planning_at timestamp
+  safety_review_requested_at timestamp
+  last_safety_review_id varchar
+  equipment_placement text [note: 'Current application stores this safety-planning note directly on the event.']
+  crowd_movement text [note: 'Current application stores this safety-planning note directly on the event.']
+  registration_capacity int [note: 'Current event form also persists registration settings inline.']
+  registration_open_date date
+  registration_open_time time
+  registration_close_date date
+  registration_close_time time
+  last_cancellation_id varchar
+  last_detail_change_id varchar
+  last_venue_release_id varchar
+}
+
+Table coordinators {
+  coordinator_id varchar [pk, ref: - users.user_id]
+  coordinator_seq int [not null, unique]
+  name varchar
+  is_active boolean [not null, default: true]
+
+  Note: 'Project-only collection used by the coordinator-assignment service.'
+}
+
+Table coordinator_assignments {
+  assignment_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  coordinator_id varchar [not null, ref: > users.user_id]
+  assigned_at timestamp [not null]
+  ended_at timestamp
+  assigned_by_id varchar [ref: > users.user_id]
+  ended_by_id varchar [ref: > users.user_id]
+}
+
+Table assignment_cursor {
+  cursor_id varchar [pk, note: 'Usually default.']
+  last_assigned_seq int
+
+  Note: 'Project-only singleton collection used for round-robin coordinator assignment.'
+}
+
+Table clarification_requests {
+  clarification_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  created_by varchar [not null, ref: > users.user_id]
+  message text [not null]
+  status clarification_status [not null]
+  created_at timestamp [not null]
+  responded_at timestamp
+}
+
+Table clarification_responses {
+  response_id varchar [pk]
+  clarification_id varchar [not null, ref: > clarification_requests.clarification_id]
+  responder_id varchar [not null, ref: > users.user_id]
+  message text [not null]
+  created_at timestamp [not null]
+}
+
+Table clarification_requests {
+  clarification_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  created_by varchar [not null, ref: > users.user_id]
+  message text [not null]
+  status clarification_status [not null]
+  created_at timestamp [not null]
+  responded_at timestamp
+}
+
+Table clarification_responses {
+  response_id varchar [pk]
+  clarification_id varchar [not null, ref: > clarification_requests.clarification_id]
+  responder_id varchar [not null, ref: > users.user_id]
+  message text [not null]
+  created_at timestamp [not null]
+}
+
+Table change_requests {
+  change_request_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  requested_by varchar [not null, ref: > users.user_id]
+  organiser_id varchar [ref: > users.user_id, note: 'Used by the current frontend query.']
+  reason text [not null]
+  status change_request_status [not null]
+  decision_reason text
+  decided_by varchar [ref: > users.user_id]
+  created_at timestamp [not null]
+  decided_at timestamp
+}
+
+Table change_request_items {
+  item_id varchar [pk]
+  change_request_id varchar [not null, ref: > change_requests.change_request_id]
+  field_name varchar [not null]
+  old_value text
+  new_value text
+}
+
+Table notifications {
+  notification_id varchar [pk]
+  user_id varchar [not null, ref: > users.user_id]
+  event_id varchar [ref: > events.event_id]
+  type varchar [not null]
+  message text [not null]
+  is_read boolean [not null, default: false]
+  created_at timestamp [not null]
+  read_at timestamp
+  link json
+}
+
+Table event_history {
+  history_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  actor_id varchar [ref: > users.user_id]
+  booking_id varchar [ref: > venue_bookings.booking_id]
+  new_booking_id varchar [ref: > venue_bookings.booking_id]
+  action_type varchar [not null]
+  field_name varchar
+  old_value text
+  new_value text
+  description text
+  created_at timestamp [not null]
+}
+Table arrangement_rerequests {
+  event_id varchar [pk, ref: - events.event_id]
+  significant_change_id varchar
+  equipment_signature text
+  applied_at timestamp
+
+  Note: 'Project-only service state used to avoid repeating venue/equipment re-request work.'
+}
