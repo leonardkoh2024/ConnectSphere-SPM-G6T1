@@ -96,6 +96,30 @@ test("TC-409 Reservations lists current ones soonest first and past ones with wh
   expect(within(screen.getByRole("region", { name: "Past reservations" })).getAllByRole("article")).toHaveLength(1);
 });
 
+test("G5-TC6 AC3 a released reservation shows when it was released as well as why, and an active one shows no release time", async () => {
+  render(<EquipmentReservationsScreen now={NOW} />);
+
+  const released = await screen.findByRole("article", { name: "Town Hall · AUDIO" });
+  const releasedAt = new Date("2026-10-18T02:00:00.000Z").toLocaleString("en-SG", { dateStyle: "medium", timeStyle: "short" });
+  expect(within(released).getByText("Release reason: Event cancelled")).toBeInTheDocument();
+  expect(within(released).getByText(`Release time: ${releasedAt}`)).toBeInTheDocument();
+
+  expect(within(screen.getByRole("article", { name: "Partner Summit · AUDIO" })).queryByText(/Release time/)).not.toBeInTheDocument();
+  expect(within(screen.getByRole("article", { name: "Event event-gone · AUDIO" })).queryByText(/Release time/)).not.toBeInTheDocument();
+});
+
+test("G5-TC7 AC3 a released reservation with no recorded release time says so", async () => {
+  loadEquipmentCatalogue.mockResolvedValue({
+    userId: "tech-1", inventory: [], unavailability: [],
+    reservations: [reservation({ id: "no-time", status: "RELEASED", release_reason: "Event cancelled", released_at: null })]
+  });
+  render(<EquipmentReservationsScreen now={NOW} />);
+
+  const card = await screen.findByRole("article", { name: "Partner Summit · AUDIO" });
+  expect(within(card).getByText("Release reason: Event cancelled")).toBeInTheDocument();
+  expect(within(card).getByText("Release time: Not recorded")).toBeInTheDocument();
+});
+
 test("TC-409 a reservation missing its reference, release reason or dates says so, and type names read as words", async () => {
   loadEquipmentCatalogue.mockResolvedValue({
     userId: "tech-1", inventory: [], unavailability: [],
