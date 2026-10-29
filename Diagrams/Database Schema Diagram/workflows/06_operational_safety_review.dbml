@@ -1,0 +1,156 @@
+// ConnectSphere - Operational Safety Review
+
+Enum safety_outcome {
+  PENDING
+  APPROVE
+  REJECT
+  REQUEST_CHANGES
+}
+
+Table users {
+  user_id varchar [pk, note: 'Firebase Authentication UID and Firestore document ID']
+  name varchar [not null]
+  email varchar [not null, unique]
+  role user_role [not null]
+  organisation_name varchar
+  mobile_number varchar
+  preferred_contact_method varchar
+  is_active boolean [not null, default: true]
+  created_at timestamp
+  updated_at timestamp
+
+  Note: 'Password hashes are owned by Firebase Authentication and are not stored here.'
+}
+
+Table events {
+  event_id varchar [pk, note: 'Firestore document ID']
+  reference_no varchar [not null, unique]
+  organiser_id varchar [not null, ref: > users.user_id]
+  coordinator_id varchar [ref: > users.user_id]
+  created_by varchar [ref: > users.user_id]
+  name varchar [not null]
+  purpose varchar
+  description text
+  event_date date
+  start_time time
+  end_time time
+  expected_attendance int
+  status event_status [not null]
+  registration_required boolean
+  equipment_required boolean
+  open_clarification_id varchar
+  approved_venue_booking_id varchar
+  assigned_at timestamp
+  created_at timestamp
+  submitted_at timestamp
+  updated_at timestamp
+  last_activity_at timestamp
+  returned_to_planning_at timestamp
+  safety_review_requested_at timestamp
+  last_safety_review_id varchar
+  equipment_placement text [note: 'Current application stores this safety-planning note directly on the event.']
+  crowd_movement text [note: 'Current application stores this safety-planning note directly on the event.']
+  registration_capacity int [note: 'Current event form also persists registration settings inline.']
+  registration_open_date date
+  registration_open_time time
+  registration_close_date date
+  registration_close_time time
+  last_cancellation_id varchar
+  last_detail_change_id varchar
+  last_venue_release_id varchar
+}
+
+Table event_safety_details {
+  event_id varchar [pk, ref: - events.event_id]
+  equipment_placement_notes text
+  crowd_movement_notes text
+  updated_by varchar [ref: > users.user_id]
+  updated_at timestamp
+
+  Note: 'Added in the workbook. Current UI instead reads and writes events.equipment_placement and events.crowd_movement.'
+}
+
+Table venue_bookings {
+  booking_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  venue_id varchar [not null, ref: > venues.venue_id]
+  assigned_staff_id varchar [ref: > users.user_id]
+  requested_by varchar [ref: > users.user_id]
+  booking_label varchar [not null, note: 'For example: Main programme or Breakout 1.']
+  start_datetime timestamp [not null]
+  end_datetime timestamp [not null]
+  occupied_start timestamp [note: 'Includes venue setup time.']
+  occupied_end timestamp [note: 'Includes venue turnaround time.']
+  expected_attendance int [not null]
+  status venue_booking_status [not null]
+  requested_layout_id varchar
+  layout_snapshot varchar
+  required_facilities_snapshot json
+  decision_reason text
+  submitted_at timestamp
+  decided_at timestamp
+  decided_by varchar [ref: > users.user_id]
+  released_at timestamp
+  released_by varchar [ref: > users.user_id]
+  release_reason text
+  requires_re_request boolean [not null, default: false]
+  replacement_needed boolean [not null, default: false]
+  replacement_reason text
+  replacement_for_booking_id varchar [ref: > venue_bookings.booking_id]
+  replaced_by_booking_id varchar [ref: > venue_bookings.booking_id]
+  replacement_conflicting_booking_id varchar [ref: > venue_bookings.booking_id]
+  replaced_at timestamp
+  review_status varchar
+  safety_review_required boolean [not null, default: false]
+  held_at timestamp
+  hold_expires_at timestamp
+  hold_warning_sent_at timestamp
+  hold_expiry_notified_at timestamp
+}
+
+Table event_equipment_requests {
+  request_id varchar [pk]
+  event_id varchar [not null, unique, ref: - events.event_id]
+  coordinator_id varchar [ref: > users.user_id]
+  created_by varchar [ref: > users.user_id]
+  event_name varchar
+  reference_no varchar
+  event_date date
+  start_time time
+  end_time time
+  expected_attendance int
+  status equipment_request_status [not null]
+  lines json [note: 'Active equipment_requests documents embed their submitted request lines.']
+  on_site_support boolean
+  on_site_support_details text
+  has_support_decisions boolean [default: false]
+  created_at timestamp
+  submitted_at timestamp
+  updated_at timestamp
+  arranged_at timestamp
+  unable_reason text
+  safety_review_required boolean [default: false]
+
+  Note: 'Workbook name: event_equipment_requests. Active application collection: equipment_requests, keyed by event ID.'
+}
+
+Table safety_reviews {
+  safety_review_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  safety_officer_id varchar [not null, ref: > users.user_id]
+  submitted_at timestamp
+  outcome safety_outcome [not null]
+  comment text
+  decided_at timestamp
+  review_sequence int [not null]
+}
+
+Table safety_review_targets {
+  target_id varchar [pk]
+  safety_review_id varchar [not null, ref: > safety_reviews.safety_review_id]
+  target_type varchar [not null, note: 'VENUE_BOOKING or EQUIPMENT_REQUEST.']
+  target_ref_id varchar [not null, note: 'Polymorphic ID; points to a venue booking or equipment request.']
+  review_required boolean [not null, default: false]
+}
+
+Ref: events.last_safety_review_id > safety_reviews.safety_review_id
