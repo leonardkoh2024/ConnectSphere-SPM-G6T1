@@ -1,0 +1,621 @@
+// ConnectSphere conceptual Firestore schema for dbdiagram.io
+// Sources reconciled on 2026-10-30:
+// - Product Backlog (9).xlsx / Database Structure DRAFT
+// - seed-firestore.js
+// - firestore.rules
+// - frontend and backend Firestore reads/writes
+//
+// Firestore is document-oriented. This DBML represents document IDs as primary
+// keys and inferred cross-collection identifiers as relational foreign keys.
+
+Enum user_role {
+  EVENT_ORGANISER
+  EVENT_COORDINATOR
+  EVENT_COORDINATOR_LEAD
+  VENUE_STAFF
+  TECHNICAL_SUPPORT_STAFF
+  ATTENDEE
+  SAFETY_OFFICER
+}
+
+Enum event_status {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  PLANNING
+  SAFETY_REVIEW
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  REJECTED
+}
+
+Enum venue_booking_status {
+  PENDING
+  HELD
+  APPROVED
+  REJECTED
+  WITHDRAWN
+  RELEASED
+  REPLACED
+  EXPIRED
+  CANCELLED
+}
+
+Enum hold_status {
+  ACTIVE
+  EXPIRED
+  CONVERTED
+}
+
+Enum conflict_status {
+  OPEN
+  RESOLVED
+}
+
+Enum registration_status {
+  REGISTERED
+  WAITLISTED
+  WITHDRAWN
+  CANCELLED
+}
+
+Enum invitation_status {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+Enum clarification_status {
+  OPEN
+  ANSWERED
+}
+
+Enum change_request_status {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
+Enum equipment_request_status {
+  PENDING
+  ARRANGED
+  APPROVED
+  AMENDED
+  REJECTED
+  CANCELLED
+}
+
+Enum equipment_reservation_status {
+  RESERVED
+  RELEASED
+  CANCELLED
+}
+
+Enum safety_outcome {
+  PENDING
+  APPROVE
+  REJECT
+  REQUEST_CHANGES
+}
+
+Table users {
+  user_id varchar [pk, note: 'Firebase Authentication UID and Firestore document ID']
+  name varchar [not null]
+  email varchar [not null, unique]
+  role user_role [not null]
+  organisation_name varchar
+  mobile_number varchar
+  preferred_contact_method varchar
+  is_active boolean [not null, default: true]
+  created_at timestamp
+  updated_at timestamp
+
+  Note: 'Password hashes are owned by Firebase Authentication and are not stored here.'
+}
+
+Table events {
+  event_id varchar [pk, note: 'Firestore document ID']
+  reference_no varchar [not null, unique]
+  organiser_id varchar [not null, ref: > users.user_id]
+  coordinator_id varchar [ref: > users.user_id]
+  created_by varchar [ref: > users.user_id]
+  name varchar [not null]
+  purpose varchar
+  description text
+  event_date date
+  start_time time
+  end_time time
+  expected_attendance int
+  status event_status [not null]
+  registration_required boolean
+  equipment_required boolean
+  open_clarification_id varchar
+  approved_venue_booking_id varchar
+  assigned_at timestamp
+  created_at timestamp
+  submitted_at timestamp
+  updated_at timestamp
+  last_activity_at timestamp
+  returned_to_planning_at timestamp
+  safety_review_requested_at timestamp
+  last_safety_review_id varchar
+  equipment_placement text [note: 'Current application stores this safety-planning note directly on the event.']
+  crowd_movement text [note: 'Current application stores this safety-planning note directly on the event.']
+  registration_capacity int [note: 'Current event form also persists registration settings inline.']
+  registration_open_date date
+  registration_open_time time
+  registration_close_date date
+  registration_close_time time
+  last_cancellation_id varchar
+  last_detail_change_id varchar
+  last_venue_release_id varchar
+}
+
+Table event_venue_requirements {
+  event_id varchar [pk, ref: - events.event_id]
+  preferred_location varchar
+  required_layout varchar
+  facilities_required boolean
+  accessibility_needed boolean
+  accessibility_notes text
+}
+
+Table event_facilities {
+  event_id varchar [not null, ref: > events.event_id]
+  facility_id varchar [not null, note: 'Identifier from the application facility catalogue.']
+
+  indexes {
+    (event_id, facility_id) [pk]
+  }
+}
+
+Table event_accessibility {
+  event_id varchar [not null, ref: > events.event_id]
+  accessibility_id varchar [not null, note: 'Identifier from the application accessibility catalogue.']
+
+  indexes {
+    (event_id, accessibility_id) [pk]
+  }
+}
+
+Table venues {
+  venue_id varchar [pk]
+  name varchar [not null]
+  building varchar
+  location varchar
+  max_capacity int [not null]
+  setup_minutes int [not null, default: 0]
+  turnaround_minutes int [not null, default: 0]
+  is_active boolean [not null, default: true]
+  emergency_access_notes text
+  known_restrictions text
+}
+
+Table venue_operating_hours {
+  operating_id varchar [pk]
+  venue_id varchar [not null, ref: > venues.venue_id]
+  weekday varchar [not null]
+  opens_at time [not null]
+  closes_at time [not null]
+
+  indexes {
+    (venue_id, weekday) [unique]
+  }
+}
+
+Table venue_staff {
+  venue_staff_id varchar [pk]
+  venue_id varchar [not null, ref: > venues.venue_id]
+  user_id varchar [not null, ref: > users.user_id]
+
+  indexes {
+    (venue_id, user_id) [unique]
+  }
+}
+
+Table venue_layouts {
+  venue_id varchar [not null, ref: > venues.venue_id]
+  layout_id varchar [not null]
+
+  indexes {
+    (venue_id, layout_id) [pk]
+  }
+}
+
+Table venue_facilities {
+  venue_id varchar [not null, ref: > venues.venue_id]
+  facility_id varchar [not null]
+
+  indexes {
+    (venue_id, facility_id) [pk]
+  }
+}
+
+Table venue_accessibility {
+  venue_id varchar [not null, ref: > venues.venue_id]
+  accessibility_id varchar [not null]
+
+  indexes {
+    (venue_id, accessibility_id) [pk]
+  }
+}
+
+Table venue_unavailability {
+  unavailability_id varchar [pk]
+  venue_id varchar [not null, ref: > venues.venue_id]
+  start_datetime timestamp [not null]
+  end_datetime timestamp [not null]
+  reason varchar [not null, note: 'Maintenance, Equipment failure, Renovation, Safety concern, or Other.']
+  note text [note: 'Required when reason is Other.']
+  created_by varchar [not null, ref: > users.user_id]
+}
+
+Table venue_bookings {
+  booking_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  venue_id varchar [not null, ref: > venues.venue_id]
+  assigned_staff_id varchar [ref: > users.user_id]
+  requested_by varchar [ref: > users.user_id]
+  booking_label varchar [not null, note: 'For example: Main programme or Breakout 1.']
+  start_datetime timestamp [not null]
+  end_datetime timestamp [not null]
+  occupied_start timestamp [note: 'Includes venue setup time.']
+  occupied_end timestamp [note: 'Includes venue turnaround time.']
+  expected_attendance int [not null]
+  status venue_booking_status [not null]
+  requested_layout_id varchar
+  layout_snapshot varchar
+  required_facilities_snapshot json
+  decision_reason text
+  submitted_at timestamp
+  decided_at timestamp
+  decided_by varchar [ref: > users.user_id]
+  released_at timestamp
+  released_by varchar [ref: > users.user_id]
+  release_reason text
+  requires_re_request boolean [not null, default: false]
+  replacement_needed boolean [not null, default: false]
+  replacement_reason text
+  replacement_for_booking_id varchar [ref: > venue_bookings.booking_id]
+  replaced_by_booking_id varchar [ref: > venue_bookings.booking_id]
+  replacement_conflicting_booking_id varchar [ref: > venue_bookings.booking_id]
+  replaced_at timestamp
+  review_status varchar
+  safety_review_required boolean [not null, default: false]
+  held_at timestamp
+  hold_expires_at timestamp
+  hold_warning_sent_at timestamp
+  hold_expiry_notified_at timestamp
+}
+
+Table venue_change_history {
+  history_id varchar [pk]
+  venue_id varchar [not null, ref: > venues.venue_id]
+  actor_id varchar [not null, ref: > users.user_id]
+  field_name varchar [not null]
+  old_value text
+  new_value text
+  created_at timestamp [not null]
+}
+
+Table venue_unavailability_impacts {
+  impact_id varchar [pk]
+  unavailability_id varchar [not null, ref: > venue_unavailability.unavailability_id]
+  booking_id varchar [not null, ref: > venue_bookings.booking_id]
+  detected_at timestamp [not null]
+  resolved_at timestamp
+}
+
+Table venue_booking_conflicts {
+  conflict_id varchar [pk]
+  venue_id varchar [not null, ref: > venues.venue_id]
+  booking_a_id varchar [not null, ref: > venue_bookings.booking_id]
+  booking_b_id varchar [not null, ref: > venue_bookings.booking_id]
+  overlap_start timestamp [not null]
+  overlap_end timestamp [not null]
+  status conflict_status [not null]
+  detected_at timestamp [not null]
+  resolved_at timestamp
+
+  indexes {
+    (booking_a_id, booking_b_id) [unique]
+  }
+}
+
+Table venue_holds {
+  hold_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  venue_id varchar [not null, ref: > venues.venue_id]
+  created_by varchar [not null, ref: > users.user_id]
+  start_datetime timestamp [not null]
+  end_datetime timestamp [not null]
+  occupied_start timestamp [not null]
+  occupied_end timestamp [not null]
+  expires_at timestamp [not null]
+  status hold_status [not null]
+  created_at timestamp [not null]
+  converted_booking_id varchar [ref: > venue_bookings.booking_id]
+
+  Note: 'The workbook defines a dedicated collection. Current booking workflows also represent holds using HELD venue_bookings.'
+}
+
+Table equipment_types {
+  equipment_type_id varchar [pk]
+  name varchar [not null]
+  description text
+  total_quantity int [not null]
+  is_active boolean [not null, default: true]
+  availability_revision int [default: 0]
+  updated_at timestamp
+
+  Note: 'Workbook name: equipment_types. Active application collection: equipment_inventory, where equipment_type or the document ID identifies the type.'
+}
+
+Table event_equipment_requests {
+  request_id varchar [pk]
+  event_id varchar [not null, unique, ref: - events.event_id]
+  coordinator_id varchar [ref: > users.user_id]
+  created_by varchar [ref: > users.user_id]
+  event_name varchar
+  reference_no varchar
+  event_date date
+  start_time time
+  end_time time
+  expected_attendance int
+  status equipment_request_status [not null]
+  lines json [note: 'Active equipment_requests documents embed their submitted request lines.']
+  on_site_support boolean
+  on_site_support_details text
+  has_support_decisions boolean [default: false]
+  created_at timestamp
+  submitted_at timestamp
+  updated_at timestamp
+  arranged_at timestamp
+  unable_reason text
+  safety_review_required boolean [default: false]
+
+  Note: 'Workbook name: event_equipment_requests. Active application collection: equipment_requests, keyed by event ID.'
+}
+
+Table equipment_request_lines {
+  line_id varchar [pk]
+  request_id varchar [not null, ref: > event_equipment_requests.request_id]
+  event_id varchar [ref: > events.event_id]
+  equipment_type_id varchar [not null, ref: > equipment_types.equipment_type_id]
+  quantity int [not null]
+  technical_note text
+  technical_requirements text
+  status varchar
+  fulfillment_status varchar
+  amendment_note text
+  resolution varchar
+  resolution_reason text
+  reservation_id varchar
+
+  Note: 'Workbook name: equipment_request_lines. The event form currently stores initial rows in event_equipment; submitted request lines are embedded in equipment_requests.lines.'
+}
+
+Table equipment_unavailability {
+  unavailability_id varchar [pk]
+  equipment_type_id varchar [not null, ref: > equipment_types.equipment_type_id]
+  quantity int [not null]
+  start_datetime timestamp [not null]
+  end_datetime timestamp [not null]
+  reason text [not null]
+
+  Note: 'Active code calls the foreign-key field equipment_type.'
+}
+
+Table equipment_reservations {
+  reservation_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  equipment_type_id varchar [not null, ref: > equipment_types.equipment_type_id]
+  quantity int [not null]
+  line_index int
+  start_datetime timestamp [not null]
+  end_datetime timestamp [not null]
+  status equipment_reservation_status [not null]
+  created_by varchar [ref: > users.user_id]
+  reserved_by varchar [ref: > users.user_id]
+  created_at timestamp
+  updated_at timestamp
+  released_at timestamp
+  released_by varchar [ref: > users.user_id]
+  release_reason text
+
+  Note: 'Active code calls the equipment foreign-key field equipment_type.'
+}
+
+Table equipment_request_history {
+  history_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  request_id varchar [not null, ref: > event_equipment_requests.request_id]
+  line_index int
+  action varchar [not null]
+  actor_id varchar [ref: > users.user_id]
+  equipment_type_id varchar [ref: > equipment_types.equipment_type_id]
+  quantity int
+  reservation_id varchar [ref: > equipment_reservations.reservation_id]
+  note text
+  reason text
+  old_values json
+  new_values json
+  created_at timestamp [not null]
+
+  Note: 'Project collection not listed as a separate table in the workbook draft.'
+}
+
+Table registrations {
+  registration_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  attendee_id varchar [not null, ref: > users.user_id]
+  status registration_status [not null]
+  registered_at timestamp
+  withdrawn_at timestamp
+  waitlist_position int
+
+  indexes {
+    (event_id, attendee_id) [unique]
+  }
+}
+
+Table registration_settings {
+  event_id varchar [pk, ref: - events.event_id]
+  capacity int [not null]
+  registered_count int [not null, default: 0]
+  open_datetime timestamp
+  close_datetime timestamp
+
+  Note: 'The active event form also stores split registration date/time fields directly on events.'
+}
+
+Table waitlist_invitations {
+  invitation_id varchar [pk]
+  registration_id varchar [not null, ref: > registrations.registration_id]
+  invited_at timestamp [not null]
+  expires_at timestamp [not null]
+  responded_at timestamp
+  status invitation_status [not null]
+}
+
+Table clarification_requests {
+  clarification_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  created_by varchar [not null, ref: > users.user_id]
+  message text [not null]
+  status clarification_status [not null]
+  created_at timestamp [not null]
+  responded_at timestamp
+}
+
+Table clarification_responses {
+  response_id varchar [pk]
+  clarification_id varchar [not null, ref: > clarification_requests.clarification_id]
+  responder_id varchar [not null, ref: > users.user_id]
+  message text [not null]
+  created_at timestamp [not null]
+}
+
+Table change_requests {
+  change_request_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  requested_by varchar [not null, ref: > users.user_id]
+  organiser_id varchar [ref: > users.user_id, note: 'Used by the current frontend query.']
+  reason text [not null]
+  status change_request_status [not null]
+  decision_reason text
+  decided_by varchar [ref: > users.user_id]
+  created_at timestamp [not null]
+  decided_at timestamp
+}
+
+Table change_request_items {
+  item_id varchar [pk]
+  change_request_id varchar [not null, ref: > change_requests.change_request_id]
+  field_name varchar [not null]
+  old_value text
+  new_value text
+}
+
+Table notifications {
+  notification_id varchar [pk]
+  user_id varchar [not null, ref: > users.user_id]
+  event_id varchar [ref: > events.event_id]
+  type varchar [not null]
+  message text [not null]
+  is_read boolean [not null, default: false]
+  created_at timestamp [not null]
+  read_at timestamp
+  link json
+}
+
+Table event_history {
+  history_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  actor_id varchar [ref: > users.user_id]
+  booking_id varchar [ref: > venue_bookings.booking_id]
+  new_booking_id varchar [ref: > venue_bookings.booking_id]
+  action_type varchar [not null]
+  field_name varchar
+  old_value text
+  new_value text
+  description text
+  created_at timestamp [not null]
+}
+
+Table coordinator_assignments {
+  assignment_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  coordinator_id varchar [not null, ref: > users.user_id]
+  assigned_at timestamp [not null]
+  ended_at timestamp
+  assigned_by_id varchar [ref: > users.user_id]
+  ended_by_id varchar [ref: > users.user_id]
+}
+
+Table event_safety_details {
+  event_id varchar [pk, ref: - events.event_id]
+  equipment_placement_notes text
+  crowd_movement_notes text
+  updated_by varchar [ref: > users.user_id]
+  updated_at timestamp
+
+  Note: 'Added in the workbook. Current UI instead reads and writes events.equipment_placement and events.crowd_movement.'
+}
+
+Table safety_reviews {
+  safety_review_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  safety_officer_id varchar [not null, ref: > users.user_id]
+  submitted_at timestamp
+  outcome safety_outcome [not null]
+  comment text
+  decided_at timestamp
+  review_sequence int [not null]
+}
+
+Table safety_review_targets {
+  target_id varchar [pk]
+  safety_review_id varchar [not null, ref: > safety_reviews.safety_review_id]
+  target_type varchar [not null, note: 'VENUE_BOOKING or EQUIPMENT_REQUEST.']
+  target_ref_id varchar [not null, note: 'Polymorphic ID; points to a venue booking or equipment request.']
+  review_required boolean [not null, default: false]
+}
+
+Table coordinators {
+  coordinator_id varchar [pk, ref: - users.user_id]
+  coordinator_seq int [not null, unique]
+  name varchar
+  is_active boolean [not null, default: true]
+
+  Note: 'Project-only collection used by the coordinator-assignment service.'
+}
+
+Table assignment_cursor {
+  cursor_id varchar [pk, note: 'Usually default.']
+  last_assigned_seq int
+
+  Note: 'Project-only singleton collection used for round-robin coordinator assignment.'
+}
+
+Table arrangement_rerequests {
+  event_id varchar [pk, ref: - events.event_id]
+  significant_change_id varchar
+  equipment_signature text
+  applied_at timestamp
+
+  Note: 'Project-only service state used to avoid repeating venue/equipment re-request work.'
+}
+
+// Circular references that cannot be declared inline before both tables exist.
+Ref: events.open_clarification_id > clarification_requests.clarification_id
+Ref: events.approved_venue_booking_id > venue_bookings.booking_id
+Ref: events.last_safety_review_id > safety_reviews.safety_review_id
+Ref: events.last_cancellation_id > event_history.history_id
+Ref: events.last_detail_change_id > event_history.history_id
+Ref: events.last_venue_release_id > event_history.history_id
+Ref: equipment_request_lines.reservation_id > equipment_reservations.reservation_id
+
