@@ -69,6 +69,17 @@ describe("G2 pooled equipment availability", () => {
     expect(result.freeQuantity).toBe(12);
   });
 
+  test("G5-TC4 AC2 a reservation released with its cancelled event frees its quantity for another event straight away", () => {
+    const heldByCancelledEvent = (status) => [
+      { event_id: "evt-a", equipment_type: "AUDIO", quantity: 12, status, start_datetime: start, end_datetime: end }
+    ];
+    const before = calculateEquipmentAvailability(input({ eventId: "evt-b", reservations: heldByCancelledEvent("RESERVED") }));
+    expect(before).toMatchObject({ freeQuantity: 0, shortfall: 4, available: false });
+
+    const after = calculateEquipmentAvailability(input({ eventId: "evt-b", reservations: heldByCancelledEvent("RELEASED") }));
+    expect(after).toMatchObject({ reservedQuantity: 0, freeQuantity: 12, shortfall: 0, available: true });
+  });
+
   test("TC-294 rejects invalid quantity and window inputs instead of returning a success-shaped result", () => {
     expect(() => calculateEquipmentAvailability(input({ requestedQuantity: 1.5 }))).toThrow(/whole number greater than zero/i);
     expect(() => calculateEquipmentAvailability(input({ windowEnd: start }))).toThrow(/valid availability window/i);

@@ -47,6 +47,21 @@ describe('equipment arrangements on the coordinator event page', () => {
     expect(unable).toMatchObject({ action: 'Marked equipment unable to fulfil', reason: 'None free that day' });
   });
 
+  test('G5-TC5 AC3 a reservation released by a cancellation stays in the Activity entries with its reason, time and who released it', () => {
+    const rows = equipmentActivity([
+      { id: 'q9', action: 'LINE_RESERVATION_RELEASED', actor_id: 'coord1', actor_role: 'Event Coordinator', created_at: '2026-10-28T02:00:00.000Z', equipment_type: 'AUDIO', quantity: 2, reason: 'Speaker unavailable' }
+    ]);
+
+    const [named] = activityEntries(rows, { coord1: 'Alex Coordinator' });
+    expect(named).toMatchObject({
+      action: 'Released an equipment reservation', actor: 'Alex Coordinator', at: '2026-10-28T02:00:00.000Z',
+      reason: 'Speaker unavailable',
+      changes: [{ label: 'Equipment', oldValue: 'Audio × 2 — Approved', newValue: 'Audio × 2 — Released' }]
+    });
+    // With no readable name the role stands in, so the entry is never anonymous.
+    expect(activityEntries(rows, {})[0].actor).toBe('Event Coordinator');
+  });
+
   test('TC-480 a venue booking approval with no readable Venue Staff name is credited to Venue Staff', () => {
     const [entry] = activityEntries([{ id: 'h1', action_type: 'VENUE_BOOKING_APPROVED', actor_id: 'vs1', created_at: '2026-10-05T02:00:00.000Z' }], {});
     expect(entry.actor).toBe('Venue Staff');
