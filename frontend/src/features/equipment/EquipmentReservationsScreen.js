@@ -29,7 +29,10 @@ function ReservationCard({ reservation, userId }) {
     </p></div>
     <div className="cs-record-details">
       <p>{type} · {reservation.quantity}</p>
-      {reservation.state === "RELEASED" && <p>Release reason: {reservation.release_reason || "Not recorded"}</p>}
+      {reservation.state === "RELEASED" && <>
+        <p>Release reason: {reservation.release_reason || "Not recorded"}</p>
+        <p>Release time: {when(reservation.released_at)}</p>
+      </>}
     </div>
   </article>;
 }

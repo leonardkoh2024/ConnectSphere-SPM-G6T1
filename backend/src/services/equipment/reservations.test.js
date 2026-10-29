@@ -38,7 +38,7 @@ const fixture = ({
             : { status: "PENDING", lines })
         };
       }
-      if (reference.path === "equipment_inventory/AUDIO") {
+      if (reference.path === "equipment_inventory/AUDIO" || reference.path === "equipment_inventory/VISUAL") {
         return { exists: true, data: () => ({ total_quantity: 8, availability_revision: 0 }) };
       }
       if (reference.path === "equipment_reservations/reservation-1") {
@@ -52,7 +52,10 @@ const fixture = ({
         };
       }
       if (reference.collectionName === "equipment_reservations") {
-        return { docs: reservations.map((data, index) => {
+        // G5 — like Firestore, return only the documents that match the query's filters.
+        const matching = reservations.filter((data) =>
+          (reference.filters || []).every(([field, value]) => data[field] === value));
+        return { docs: matching.map((data, index) => {
           const id = data.reservation_id || `reservation-${index + 1}`;
           return {
             id,
@@ -217,6 +220,76 @@ test("D4 equipment release rejects a non-cancelled event", async () => {
       eventId: "event-1", reason: "No longer happening", userId: "coord-1"
     }),
     /only after the event is Cancelled/
+  );
+  assert.equal(transaction.updated.length, 0);
+  assert.equal(transaction.created.length, 0);
+});
+
+// G5 / SCRUM-137 — release equipment when an event is cancelled. The D4 tests above pin one
+// reservation; these pin "all", "only this event's", who may ask, and the history it leaves.
+const cancelledEvent = { coordinator_id: "coord-1", status: "CANCELLED", name: "Q4 Partner Summit" };
+const g5Reservations = () => [
+  reservationRecord({ reservation_id: "res-audio", event_id: "event-1", line_index: 0, equipment_type: "AUDIO", quantity: 2 }),
+  reservationRecord({ reservation_id: "res-visual", event_id: "event-1", line_index: 1, equipment_type: "VISUAL", quantity: 1 }),
+  reservationRecord({
+    reservation_id: "res-earlier", event_id: "event-1", line_index: 2, equipment_type: "AUDIO", quantity: 1,
+    status: "RELEASED", release_reason: "Released earlier by Technical Support"
+  }),
+  reservationRecord({ reservation_id: "res-other-event", event_id: "event-2", line_index: 0, equipment_type: "AUDIO", quantity: 3 })
+];
+const reservationUpdates = (transaction) =>
+  transaction.updated.filter((item) => item.reference.path.startsWith("equipment_reservations/"));
+
+test("G5-TC1 AC1 cancelling releases every active reservation of the event, whatever the type, and no other", async () => {
+  const { service, transaction } = fixture({ withReservationRequest: true, event: cancelledEvent, reservations: g5Reservations() });
+
+  assert.deepEqual(
+    await service.releaseCancelledEventReservations({ eventId: "event-1", reason: "Venue lost", userId: "coord-1" }),
+    { released: 2 }
+  );
+
+  const released = reservationUpdates(transaction);
+  assert.deepEqual(released.map((item) => item.reference.path).sort(), [
+    "equipment_reservations/res-audio", "equipment_reservations/res-visual"
+  ]);
+  released.forEach((item) => assert.equal(item.data.status, "RELEASED"));
+  // Each type's stock count moves once, so availability is recomputed for both.
+  const inventory = transaction.updated.filter((item) => item.reference.path.startsWith("equipment_inventory/"));
+  assert.deepEqual(inventory.map((item) => item.reference.path).sort(), ["equipment_inventory/AUDIO", "equipment_inventory/VISUAL"]);
+  inventory.forEach((item) => assert.equal(item.data.availability_revision, 1));
+});
+
+test("G5-TC2 AC3 each released reservation is kept in the event's history with the reason, the time and who released it", async () => {
+  const { service, transaction } = fixture({ withReservationRequest: true, event: cancelledEvent, reservations: g5Reservations() });
+  await service.releaseCancelledEventReservations({ eventId: "event-1", reason: "Venue lost", userId: "coord-1" });
+
+  // The reservation itself is updated, never deleted, and carries when and why.
+  reservationUpdates(transaction).forEach((item) => {
+    assert.equal(item.data.release_reason, "Venue lost");
+    assert.deepEqual(item.data.released_at, { serverTimestamp: true });
+    assert.equal(item.data.released_by, "coord-1");
+  });
+  assert.equal(transaction.deleted, undefined);
+  // One history row per released reservation, none for the one released earlier or the other event's.
+  const history = transaction.created.filter((item) => item.reference.collectionName === "equipment_request_history");
+  assert.deepEqual(history.map((item) => item.data.reservation_id).sort(), ["res-audio", "res-visual"]);
+  history.forEach((item) => {
+    assert.equal(item.data.event_id, "event-1");
+    assert.equal(item.data.action, "LINE_RESERVATION_RELEASED");
+    assert.equal(item.data.reason, "Venue lost");
+    assert.deepEqual(item.data.created_at, { serverTimestamp: true });
+  });
+});
+
+test("G5-TC3 AC1 only the event's current coordinator can release its equipment, and nothing is written when refused", async () => {
+  const { service, transaction } = fixture({
+    withReservationRequest: true,
+    event: { ...cancelledEvent, coordinator_id: "coord-2" },
+    reservations: g5Reservations()
+  });
+  await assert.rejects(
+    service.releaseCancelledEventReservations({ eventId: "event-1", reason: "Venue lost", userId: "coord-1" }),
+    /current event coordinator/
   );
   assert.equal(transaction.updated.length, 0);
   assert.equal(transaction.created.length, 0);
