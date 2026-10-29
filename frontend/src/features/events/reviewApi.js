@@ -42,7 +42,7 @@ const record = (snapshot) => {
   return {
     id: snapshot.id, ...data,
     created_at: asIso(data.created_at), updated_at: asIso(data.updated_at),
-    assigned_at: asIso(data.assigned_at), submitted_at: asIso(data.submitted_at),
+    assigned_at: asIso(data.assigned_at), submitted_at: asIso(data.submitted_at), confirmed_at: asIso(data.confirmed_at),
     responded_at: asIso(data.responded_at), ended_at: asIso(data.ended_at), read_at: asIso(data.read_at)
   };
 };

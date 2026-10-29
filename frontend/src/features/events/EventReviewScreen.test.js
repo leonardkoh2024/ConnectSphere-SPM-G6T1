@@ -118,13 +118,41 @@ test('TC-072/073 requires a rejection reason and sends the recorded reason', asy
   await waitFor(() => expect(reviewApi.reject).toHaveBeenCalledWith('e1', 'No suitable venue can be secured.'));
 });
 
-test('L1 SCRUM-187 the coordinator can send a planning event for its safety check', async () => {
+test('L1 SCRUM-187 D3 the coordinator can send a planning event for its safety check once arrangements are secured', async () => {
   const onNotice = jest.fn();
-  reviewApi.detail.mockResolvedValue(detail({ status: 'PLANNING' }));
+  reviewApi.detail.mockResolvedValue({
+    ...detail({ status: 'PLANNING' }),
+    venueBookings: [{ booking_id: 'b1', venue_name: 'Hall A', status: 'APPROVED' }],
+    equipmentArrangements: { lines: [{ key: '0-AUDIO', label: 'Audio × 2', arranged: true, status: { label: 'Approved', tone: 'positive' } }] }
+  });
   await openRequest({ onNotice });
   await userEvent.click(screen.getByRole('button', { name: /send for safety check/i }));
   await waitFor(() => expect(sendEventForSafetyCheck).toHaveBeenCalledWith('e1'));
   expect(onNotice).toHaveBeenCalledWith('Event sent for its safety check.');
+});
+
+test('D3 AC3 sending is unavailable while an arrangement is missing, and the view names it', async () => {
+  reviewApi.detail.mockResolvedValue({
+    ...detail({ status: 'PLANNING' }),
+    venueBookings: [{ booking_id: 'b1', venue_name: 'Hall A', status: 'APPROVED' }],
+    equipmentArrangements: { lines: [{ key: '1-LIGHTING', label: 'Lighting × 1', arranged: false, status: { label: 'Pending', tone: 'warning' } }] }
+  });
+  await openRequest();
+  expect(screen.getByRole('button', { name: /send for safety check/i })).toBeDisabled();
+  expect(screen.getByText(/still outstanding: Lighting × 1/i)).toBeInTheDocument();
+});
+
+test('D3 AC3 an event with no approved venue booking names that as outstanding', async () => {
+  reviewApi.detail.mockResolvedValue(detail({ status: 'PLANNING' }));
+  await openRequest();
+  expect(screen.getByRole('button', { name: /send for safety check/i })).toBeDisabled();
+  expect(screen.getByText(/still outstanding: an approved venue booking/i)).toBeInTheDocument();
+});
+
+test('D3 AC4 a confirmed event shows its confirmation time in SGT', async () => {
+  reviewApi.detail.mockResolvedValue(detail({ status: 'CONFIRMED', confirmed_at: '2026-11-03T08:30:00.000Z' }));
+  await openRequest();
+  expect(screen.getByText(/16:30 SGT/)).toBeInTheDocument();
 });
 
 test('D4 cancellation requires a reason and explicit confirmation, then releases arrangements', async () => {

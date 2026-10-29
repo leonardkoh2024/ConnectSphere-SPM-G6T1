@@ -22,6 +22,7 @@ export const NOTIFICATION_TYPE_LABEL = {
   COORDINATOR_ASSIGNED: "Coordinator assigned",
   EVENT_APPROVED: "Request approved",
   SAFETY_CHECK_APPROVED: "Event confirmed",
+  EVENT_CONFIRMED_TECHNICAL: "Event confirmed",
   EVENT_CANCELLED: "Event cancelled",
   VENUE_BOOKING_REQUESTED: "Booking request raised",
   VENUE_BOOKING_REQUEST: "Booking request raised",

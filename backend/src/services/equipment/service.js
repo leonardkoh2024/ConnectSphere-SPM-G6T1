@@ -75,6 +75,26 @@ export const createEquipmentService = ({
     }
   });
 
+  router.post("/requests/:eventId/notify-confirmed", async (request, response, next) => {
+    let user;
+    try {
+      user = await authenticate(
+        request, response, "SAFETY_OFFICER", "Only a Safety Officer can announce a confirmation."
+      );
+    } catch (error) {
+      next(error);
+      return;
+    }
+    if (!user) return;
+
+    try {
+      response.json(await supportNotifier.notifyConfirmed({ eventId: request.params.eventId }));
+    } catch (error) {
+      if (error.statusCode) response.status(error.statusCode).json({ error: error.message });
+      else next(error);
+    }
+  });
+
   router.get("/catalogue", async (request, response, next) => {
     try {
       const user = await authenticateTechnicalSupport(request, response);

@@ -306,11 +306,12 @@ service cloud.firestore {
           && review.decided_at == request.time
           && ((review.outcome == 'APPROVE'
               && request.resource.data.status == 'CONFIRMED'
+              && request.resource.data.confirmed_at == request.time
               && approvedBookingId is string
               && approvedBookingId.size() > 0
               && approvedVenueBookingFor(approvedBookingId))
             || (review.outcome in ['REJECT', 'REQUEST_CHANGES'] && request.resource.data.status == 'PLANNING'))
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'last_safety_review_id', 'updated_at', 'returned_to_planning_at', 'technical_review_status']);
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'last_safety_review_id', 'updated_at', 'returned_to_planning_at', 'technical_review_status', 'confirmed_at']);
       }
 
       // Called only on Approve, after the id is known to be present, so a Reject

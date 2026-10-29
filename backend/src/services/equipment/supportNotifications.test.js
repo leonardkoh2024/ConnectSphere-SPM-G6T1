@@ -169,8 +169,38 @@ const fixture = ({
   };
   const notifier = createSupportNotifier({ firestore, serverTimestamp: () => ({ serverTimestamp: true }) });
   const notify = (overrides = {}) => notifier.notifyTechnicalSupport({ eventId: "event-1", userId: "coord-1", ...overrides });
-  return { state, created, sets, notify };
+  return { state, created, sets, notify, notifyConfirmed: (overrides = {}) => notifier.notifyConfirmed({ eventId: "event-1", ...overrides }) };
 };
+
+const CONFIRMED_EVENT = {
+  coordinator_id: "coord-1", name: "Partner Summit", status: "CONFIRMED",
+  confirmed_at: new Date("2026-11-03T08:30:00Z")
+};
+
+test("D3-TC1 AC5 confirming tells every active Technical Support member once, naming the event and the SGT time", async () => {
+  const { created, sets, notifyConfirmed } = fixture({ event: CONFIRMED_EVENT });
+  const result = await notifyConfirmed();
+
+  assert.deepEqual(result, { eventId: "event-1", sent: 2 });
+  assert.deepEqual(created.map(({ data }) => data.user_id), ["tech-1", "tech-2"]);
+  created.forEach(({ data }) => {
+    assert.equal(data.type, "EVENT_CONFIRMED_TECHNICAL");
+    assert.match(data.message, /^Partner Summit was confirmed on .*16:30 SGT\./);
+  });
+  assert.equal(sets[0].reference.path, "equipment_confirmation_notices/event-1");
+
+  const again = await notifyConfirmed();
+  assert.deepEqual(again, { eventId: "event-1", sent: 0 });
+  assert.equal(created.length, 2);
+});
+
+test("D3-TC2 AC2 AC5 nothing is sent for an event that is not Confirmed, or that asked for no equipment", async () => {
+  const notConfirmed = fixture({ event: { ...CONFIRMED_EVENT, status: "SAFETY_REVIEW" } });
+  assert.equal((await notConfirmed.notifyConfirmed()).sent, 0);
+  const noEquipment = fixture({ event: CONFIRMED_EVENT, current: request({ lines: [] }) });
+  assert.equal((await noEquipment.notifyConfirmed()).sent, 0);
+  assert.equal(notConfirmed.created.length + noEquipment.created.length, 0);
+});
 
 test("J5-TC8 AC1 the first save raises the request to every active Technical Support member, in the inbox's shape", async () => {
   const { created, sets, notify } = fixture();

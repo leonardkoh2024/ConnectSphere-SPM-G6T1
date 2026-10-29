@@ -749,7 +749,8 @@ describe('A7 the Safety Officer reaches only events under review, and writes onl
       "review.outcome == 'APPROVE' && request.resource.data.status == 'CONFIRMED'",
       'approvedVenueBookingFor(approvedBookingId)',
       "review.outcome in ['REJECT', 'REQUEST_CHANGES'] && request.resource.data.status == 'PLANNING'",
-      "affectedKeys().hasOnly(['status', 'last_safety_review_id', 'updated_at', 'returned_to_planning_at', 'technical_review_status'])"
+      "affectedKeys().hasOnly(['status', 'last_safety_review_id', 'updated_at', 'returned_to_planning_at', 'technical_review_status', 'confirmed_at'])",
+      "request.resource.data.confirmed_at == request.time"
     ].forEach((clause) => expect(update).toContain(clause));
     expect(matchBlock('events').match(/allow update: if (.*?);/)[1]).toContain('safetyOutcomeUpdate()');
   });

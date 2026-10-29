@@ -23,6 +23,7 @@ import {
   validateSafetyOutcome
 } from "../../domain/safetyReview";
 import { REVIEW_REQUIRED, recordSafetyOutcome as planSafetyReturn, sendForSafetyCheck } from "../../domain/safetyAndNotices";
+import { callEquipmentService } from "../equipment/equipmentApi";
 
 const requireUser = () => {
   if (!auth.currentUser) throw new Error("Please sign in again.");
@@ -170,6 +171,8 @@ export const recordSafetyOutcome = async ({ eventId, outcome, comment, marked })
     if (planned && !planned.ok) throw new Error("The safety outcome could not be recorded.");
     const eventUpdate = { status, last_safety_review_id: reviewRef.id, updated_at: decidedAt };
     if (status === EVENT_STATUS.PLANNING) eventUpdate.returned_to_planning_at = decidedAt;
+    // D3 AC4 — the moment of confirmation, a server time shown in SGT.
+    if (status === EVENT_STATUS.CONFIRMED) eventUpdate.confirmed_at = decidedAt;
     if (planned?.technicalArrangements.some((item) => item.review_status === REVIEW_REQUIRED)) {
       eventUpdate.technical_review_status = REVIEW_REQUIRED;
     }
@@ -195,6 +198,22 @@ export const recordSafetyOutcome = async ({ eventId, outcome, comment, marked })
       }));
     });
   });
+  // D3 AC5 — the organiser and coordinator are told in the commit above; Technical
+  // Support cannot be listed from a browser, so the equipment service tells them.
+  // A failure leaves the confirmation standing and is only logged.
+  if (outcome === SAFETY_OUTCOME.APPROVE) {
+    try {
+      await callEquipmentService(
+        user,
+        `/api/equipment/requests/${encodeURIComponent(eventId)}/notify-confirmed`,
+        "POST",
+        {},
+        "Technical Support could not be told the event is confirmed."
+      );
+    } catch (notifyError) {
+      console.error("Technical Support could not be told the event is confirmed.", notifyError);
+    }
+  }
   return { ok: true, reviewId: reviewRef.id, status };
 };
 

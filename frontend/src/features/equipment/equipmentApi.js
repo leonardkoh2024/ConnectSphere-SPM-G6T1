@@ -279,7 +279,7 @@ const SERVICE_UNREACHABLE =
 // Every equipment action goes through the backend. When it is down, CRA's dev
 // proxy replies with a plain-text "Proxy error" page, so a reply that is not
 // JSON (or no reply at all) means the service could not be reached.
-const callEquipmentService = async (user, path, method, body, fallbackError) => {
+export const callEquipmentService = async (user, path, method, body, fallbackError) => {
   const token = await user.getIdToken();
   let response;
   let result;

@@ -225,7 +225,7 @@ test('TC-358 approving writes the review, confirms the event and tells its coord
   }]);
   expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
   expect(mockTransactionUpdate).toHaveBeenCalledWith({ path: 'events/e1', id: 'e1' },
-    { status: 'CONFIRMED', last_safety_review_id: 'safety_reviews-auto', updated_at: 'SERVER_TIMESTAMP' });
+    { status: 'CONFIRMED', last_safety_review_id: 'safety_reviews-auto', updated_at: 'SERVER_TIMESTAMP', confirmed_at: 'SERVER_TIMESTAMP' });
   expect(written('event_history').map(({ data }) => data)).toEqual([expect.objectContaining({
     event_id: 'e1', actor_id: 'SO-1', action_type: 'SAFETY_CHECK_APPROVED',
     field_name: 'status', old_value: 'SAFETY_REVIEW', new_value: 'CONFIRMED', created_at: 'SERVER_TIMESTAMP'

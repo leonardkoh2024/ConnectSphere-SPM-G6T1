@@ -23,7 +23,8 @@ export const SUPPORT_NOTICE_TYPES = {
   RAISED: "EQUIPMENT_REQUEST_RAISED",
   AMENDED: "EQUIPMENT_REQUEST_AMENDED",
   ON_SITE_NEEDED: "ON_SITE_SUPPORT_REQUIRED",
-  ON_SITE_CHANGED: "ON_SITE_SUPPORT_CHANGED"
+  ON_SITE_CHANGED: "ON_SITE_SUPPORT_CHANGED",
+  CONFIRMED: "EVENT_CONFIRMED_TECHNICAL"
 };
 
 const typeWords = (type) => String(type || "equipment").replaceAll("_", " ").toLowerCase();
@@ -47,6 +48,13 @@ export const onSiteChangedMessage = ({ eventName, needed, details }) => needed
   : `${named(eventName)}: on-site support is no longer needed.`;
 
 // ---- what changed ------------------------------------------------------------------------
+
+const sgtTime = (date) => `${new Intl.DateTimeFormat("en-SG", {
+  timeZone: "Asia/Singapore", dateStyle: "medium", timeStyle: "short", hour12: false
+}).format(date)} SGT`;
+
+export const confirmedMessage = ({ eventName, confirmedAt }) =>
+  `${named(eventName)} was confirmed on ${sgtTime(confirmedAt)}. Its equipment arrangements are final.`;
 
 // The lines as Technical Support see them: type, quantity and requirement. Whitespace
 // around a requirement does not make an amendment.
@@ -165,5 +173,56 @@ export const createSupportNotifier = ({ firestore, serverTimestamp }) => {
     });
   };
 
-  return { notifyTechnicalSupport };
+  // D3 AC5 — once the Safety Officer has confirmed an event, every active Technical
+  // Support member is told, when the event asked for equipment. A marker keyed by the
+  // confirmation time makes a repeat call send nothing, while a later re-confirmation
+  // (after a return to Planning) is told again.
+  const notifyConfirmed = async ({ eventId }) => {
+    if (typeof eventId !== "string" || !eventId.trim()) {
+      throw new EquipmentValidationError("Choose an event before notifying Technical Support.");
+    }
+    const requestRef = firestore.collection("equipment_requests").doc(eventId);
+    const eventRef = firestore.collection("events").doc(eventId);
+    const markerRef = firestore.collection("equipment_confirmation_notices").doc(eventId);
+
+    return firestore.runTransaction(async (transaction) => {
+      const [requestSnapshot, eventSnapshot, markerSnapshot, usersSnapshot] = await Promise.all([
+        transaction.get(requestRef),
+        transaction.get(eventRef),
+        transaction.get(markerRef),
+        transaction.get(firestore.collection("users").where("role", "==", TECHNICAL_SUPPORT_ROLE))
+      ]);
+      if (!eventSnapshot.exists) throw new EquipmentNotFoundError("Event not found.");
+      const event = eventSnapshot.data();
+      const nothing = { eventId, sent: 0 };
+      if (event.status !== "CONFIRMED" || !event.confirmed_at) return nothing;
+      if (!requestSnapshot.exists || !(requestSnapshot.data().lines || []).length) return nothing;
+
+      const confirmedAt = event.confirmed_at.toDate ? event.confirmed_at.toDate() : new Date(event.confirmed_at);
+      const stamp = confirmedAt.toISOString();
+      if (markerSnapshot.exists && markerSnapshot.data().confirmed_at === stamp) return nothing;
+      const recipients = technicalSupportRecipients(usersSnapshot.docs);
+      if (!recipients.length) return nothing;
+
+      const now = serverTimestamp();
+      const message = confirmedMessage({ eventName: eventNameOf(eventSnapshot), confirmedAt });
+      recipients.forEach((recipientId) => {
+        const notificationRef = firestore.collection("notifications").doc();
+        transaction.create(notificationRef, {
+          notification_id: notificationRef.id,
+          user_id: recipientId,
+          event_id: eventId,
+          type: SUPPORT_NOTICE_TYPES.CONFIRMED,
+          message,
+          is_read: false,
+          created_at: now,
+          read_at: null
+        });
+      });
+      transaction.set(markerRef, { event_id: eventId, confirmed_at: stamp, notified_at: now });
+      return { eventId, sent: recipients.length };
+    });
+  };
+
+  return { notifyTechnicalSupport, notifyConfirmed };
 };
