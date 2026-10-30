@@ -8,9 +8,10 @@ import { ROLES } from "../../domain/roles";
 import { editableEventStatuses } from "../../domain/significantEventChanges";
 import { equipmentActivity, equipmentArrangements } from "../../domain/eventEquipment";
 import { REGISTERED_STATUS } from "../../domain/registrationWindow";
-import { NOT_AUTHORISED, requireUser } from "./reviewApiSupport";
+import { NOT_AUTHORISED } from "./reviewApiSupport";
+import { requireUser } from "../../lib/apiSupport";
+import { asIso } from "../../lib/apiSupport";
 
-const asIso = (value) => value?.toDate?.().toISOString?.() || value || null;
 
 const record = (snapshot) => {
   const data = snapshot.data();

@@ -156,7 +156,7 @@ on real problems. `npm run lint` runs the same rules with `--max-warnings 0`, an
     app/        App.js (auth gate) · Workspace.js (role shell) · routes.js (hash format) · Icon.js · App.css
     domain/     roles · portals · accounts · events — no React, no Firebase
     features/   auth/ · events/ · venues/ · … — one folder per epic, each with its own components/ and *Api.js
-    lib/        firebase.js — initialises Firebase and exports auth and db
+    lib/        firebase.js — initialises Firebase and exports auth and db · apiSupport.js — helpers every *Api.js shares
     sandbox/    unimported spike screens, safe to delete
   ```
 

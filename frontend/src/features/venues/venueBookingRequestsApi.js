@@ -7,7 +7,8 @@ import { notificationRecord } from "../../domain/eventReviewRecords";
 import { bookingDetailsErrors, clashingEventBooking } from "../../domain/venueBookingDetails";
 import { activeHoldClash, isActiveHold, singaporeDateTime } from "../../domain/venueHolds";
 import { bookingWindow, detectVenueBookingConflicts, windowsOverlap } from "../../domain/venueBookingWorkflows";
-import { asDate, asIso, occupiedWindow, refreshVenueWorkflowsOnLoad, requiredUser } from "./venueApiSupport";
+import { asDate, occupiedWindow, refreshVenueWorkflowsOnLoad, requiredUser } from "./venueApiSupport";
+import { asIso } from "../../lib/apiSupport";
 
 const eventDateTime = (date, time) => {
   const clock = String(time || "");

@@ -8,7 +8,7 @@ import { clarificationRecord, clarificationResponseRecord, eventHistoryRecord, n
 import { ROLES } from "../../domain/roles";
 import { decisionReasonProblem, eventCancelledMessage, eventDecisionMessage } from "../../domain/notifications";
 import { cancelSafetyReview, cancelUnassignedEvent } from "../../domain/safetyAndNotices";
-import { requireUser } from "./reviewApiSupport";
+import { requireUser } from "../../lib/apiSupport";
 
 export const openReview = async (eventId) => {
   const user = requireUser();

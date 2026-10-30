@@ -10,7 +10,8 @@ import { ACCEPTED, CHANGE_ACCEPTED, CHANGE_REQUEST_COLLECTION, PENDING, changeDe
 import { capacityReductionNeedsAcknowledgement } from "../../domain/registrationWindow";
 import { attendeeChangeNotices } from "../../domain/safetyAndNotices";
 import { significantChangeImpact } from "./reviewQueriesApi";
-import { NOT_AUTHORISED, requireUser } from "./reviewApiSupport";
+import { NOT_AUTHORISED } from "./reviewApiSupport";
+import { requireUser } from "../../lib/apiSupport";
 
 // D1 / SCRUM-111 and D2 / SCRUM-112 — one Edit event form, one save. `values` is
 // the whole form: the ordinary fields (name, purpose, description, contact,

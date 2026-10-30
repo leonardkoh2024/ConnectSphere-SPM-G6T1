@@ -6,7 +6,7 @@ import { db } from "../../lib/firebase";
 import { assignEvent, reassignEvent } from "../../domain/eventReview";
 import { coordinatorAssignmentRecord, eventHistoryRecord, notificationRecord } from "../../domain/eventReviewRecords";
 import { ROLES } from "../../domain/roles";
-import { requireUser } from "./reviewApiSupport";
+import { requireUser } from "../../lib/apiSupport";
 
 // The Lead gives a brand-new (unassigned) event to an active coordinator.
 // canAssignCoordinator refuses an already-assigned or terminal event and an

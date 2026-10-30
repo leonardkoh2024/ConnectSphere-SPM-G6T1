@@ -2,10 +2,6 @@
 // which venues a staff member owns, the occupied-window arithmetic, and the
 // once-per-page backend workflow refresh.
 
-
-
-export const asIso = (value) => value?.toDate?.().toISOString?.() || value || null;
-
 export const asDate = (value) => {
   if (value instanceof Date) return value;
   if (typeof value?.toDate === "function") return value.toDate();

@@ -6,7 +6,8 @@ import { collection, doc, getDocs, query, runTransaction, serverTimestamp, updat
 import { db } from "../../lib/firebase";
 import { notificationRecord } from "../../domain/eventReviewRecords";
 import { ROLES } from "../../domain/roles";
-import { asDate, asIso, occupiedWindow, ownedAssignments, requiredUser } from "./venueApiSupport";
+import { asDate, occupiedWindow, ownedAssignments, requiredUser } from "./venueApiSupport";
+import { asIso } from "../../lib/apiSupport";
 
 const grouped = (snapshot, field = "venue_id") => {
   const map = {};

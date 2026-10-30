@@ -7,7 +7,8 @@ import { notificationRecord } from "../../domain/eventReviewRecords";
 import { venueBookingOutcomeMessage, venueHoldPlacedMessage } from "../../domain/notifications";
 import { activeHoldClash, holdExpiry, holdRefusal, isActiveHold, singaporeDateTime } from "../../domain/venueHolds";
 import { detectVenueBookingConflicts } from "../../domain/venueBookingWorkflows";
-import { asDate, asIso, occupiedWindow, ownedAssignments, refreshVenueWorkflowsOnLoad, requiredUser } from "./venueApiSupport";
+import { asDate, occupiedWindow, ownedAssignments, refreshVenueWorkflowsOnLoad, requiredUser } from "./venueApiSupport";
+import { asIso } from "../../lib/apiSupport";
 
 const overlaps = (leftStart, leftEnd, rightStart, rightEnd) =>
   leftStart < rightEnd && rightStart < leftEnd;
