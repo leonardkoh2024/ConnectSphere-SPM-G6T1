@@ -15,14 +15,142 @@ const eventDateTime = (date, time) => {
   return asDate(`${date}T${clock}${/^\d{2}:\d{2}$/.test(clock) ? ":00" : ""}+08:00`);
 };
 
+// The event's name as booking records and notices show it.
+const eventNameOf = (event, eventId) => event.name || event.reference_no || eventId;
+
+// F11 — a replacement must be for a booking of this event that is flagged as
+// needing one, and must be a different venue from the one that was lost.
+const checkReplacement = (replacementSnapshot, { eventId, venueId }) => {
+  if (!replacementSnapshot?.exists()) throw new Error("The booking needing replacement was not found.");
+  const replaced = replacementSnapshot.data();
+  if (replaced.event_id !== eventId || replaced.replacement_needed !== true) {
+    throw new Error("This booking is not awaiting a replacement for this event.");
+  }
+  if (replaced.venue_id === venueId) throw new Error("Choose a different venue from the unavailable venue.");
+};
+
+// Only the event's current coordinator, for an Approved or Planning event and an
+// active venue, may request it; a replacement must also be a valid one.
+const checkRequestAllowed = ({ event, venue, userId, isReplacement, replacementSnapshot, eventId, venueId }) => {
+  if (event.coordinator_id !== userId) throw new Error("Only the current event coordinator may request a venue.");
+  if (!["APPROVED", "PLANNING"].includes(String(event.status || "").toUpperCase())) {
+    throw new Error("Venue requests are available only for Approved or Planning events.");
+  }
+  if (venue.is_active === false) throw new Error("This venue is inactive and cannot be requested.");
+  if (isReplacement) checkReplacement(replacementSnapshot, { eventId, venueId });
+};
+
+// F12 — the booking's label, attendance and time window. A caller that sends no
+// label or attendance gets the event's; one that sends them has them validated.
+// The occupied window adds the venue's setup and turnaround time (E9, F9).
+const bookingDetailsFor = ({ event, venue, eventId, venueId, bookingLabel, expectedAttendance, layout }) => {
+  const eventAttendance = Number(event.expected_attendance);
+  if (!Number.isInteger(eventAttendance) || eventAttendance <= 0) throw new Error("Expected attendance must be a positive whole number.");
+  const label = bookingLabel === undefined
+    ? `${eventNameOf(event, eventId)} — ${venue.name || venueId}`
+    : String(bookingLabel || "").trim();
+  const errors = bookingDetailsErrors({
+    label,
+    expected_attendance: expectedAttendance === undefined ? eventAttendance : expectedAttendance,
+    layout
+  }, event);
+  const firstError = errors.label || errors.expected_attendance;
+  if (firstError) throw new Error(firstError);
+  const attendance = expectedAttendance === undefined ? eventAttendance : Number(expectedAttendance);
+  const start = eventDateTime(event.event_date, event.start_time);
+  const end = eventDateTime(event.event_date, event.end_time);
+  if (!start || !end || end <= start) throw new Error("The event must have a valid date and time window.");
+  return { label, attendance, start, end, occupied: occupiedWindow(start, end, venue) };
+};
+
+// F12 AC4 — another venue for this event is fine; this venue again at an
+// overlapping time is not. F15 AC3 — nor is a venue held, for any event, over it.
+const checkVenueFree = ({ existing, holds, venue, eventId, venueId, occupied, now }) => {
+  const clash = clashingEventBooking(
+    existing.filter((item) => item.exists()).map((item) => item.data()),
+    { eventId, venueId, start: occupied.start, end: occupied.end }
+  );
+  if (clash) {
+    throw new Error(`This event already has an active booking for ${venue.name || venueId} at an overlapping time: ${clash.booking_label || clash.booking_id}.`);
+  }
+  const hold = activeHoldClash(holds, { venueId, start: occupied.start, end: occupied.end, now });
+  if (hold) {
+    throw new Error(`${venue.name || venueId} is held for ${hold.booking_label || hold.booking_id} until `
+      + `${singaporeDateTime(hold.hold_expires_at)}, and cannot be requested for an overlapping time.`);
+  }
+};
+
+// The new booking as Venue Staff will assess it: a snapshot of the event, the
+// window it occupies, what was asked for, and what the coordinator acknowledged.
+const pendingBookingRecord = ({
+  bookingId, eventId, venueId, event, details, layout, facilities,
+  replacementForBookingId, replacementSnapshot, acknowledgement, userId
+}) => ({
+  booking_id: bookingId,
+  event_id: eventId,
+  venue_id: venueId,
+  event_name: eventNameOf(event, eventId),
+  event_reference_no: event.reference_no || null,
+  event_purpose: event.purpose || null,
+  event_description: event.description || null,
+  registration_required: Boolean(event.registration_required),
+  assigned_staff_id: null,
+  start_datetime: details.start,
+  end_datetime: details.end,
+  occupied_start: details.occupied.start,
+  occupied_end: details.occupied.end,
+  expected_attendance: details.attendance,
+  status: "PENDING",
+  decision_reason: null,
+  requested_layout_id: layout,
+  layout_snapshot: layout,
+  required_facilities_snapshot: facilities,
+  booking_label: details.label,
+  submitted_at: serverTimestamp(),
+  decided_at: null,
+  decided_by: null,
+  released_at: null,
+  release_reason: null,
+  requires_re_request: false,
+  replacement_needed: false,
+  replacement_for_booking_id: replacementForBookingId || null,
+  replacement_original_venue_id: replacementSnapshot?.data()?.venue_id || null,
+  replacement_original_label: replacementSnapshot?.data()?.booking_label || null,
+  replacement_reason: replacementSnapshot?.data()?.replacement_reason || null,
+  replaced_by_booking_id: null,
+  replaced_at: null,
+  safety_review_required: Boolean(event.safety_review_required),
+  suitability_acknowledgement: acknowledgement || { acknowledged: false, criteria: [] },
+  requested_by: userId
+});
+
+// The venue's assigned Venue Staff member, if it has one, is told a request arrived.
+const notifyVenueStaff = (transaction, { venueStaffSnapshot, event, venue, eventId, venueId }) => {
+  const changedAt = serverTimestamp();
+  const recipient = venueStaffSnapshot.exists() ? venueStaffSnapshot.data().user_id : null;
+  if (!recipient) return;
+  const notificationRef = doc(collection(db, "notifications"));
+  transaction.set(notificationRef, {
+    ...notificationRecord({
+      notificationId: notificationRef.id,
+      userId: recipient,
+      eventId,
+      type: "VENUE_BOOKING_REQUESTED",
+      message: `${eventNameOf(event, eventId)}: a venue booking request was raised for ${venue.name || venueId}.`,
+      createdAt: changedAt,
+      eventName: eventNameOf(event, eventId)
+    }),
+    venue_id: venueId
+  });
+};
+
 // E8 — raise a booking request for a venue the suitability gate has cleared.
 // The acknowledgement travels with the request so Venue Staff assess it knowing
 // which shortfalls the coordinator accepted. firestore.rules re-checks capacity
 // and the acknowledgement shape, so a crafted request cannot skip the gate.
 //
 // F12 — an event may hold several bookings, each with its own label, expected
-// attendance and layout. A caller that sends no label or attendance gets the
-// event's, as before F12; one that sends them has them validated.
+// attendance and layout.
 export const requestVenueBooking = async ({
   user,
   venue_id,
@@ -73,107 +201,25 @@ export const requestVenueBooking = async ({
     if (!venueSnapshot.exists()) throw new Error("Venue not found.");
     const event = eventSnapshot.data();
     const venue = venueSnapshot.data();
-    if (event.coordinator_id !== userId) throw new Error("Only the current event coordinator may request a venue.");
-    if (!["APPROVED", "PLANNING"].includes(String(event.status || "").toUpperCase())) {
-      throw new Error("Venue requests are available only for Approved or Planning events.");
-    }
-    if (venue.is_active === false) throw new Error("This venue is inactive and cannot be requested.");
-    if (replacementRef) {
-      if (!replacementSnapshot?.exists()) throw new Error("The booking needing replacement was not found.");
-      const replaced = replacementSnapshot.data();
-      if (replaced.event_id !== event_id || replaced.replacement_needed !== true) {
-        throw new Error("This booking is not awaiting a replacement for this event.");
-      }
-      if (replaced.venue_id === venue_id) throw new Error("Choose a different venue from the unavailable venue.");
-    }
-    const eventAttendance = Number(event.expected_attendance);
-    if (!Number.isInteger(eventAttendance) || eventAttendance <= 0) throw new Error("Expected attendance must be a positive whole number.");
-    const label = booking_label === undefined
-      ? `${event.name || event.reference_no || event_id} — ${venue.name || venue_id}`
-      : String(booking_label || "").trim();
-    const errors = bookingDetailsErrors({
-      label,
-      expected_attendance: expected_attendance === undefined ? eventAttendance : expected_attendance,
-      layout: layoutSnapshot
-    }, event);
-    const firstError = errors.label || errors.expected_attendance;
-    if (firstError) throw new Error(firstError);
-    const attendance = expected_attendance === undefined ? eventAttendance : Number(expected_attendance);
-    const start = eventDateTime(event.event_date, event.start_time);
-    const end = eventDateTime(event.event_date, event.end_time);
-    if (!start || !end || end <= start) throw new Error("The event must have a valid date and time window.");
-    const occupied = occupiedWindow(start, end, venue);
-    // F12 AC4 — another venue for this event is fine; this venue again at an
-    // overlapping time is not.
-    const clash = clashingEventBooking(
-      existing.filter((item) => item.exists()).map((item) => item.data()),
-      { eventId: event_id, venueId: venue_id, start: occupied.start, end: occupied.end }
-    );
-    if (clash) {
-      throw new Error(`This event already has an active booking for ${venue.name || venue_id} at an overlapping time: ${clash.booking_label || clash.booking_id}.`);
-    }
-    const hold = activeHoldClash(holds, { venueId: venue_id, start: occupied.start, end: occupied.end, now });
-    if (hold) {
-      throw new Error(`${venue.name || venue_id} is held for ${hold.booking_label || hold.booking_id} until `
-        + `${singaporeDateTime(hold.hold_expires_at)}, and cannot be requested for an overlapping time.`);
-    }
-    if (Number(venue.max_capacity) < attendance) throw new Error("The venue cannot hold the expected attendance.");
-    const bookingRef = doc(collection(db, "venue_bookings"));
-    transaction.set(bookingRef, {
-      booking_id: bookingRef.id,
-      event_id,
-      venue_id,
-      event_name: event.name || event.reference_no || event_id,
-      event_reference_no: event.reference_no || null,
-      event_purpose: event.purpose || null,
-      event_description: event.description || null,
-      registration_required: Boolean(event.registration_required),
-      assigned_staff_id: null,
-      start_datetime: start,
-      end_datetime: end,
-      occupied_start: occupied.start,
-      occupied_end: occupied.end,
-      expected_attendance: attendance,
-      status: "PENDING",
-      decision_reason: null,
-      requested_layout_id: layoutSnapshot,
-      layout_snapshot: layoutSnapshot,
-      required_facilities_snapshot: facilitySnapshot,
-      booking_label: label,
-      submitted_at: serverTimestamp(),
-      decided_at: null,
-      decided_by: null,
-      released_at: null,
-      release_reason: null,
-      requires_re_request: false,
-      replacement_needed: false,
-      replacement_for_booking_id: replacement_for_booking_id || null,
-      replacement_original_venue_id: replacementSnapshot?.data()?.venue_id || null,
-      replacement_original_label: replacementSnapshot?.data()?.booking_label || null,
-      replacement_reason: replacementSnapshot?.data()?.replacement_reason || null,
-      replaced_by_booking_id: null,
-      replaced_at: null,
-      safety_review_required: Boolean(event.safety_review_required),
-      suitability_acknowledgement: acknowledgement || { acknowledged: false, criteria: [] },
-      requested_by: userId
+
+    checkRequestAllowed({
+      event, venue, userId, isReplacement: Boolean(replacementRef), replacementSnapshot,
+      eventId: event_id, venueId: venue_id
     });
-    const changedAt = serverTimestamp();
-    const recipient = venueStaffSnapshot.exists() ? venueStaffSnapshot.data().user_id : null;
-    if (recipient) {
-      const notificationRef = doc(collection(db, "notifications"));
-      transaction.set(notificationRef, {
-        ...notificationRecord({
-          notificationId: notificationRef.id,
-          userId: recipient,
-          eventId: event_id,
-          type: "VENUE_BOOKING_REQUESTED",
-          message: `${event.name || event.reference_no || event_id}: a venue booking request was raised for ${venue.name || venue_id}.`,
-          createdAt: changedAt,
-          eventName: event.name || event.reference_no || event_id
-        }),
-        venue_id: venue_id
-      });
-    }
+    const details = bookingDetailsFor({
+      event, venue, eventId: event_id, venueId: venue_id,
+      bookingLabel: booking_label, expectedAttendance: expected_attendance, layout: layoutSnapshot
+    });
+    checkVenueFree({ existing, holds, venue, eventId: event_id, venueId: venue_id, occupied: details.occupied, now });
+    if (Number(venue.max_capacity) < details.attendance) throw new Error("The venue cannot hold the expected attendance.");
+
+    const bookingRef = doc(collection(db, "venue_bookings"));
+    transaction.set(bookingRef, pendingBookingRecord({
+      bookingId: bookingRef.id, eventId: event_id, venueId: venue_id, event, details,
+      layout: layoutSnapshot, facilities: facilitySnapshot,
+      replacementForBookingId: replacement_for_booking_id, replacementSnapshot, acknowledgement, userId
+    }));
+    notifyVenueStaff(transaction, { venueStaffSnapshot, event, venue, eventId: event_id, venueId: venue_id });
     return { booking_id: bookingRef.id, status: "PENDING" };
   });
 };
