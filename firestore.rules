@@ -602,6 +602,14 @@ service cloud.firestore {
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decided_by', 'decided_at', 'decision_reason', 'applied_changes', 'decision_history_id'])));
       allow get, list: if signedIn()
         && (resource.data.organiser_id == request.auth.uid || canReadEvent(resource.data.event_id));
+      // K2 / K3 — when the Lead assigns or reassigns, the event's Pending requests follow
+      // the new coordinator in the same commit; nothing else on them may change.
+      allow get, list: if hasRole('EVENT_COORDINATOR_LEAD');
+      allow update: if hasRole('EVENT_COORDINATOR_LEAD')
+        && resource.data.status == 'PENDING'
+        && request.resource.data.coordinator_id is string
+        && request.resource.data.coordinator_id == getAfter(/databases/$(database)/documents/events/$(resource.data.event_id)).data.coordinator_id
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coordinator_id']);
       allow create: if hasRole('EVENT_ORGANISER')
         && request.resource.data.change_request_id == requestId
         && request.resource.data.organiser_id == request.auth.uid

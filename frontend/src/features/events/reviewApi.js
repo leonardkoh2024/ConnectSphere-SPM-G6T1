@@ -955,8 +955,17 @@ const leadBoard = async () => {
 // canAssignCoordinator refuses an already-assigned or terminal event and an
 // inactive target; the acting user's role is read from their profile so only a
 // Lead passes the guard.
+// A change request records the event's coordinator when it is raised, which is null while
+// the event waits for the Lead. The web SDK cannot query inside a transaction, so the
+// Pending requests are found first and updated inside it with the event.
+const pendingChangeRequestRefs = async (eventId) => {
+  const snapshot = await getDocs(query(collection(db, "change_requests"), where("event_id", "==", eventId), where("status", "==", "PENDING")));
+  return snapshot.docs.map((item) => item.ref);
+};
+
 const assign = async (eventId, coordinatorId) => {
   const user = requireUser();
+  const requestRefs = await pendingChangeRequestRefs(eventId);
   const eventRef = doc(db, "events", eventId);
   const targetRef = doc(db, "users", coordinatorId);
   const actorRef = doc(db, "users", user.uid);
@@ -978,6 +987,7 @@ const assign = async (eventId, coordinatorId) => {
     if (!outcome.ok) throw new Error("This event cannot be assigned to that coordinator.");
     const describedTo = target.name || targetData.email || coordinatorId;
     tx.update(eventRef, { coordinator_id: coordinatorId, assigned_at: changedAt, updated_at: changedAt });
+    requestRefs.forEach((ref) => tx.update(ref, { coordinator_id: coordinatorId }));
     tx.set(nextRef, coordinatorAssignmentRecord({ assignmentId: nextRef.id, eventId, coordinatorId, assignedAt: changedAt }));
     tx.set(historyRef, eventHistoryRecord({ historyId: historyRef.id, eventId, actorId: outcome.history.actorId, actionType: outcome.history.actionType, fieldName: outcome.history.fieldName, oldValue: outcome.history.oldValue, newValue: outcome.history.newValue, description: `Event assigned to ${describedTo}.`, createdAt: changedAt }));
     outcome.notifications.forEach((recipient, index) => tx.set(notificationRefs[index], notificationRecord({
@@ -1001,6 +1011,7 @@ const assign = async (eventId, coordinatorId) => {
 // parties — outgoing coordinator, incoming coordinator and organiser — are told.
 const leadReassign = async (eventId, coordinatorId) => {
   const user = requireUser();
+  const requestRefs = await pendingChangeRequestRefs(eventId);
   const eventRef = doc(db, "events", eventId);
   const targetRef = doc(db, "users", coordinatorId);
   const actorRef = doc(db, "users", user.uid);
@@ -1027,6 +1038,7 @@ const leadReassign = async (eventId, coordinatorId) => {
     const label = event.name || event.reference_no;
     const previous = outcome.previousAssignment;
     tx.update(eventRef, { coordinator_id: outcome.event.coordinator_id, assigned_at: changedAt, updated_at: changedAt });
+    requestRefs.forEach((ref) => tx.update(ref, { coordinator_id: outcome.event.coordinator_id }));
     tx.set(previousRef, coordinatorAssignmentRecord({ assignmentId: previousRef.id, eventId, coordinatorId: previous.coordinatorId, assignedAt: previous.assignedAt, endedAt: previous.endedAt, reassignedBy: previous.reassignedBy }));
     tx.set(nextRef, coordinatorAssignmentRecord({ assignmentId: nextRef.id, eventId, coordinatorId, assignedAt: changedAt }));
     tx.set(historyRef, eventHistoryRecord({ historyId: historyRef.id, eventId, actorId: outcome.history.actorId, actionType: outcome.history.actionType, fieldName: outcome.history.fieldName, oldValue: outcome.history.oldValue, newValue: outcome.history.newValue, description: `Event reassigned to ${describedTo}.`, previousAssignedAt: outcome.history.previousAssignedAt, createdAt: changedAt }));

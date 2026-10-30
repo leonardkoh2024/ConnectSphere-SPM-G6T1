@@ -1166,6 +1166,14 @@ describe('I1 an organiser raises a change request on their own submitted event',
       .toBe('signedIn() && (resource.data.organiser_id == request.auth.uid || canReadEvent(resource.data.event_id))');
     expect(block()).not.toMatch(/allow[^:]*\b(delete|write)\b/);
   });
+
+  test('K2/K3 the Lead reads requests and may only re-point a Pending request at the event\'s new coordinator', () => {
+    const lead = block().match(/allow update: if (hasRole\('EVENT_COORDINATOR_LEAD'\).*?);/s)[1];
+    expect(block()).toContain("allow get, list: if hasRole('EVENT_COORDINATOR_LEAD');");
+    expect(lead).toContain("resource.data.status == 'PENDING'");
+    expect(lead).toContain('getAfter(/databases/$(database)/documents/events/$(resource.data.event_id)).data.coordinator_id');
+    expect(lead).toContain("hasOnly(['coordinator_id'])");
+  });
 });
 
 describe('I2 SCRUM-148 the coordinator decides a Pending request once, and only as the rules allow', () => {
