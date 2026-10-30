@@ -34,10 +34,20 @@ jobs:
         env:
           CI: true
 
-      # That file throws on import unless FIRESTORE_EMULATOR_HOST is set, so it cannot be skipped by name.
+      # Unit tests only. Emulator tests are named *.integration.js, so `node --test` skips them.
       - name: Backend tests
-        working-directory: backend
-        run: node --test $(find src -name '*.test.js' ! -name '*.integration.test.js')
+        run: npm test --workspace backend
 
       - name: Functional tests
         run: node --test test.js
+
+      # The Firestore emulator runs on Java.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # Starts a throwaway emulator (demo- project: no credentials, never the shared one), runs
+      # every *.integration.js on a freshly reset baseline, then shuts the emulator down.
+      - name: Integration tests (Firestore emulator)
+        run: npm run test:integration

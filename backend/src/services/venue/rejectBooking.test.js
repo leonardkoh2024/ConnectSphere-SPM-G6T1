@@ -121,7 +121,8 @@ test("F5 records rejection, reason, timestamp, history and notice without changi
       decision_reason: "The requested layout is unavailable.",
       assigned_staff_id: "staff-1",
       decided_by: "staff-1",
-      decided_at: "SERVER_TIME"
+      decided_at: "SERVER_TIME",
+      requires_re_request: true
     });
     assert.deepEqual(Object.values(store).find((item) => item.action_type === "VENUE_BOOKING_REJECTED"), {
       history_id: "generated-1",

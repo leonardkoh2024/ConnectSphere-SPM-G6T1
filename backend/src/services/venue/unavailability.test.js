@@ -189,6 +189,9 @@ test("a confirmed period is saved, the booking is marked for replacement, and th
   assert.equal(notice[1].user_id, "coordinator-1");
   assert.equal(notice[1].event_id, "EVT-001");
   assert.equal(notice[1].reason, "Maintenance");
+  // Same unread shape as every other notice, so it counts as unread in the inbox.
+  assert.equal(notice[1].is_read, false);
+  assert.equal(notice[1].read_at, null);
 });
 
 test("allows touching periods and ignores non-approved bookings", async () => {

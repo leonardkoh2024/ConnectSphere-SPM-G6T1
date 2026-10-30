@@ -190,7 +190,9 @@ export function createSaveVenueUnavailability({ firestore, serverTimestamp }) {
           start_datetime: addition.start,
           end_datetime: addition.end,
           reason: addition.reason,
-          created_at: changedAt
+          is_read: false,
+          created_at: changedAt,
+          read_at: null
         });
       }
 
