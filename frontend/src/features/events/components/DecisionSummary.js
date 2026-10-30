@@ -14,7 +14,7 @@ const venueText = (venues) => {
 
 const dateTime = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Not recorded";
 
-export default function DecisionSummary({ detail, venues = [] }) {
+export default function DecisionSummary({ detail, venues }) {
   return <section className="cs-form-section cs-decision-summary" aria-label="Request decision">
     <h2>Review and decision</h2>
     <dl className="cs-detail-grid">
