@@ -9,6 +9,7 @@ import { acceptChangeRequest, declineChangeRequest, loadAssignedChangeRequests, 
 jest.mock('./changeDecisionApi', () => ({
   acceptChangeRequest: jest.fn(), declineChangeRequest: jest.fn(), loadAssignedChangeRequests: jest.fn(), loadChangeReview: jest.fn()
 }));
+jest.mock('./changeRequestsApi', () => ({}));
 jest.mock('../events/reviewApi', () => ({ reviewApi: { retryRerequest: jest.fn() } }));
 
 const USER = { uid: 'c1' };
