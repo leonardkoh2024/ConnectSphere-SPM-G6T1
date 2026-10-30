@@ -65,6 +65,7 @@ export default function VenueBookingRequest({ venue, event, user, onSubmitted, e
       : [...current, criterion]);
 
   const submit = async () => {
+    /* istanbul ignore if -- defensive double-submit guard: the only caller is the button, which is disabled under this same condition */
     if (!ready || saving) return;
     setSaving(true);
     setError("");

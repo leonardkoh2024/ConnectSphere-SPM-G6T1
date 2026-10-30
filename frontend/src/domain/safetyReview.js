@@ -67,7 +67,7 @@ export const activeBookings = (bookings = []) =>
     return !INACTIVE_BOOKING_STATUSES.has(status);
   });
 
-const bookingNeedsAction = (booking = {}) =>
+const bookingNeedsAction = (booking) =>
   String(booking.status || "").toUpperCase() !== "APPROVED"
   || booking.replacement_needed === true;
 

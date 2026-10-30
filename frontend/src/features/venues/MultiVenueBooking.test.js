@@ -1,5 +1,5 @@
 // F12 / SCRUM-177 — Book more than one venue for an event. FUNCTIONAL,
-// TC-503 – TC-506 and TC-511 in docs/test-cases.md: the coordinator's booking
+// the coordinator's booking
 // form and their list of requests, driven the way a coordinator drives them.
 
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -42,7 +42,7 @@ beforeEach(() => {
 });
 
 describe('F12 / SCRUM-177 functional — the booking form asks for this booking’s own details', () => {
-  test('TC-503 label, attendance and layout start from the venue and event, and what the coordinator enters is sent', async () => {
+  test('TC-1069 label, attendance and layout start from the venue and event, and what the coordinator enters is sent', async () => {
     render(<VenueBookingRequest venue={seminarRoom} event={conference} user={user} />);
 
     expect(labelField()).toHaveValue('Seminar Room');
@@ -64,7 +64,7 @@ describe('F12 / SCRUM-177 functional — the booking form asks for this booking�
     });
   });
 
-  test("TC-504 an attendance above the event's is named and cannot be sent", async () => {
+  test("TC-1070 an attendance above the event's is named and cannot be sent", async () => {
     render(<VenueBookingRequest venue={{ ...seminarRoom, max_capacity: 500, layouts: ['THEATRE'] }} event={conference} user={user} />);
     expect(submitButton()).toBeEnabled();
 
@@ -81,7 +81,7 @@ describe('F12 / SCRUM-177 functional — the booking form asks for this booking�
     expect(requestVenueBooking).not.toHaveBeenCalled();
   });
 
-  test("TC-505 the room is judged on this booking's attendance and layout, not the whole event's", async () => {
+  test("TC-1071 the room is judged on this booking's attendance and layout, not the whole event's", async () => {
     render(<VenueBookingRequest venue={seminarRoom} event={conference} user={user} />);
 
     // 300 people do not fit a 60-seat room.
@@ -96,7 +96,7 @@ describe('F12 / SCRUM-177 functional — the booking form asks for this booking�
     expect(submitButton()).toBeEnabled();
   });
 
-  test('TC-506 a blank label is named and cannot be sent', async () => {
+  test('TC-1072 a blank label is named and cannot be sent', async () => {
     render(<VenueBookingRequest venue={seminarRoom} event={{ ...conference, expected_attendance: 50, required_layout: 'CLASSROOM' }} user={user} />);
     expect(submitButton()).toBeEnabled();
 
@@ -108,7 +108,7 @@ describe('F12 / SCRUM-177 functional — the booking form asks for this booking�
 });
 
 describe("F12 / SCRUM-177 functional — the coordinator's booking list tells an event's venues apart", () => {
-  test('TC-511 each request shows its label beside its venue', async () => {
+  test('TC-1073 each request shows its label beside its venue', async () => {
     loadVenueCatalogue.mockResolvedValue([seminarRoom, { ...seminarRoom, venue_id: 'VEN-MAIN', name: 'Main Hall', max_capacity: 400 }]);
     reviewApi.list.mockResolvedValue({ events: [{ id: 'EVT-1', name: 'Annual Conference', status: 'PLANNING' }] });
     const raised = (fields) => ({

@@ -830,7 +830,7 @@ service cloud.firestore {
     }
 
     // E2 / E5 — catalogue and search reads are Coordinator and Venue Staff only.
-    // Hiding the screen is not the boundary (A4 / TC-015). A7 AC3 / E10 AC3 add
+    // Hiding the screen is not the boundary (A4). A7 AC3 / E10 AC3 add
     // the Safety Officer, read-only, to venues, layouts and accessibility for
     // capacity, layout, emergency access and known restrictions.
     match /venue_staff/{venueId} {

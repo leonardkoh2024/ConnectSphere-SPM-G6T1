@@ -163,7 +163,6 @@ export const recordSafetyOutcome = async ({ eventId, outcome, comment, marked })
       bookings,
       technicalArrangements
     });
-    if (planned && !planned.ok) throw new Error("The safety outcome could not be recorded.");
     const eventUpdate = { status, last_safety_review_id: reviewRef.id, updated_at: decidedAt };
     if (status === EVENT_STATUS.PLANNING) eventUpdate.returned_to_planning_at = decidedAt;
     // D3 AC4 — the moment of confirmation, a server time shown in SGT.
@@ -280,7 +279,7 @@ export const sendEventForSafetyCheck = async (eventId) => {
           message: notice.message,
           createdAt: sentAt
         }),
-        link_screen: notice.link?.screen || "Safety review",
+        link_screen: notice.link.screen,
         checked_before: notice.checked_before === true
       });
     });

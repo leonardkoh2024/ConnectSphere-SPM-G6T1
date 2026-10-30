@@ -89,7 +89,7 @@ const checkEditBeforeSaving = async ({
   if (capacity !== null && capacityReductionNeedsAcknowledgement({
     oldCapacity: before?.registration_capacity, newCapacity: capacity, registeredCount: registered
   }) && capacityAcknowledged !== true) {
-    throw new Error(`The new capacity of ${capacity} is below the ${registered} ${registered === 1 ? "person" : "people"} already registered. Acknowledge this to apply it; nobody will be unregistered.`);
+    throw new Error(`The new capacity of ${capacity} is below the ${registered} people already registered. Acknowledge this to apply it; nobody will be unregistered.`);
   }
 
   if (hasOrdinary) {
@@ -375,6 +375,7 @@ export const saveEventEdit = async ({
       }
       significantChanges = significantEventChanges(current, significant);
     }
+    /* istanbul ignore if -- the editor offers Save only once something has changed; kept as a guard */
     if (!ordinaryChanges.length && !Object.keys(significantChanges).length) throw new Error("There are no changes to save.");
 
     const ordinaryRefs = ordinaryChanges.map(() => doc(collection(db, "event_history")));

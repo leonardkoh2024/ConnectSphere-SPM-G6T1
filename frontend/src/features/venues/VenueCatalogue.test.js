@@ -45,7 +45,7 @@ beforeEach(() => {
   });
 });
 
-test('TC-089 the catalogue lists every venue with name, location, capacity and facilities', async () => {
+test('TC-0673 the catalogue lists every venue with name, location, capacity and facilities', async () => {
   const { container } = render(<VenueCatalogue />);
   expect(await screen.findByText('Hall A')).toBeInTheDocument();
   expect(screen.getByText('Annex')).toBeInTheDocument();
@@ -54,7 +54,7 @@ test('TC-089 the catalogue lists every venue with name, location, capacity and f
   expect([...container.querySelectorAll('.cs-record-title h2')].map((heading) => heading.textContent)).toEqual(['Annex', 'Hall A']);
 });
 
-test('TC-091 selecting a venue shows layouts, accessibility and operating hours', async () => {
+test('TC-0674 selecting a venue shows layouts, accessibility and operating hours', async () => {
   render(<VenueCatalogue />);
   await screen.findByText('Hall A');
   await userEvent.click(within(screen.getByText('Hall A').closest('.cs-record')).getByRole('button', { name: /view venue/i }));
@@ -72,7 +72,7 @@ test('TC-091 selecting a venue shows layouts, accessibility and operating hours'
   expect(screen.queryByLabelText(/venue record/i)).not.toBeInTheDocument();
 });
 
-test('only the Venue Staff member assigned to a venue can edit it', async () => {
+test('TC-0675 only the Venue Staff member assigned to a venue can edit it', async () => {
   assignedStaffId = 'staff-1';
   render(<VenueCatalogue user={{ uid: 'staff-1' }} role={ROLES.VENUE_STAFF} />);
   await screen.findByText('Hall A');
@@ -84,7 +84,7 @@ test('only the Venue Staff member assigned to a venue can edit it', async () => 
   expect(screen.queryByRole('heading', { name: /edit venue/i })).not.toBeInTheDocument();
 });
 
-test('Venue Staff can filter the catalogue to My venues and return to all venues', async () => {
+test('TC-0676 Venue Staff can filter the catalogue to My venues and return to all venues', async () => {
   assignedStaffId = 'staff-1';
   render(<VenueCatalogue user={{ uid: 'staff-1' }} role={ROLES.VENUE_STAFF} />);
 
@@ -104,13 +104,13 @@ test('Venue Staff can filter the catalogue to My venues and return to all venues
   expect(screen.getByText(/2 venues/i)).toBeInTheDocument();
 });
 
-test('the My venues filter is not shown to coordinators', async () => {
+test('TC-0677 the My venues filter is not shown to coordinators', async () => {
   render(<VenueCatalogue user={{ uid: 'coordinator-1' }} role={ROLES.EVENT_COORDINATOR} />);
   await screen.findByText('Hall A');
   expect(screen.queryByRole('button', { name: /my venues/i })).not.toBeInTheDocument();
 });
 
-test('venue edits require a positive whole capacity and at least one layout', async () => {
+test('TC-0678 venue edits require a positive whole capacity and at least one layout', async () => {
   assignedStaffId = 'staff-1';
   render(<VenueCatalogue user={{ uid: 'staff-1' }} role={ROLES.VENUE_STAFF} />);
   await screen.findByText('Hall A');
@@ -127,7 +127,7 @@ test('venue edits require a positive whole capacity and at least one layout', as
   expect(updateDoc).not.toHaveBeenCalled();
 });
 
-test('assigned staff save venue details without changing existing bookings', async () => {
+test('TC-0679 assigned staff save venue details without changing existing bookings', async () => {
   assignedStaffId = 'staff-1';
   render(<VenueCatalogue user={{ uid: 'staff-1' }} role={ROLES.VENUE_STAFF} />);
   await screen.findByText('Hall A');
@@ -153,7 +153,7 @@ test('assigned staff save venue details without changing existing bookings', asy
 });
 
 // E4 / SCRUM-120 — the availability calendar opens from the catalogue.
-test('TC-229 the catalogue swaps to one shared calendar and back, with no per-venue calendar button', async () => {
+test('TC-0680 the catalogue swaps to one shared calendar and back, with no per-venue calendar button', async () => {
   assignedStaffId = 'staff-1';
   const onCloseCalendar = jest.fn();
   const { rerender } = render(<VenueCatalogue user={{ uid: 'staff-1' }} role={ROLES.VENUE_STAFF} />);

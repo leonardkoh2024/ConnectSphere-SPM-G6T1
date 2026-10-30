@@ -1,6 +1,6 @@
-// Stories A4 and A5 at the server boundary — TC-015 ("every restricted request is
+// Stories A4 and A5 at the server boundary: A4 ("every restricted request is
 // refused server-side; hiding navigation alone is not relied upon") and the direct
-// -access half of TC-016 ("direct access to another organiser's event is refused").
+// access half of A5 ("direct access to another organiser's event is refused").
 //
 // firestore.rules is the only thing that actually stops a crafted request, so it
 // needs a test. Proving the *behaviour* means running the Firestore emulator,
@@ -37,7 +37,7 @@ const eventsGetList = () => {
 };
 
 describe('F10 coordinator clash resolution stays explicit and server-validated', () => {
-  test('only the current coordinator can mark an approved booking for clash replacement', () => {
+  test('TC-1030 only the current coordinator can mark an approved booking for clash replacement', () => {
     const bookings = matchBlock('venue_bookings');
     expect(bookings).toContain("replacement_source == 'CLASH'");
     expect(bookings).toContain('currentCoordinator(resource.data.event_id)');
@@ -45,7 +45,7 @@ describe('F10 coordinator clash resolution stays explicit and server-validated',
     expect(bookings).toContain('replacement_requested_by == request.auth.uid');
   });
 
-  test('the claimed conflicting booking must still be approved at the same venue and overlap', () => {
+  test('TC-1031 the claimed conflicting booking must still be approved at the same venue and overlap', () => {
     const bookings = matchBlock('venue_bookings');
     expect(bookings).toContain('replacement_conflicting_booking_id != bookingId');
     expect(bookings).toContain("replacement_conflicting_booking_id)).data.status == 'APPROVED'");
@@ -54,7 +54,7 @@ describe('F10 coordinator clash resolution stays explicit and server-validated',
     expect(bookings).toContain(').data.occupied_start < resource.data.occupied_end');
   });
 
-  test('the event change is tied to a fresh history row and same-commit booking update', () => {
+  test('TC-1032 the event change is tied to a fresh history row and same-commit booking update', () => {
     const events = matchBlock('events');
     expect(events).toContain('coordinatorClashReplacementUpdate()');
     expect(events).toContain("history.action_type == 'VENUE_REPLACEMENT_REQUESTED'");
@@ -64,7 +64,7 @@ describe('F10 coordinator clash resolution stays explicit and server-validated',
 });
 
 describe('F14 coordinator venue release follows the event lifecycle', () => {
-  test('release is allowed during safety review and returns the event to Planning', () => {
+  test('TC-1095 release is allowed during safety review and returns the event to Planning', () => {
     const events = matchBlock('events');
     expect(events).toContain("resource.data.status in ['APPROVED', 'PLANNING', 'CONFIRMED', 'SAFETY_REVIEW']");
     expect(events).toContain("resource.data.status in ['CONFIRMED', 'SAFETY_REVIEW']");
@@ -72,20 +72,20 @@ describe('F14 coordinator venue release follows the event lifecycle', () => {
     expect(events).toContain("request.resource.data.get('last_safety_review_id', null) == null");
   });
 
-  test('completed events are not included in the release states', () => {
+  test('TC-1096 completed events are not included in the release states', () => {
     const releaseFunction = matchBlock('events').split('function coordinatorSingleVenueReleaseUpdate()')[1]
       .split('function coordinatorClashReplacementUpdate()')[0];
     expect(releaseFunction).not.toContain("'COMPLETED'");
   });
 });
 
-describe('TC-015 no request is left unguarded', () => {
-  test('nothing is granted unconditionally', () => {
+describe('no request is left unguarded', () => {
+  test('TC-0065 nothing is granted unconditionally', () => {
     expect(RULES).not.toMatch(/if\s+true/);
     expect(RULES).not.toMatch(/allow\s+[a-z,\s]+:\s*if\s+signedIn\(\)\s*;/);
   });
 
-  test('every allow rule tests the caller identity/role or explicitly denies all clients', () => {
+  test('TC-0066 every allow rule tests the caller identity/role or explicitly denies all clients', () => {
     const conditions = allowConditions(RULES.replace(/\s+/g, ' '));
 
     expect(conditions.length).toBeGreaterThan(0);
@@ -94,23 +94,23 @@ describe('TC-015 no request is left unguarded', () => {
     );
   });
 
-  test('a signed-in user cannot promote themselves to another role', () => {
+  test('TC-0067 a signed-in user cannot promote themselves to another role', () => {
     const users = matchBlock('users');
 
     expect(users).toContain("request.resource.data.role in ['EVENT_ORGANISER', 'ATTENDEE']");
     expect(users).toContain('request.resource.data.role == resource.data.role');
   });
 
-  test('a user profile is private except for active coordinator directory entries (and organisers, to coordinators — see C6 below)', () => {
+  test('TC-0407 a user profile is private except for active coordinator directory entries (and organisers, to coordinators — see C6 below)', () => {
     const users = matchBlock('users');
     expect(users).toContain('userId == request.auth.uid');
     expect(users).toContain("resource.data.role == 'EVENT_COORDINATOR'");
     expect(users).toContain('resource.data.is_active == true');
   });
 
-  // C2 / SCRUM-103 AC2 — TC-347. The coordinator's lists name each organiser, so
+  // C2 / SCRUM-103 AC2. The coordinator's lists name each organiser, so
   // a coordinator may read organiser profiles, and only those.
-  test('TC-347 a coordinator may read organiser profiles and no other role', () => {
+  test('TC-0337 a coordinator may read organiser profiles and no other role', () => {
     const get = matchBlock('users').match(/allow get: if ([\s\S]*?);/)[1];
     expect(get).toContain("(hasRole('EVENT_COORDINATOR') && resource.data.role == 'EVENT_ORGANISER')");
     expect(get.match(/hasRole\('EVENT_COORDINATOR'\)/g)).toHaveLength(1);
@@ -118,10 +118,10 @@ describe('TC-015 no request is left unguarded', () => {
   });
 });
 
-describe('TC-016 events are readable only by the roles related to them', () => {
+describe('events are readable only by the roles related to them', () => {
   const scoped = Object.values(ROLES).filter((role) => EVENT_SCOPE_FIELD[role]);
 
-  test.each(scoped)('%s may read an event only when its scope field matches their uid', (role) => {
+  test.each(scoped)('TC-0072 %s may read an event only when its scope field matches their uid', (role) => {
     const readRule = eventsGetList();
 
     expect(readRule).toContain(`hasRole('${role}')`);
@@ -129,7 +129,7 @@ describe('TC-016 events are readable only by the roles related to them', () => {
     expect(readRule).toContain('request.auth.uid');
   });
 
-  test('the rule uses the same field per role as the client query', () => {
+  test('TC-0073 the rule uses the same field per role as the client query', () => {
     const readRule = eventsGetList();
 
     scoped.forEach((role) => {
@@ -138,14 +138,14 @@ describe('TC-016 events are readable only by the roles related to them', () => {
     });
   });
 
-  test('attendees are given no route to the events collection', () => {
+  test('TC-0074 attendees are given no route to the events collection', () => {
     expect(matchBlock('events')).not.toContain(ROLES.ATTENDEE);
   });
 
   // H2 AC3 — attendees find open events through the registration service, which
   // sends only the public fields of events open now. Neither the events nor the
   // registrations rules may hand an attendee a direct read instead.
-  test('TC-572 the open-events list is not a browser read of events or registrations', () => {
+  test('TC-1492 the open-events list is not a browser read of events or registrations', () => {
     expect(matchBlock('events')).not.toContain(ROLES.ATTENDEE);
     // H2: an attendee has no browser read of registrations. (H1 gives attendees one
     // write, a window-gated create, so the role may appear — but never on a read.)
@@ -155,7 +155,7 @@ describe('TC-016 events are readable only by the roles related to them', () => {
     expect(matchBlock('registrations')).not.toMatch(/allow\s+[a-z,\s]*list[a-z,\s]*:\s*if\s+signedIn\(\)\s*;/);
   });
 
-  test('event writes are limited to the owning organiser or assigned coordinator workflow', () => {
+  test('TC-0075 event writes are limited to the owning organiser or assigned coordinator workflow', () => {
     const events = matchBlock('events');
 
     expect(events).toMatch(/allow create:\s*if hasRole\('EVENT_ORGANISER'\) && request\.resource\.data\.organiser_id == request\.auth\.uid/);
@@ -163,7 +163,7 @@ describe('TC-016 events are readable only by the roles related to them', () => {
     expect(events).toContain('coordinatorWorkflowUpdate()');
   });
 
-  test('D4 cancellation is restricted to the assigned coordinator and retained on the event', () => {
+  test('TC-0529 D4 cancellation is restricted to the assigned coordinator and retained on the event', () => {
     const events = matchBlock('events');
     const workflow = events.slice(
       events.indexOf('function coordinatorWorkflowUpdate'),
@@ -179,7 +179,7 @@ describe('TC-016 events are readable only by the roles related to them', () => {
     expect(events).toContain("allow delete: if hasRole('EVENT_ORGANISER') && resource.data.organiser_id == request.auth.uid && resource.data.status == 'DRAFT'");
   });
 
-  test('cancellation notifications are tied to the event and registered attendees', () => {
+  test('TC-0076 cancellation notifications are tied to the event and registered attendees', () => {
     const notifications = matchBlock('notifications');
 
     expect(notifications).toContain('function eventCancellationRecord()');
@@ -190,13 +190,13 @@ describe('TC-016 events are readable only by the roles related to them', () => {
   });
 });
 
-// TC-080 — coordinator_id and assigned_at are the backend's alone to write; a
+// coordinator_id and assigned_at are the backend's alone to write; a
 // client (even the owning organiser) may never set or change either. As with
-// TC-015/016, this asserts the rule text — the text is what a loosened rule
+// this asserts the rule text — the text is what a loosened rule
 // would change — with full behavioural proof left to a Rules Playground
 // screenshot in the evidence pack, since this repo runs no emulator.
-describe('TC-080 coordinator assignment fields remain protected', () => {
-  test('create requires coordinator_id and assigned_at to be absent or null', () => {
+describe('coordinator assignment fields remain protected', () => {
+  test('TC-0311 create requires coordinator_id and assigned_at to be absent or null', () => {
     const events = matchBlock('events');
     const createRule = events.match(/allow create:\s*if([^;]*);/)[1];
 
@@ -206,7 +206,7 @@ describe('TC-080 coordinator assignment fields remain protected', () => {
     expect(events).toContain("request.resource.data.get('assigned_at', null) == null");
   });
 
-  test('organiser updates require coordinator_id and assigned_at to stay unchanged', () => {
+  test('TC-0312 organiser updates require coordinator_id and assigned_at to stay unchanged', () => {
     const events = matchBlock('events');
     const updateRule = events.match(/allow update:\s*if([^;]*);/)[1];
 
@@ -216,18 +216,14 @@ describe('TC-080 coordinator assignment fields remain protected', () => {
     expect(events).toContain("request.resource.data.get('assigned_at', null) == resource.data.get('assigned_at', null)");
   });
 
-  test('reassignment target must be an active coordinator and only the assignment fields may change', () => {
-    const events = matchBlock('events');
-
-    expect(events).toContain('resource.data.coordinator_id == request.auth.uid');
-    expect(events).toContain("data.role == 'EVENT_COORDINATOR'");
-    expect(events).toContain('data.is_active == true');
-    expect(events).toContain("hasOnly(['coordinator_id', 'assigned_at', 'updated_at'])");
-  });
+  // The old C9 rule (the current coordinator reassigns to an active coordinator) is
+  // superseded by K3: only the Lead reassigns. Its target and field checks are pinned in
+  // 'A6 the Event Coordinator Lead assignment boundary' below, and K3 pins that the
+  // coordinator path can no longer touch coordinator_id.
 });
 
 describe('D2 significant event details require an acknowledged audit record', () => {
-  test('only the assigned coordinator can change the significant event fields in planning statuses', () => {
+  test('TC-0489 only the assigned coordinator can change the significant event fields in planning statuses', () => {
     const events = matchBlock('events');
 
     expect(events).toContain('|| coordinatorEventDetailsUpdate()');
@@ -239,11 +235,11 @@ describe('D2 significant event details require an acknowledged audit record', ()
     expect(events).toContain("(!keys.hasAny(['last_significant_change_id']) || significantDetailsRecorded())");
   });
 
-  test('TC-476 D2 an acknowledgement covers only the commit it was written in', () => {
+  test('TC-0490 D2 an acknowledgement covers only the commit it was written in', () => {
     expect(RULES).toContain('&& change.created_at == request.time;');
   });
 
-  test('event requirement edits are paired with an acknowledged history record', () => {
+  test('TC-0491 event requirement edits are paired with an acknowledged history record', () => {
     expect(matchBlock('event_venue_requirements')).toContain('significantChangeHistory(request.resource.data.event_id)');
     expect(matchBlock('event_facilities')).toContain('significantChangeHistory(request.resource.data.event_id)');
     expect(matchBlock('event_accessibility')).toContain('significantChangeHistory(request.resource.data.event_id)');
@@ -251,7 +247,7 @@ describe('D2 significant event details require an acknowledged audit record', ()
     expect(matchBlock('event_history')).toContain('request.resource.data.warning_acknowledged == true');
   });
 
-  test('registrations are readable only by the current coordinator, and no browser writes them', () => {
+  test('TC-0492 registrations are readable only by the current coordinator, and no browser writes them', () => {
     const block = matchBlock('registrations');
     expect(block).toContain("hasRole('EVENT_COORDINATOR') && currentCoordinator(resource.data.event_id)");
     // D2 still never edits or removes registrations, and nobody gets a blanket write.
@@ -262,21 +258,21 @@ describe('D2 significant event details require an acknowledged audit record', ()
 });
 
 describe('F1/F7 venue booking snapshots and confirmation boundary', () => {
-  test('new booking requests carry layout and facility snapshots', () => {
+  test('TC-0902 new booking requests carry layout and facility snapshots', () => {
     const bookings = matchBlock('venue_bookings');
     expect(bookings).toContain('request.resource.data.layout_snapshot is string');
     expect(bookings).toContain('request.resource.data.required_facilities_snapshot is list');
   });
 
   describe('F5 venue booking rejection is terminal', () => {
-    test('no browser update rule can transition a rejected booking to another state', () => {
+    test('TC-0949 no browser update rule can transition a rejected booking to another state', () => {
       const bookings = matchBlock('venue_bookings');
       expect(bookings).not.toMatch(/(?<!request\.)resource\.data\.status == 'REJECTED'/);
       expect(bookings).not.toContain("resource.data.status in ['REJECTED'");
     });
   });
 
-  test('booking approval may only link the event to the booking approved in the same transaction', () => {
+  test('TC-0903 booking approval may only link the event to the booking approved in the same transaction', () => {
     const events = matchBlock('events');
     expect(events).toContain('venueBookingApprovalLinkUpdate()');
     expect(events).toContain("booking.status == 'APPROVED'");
@@ -284,7 +280,7 @@ describe('F1/F7 venue booking snapshots and confirmation boundary', () => {
     expect(events).toContain('assignedVenueStaff(booking.venue_id)');
   });
 
-  test('Confirmed requires the linked booking to belong to the event and remain Approved', () => {
+  test('TC-0904 Confirmed requires the linked booking to belong to the event and remain Approved', () => {
     const events = matchBlock('events');
     expect(events).toContain("request.resource.data.status == 'CONFIRMED'");
     expect(events).toContain('approvedBooking.event_id == eventId');
@@ -293,13 +289,13 @@ describe('F1/F7 venue booking snapshots and confirmation boundary', () => {
 });
 
 describe('G1 equipment requests are editable by the assigned coordinator and queued for Technical Support', () => {
-  test('the assigned coordinator can prefill the organiser equipment lines', () => {
+  test('TC-1190 the assigned coordinator can prefill the organiser equipment lines', () => {
     const equipment = matchBlock('event_equipment');
     expect(equipment).toContain('currentCoordinator(resource.data.event_id)');
     expect(equipment).toContain('ownsEvent(resource.data.event_id)');
   });
 
-  test('equipment_requests requires a non-empty pending request and is writable only by the assigned coordinator', () => {
+  test('TC-1191 equipment_requests requires a non-empty pending request and is writable only by the assigned coordinator', () => {
     const requests = matchBlock('equipment_requests');
     expect(requests).toContain("hasRole('EVENT_COORDINATOR')");
     expect(requests).toContain('currentCoordinator(eventId)');
@@ -312,7 +308,7 @@ describe('G1 equipment requests are editable by the assigned coordinator and que
     expect(requests).toContain("resource.data.get('has_support_decisions', false) == false");
   });
 
-  test('equipment request decision history is readable only by the assigned coordinator', () => {
+  test('TC-1192 equipment request decision history is readable only by the assigned coordinator', () => {
     const history = matchBlock('equipment_request_history');
     expect(history).toContain("hasRole('EVENT_COORDINATOR')");
     expect(history).toContain('currentCoordinator(resource.data.event_id)');
@@ -321,7 +317,7 @@ describe('G1 equipment requests are editable by the assigned coordinator and que
 });
 
 describe('G2 equipment availability is visible to Technical Support', () => {
-  test('pooled inventory and unavailability records are readable only by Technical Support', () => {
+  test('TC-1241 pooled inventory and unavailability records are readable only by Technical Support', () => {
     const inventory = matchBlock('equipment_inventory');
     expect(inventory).toContain("hasRole('TECHNICAL_SUPPORT_STAFF')");
     expect(inventory).not.toMatch(/allow\s+(create|update|delete|write)/);
@@ -330,7 +326,7 @@ describe('G2 equipment availability is visible to Technical Support', () => {
     expect(unavailable).not.toMatch(/allow\s+(create|update|delete|write)/);
   });
 
-  test('reservation and inventory writes are denied to browser clients', () => {
+  test('TC-1242 reservation and inventory writes are denied to browser clients', () => {
     const reservations = matchBlock('equipment_reservations');
     expect(reservations).toContain("hasRole('TECHNICAL_SUPPORT_STAFF')");
     expect(reservations).not.toMatch(/allow\s+(create|update|delete|write)/);
@@ -340,8 +336,8 @@ describe('G2 equipment availability is visible to Technical Support', () => {
   });
 });
 
-describe('C7 TC-074 rejected events are immutable to the organiser', () => {
-  test('organiser updates are limited to drafts or the open clarification window', () => {
+describe('C7 rejected events are immutable to the organiser', () => {
+  test('TC-0416 organiser updates are limited to drafts or the open clarification window', () => {
     const events = matchBlock('events');
     const updateRule = events.match(/allow update:\s*if([^;]*);/)[1];
 
@@ -355,15 +351,15 @@ describe('C7 TC-074 rejected events are immutable to the organiser', () => {
 });
 
 describe('C4/C7/C9 workflow records are guarded for browser SDK access', () => {
-  test.each(['clarification_requests', 'clarification_responses', 'coordinator_assignments', 'notifications'])('%s checks role or relationship', (collection) => {
+  test.each(['clarification_requests', 'clarification_responses', 'coordinator_assignments', 'notifications'])('TC-0376 %s checks role or relationship', (collection) => {
     const block = matchBlock(collection);
     expect(block).not.toMatch(/allow read, write:\s*if false/);
     expect(block).toMatch(/request\.auth\.uid|hasRole\(|canReadEvent\(|currentCoordinator\(|ownsEvent\(/);
   });
 });
 
-describe('E2 TC-094 venue catalogue reads are role-gated', () => {
-  test.each(['venues', 'venue_layouts', 'venue_facilities', 'venue_accessibility', 'venue_operating_hours', 'venue_unavailability'])('%s is readable only by coordinators and venue staff', (collection) => {
+describe('E2 venue catalogue reads are role-gated', () => {
+  test.each(['venues', 'venue_layouts', 'venue_facilities', 'venue_accessibility', 'venue_operating_hours', 'venue_unavailability'])('TC-0585 %s is readable only by coordinators and venue staff', (collection) => {
     const block = matchBlock(collection);
     expect(block).toContain("hasRole('EVENT_COORDINATOR')");
     expect(block).toMatch(/hasRole\('VENUE_STAFF'\)|assignedVenueStaff\(/);
@@ -372,7 +368,7 @@ describe('E2 TC-094 venue catalogue reads are role-gated', () => {
     expect(block).not.toContain('TECHNICAL_SUPPORT_STAFF');
   });
 
-  test('venue bookings are readable by Technical Support only when approved for equipment window checks', () => {
+  test('TC-0586 venue bookings are readable by Technical Support only when approved for equipment window checks', () => {
     const bookings = matchBlock('venue_bookings');
     expect(bookings).toContain("hasRole('EVENT_COORDINATOR')");
     expect(bookings).toContain("hasRole('TECHNICAL_SUPPORT_STAFF') && resource.data.status == 'APPROVED'");
@@ -382,7 +378,7 @@ describe('E2 TC-094 venue catalogue reads are role-gated', () => {
 });
 
 describe('E1 venue catalogue updates are assigned-staff only', () => {
-  test('updates preserve ownership and enforce valid capacity and supported layouts', () => {
+  test('TC-0556 updates preserve ownership and enforce valid capacity and supported layouts', () => {
     const venues = matchBlock('venues');
     const updateRule = venues.match(/allow update:\s*if([^;]*);/)[1];
 
@@ -398,15 +394,15 @@ describe('E1 venue catalogue updates are assigned-staff only', () => {
     expect(updateRule).not.toContain('venue_bookings');
   });
 
-  test('assignment records are only readable by their assigned Venue Staff user', () => {
+  test('TC-0557 assignment records are only readable by their assigned Venue Staff user', () => {
     const assignments = matchBlock('venue_staff');
     expect(assignments).toContain("hasRole('VENUE_STAFF')");
     expect(assignments).toContain('resource.data.user_id == request.auth.uid');
   });
 
-  // J4 / TC-394 — a coordinator raising a booking reads that venue's assignment
+  // J4 / SCRUM-153 — a coordinator raising a booking reads that venue's assignment
   // to notify its staff, but only as a single get: listing it is still refused.
-  test('TC-394 a coordinator may get one venue assignment but never list them', () => {
+  test('TC-0558 a coordinator may get one venue assignment but never list them', () => {
     const coordinatorRules = [...matchBlock('venue_staff').matchAll(/allow ([a-z, ]+): if ([^;]*);/g)]
       .filter(([, , condition]) => condition.includes("hasRole('EVENT_COORDINATOR')"))
       .map(([, operations]) => operations.trim());
@@ -415,16 +411,16 @@ describe('E1 venue catalogue updates are assigned-staff only', () => {
   });
 });
 
-// J1 / SCRUM-150 — TC-262. A recipient reads only their own notifications and may
+// J1 / SCRUM-150. A recipient reads only their own notifications and may
 // change nothing but the read marker; there is no delete, so read ones stay.
-describe('TC-262 notifications are private and only ever marked read', () => {
+describe('notifications are private and only ever marked read', () => {
   const notifications = () => matchBlock('notifications');
 
-  test('reads are limited to the addressee', () => {
+  test('TC-2117 reads are limited to the addressee', () => {
     expect(notifications()).toContain('allow get, list: if signedIn() && resource.data.user_id == request.auth.uid;');
   });
 
-  test('the only update is marking one read', () => {
+  test('TC-2118 the only update is marking one read', () => {
     const update = notifications().match(/allow update:\s*if([^;]*);/);
     expect(update).not.toBeNull();
     expect(update[1]).toContain('resource.data.user_id == request.auth.uid');
@@ -432,22 +428,22 @@ describe('TC-262 notifications are private and only ever marked read', () => {
     expect(update[1]).toContain("affectedKeys().hasOnly(['is_read', 'read_at'])");
   });
 
-  test('no client may delete a notification', () => {
+  test('TC-2119 no client may delete a notification', () => {
     expect(notifications()).not.toMatch(/allow[^:]*delete/);
   });
 });
 
-// J1 / SCRUM-150 AC2 — TC-284. A notification can only be addressed to someone
+// J1 / SCRUM-150 AC2. A notification can only be addressed to someone
 // related to its event by role, and only by someone who is themselves related
 // to it, so nobody's inbox can be filled from outside their events.
-describe('TC-284 notifications are only ever addressed to people related to the event', () => {
+describe('notifications are only ever addressed to people related to the event', () => {
   const create = () => {
     const rule = matchBlock('notifications').match(/allow create:\s*if(.*)\);\s*$/);
     expect(rule).not.toBeNull();
     return rule[1];
   };
 
-  test('the writer must be related to the event', () => {
+  test('TC-2120 the writer must be related to the event', () => {
     expect(create()).toContain('currentCoordinator(request.resource.data.event_id)');
     expect(create()).toContain('ownsEvent(request.resource.data.event_id)');
   });
@@ -468,7 +464,7 @@ describe('TC-284 notifications are only ever addressed to people related to the 
     return create().slice(at, create().indexOf('|| (!(', at));
   };
 
-  test("every branch ties the recipient to the event's organiser or coordinator", () => {
+  test("TC-2121 every branch ties the recipient to the event's organiser or coordinator", () => {
     // The coordinator, organiser, safety-officer and (A6) Lead branches, in order,
     // then (L1) the Safety Officer waiting notice, then (J2) the organiser's own
     // submission notice, then (J4) Venue Staff for their own venue.
@@ -487,10 +483,10 @@ describe('TC-284 notifications are only ever addressed to people related to the 
     expect(branches[10]).toMatch(/venue_staff\/.*\.data\.user_id == request\.resource\.data\.user_id/);
   });
 
-  // J6 / SCRUM-155 AC1 — TC-313. A booking's outcome goes only to the coordinator
+  // J6 / SCRUM-155 AC1. A booking's outcome goes only to the coordinator
   // who raised it, only from the Venue Staff member who decided it, only for the
   // event and venue booked, and only in the same commit as the decision.
-  test('TC-313 a booking outcome is told only by its decider, to its raiser, with the decision', () => {
+  test('TC-2235 a booking outcome is told only by its decider, to its raiser, with the decision', () => {
     const notice = matchBlock('notifications').match(/function venueBookingOutcomeNotice\(booking\) \{ return (.*?); \}/);
     expect(notice).not.toBeNull();
     [
@@ -508,10 +504,10 @@ describe('TC-284 notifications are only ever addressed to people related to the 
     expect(decided()).toContain('venueBookingOutcomeNotice( getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.booking_id)).data)');
   });
 
-  // TC-344. Nobody else can send a booking outcome: the ordinary clauses are
+  // Nobody else can send a booking outcome: the ordinary clauses are
   // closed to those types. Equipment outcomes are refused to every browser; the
   // equipment service writes them with the Admin SDK, which these rules do not bind.
-  test('TC-344 outcome types cannot be sent through any other clause, nor equipment outcomes from a browser', () => {
+  test('TC-2236 outcome types cannot be sent through any other clause, nor equipment outcomes from a browser', () => {
     const refuseEquipment = "!(request.resource.data.get('type', '') in ['EQUIPMENT_ARRANGED', 'EQUIPMENT_UNABLE_TO_FULFIL'])";
     expect(create().indexOf(refuseEquipment)).toBeGreaterThan(-1);
     // A conjunct of the whole rule: it comes before the clauses open.
@@ -530,16 +526,16 @@ describe('TC-284 notifications are only ever addressed to people related to the 
 describe('A6 the Event Coordinator Lead assignment boundary', () => {
   const events = () => matchBlock('events');
 
-  test('the Lead may read every event', () => {
+  test('TC-0085 the Lead may read every event', () => {
     expect(eventsGetList()).toContain("hasRole('EVENT_COORDINATOR_LEAD')");
   });
 
-  test('event updates admit the Lead assignment path', () => {
+  test('TC-0086 event updates admit the Lead assignment path', () => {
     const updateRule = events().match(/allow update:\s*if([^;]*);/)[1];
     expect(updateRule).toContain('leadAssignmentUpdate()');
   });
 
-  test('the Lead may only move a non-terminal event to a different active coordinator', () => {
+  test('TC-0087 the Lead may only move a non-terminal event to a different active coordinator', () => {
     const lead = events().slice(
       events().indexOf('function leadAssignmentUpdate()'),
       events().indexOf('function ordinaryText(')
@@ -552,7 +548,7 @@ describe('A6 the Event Coordinator Lead assignment boundary', () => {
     expect(lead).toContain("hasOnly(['coordinator_id', 'assigned_at', 'updated_at'])");
   });
 
-  test('the active-coordinator directory is also listable by the Lead', () => {
+  test('TC-0088 the active-coordinator directory is also listable by the Lead', () => {
     expect(matchBlock('users')).toContain("hasRole('EVENT_COORDINATOR_LEAD')");
   });
 });
@@ -561,12 +557,12 @@ describe('A6 the Event Coordinator Lead assignment boundary', () => {
 // may read an event only when it carries their own id, so an event with no
 // coordinator is out of reach even by direct id/URL; the Lead reads them all.
 describe('K1 SCRUM-182 unassigned events are the Lead\'s alone', () => {
-  test('K1-TC5 AC2 a coordinator reaches an event only via its coordinator_id, so unassigned ones are unreachable', () => {
+  test('TC-2281 K1 AC2 a coordinator reaches an event only via its coordinator_id, so unassigned ones are unreachable', () => {
     const readRule = eventsGetList();
     expect(readRule).toContain("hasRole('EVENT_COORDINATOR') && resource.data.get('coordinator_id', '') == request.auth.uid");
   });
 
-  test('K1-TC6 AC2 the Lead may read every event, assigned or not', () => {
+  test('TC-2282 K1 AC2 the Lead may read every event, assigned or not', () => {
     expect(eventsGetList()).toContain("hasRole('EVENT_COORDINATOR_LEAD')");
   });
 });
@@ -589,30 +585,30 @@ describe('C6 the assigned coordinator may approve a reviewed request', () => {
     return clause;
   };
 
-  test('only the current coordinator, from Under Review, with no open clarification', () => {
+  test('TC-0408 only the current coordinator, from Under Review, with no open clarification', () => {
     expect(workflow()).toContain("hasRole('EVENT_COORDINATOR')");
     expect(workflow()).toContain('resource.data.coordinator_id == request.auth.uid');
     expect(approveClause()).toContain("resource.data.status == 'UNDER_REVIEW'");
     expect(approveClause()).toContain("resource.data.get('open_clarification_id', null) == null");
   });
 
-  test('the approval changes nothing but status and updated_at', () => {
+  test('TC-0409 the approval changes nothing but status and updated_at', () => {
     expect(approveClause()).toContain("affectedKeys().hasOnly(['status', 'updated_at'])");
   });
 
-  test('an organiser can never write Approved themselves', () => {
+  test('TC-0410 an organiser can never write Approved themselves', () => {
     const start = RULES.indexOf('function organiserMayEdit');
     const organiserRule = RULES.slice(start, RULES.indexOf('// A7 AC4', start));
     expect(organiserRule).not.toContain('APPROVED');
   });
 
-  test('the EVENT_APPROVED history entry is writable by the current coordinator', () => {
+  test('TC-0411 the EVENT_APPROVED history entry is writable by the current coordinator', () => {
     const history = matchBlock('event_history');
     expect(history).toContain('request.resource.data.actor_id == request.auth.uid');
     expect(history).toContain('currentCoordinator(request.resource.data.event_id)');
   });
 
-  test('D6 history entries can be created but have no update or delete rule', () => {
+  test('TC-0555 D6 history entries can be created but have no update or delete rule', () => {
     const history = matchBlock('event_history');
     expect(history).toContain('allow create:');
     expect(history).not.toMatch(/allow\s+update\b/);
@@ -621,19 +617,19 @@ describe('C6 the assigned coordinator may approve a reviewed request', () => {
 });
 
 describe('C2/C3 a coordinator can read an organiser profile, one at a time', () => {
-  test('get is open to coordinators for organiser profiles only', () => {
+  test('TC-0338 get is open to coordinators for organiser profiles only', () => {
     const getRule = matchBlock('users').match(/allow get:\s*if([^;]*);/)[1];
     expect(getRule).toContain("hasRole('EVENT_COORDINATOR') && resource.data.role == 'EVENT_ORGANISER'");
   });
 
   // J8 lets an organiser list active Coordinator Leads, so the rule may name the organiser
   // as a reader; what must never appear is an organiser profile as something listed.
-  test('organisers still cannot be listed or browsed', () => {
+  test('TC-0339 organisers still cannot be listed or browsed', () => {
     const listRule = matchBlock('users').match(/allow list:\s*if([^;]*);/)[1];
     expect(listRule).not.toMatch(/resource\.data\.role == 'EVENT_ORGANISER'/);
   });
 
-  test('profile writes are unchanged — nobody gains a way to edit another user', () => {
+  test('TC-0340 profile writes are unchanged — nobody gains a way to edit another user', () => {
     const users = matchBlock('users');
     expect(users).toContain('allow update: if signedIn() && userId == request.auth.uid');
   });
@@ -643,24 +639,24 @@ describe('C2/C3 a coordinator can read an organiser profile, one at a time', () 
 // the rest of this file: these pin the policy the rules state, so loosening it
 // breaks the build.
 describe('K3 SCRUM-184 reassigning an event moves every coordinator permission with it', () => {
-  test('K3-RT1 AC4 coordinator workflow writes are keyed on the event\'s coordinator_id, so the outgoing coordinator loses them', () => {
+  test('TC-2333 K3 AC4 coordinator workflow writes are keyed on the event\'s coordinator_id, so the outgoing coordinator loses them', () => {
     const start = RULES.indexOf('function coordinatorWorkflowUpdate');
     const workflow = RULES.slice(start, RULES.indexOf('function leadAssignmentUpdate')).replace(/\s+/g, ' ');
     expect(workflow).toContain('resource.data.coordinator_id == request.auth.uid');
   });
 
-  test('K3-RT2 AC4 a coordinator\'s history and notification writes need them to be the current coordinator', () => {
+  test('TC-2334 K3 AC4 a coordinator\'s history and notification writes need them to be the current coordinator', () => {
     expect(RULES).toMatch(/function currentCoordinator\(eventId\)[^}]*coordinator_id == request\.auth\.uid/);
     expect(matchBlock('event_history')).toContain('currentCoordinator(request.resource.data.event_id)');
     expect(matchBlock('notifications')).toContain('currentCoordinator(request.resource.data.event_id)');
   });
 
-  test('K3-RT3 AC3 the Lead may write the reassignment history entry and the assignment records', () => {
+  test('TC-2335 K3 AC3 the Lead may write the reassignment history entry and the assignment records', () => {
     expect(matchBlock('event_history')).toContain("action_type in ['COORDINATOR_ASSIGNED', 'COORDINATOR_REASSIGNED']");
     expect(matchBlock('coordinator_assignments')).toContain("hasRole('EVENT_COORDINATOR_LEAD')");
   });
 
-  test('K3-RT4 AC5 the Lead may notify the outgoing coordinator, the incoming coordinator and the organiser', () => {
+  test('TC-2336 K3 AC5 the Lead may notify the outgoing coordinator, the incoming coordinator and the organiser', () => {
     const notifications = matchBlock('notifications');
     const lead = notifications.slice(notifications.indexOf("hasRole('EVENT_COORDINATOR_LEAD')"));
     // incoming (after the write), outgoing (before the write), organiser.
@@ -669,7 +665,7 @@ describe('K3 SCRUM-184 reassigning an event moves every coordinator permission w
     expect(lead).toContain(".data.get('organiser_id', '')");
   });
 
-  test('K3-RT5 (replaces C9 criterion 5) a coordinator can no longer change coordinator_id: only the Lead path does', () => {
+  test('TC-2337 K3 (replaces C9 criterion 5) a coordinator can no longer change coordinator_id: only the Lead path does', () => {
     const start = RULES.indexOf('function coordinatorWorkflowUpdate');
     const workflow = RULES.slice(start, RULES.indexOf('function leadAssignmentUpdate')).replace(/\s+/g, ' ');
     expect(workflow).not.toContain("hasOnly(['coordinator_id'");
@@ -679,7 +675,6 @@ describe('K3 SCRUM-184 reassigning an event moves every coordinator permission w
 });
 
 // A7 / SCRUM-170 — the Safety Officer at the server boundary (AC2, AC3, AC4, AC6).
-// TC-372 to TC-377, TC-380, TC-382 and TC-383 in docs/test-cases.md.
 describe('A7 the Safety Officer reaches only events under review, and writes only their outcome', () => {
   const functionBody = (name) => {
     const match = RULES.replace(/\s+/g, ' ').match(new RegExp(`function ${name}\\([^)]*\\) \\{ (.*?) \\}(?= //| function| allow| match)`));
@@ -692,7 +687,7 @@ describe('A7 the Safety Officer reaches only events under review, and writes onl
     .map(([, , condition]) => condition);
 
   // AC2 — an event is the Safety Officer's to read only while it is in Safety Review.
-  test('TC-372 the Safety Officer may read an event only while it is in Safety Review', () => {
+  test('TC-0164 the Safety Officer may read an event only while it is in Safety Review', () => {
     const readRule = eventsGetList().replace(/\s+/g, ' ');
     const clauses = readRule.split('||').filter((part) => part.includes("'SAFETY_OFFICER'"));
     expect(clauses).toHaveLength(1);
@@ -702,7 +697,7 @@ describe('A7 the Safety Officer reaches only events under review, and writes onl
   });
 
   // AC3 — the facts of a review, each readable only while that event is under review.
-  test('TC-375 the review facts are readable by the Safety Officer only through safetyReviewing', () => {
+  test('TC-0165 the review facts are readable by the Safety Officer only through safetyReviewing', () => {
     ['event_venue_requirements', 'event_accessibility', 'event_equipment', 'equipment_reservations', 'venue_bookings', 'event_history']
       .forEach((collection) => {
         const read = matchBlock(collection).match(/allow get, list: if (.*?);/)[1];
@@ -720,7 +715,7 @@ describe('A7 the Safety Officer reaches only events under review, and writes onl
   });
 
   // AC4 — one write-once record per check, with a comment unless it is an approval.
-  test('TC-373 a safety review is created once, by the reviewer, with a valid outcome, and never changed', () => {
+  test('TC-0166 a safety review is created once, by the reviewer, with a valid outcome, and never changed', () => {
     const reviews = matchBlock('safety_reviews');
     const create = reviews.match(/allow create: if (.*?);/)[1];
     [
@@ -736,7 +731,7 @@ describe('A7 the Safety Officer reaches only events under review, and writes onl
 
   // AC4 — the event moves only with a matching record: Confirmed on Approve,
   // Planning otherwise, and nothing else on the event changes.
-  test('TC-374 the Safety Officer moves an event only to the status its review record names', () => {
+  test('TC-0167 the Safety Officer moves an event only to the status its review record names', () => {
     const update = functionBody('safetyOutcomeUpdate');
     [
       "hasRole('SAFETY_OFFICER')",
@@ -752,7 +747,7 @@ describe('A7 the Safety Officer reaches only events under review, and writes onl
     expect(matchBlock('events').match(/allow update: if (.*?);/)[1]).toContain('safetyOutcomeUpdate()');
   });
 
-  test('L1 SCRUM-187 the assigned coordinator may move Approved or Planning to Safety Review', () => {
+  test('TC-2452 L1 SCRUM-187 the assigned coordinator may move Approved or Planning to Safety Review', () => {
     const update = functionBody('sendForSafetyCheckUpdate');
     [
       "hasRole('EVENT_COORDINATOR')",
@@ -768,7 +763,7 @@ describe('A7 the Safety Officer reaches only events under review, and writes onl
 
   // AC6 — every other write is refused to the Safety Officer server-side: only
   // these four collections name them in a write condition at all.
-  test('TC-376 the Safety Officer can write only the outcome, its history and its notices', () => {
+  test('TC-0168 the Safety Officer can write only the outcome, its history and its notices', () => {
     const writable = collections.filter((collection) => writeConditions(collection)
       .some((condition) => /'SAFETY_OFFICER'|safetyReviewing\(|safetyOutcomeUpdate\(\)|safetyOutcomeCommit\(/.test(condition)));
     expect(writable.sort()).toEqual(['event_history', 'events', 'notifications', 'safety_reviews', 'venue_bookings']);
@@ -776,7 +771,7 @@ describe('A7 the Safety Officer reaches only events under review, and writes onl
 
   // AC3 — equipment placement and crowd movement come from the event's coordinator,
   // and that is the only thing the new clause lets them change.
-  test('TC-377 the coordinator may set only the two safety planning notes, on their own event, while planning', () => {
+  test('TC-0169 the coordinator may set only the two safety planning notes, on their own event, while planning', () => {
     const notes = functionBody('coordinatorSafetyNotesUpdate');
     [
       "hasRole('EVENT_COORDINATOR')",
@@ -795,7 +790,7 @@ describe('A7 the Safety Officer reaches only events under review, and writes onl
 
   // AC4 — a review record decided now, and the event pointed at it in the same
   // commit: an old record can never confirm a later check, nor be backdated.
-  test('TC-382 a safety review counts only in the commit that records it', () => {
+  test('TC-0170 a safety review counts only in the commit that records it', () => {
     expect(functionBody('safetyOutcomeUpdate')).toContain('review.decided_at == request.time');
     expect(matchBlock('safety_reviews').match(/allow create: if (.*?);/)[1])
       .toContain("getAfter(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.get('last_safety_review_id', '') == reviewId");
@@ -807,7 +802,7 @@ describe('A7 the Safety Officer reaches only events under review, and writes onl
 
   // AC4 / AC6 — the Safety Officer's history entries and notices go only with an
   // outcome, of an outcome type, to the event's coordinator and organiser.
-  test('TC-383 the Safety Officer writes history and notices only alongside an outcome', () => {
+  test('TC-0171 the Safety Officer writes history and notices only alongside an outcome', () => {
     const commit = functionBody('safetyOutcomeCommit');
     ['safetyReviewing(eventId)', "after.status in ['CONFIRMED', 'PLANNING']", 'decided_at == request.time']
       .forEach((clause) => expect(commit).toContain(clause));
@@ -822,7 +817,7 @@ describe('A7 the Safety Officer reaches only events under review, and writes onl
 
   // AC1 — no browser can make itself a Safety Officer: self-registration creates
   // only organisers and attendees, and a user can never change their own role.
-  test('TC-380 a Safety Officer account cannot be created or claimed from the browser', () => {
+  test('TC-0172 a Safety Officer account cannot be created or claimed from the browser', () => {
     const users = matchBlock('users');
     expect(users).toContain("request.resource.data.role in ['EVENT_ORGANISER', 'ATTENDEE']");
     expect(users).toContain('request.resource.data.role == resource.data.role');
@@ -833,7 +828,7 @@ describe('A7 the Safety Officer reaches only events under review, and writes onl
 
 // K5 / SCRUM-186 — a coordinator acts only on events currently assigned to them
 // (AC2: refused server-side; AC3: nothing about another coordinator's event is
-// readable). K3 already keys the workflow writes on coordinator_id (K3-RT1/RT2); K5
+// readable). K3 already keys the workflow writes on coordinator_id (K3); K5
 // closes what was left: the previous-coordinator read route and any write that still
 // names a coordinator without the event's current assignment. Like the rest of this
 // file it asserts the rule text, because the text is what a loosened rule would change.
@@ -867,19 +862,19 @@ describe('K5 SCRUM-186 a coordinator acts only on events currently assigned to t
   const NAMES_CURRENT_COORDINATOR = /currentCoordinator\(|coordinator_id(?:', '')?\)? == request\.auth\.uid/;
   const isWrite = (operations) => /create|update|delete|write/.test(operations);
 
-  test("K5-RT1 AC3 a coordinator reads an event only while it is assigned to them: there is no previous-coordinator route", () => {
+  test("TC-2421 K5 AC3 a coordinator reads an event only while it is assigned to them: there is no previous-coordinator route", () => {
     const read = eventsGetList();
 
     expect(read).toContain("hasRole('EVENT_COORDINATOR') && resource.data.get('coordinator_id', '') == request.auth.uid");
     expect(read).not.toContain('previousCoordinator(');
   });
 
-  test('K5-RT2 AC3 the records hanging off an event follow the same rule: canReadEvent is the owner or the current coordinator only', () => {
+  test('TC-2422 K5 AC3 the records hanging off an event follow the same rule: canReadEvent is the owner or the current coordinator only', () => {
     expect(RULES).not.toContain('previousCoordinator');
     expect(ruleFunctions().canReadEvent).toBe('return ownsEvent(eventId) || currentCoordinator(eventId);');
   });
 
-  test('K5-RT3 AC2 the current coordinator can withdraw a pending booking even if another coordinator raised it', () => {
+  test('TC-2423 K5 AC2 the current coordinator can withdraw a pending booking even if another coordinator raised it', () => {
     const update = blockOf('venue_bookings').match(/allow update: if (.*?);/)[1];
     const withdraw = alternatives(update).find((clause) =>
       clause.includes("request.resource.data.status == 'WITHDRAWN'")
@@ -891,7 +886,7 @@ describe('K5 SCRUM-186 a coordinator acts only on events currently assigned to t
     expect(withdraw).not.toContain('requested_by');
   });
 
-  test('K5-RT4 AC2 sweep: every write the coordinator role is granted outside the events collection names the current coordinator', () => {
+  test('TC-2424 K5 AC2 sweep: every write the coordinator role is granted outside the events collection names the current coordinator', () => {
     const offenders = [];
     collections.forEach((collection) => {
       [...blockOf(collection).matchAll(/allow ([a-z, ]+): if (.*?);/g)]
@@ -906,7 +901,7 @@ describe('K5 SCRUM-186 a coordinator acts only on events currently assigned to t
     expect(offenders).toEqual([]);
   });
 
-  test('K5-RT5 AC2 sweep: every rule function that grants the coordinator role does so only for the current coordinator', () => {
+  test('TC-2425 K5 AC2 sweep: every rule function that grants the coordinator role does so only for the current coordinator', () => {
     const offenders = Object.entries(ruleFunctions())
       .filter(([, body]) => body.includes("hasRole('EVENT_COORDINATOR')") && !NAMES_CURRENT_COORDINATOR.test(body))
       .map(([name]) => name);
@@ -918,7 +913,7 @@ describe('K5 SCRUM-186 a coordinator acts only on events currently assigned to t
       .forEach((name) => expect(functions[name]).toBeDefined());
   });
 
-  test('K5-RT6 AC2 sweep: the coordinator edit, approve and reject paths still exist and are all in the events update rule', () => {
+  test('TC-2426 K5 AC2 sweep: the coordinator edit, approve and reject paths still exist and are all in the events update rule', () => {
     const update = blockOf('events').match(/allow update: if (.*?);/)[1];
     ['coordinatorWorkflowUpdate()', 'coordinatorEventDetailsUpdate()', 'coordinatorSafetyNotesUpdate()', 'coordinatorVenueReleaseLinkUpdate()']
       .forEach((call) => expect(update).toContain(call));
@@ -929,7 +924,7 @@ describe('K5 SCRUM-186 a coordinator acts only on events currently assigned to t
 });
 
 describe('D1 SCRUM-111 ordinary event details are edited only with a recorded history row', () => {
-  test('TC-474 D1 AC1/AC3 only the current coordinator, only in Approved, Planning or Confirmed, only the ordinary fields', () => {
+  test('TC-0449 D1 AC1/AC3 only the current coordinator, only in Approved, Planning or Confirmed, only the ordinary fields', () => {
     const events = matchBlock('events');
     expect(events).toContain('|| coordinatorEventDetailsUpdate()');
     expect(events).toContain("resource.data.status in ['APPROVED', 'PLANNING', 'CONFIRMED']");
@@ -939,7 +934,7 @@ describe('D1 SCRUM-111 ordinary event details are edited only with a recorded hi
     expect(events).toContain("(!keys.hasAny(['last_detail_change_id']) || ordinaryDetailsRecorded())");
   });
 
-  test('TC-475 D1 AC2 the event must point at an EVENT_DETAILS_UPDATED row by this actor, written in the same commit', () => {
+  test('TC-0450 D1 AC2 the event must point at an EVENT_DETAILS_UPDATED row by this actor, written in the same commit', () => {
     const events = matchBlock('events');
     expect(events).toContain("change.action_type == 'EVENT_DETAILS_UPDATED'");
     expect(events).toContain('change.actor_id == request.auth.uid');
@@ -960,24 +955,24 @@ describe('J2 SCRUM-151 the organiser may send themselves the submission notice a
     return found[0];
   };
 
-  test('J2-RT1 AC1 the branch is the event\'s owner, writing to their own inbox, while the event is Submitted', () => {
+  test('TC-2153 J2 AC1 the branch is the event\'s owner, writing to their own inbox, while the event is Submitted', () => {
     expect(submissionBranch()).toContain('ownsEvent(request.resource.data.event_id)');
     expect(submissionBranch()).toContain('request.resource.data.user_id == request.auth.uid');
     expect(submissionBranch()).toContain("get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data.status == 'SUBMITTED'");
   });
 
-  test('J2-RT2 AC1 the type is pinned, so an organiser cannot write any other kind of notice to themselves', () => {
+  test('TC-2154 J2 AC1 the type is pinned, so an organiser cannot write any other kind of notice to themselves', () => {
     expect(submissionBranch()).toContain("request.resource.data.type == 'EVENT_SUBMITTED'");
     expect(submissionBranch()).not.toMatch(/'type', ''\) in|\.type in /);
   });
 
-  test('J2-RT3 AC1 sweep: every notification clause an organiser can use names the event they own', () => {
+  test('TC-2155 J2 AC1 sweep: every notification clause an organiser can use names the event they own', () => {
     const organiserBranches = notices().split(/\|\| \(/).filter((branch) => branch.includes('ownsEvent('));
     expect(organiserBranches.length).toBeGreaterThanOrEqual(2);
     organiserBranches.forEach((branch) => expect(branch).toContain('ownsEvent(request.resource.data.event_id)'));
   });
 
-  test('J2-RT4 AC1 AC3 the coordinator may still tell the event\'s organiser about a decision', () => {
+  test('TC-2156 J2 AC1 AC3 the coordinator may still tell the event\'s organiser about a decision', () => {
     const coordinatorBranch = notices().split(/\|\| \(/).find((branch) => branch.includes('currentCoordinator(request.resource.data.event_id)'));
     expect(coordinatorBranch).toBeDefined();
     expect(coordinatorBranch).toContain('.data.organiser_id');
@@ -991,7 +986,7 @@ describe('J2 SCRUM-151 the organiser may send themselves the submission notice a
 describe('J5 SCRUM-154 Technical Support notices come only from the equipment service', () => {
   const notices = () => matchBlock('notifications').match(/allow create:\s*if(.*)\);\s*$/)[1];
 
-  test('J5-RT1 AC2 AC4 the assigned coordinator may save the on-site support fields on their own request', () => {
+  test('TC-2200 J5 AC2 AC4 the assigned coordinator may save the on-site support fields on their own request', () => {
     const update = matchBlock('equipment_requests').match(/allow update:(.*)$/)[1];
     expect(update).toMatch(/affectedKeys\(\)\.hasOnly\(\[[^\]]*'on_site_support'[^\]]*'on_site_support_details'[^\]]*\]\)/);
     // Still only while Pending and before Technical Support have decided anything.
@@ -999,7 +994,7 @@ describe('J5 SCRUM-154 Technical Support notices come only from the equipment se
     expect(update).toContain("resource.data.get('has_support_decisions', false) == false");
   });
 
-  test('J5-RT2 AC1 AC2 AC3 AC4 no browser may create a Technical Support notice of any of the four types', () => {
+  test('TC-2201 J5 AC1 AC2 AC3 AC4 no browser may create a Technical Support notice of any of the four types', () => {
     const refuse = "!(request.resource.data.get('type', '') in ['EQUIPMENT_REQUEST_RAISED', 'EQUIPMENT_REQUEST_AMENDED', 'ON_SITE_SUPPORT_REQUIRED', 'ON_SITE_SUPPORT_CHANGED'])";
     expect(notices()).toContain(refuse);
     // A conjunct of the whole rule: it comes before the clauses open.
@@ -1008,7 +1003,7 @@ describe('J5 SCRUM-154 Technical Support notices come only from the equipment se
     expect(notices().split(refuse).join('')).not.toMatch(/EQUIPMENT_REQUEST_RAISED|ON_SITE_SUPPORT/);
   });
 
-  test('J5-RT3 AC3 what the service last told Technical Support is not reachable from any browser', () => {
+  test('TC-2202 J5 AC3 what the service last told Technical Support is not reachable from any browser', () => {
     expect(RULES).not.toContain('equipment_request_notices');
   });
 });
@@ -1021,7 +1016,7 @@ describe('J5 SCRUM-154 Technical Support notices come only from the equipment se
 describe('I3 SCRUM-149 re-request marks and notices come only from the arrangements service', () => {
   const notices = () => matchBlock('notifications').match(/allow create:\s*if(.*)\);\s*$/)[1];
 
-  test('I3-RT1 AC2 AC5 no browser may create a re-request or registration-review notice', () => {
+  test('TC-2070 I3 AC2 AC5 no browser may create a re-request or registration-review notice', () => {
     const refuse = "!(request.resource.data.get('type', '') in ['ARRANGEMENT_REREQUEST_REQUIRED', 'REGISTRATION_NEEDS_REVIEW'])";
     expect(notices()).toContain(refuse);
     // A conjunct of the whole rule: it comes before the clauses open.
@@ -1030,11 +1025,11 @@ describe('I3 SCRUM-149 re-request marks and notices come only from the arrangeme
     expect(notices().split(refuse).join('')).not.toMatch(/ARRANGEMENT_REREQUEST_REQUIRED|REGISTRATION_NEEDS_REVIEW/);
   });
 
-  test('I3-RT2 AC3 what the service last applied is not reachable from any browser', () => {
+  test('TC-2071 I3 AC3 what the service last applied is not reachable from any browser', () => {
     expect(RULES).not.toContain('arrangement_rerequests');
   });
 
-  test('I3-RT3 AC1 AC3 AC5 no rule lets a browser set the re-request marker or the registration-review flag', () => {
+  test('TC-2072 I3 AC1 AC3 AC5 no rule lets a browser set the re-request marker or the registration-review flag', () => {
     expect(RULES).not.toContain('rerequest_');
     expect(RULES).not.toContain('registration_needs_review');
     expect(RULES).not.toContain('registration_review_');
@@ -1052,12 +1047,12 @@ describe('I3 SCRUM-149 re-request marks and notices come only from the arrangeme
 //     route to the ceiling;
 //   - AC4: give no browser a way to create a registration at all. H3 (SCRUM-141) registers
 //     through the registration service, which refuses one outside the open window by the
-//     server's clock (backend register.test.js, TC-583 – TC-588), because a rule cannot
+// server's clock (backend register.test.js), because a rule cannot
 //     count places or see a duplicate.
 describe('H1 SCRUM-139 registration capacity and window are set through the service, and the window is enforced', () => {
   const flat = RULES.replace(/\/\/[^\n]*/g, '').replace(/\s+/g, ' ');
 
-  test('H1-RT1 AC2 the instants the window is judged on are written by the service alone: no event update clause names them', () => {
+  test('TC-1438 H1 AC2 the instants the window is judged on are written by the service alone: no event update clause names them', () => {
     const events = flat.slice(flat.indexOf('match /events/'), flat.indexOf('match /event_venue_requirements/'));
     const update = events.match(/allow update:(.*?);/)[1];
     expect(update).not.toContain('registration_opens_at');
@@ -1071,14 +1066,14 @@ describe('H1 SCRUM-139 registration capacity and window are set through the serv
     });
   });
 
-  test('H1-RT2 AC1 AC2 the organiser\'s own edit path is still only a Draft or a clarification amendment, so an approved event cannot be edited from the browser', () => {
+  test('TC-1439 H1 AC1 AC2 the organiser\'s own edit path is still only a Draft or a clarification amendment, so an approved event cannot be edited from the browser', () => {
     const rule = flat.match(/function organiserMayEdit\(\) \{ (.*?) \}(?= \/\/| function| allow|$)/)[1];
     expect(rule).toContain("resource.data.status == 'DRAFT'");
     expect(rule).toContain("resource.data.status == 'UNDER_REVIEW'");
     ['APPROVED', 'PLANNING', 'SAFETY_REVIEW', 'CONFIRMED'].forEach((status) => expect(rule).not.toContain(`'${status}'`));
   });
 
-  test('H1-RT3 AC3 organisers still cannot read venue bookings or venues: the ceiling reaches them only through the service', () => {
+  test('TC-1440 H1 AC3 organisers still cannot read venue bookings or venues: the ceiling reaches them only through the service', () => {
     const bookingsRead = matchBlock('venue_bookings').match(/allow get, list:\s*if([^;]*);/)[1];
     const venuesRead = matchBlock('venues').match(/allow get, list:\s*if([^;]*);/)[1];
     expect(bookingsRead).not.toContain('EVENT_ORGANISER');
@@ -1086,16 +1081,16 @@ describe('H1 SCRUM-139 registration capacity and window are set through the serv
     expect(venuesRead).not.toContain('EVENT_ORGANISER');
   });
 
-  test('H1-RT4 AC4 no browser can create, change or remove a registration: the service is the only way in', () => {
+  test('TC-1441 H1 AC4 no browser can create, change or remove a registration: the service is the only way in', () => {
     const block = matchBlock('registrations');
     expect(block).not.toMatch(/allow\s+[a-z,\s]*(create|update|delete|write)/);
   });
 
-  test('H1-RT5 AC4 no clause on registrations names the Attendee role', () => {
+  test('TC-1442 H1 AC4 no clause on registrations names the Attendee role', () => {
     expect(matchBlock('registrations')).not.toContain(ROLES.ATTENDEE);
   });
 
-  test('H1-RT6 AC4 the browser-side window rule is gone, so nothing can rely on it instead of the service', () => {
+  test('TC-1443 H1 AC4 the browser-side window rule is gone, so nothing can rely on it instead of the service', () => {
     expect(flat).not.toContain('registrationWindowOpen');
   });
 });
@@ -1104,7 +1099,7 @@ describe('H1 SCRUM-139 registration capacity and window are set through the serv
 // the rules must give no organiser (or anyone else) a browser route round it. These pass today;
 // they are guards that fail if a later story opens one.
 describe('H8 the registration list reaches an organiser only through the service', () => {
-  test('H8-RT1 AC3 no role but the event\'s current coordinator has any read of registrations, and an organiser has no clause in the block at all', () => {
+  test('TC-1795 H8 AC3 no role but the event\'s current coordinator has any read of registrations, and an organiser has no clause in the block at all', () => {
     expect(matchBlock('registrations')).not.toContain(ROLES.ORGANISER);
     const readClauses = matchBlock('registrations').match(/allow\s+(?:get|list|read)[^;]*;/g) || [];
     expect(readClauses.length).toBeGreaterThan(0);
@@ -1119,7 +1114,7 @@ describe('H8 the registration list reaches an organiser only through the service
     });
   });
 
-  test('H8-RT2 AC1 AC3 an organiser has no read of attendees\' profiles, so names and contact details cannot be fetched from the browser', () => {
+  test('TC-1796 H8 AC1 AC3 an organiser has no read of attendees\' profiles, so names and contact details cannot be fetched from the browser', () => {
     const readClauses = matchBlock('users').match(/allow\s+(?:get|list|read)[^;]*;/g) || [];
     expect(readClauses.length).toBeGreaterThan(0);
     readClauses.forEach((clause) => {
@@ -1133,19 +1128,19 @@ describe('H8 the registration list reaches an organiser only through the service
   });
 });
 
-// I1 / SCRUM-147 — TC-761 – TC-764 in docs/test-cases.md.
+// I1 / SCRUM-147.
 describe('I1 an organiser raises a change request on their own submitted event', () => {
   const block = () => matchBlock('change_requests');
   const create = () => block().match(/allow create: if (.*?);/)[1];
 
-  test('TC-761 only the event\'s organiser creates one, in their own name, while the event is Submitted to Confirmed', () => {
+  test('TC-1854 only the event\'s organiser creates one, in their own name, while the event is Submitted to Confirmed', () => {
     expect(create()).toContain("hasRole('EVENT_ORGANISER')");
     expect(create()).toContain('request.resource.data.organiser_id == request.auth.uid');
     expect(create()).toContain('ownsEvent(request.resource.data.event_id)');
     expect(create()).toContain("changedEvent().status in ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PLANNING', 'SAFETY_REVIEW', 'CONFIRMED']");
   });
 
-  test('TC-762 it names at least one known field, gives a reason, starts Pending and is stamped now', () => {
+  test('TC-1855 it names at least one known field, gives a reason, starts Pending and is stamped now', () => {
     const { CHANGEABLE_FIELD_NAMES } = require('../domain/changeRequests');
     expect(create()).toContain("request.resource.data.status == 'PENDING'");
     expect(create()).toContain('request.resource.data.reason.trim().size() > 0');
@@ -1154,17 +1149,17 @@ describe('I1 an organiser raises a change request on their own submitted event',
     expect(create()).toContain('request.resource.data.created_at == request.time');
   });
 
-  test('TC-763 it carries the event\'s coordinator as it stands', () => {
+  test('TC-1856 it carries the event\'s coordinator as it stands', () => {
     expect(create()).toContain("request.resource.data.coordinator_id == changedEvent().get('coordinator_id', null)");
   });
 
-  test('TC-764 it is read by its organiser and the event\'s current coordinator, and nobody may delete it', () => {
+  test('TC-1857 it is read by its organiser and the event\'s current coordinator, and nobody may delete it', () => {
     expect(block().match(/allow get, list: if (.*?);/)[1])
       .toBe('signedIn() && (resource.data.organiser_id == request.auth.uid || canReadEvent(resource.data.event_id))');
     expect(block()).not.toMatch(/allow[^:]*\b(delete|write)\b/);
   });
 
-  test('K2/K3 the Lead reads requests and may only re-point a Pending request at the event\'s new coordinator', () => {
+  test('TC-2301 K2/K3 the Lead reads requests and may only re-point a Pending request at the event\'s new coordinator', () => {
     const lead = block().match(/allow update: if (hasRole\('EVENT_COORDINATOR_LEAD'\).*?);/s)[1];
     expect(block()).toContain("allow get, list: if hasRole('EVENT_COORDINATOR_LEAD');");
     expect(lead).toContain("resource.data.status == 'PENDING'");
@@ -1177,7 +1172,7 @@ describe('I2 SCRUM-148 the coordinator decides a Pending request once, and only 
   const block = () => matchBlock('change_requests');
   const update = () => block().match(/allow update: if (.*?); allow /)[1];
 
-  test('TC-801 only the event\'s current coordinator updates it, and only while it is Pending', () => {
+  test('TC-1919 only the event\'s current coordinator updates it, and only while it is Pending', () => {
     expect(update()).toContain("hasRole('EVENT_COORDINATOR')");
     expect(update()).toContain("resource.data.status == 'PENDING'");
     expect(update()).toContain('currentCoordinator(resource.data.event_id)');
@@ -1185,20 +1180,20 @@ describe('I2 SCRUM-148 the coordinator decides a Pending request once, and only 
     expect(update()).toContain('request.resource.data.decided_at == request.time');
   });
 
-  test('TC-802 a decline needs a non-empty reason and its own history row', () => {
+  test('TC-1920 a decline needs a non-empty reason and its own history row', () => {
     expect(update()).toContain("request.resource.data.status == 'DECLINED'");
     expect(update()).toContain('request.resource.data.decision_reason.trim().size() > 0');
     expect(update()).toContain("decisionRecorded('CHANGE_REQUEST_DECLINED')");
   });
 
-  test('TC-803 an acceptance records the old values and commits only with the event update at the same time', () => {
+  test('TC-1921 an acceptance records the old values and commits only with the event update at the same time', () => {
     expect(update()).toContain("request.resource.data.status == 'ACCEPTED'");
     expect(update()).toContain('request.resource.data.applied_changes is map');
     expect(update()).toContain("decisionRecorded('CHANGE_REQUEST_ACCEPTED')");
     expect(update()).toContain('.data.updated_at == request.time');
   });
 
-  test('TC-804 nothing but the decision fields may change', () => {
+  test('TC-1922 nothing but the decision fields may change', () => {
     expect(update()).toContain("hasOnly(['status', 'decided_by', 'decided_at', 'decision_reason', 'decision_history_id'])");
     expect(update()).toContain("hasOnly(['status', 'decided_by', 'decided_at', 'decision_reason', 'applied_changes', 'decision_history_id'])");
   });

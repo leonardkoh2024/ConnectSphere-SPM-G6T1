@@ -66,7 +66,7 @@ export const bookingRequirements = (event = {}, booking = null) => ({
   layout: (booking ? booking.layout : event.required_layout) || null
 });
 
-const missingFrom = (required = [], available = []) =>
+const missingFrom = (required, available) =>
   required.filter((item) => !available.includes(item));
 
 export const assessVenue = (venue, requirements) => {
@@ -89,7 +89,7 @@ export const assessVenue = (venue, requirements) => {
       blocking.push({
         criterion: CRITERIA.OPERATING_HOURS,
         weekday: weekdayOf(requirements.event_date),
-        available: (venue.operating_hours || [])
+        available: venue.operating_hours
           .filter((row) => String(row.weekday).toUpperCase() === weekdayOf(requirements.event_date))
           .map((row) => `${row.opens_at}–${row.closes_at}`)
       });

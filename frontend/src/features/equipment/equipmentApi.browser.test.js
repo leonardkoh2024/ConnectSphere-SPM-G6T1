@@ -43,7 +43,7 @@ afterAll(() => {
   global.fetch = originalFetch;
 });
 
-test("TC-303 the browser sends the authenticated reservation request to the equipment service", async () => {
+test("TC-1255 the browser sends the authenticated reservation request to the equipment service", async () => {
   mockFetch.mockResolvedValue({
     ok: true,
     json: async () => ({
@@ -80,7 +80,7 @@ test("TC-303 the browser sends the authenticated reservation request to the equi
   expect(options.headers.Authorization).toMatch(/^Bearer /);
 });
 
-test("TC-301 the browser displays the service's reason when stock or time is unavailable", async () => {
+test("TC-1256 the browser displays the service's reason when stock or time is unavailable", async () => {
   mockFetch.mockResolvedValue({
     ok: false,
     json: async () => ({ error: "Requested quantity unavailable for the required time period: 1 free, 1 more needed." })
@@ -92,7 +92,7 @@ test("TC-301 the browser displays the service's reason when stock or time is una
   })).rejects.toThrow(/1 free, 1 more needed/i);
 });
 
-test("TC-305 releasing a reservation uses the authenticated equipment service endpoint", async () => {
+test("TC-1257 releasing a reservation uses the authenticated equipment service endpoint", async () => {
   mockFetch.mockResolvedValue({
     ok: true,
     json: async () => ({ reservationId: "reservation-1", status: "RELEASED" })
@@ -109,7 +109,7 @@ test("TC-305 releasing a reservation uses the authenticated equipment service en
   expect(options.headers.Authorization).toMatch(/^Bearer /);
 });
 
-test("D4 cancellation releases equipment through the coordinator-authenticated service", async () => {
+test("TC-0518 D4 cancellation releases equipment through the coordinator-authenticated service", async () => {
   mockGetDoc.mockResolvedValue(snapshot({ role: "EVENT_COORDINATOR" }));
   mockFetch.mockResolvedValue({ ok: true, json: async () => ({ released: 2 }) });
 
@@ -127,7 +127,7 @@ test("D4 cancellation releases equipment through the coordinator-authenticated s
   );
 });
 
-test("TC-307 amendment calls the authenticated equipment service with the note and changed values", async () => {
+test("TC-1291 amendment calls the authenticated equipment service with the note and changed values", async () => {
   mockFetch.mockResolvedValue({ ok: true, json: async () => ({ eventId: "event-1", lineIndex: 0 }) });
   await expect(amendEquipmentRequestLine({
     eventId: "event-1",
@@ -145,7 +145,7 @@ test("TC-307 amendment calls the authenticated equipment service with the note a
   });
 });
 
-test("TC-309 unable-to-fulfil resolution calls the authenticated service with its reason", async () => {
+test("TC-1292 unable-to-fulfil resolution calls the authenticated service with its reason", async () => {
   mockFetch.mockResolvedValue({ ok: true, json: async () => ({ status: "ARRANGED" }) });
   await expect(markEquipmentLineUnableToFulfill({
     eventId: "event-1",
@@ -162,14 +162,13 @@ test("TC-309 unable-to-fulfil resolution calls the authenticated service with it
 
 // When the backend is not running, CRA's dev proxy answers with a plain-text
 // "Proxy error: ..." page, not JSON. Each equipment action says the service is
-// unreachable instead of showing the JSON parse error. TC-402 in
-// docs/test-cases.md.
+// unreachable instead of showing the JSON parse error.
 test.each([
   ["reserving", () => reserveEquipmentForEvent({ eventId: "event-1", equipmentType: "AUDIO", quantity: 1 })],
   ["releasing", () => releaseEquipmentReservation({ reservationId: "reservation-1" })],
   ["amending", () => amendEquipmentRequestLine({ eventId: "event-1", lineIndex: 0, equipmentType: "AUDIO", quantity: 1, note: "x" })],
   ["marking unable to fulfil", () => markEquipmentLineUnableToFulfill({ eventId: "event-1", lineIndex: 0, reason: "x" })]
-])("TC-402 %s reports an unreachable equipment service rather than a JSON error", async (_name, run) => {
+])("TC-2186 %s reports an unreachable equipment service rather than a JSON error", async (_name, run) => {
   const proxyError = "Proxy error: Could not proxy request /api/equipment/reservations from localhost:3000 to http://localhost:4000/ (ECONNREFUSED).";
   mockFetch.mockResolvedValue({
     ok: false,
@@ -192,8 +191,7 @@ test.each([
 
 // The catalogue comes from the equipment service, which can join each
 // reservation to its event after the request has left the Pending queue.
-// TC-407 in docs/test-cases.md.
-test("TC-407 the catalogue is read from the equipment service with the caller's token, and carries the caller's id", async () => {
+test("TC-2187 the catalogue is read from the equipment service with the caller's token, and carries the caller's id", async () => {
   auth.currentUser.getIdToken.mockResolvedValue("test-id-token");
   const body = { inventory: [{ equipment_type: "AUDIO", total_quantity: 10 }], reservations: [], unavailability: [] };
   mockFetch.mockResolvedValue({ ok: true, json: async () => body });
@@ -210,7 +208,7 @@ test("TC-407 the catalogue is read from the equipment service with the caller's 
   expect(mockFetch).not.toHaveBeenCalled();
 });
 
-test("TC-407 a refused catalogue read shows the service's reason, a fallback without one, and an unreachable service plainly", async () => {
+test("TC-2188 a refused catalogue read shows the service's reason, a fallback without one, and an unreachable service plainly", async () => {
   mockFetch.mockResolvedValue({ ok: false, status: 403, json: async () => ({ error: "Only Technical Support Staff can manage equipment reservations." }) });
   await expect(loadEquipmentCatalogue()).rejects.toThrow("Only Technical Support Staff can manage equipment reservations.");
 
@@ -224,8 +222,7 @@ test("TC-407 a refused catalogue read shows the service's reason, a fallback wit
 // Technical Support see who coordinates each event in their queue. The request
 // carries the coordinator who submitted it; their name comes from their profile,
 // which firestore.rules lets any signed-in user read for an active coordinator.
-// TC-389 in docs/test-cases.md.
-test("TC-389 pending requests carry their coordinator's name, and a profile that cannot be read leaves it blank", async () => {
+test("TC-2189 pending requests carry their coordinator's name, and a profile that cannot be read leaves it blank", async () => {
   const docs = (rows) => ({ docs: rows.map(([id, data]) => ({ id, data: () => data })) });
   getDocs.mockImplementation((reference) => Promise.resolve(reference.path === "equipment_requests"
     ? docs([
@@ -274,7 +271,7 @@ describe("J5 SCRUM-154 saving an equipment request and telling Technical Support
     return writes;
   };
 
-  test("J5-TC22 AC2 the request records that on-site support is needed, with its details trimmed", async () => {
+  test("TC-2190 J5 AC2 the request records that on-site support is needed, with its details trimmed", async () => {
     const writes = asCoordinator();
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({ sent: 2 }) });
     await submitEquipmentRequest({ ...submitted, onSiteSupport: true, onSiteSupportDetails: "  Two technicians for setup  " });
@@ -284,7 +281,7 @@ describe("J5 SCRUM-154 saving an equipment request and telling Technical Support
     expect(writes[0][1]).toMatchObject({ on_site_support: true, on_site_support_details: "Two technicians for setup" });
   });
 
-  test("J5-TC23 AC2 a request that does not need on-site support stores false and no details, even if some were typed", async () => {
+  test("TC-2191 J5 AC2 a request that does not need on-site support stores false and no details, even if some were typed", async () => {
     const writes = asCoordinator();
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({ sent: 2 }) });
     await submitEquipmentRequest({ ...submitted, onSiteSupport: false, onSiteSupportDetails: "typed, then unticked" });
@@ -295,7 +292,7 @@ describe("J5 SCRUM-154 saving an equipment request and telling Technical Support
     expect(writes[0][1]).toMatchObject({ on_site_support: false, on_site_support_details: "" });
   });
 
-  test("J5-TC24 AC1 AC3 once saved, the browser asks the equipment service to tell Technical Support", async () => {
+  test("TC-2192 J5 AC1 AC3 once saved, the browser asks the equipment service to tell Technical Support", async () => {
     asCoordinator();
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({ eventId: "event-1", sent: 2 }) });
 
@@ -308,7 +305,7 @@ describe("J5 SCRUM-154 saving an equipment request and telling Technical Support
     expect(runTransaction.mock.invocationCallOrder[0]).toBeLessThan(mockFetch.mock.invocationCallOrder[0]);
   });
 
-  test("J5-TC25 AC1 when the service cannot be reached the request stays saved, and the coordinator is told it was not announced", async () => {
+  test("TC-2193 J5 AC1 when the service cannot be reached the request stays saved, and the coordinator is told it was not announced", async () => {
     const writes = asCoordinator();
     mockFetch.mockRejectedValue(new Error("connect ECONNREFUSED"));
     await expect(submitEquipmentRequest(submitted)).resolves.toEqual({ ok: true, status: "PENDING", notified: false, rerequested: false });
@@ -318,7 +315,7 @@ describe("J5 SCRUM-154 saving an equipment request and telling Technical Support
     await expect(submitEquipmentRequest(submitted)).resolves.toEqual({ ok: true, status: "PENDING", notified: false, rerequested: false });
   });
 
-  test("J5-TC26 AC2 on-site support without details is refused before anything is saved or announced", async () => {
+  test("TC-2194 J5 AC2 on-site support without details is refused before anything is saved or announced", async () => {
     const writes = asCoordinator();
     for (const onSiteSupportDetails of ["", "   ", undefined]) {
       await expect(submitEquipmentRequest({ ...submitted, onSiteSupport: true, onSiteSupportDetails }))
@@ -329,7 +326,7 @@ describe("J5 SCRUM-154 saving an equipment request and telling Technical Support
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  test("J5-TC27 AC1 a request that could not be saved is never announced", async () => {
+  test("TC-2195 J5 AC1 a request that could not be saved is never announced", async () => {
     asCoordinator({ event: { coordinator_id: "someone-else", status: "APPROVED" } });
     await expect(submitEquipmentRequest(submitted)).rejects.toThrow(/only the assigned event coordinator/i);
     expect(mockFetch).not.toHaveBeenCalled();
@@ -339,7 +336,7 @@ describe("J5 SCRUM-154 saving an equipment request and telling Technical Support
   // arrangements, so the browser asks the arrangements service to re-request after it.
   const rerequestCalls = () => mockFetch.mock.calls.filter(([path]) => path === "/api/events/event-1/rerequest-arrangements");
 
-  test("I3-TC95 AC1 AC2 once the request is saved and Technical Support told, the arrangements service is asked to re-request", async () => {
+  test("TC-2015 I3 AC1 AC2 once the request is saved and Technical Support told, the arrangements service is asked to re-request", async () => {
     asCoordinator();
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({ applied: true, status: "PLANNING" }) });
 
@@ -357,7 +354,7 @@ describe("J5 SCRUM-154 saving an equipment request and telling Technical Support
     ]);
   });
 
-  test("I3-TC96 AC1 when only the re-request fails the request stays saved, Technical Support is still told, and the result says it was not re-requested", async () => {
+  test("TC-2016 I3 AC1 when only the re-request fails the request stays saved, Technical Support is still told, and the result says it was not re-requested", async () => {
     const writes = asCoordinator();
     mockFetch
       .mockResolvedValueOnce({ ok: true, json: async () => ({ sent: 2 }) })
@@ -367,7 +364,7 @@ describe("J5 SCRUM-154 saving an equipment request and telling Technical Support
     expect(writes).toHaveLength(1);
   });
 
-  test("I3-TC97 AC1 a failed Technical Support notice does not stop the re-request being asked for", async () => {
+  test("TC-2017 I3 AC1 a failed Technical Support notice does not stop the re-request being asked for", async () => {
     asCoordinator();
     mockFetch
       .mockRejectedValueOnce(new Error("connect ECONNREFUSED"))
@@ -377,7 +374,7 @@ describe("J5 SCRUM-154 saving an equipment request and telling Technical Support
     expect(rerequestCalls()).toHaveLength(1);
   });
 
-  test("I3-TC98 a request that could not be saved asks for no re-request", async () => {
+  test("TC-2018 I3 a request that could not be saved asks for no re-request", async () => {
     asCoordinator({ event: { coordinator_id: "someone-else", status: "APPROVED" } });
     await expect(submitEquipmentRequest(submitted)).rejects.toThrow(/only the assigned event coordinator/i);
     expect(rerequestCalls()).toHaveLength(0);

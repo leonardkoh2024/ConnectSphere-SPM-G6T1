@@ -42,7 +42,7 @@ export const refreshVenueWorkflowsOnLoad = ({ user }) => {
   return refresh;
 };
 
-export const occupiedWindow = (start, end, venue = {}) => ({
+export const occupiedWindow = (start, end, venue) => ({
   start: new Date(start.getTime() - (Number(venue.setup_minutes) || 0) * 60000),
   end: new Date(end.getTime() + (Number(venue.turnaround_minutes) || 0) * 60000)
 });

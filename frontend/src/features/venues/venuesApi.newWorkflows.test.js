@@ -33,7 +33,7 @@ beforeEach(() => {
   mockGetDoc.mockReset(); mockGetDocs.mockReset(); mockSet.mockClear(); mockUpdate.mockClear(); mockDocuments.clear();
 });
 
-test("F11 replacement request copies booking-specific requirements and links the original", async () => {
+test("TC-1047 F11 replacement request copies booking-specific requirements and links the original", async () => {
   const event = { coordinator_id: "C1", status: "PLANNING", name: "Summit", event_date: "2026-12-02", start_time: "10:00", end_time: "12:00", expected_attendance: 200 };
   const venue = { name: "New Hall", max_capacity: 100, setup_minutes: 0, turnaround_minutes: 0 };
   const original = { event_id: "E1", venue_id: "OLD", status: "APPROVED", replacement_needed: true, booking_label: "Breakout", replacement_reason: "Maintenance" };
@@ -56,7 +56,7 @@ test("F11 replacement request copies booking-specific requirements and links the
   });
 });
 
-test("F11 replacement request refuses the original unavailable venue", async () => {
+test("TC-1048 F11 replacement request refuses the original unavailable venue", async () => {
   const event = { coordinator_id: "C1", status: "PLANNING", event_date: "2026-12-02", start_time: "10:00", end_time: "12:00", expected_attendance: 100 };
   const original = { event_id: "E1", venue_id: "OLD", status: "APPROVED", replacement_needed: true };
   mockDocuments.set("events/E1", snap("E1", event, "events"));
@@ -71,7 +71,7 @@ test("F11 replacement request refuses the original unavailable venue", async () 
   })).rejects.toThrow("Choose a different venue");
 });
 
-test("F11 approving a linked replacement retires the original booking atomically", async () => {
+test("TC-1049 F11 approving a linked replacement retires the original booking atomically", async () => {
   const original = {
     event_id: "E1", venue_id: "OLD", status: "APPROVED", replacement_needed: true,
     booking_label: "Original hall"
@@ -108,7 +108,7 @@ test("F11 approving a linked replacement retires the original booking atomically
   }));
 });
 
-test("F14 releases only the selected booking, keeps the other approved venue, and records the reason", async () => {
+test("TC-1091 F14 releases only the selected booking, keeps the other approved venue, and records the reason", async () => {
   const selected = { event_id: "E1", venue_id: "V1", status: "APPROVED", booking_label: "Main hall" };
   const other = { event_id: "E1", venue_id: "V2", status: "APPROVED", booking_label: "Breakout" };
   const selectedSnap = snap("B1", selected, "venue_bookings");
@@ -127,13 +127,13 @@ test("F14 releases only the selected booking, keeps the other approved venue, an
   expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({ path: "event_history/auto" }), expect.objectContaining({ action_type: "VENUE_BOOKING_RELEASED", description: "Main hall: Room no longer needed" }));
 });
 
-test("F14 requires a non-empty release reason before any Firestore read", async () => {
+test("TC-1092 F14 requires a non-empty release reason before any Firestore read", async () => {
   await expect(releaseVenueBooking({ user: { uid: "C1" }, bookingId: "B1", reason: "  " }))
     .rejects.toThrow("A release reason is required.");
   expect(mockGetDoc).not.toHaveBeenCalled();
 });
 
-test("F14 releasing during safety review returns the event to Planning and invalidates the safety decision", async () => {
+test("TC-1093 F14 releasing during safety review returns the event to Planning and invalidates the safety decision", async () => {
   const selected = { event_id: "E1", venue_id: "V1", status: "APPROVED", booking_label: "Main hall" };
   const selectedSnap = snap("B1", selected, "venue_bookings");
   mockGetDoc.mockResolvedValue(selectedSnap);
@@ -150,7 +150,7 @@ test("F14 releasing during safety review returns the event to Planning and inval
   }));
 });
 
-test("F14 refuses release after the event is completed", async () => {
+test("TC-1094 F14 refuses release after the event is completed", async () => {
   const selected = { event_id: "E1", venue_id: "V1", status: "APPROVED" };
   const selectedSnap = snap("B1", selected, "venue_bookings");
   mockGetDoc.mockResolvedValue(selectedSnap);
@@ -163,7 +163,7 @@ test("F14 refuses release after the event is completed", async () => {
   expect(mockUpdate).not.toHaveBeenCalled();
 });
 
-test("F10 coordinator explicitly prepares only their approved booking for the F11 replacement flow", async () => {
+test("TC-1027 F10 coordinator explicitly prepares only their approved booking for the F11 replacement flow", async () => {
   const original = { event_id: "E1", venue_id: "V1", status: "APPROVED", booking_label: "Main hall", occupied_start: "2099-06-10T09:00:00Z", occupied_end: "2099-06-10T11:00:00Z" };
   const conflicting = { event_id: "E2", venue_id: "V1", status: "APPROVED", booking_label: "Partner Briefing", occupied_start: "2099-06-10T10:30:00Z", occupied_end: "2099-06-10T12:00:00Z" };
   const originalSnap = snap("B1", original, "venue_bookings");
@@ -193,7 +193,7 @@ test("F10 coordinator explicitly prepares only their approved booking for the F1
   }));
 });
 
-test("F10 refuses replacement preparation when the reported clash is no longer active", async () => {
+test("TC-1028 F10 refuses replacement preparation when the reported clash is no longer active", async () => {
   const original = { event_id: "E1", venue_id: "V1", status: "APPROVED", occupied_start: "2099-06-10T09:00:00Z", occupied_end: "2099-06-10T11:00:00Z" };
   const noLongerOverlapping = { event_id: "E2", venue_id: "V1", status: "APPROVED", occupied_start: "2099-06-10T11:00:00Z", occupied_end: "2099-06-10T12:00:00Z" };
   const originalSnap = snap("B1", original, "venue_bookings");
@@ -210,7 +210,7 @@ test("F10 refuses replacement preparation when the reported clash is no longer a
   expect(mockSet).not.toHaveBeenCalled();
 });
 
-test("F10 still derives live clashes when deployed rules deny the optional conflict collection", async () => {
+test("TC-1029 F10 still derives live clashes when deployed rules deny the optional conflict collection", async () => {
   const assignment = snap("V1", { venue_id: "V1", user_id: "VS1" }, "venue_staff");
   const first = snap("B1", { venue_id: "V1", event_id: "E1", event_name: "Forum", status: "APPROVED", occupied_start: "2099-06-10T09:00:00Z", occupied_end: "2099-06-10T11:00:00Z" }, "venue_bookings");
   const second = snap("B2", { venue_id: "V1", event_id: "E2", event_name: "Briefing", status: "APPROVED", occupied_start: "2099-06-10T10:30:00Z", occupied_end: "2099-06-10T12:00:00Z" }, "venue_bookings");
@@ -227,7 +227,7 @@ test("F10 still derives live clashes when deployed rules deny the optional confl
   expect(rows[0].clashes[0]).toMatchObject({ event_a_name: "Forum", event_b_name: "Briefing" });
 });
 
-test("F16 browser views treat a hold past its deadline as expired", async () => {
+test("TC-1150 F16 browser views treat a hold past its deadline as expired", async () => {
   const event = snap("E1", { coordinator_id: "C1", name: "Community Summit" }, "events");
   const held = snap("B1", { event_id: "E1", venue_id: "V1", status: "HELD", hold_expires_at: "2000-01-01T00:00:00Z", submitted_at: "1999-12-20T00:00:00Z" }, "venue_bookings");
   mockGetDocs.mockResolvedValueOnce({ docs: [event] }).mockResolvedValueOnce({ docs: [held] }).mockResolvedValueOnce({ docs: [held] });

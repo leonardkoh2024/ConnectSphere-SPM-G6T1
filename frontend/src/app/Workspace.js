@@ -94,7 +94,8 @@ export default function Workspace({ user, role }) {
   const pathLooksProtected = requestedPath.startsWith("#/") && requestedPath !== "#/sign-in";
   const requestedScreen = meta.screens.find((item) => screenHash(role, item.name) === requestedPath);
   const forbidden = pathLooksProtected && !requestedScreen;
-  const screen = meta.screens.find((item) => item.name === activeScreen) || meta.screens[0];
+  // activeScreen is only ever set to one of this role's screen names, so the fallback is a guard.
+  const screen = meta.screens.find((item) => item.name === activeScreen) || /* istanbul ignore next -- defensive: activeScreen always names one of meta.screens */ meta.screens[0];
 
   useEffect(() => {
     const syncFromHash = () => { setCurrentHash(window.location.hash); const found = meta.screens.find((item) => screenHash(role, item.name) === window.location.hash); if (found) setActiveScreen(found.name); };

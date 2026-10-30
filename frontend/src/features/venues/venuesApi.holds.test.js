@@ -1,9 +1,9 @@
 // F15 / SCRUM-180 — Place a tentative hold on a venue.
 //
-//   FUNCTIONAL  TC-521 – TC-527  holdVenueBooking, and the hold's effect on
+// FUNCTIONAL holdVenueBooking, and the hold's effect on
 //                                requestVenueBooking and approveVenueBooking,
 //                                against a mocked Firestore.
-//   RULES       TC-528 – TC-530  the server boundary in firestore.rules.
+// RULES the server boundary in firestore.rules.
 
 import fs from 'fs';
 import path from 'path';
@@ -45,7 +45,7 @@ const now = sg('2026-10-19', '10:00');
 const expiry = sg('2026-10-22', '10:00');
 const staff = { uid: 'STAFF-001' };
 
-test('F5 sends rejection through the authenticated venue service, not client Firestore writes', async () => {
+test('TC-0948 F5 sends rejection through the authenticated venue service, not client Firestore writes', async () => {
   const originalFetch = global.fetch;
   const fetchMock = jest.fn().mockResolvedValue({
     ok: true,
@@ -106,7 +106,7 @@ beforeEach(() => {
 });
 
 describe('F15 / SCRUM-180 functional — Venue Staff place a hold', () => {
-  test('TC-521 a hold records the venue, event, occupied window and an expiry three working days on', async () => {
+  test('TC-1122 a hold records the venue, event, occupied window and an expiry three working days on', async () => {
     staffScene();
 
     await expect(holdVenueBooking({ user: staff, bookingId: 'VB-001', now }))
@@ -129,7 +129,7 @@ describe('F15 / SCRUM-180 functional — Venue Staff place a hold', () => {
     })]);
   });
 
-  test('TC-521 the coordinator who raised it is told, with the expiry', async () => {
+  test('TC-1123 the coordinator who raised it is told, with the expiry', async () => {
     staffScene();
 
     await holdVenueBooking({ user: staff, bookingId: 'VB-001', now });
@@ -142,7 +142,7 @@ describe('F15 / SCRUM-180 functional — Venue Staff place a hold', () => {
     })]);
   });
 
-  test('TC-522 an event that needs the venue before the hold would end cannot be held', async () => {
+  test('TC-1124 an event that needs the venue before the hold would end cannot be held', async () => {
     staffScene({ booking: { ...pending, start_datetime: sg('2026-10-21', '09:00'), end_datetime: sg('2026-10-21', '12:00') } });
 
     await expect(holdVenueBooking({ user: staff, bookingId: 'VB-001', now })).rejects.toThrow(
@@ -152,7 +152,7 @@ describe('F15 / SCRUM-180 functional — Venue Staff place a hold', () => {
     expect(mockTransactionSet).not.toHaveBeenCalled();
   });
 
-  test('TC-523 only the venue’s own staff may hold, and only a pending request', async () => {
+  test('TC-1125 only the venue’s own staff may hold, and only a pending request', async () => {
     staffScene();
     await expect(holdVenueBooking({ user: { uid: 'STAFF-OTHER' }, bookingId: 'VB-001', now }))
       .rejects.toThrow('You are not assigned to manage this venue.');
@@ -163,7 +163,7 @@ describe('F15 / SCRUM-180 functional — Venue Staff place a hold', () => {
     expect(mockTransactionUpdate).not.toHaveBeenCalled();
   });
 
-  test('TC-524 a hold meets the same clashes an approval does', async () => {
+  test('TC-1126 a hold meets the same clashes an approval does', async () => {
     const other = (fields) => ({
       ...pending, booking_id: 'VB-002', event_id: 'EVT-002', booking_label: 'Board Retreat — Harbour Hall', ...fields
     });
@@ -208,7 +208,7 @@ describe('F15 / SCRUM-180 functional — while a hold is active the venue is kep
     required_layout: 'THEATRE', required_facilities: [], acknowledgement: { acknowledged: false, criteria: [] }, now, ...fields
   });
 
-  test("TC-525 an overlapping request for the held venue is refused, naming the hold and its expiry", async () => {
+  test("TC-1127 an overlapping request for the held venue is refused, naming the hold and its expiry", async () => {
     coordinatorScene([activeHold]);
 
     await expect(raise()).rejects.toThrow(
@@ -217,13 +217,13 @@ describe('F15 / SCRUM-180 functional — while a hold is active the venue is kep
     expect(mockTransactionSet).not.toHaveBeenCalled();
   });
 
-  test('TC-525 once the hold has expired the same request goes through', async () => {
+  test('TC-1128 once the hold has expired the same request goes through', async () => {
     coordinatorScene([activeHold]);
 
     await expect(raise({ now: sg('2026-10-22', '10:00') })).resolves.toMatchObject({ status: 'PENDING' });
   });
 
-  test('TC-526 Venue Staff convert an active hold into an approved booking', async () => {
+  test('TC-1129 Venue Staff convert an active hold into an approved booking', async () => {
     staffScene({ booking: activeHold });
 
     await expect(approveVenueBooking({ user: staff, bookingId: 'VB-HOLD', now: sg('2026-10-20', '15:00') }))
@@ -233,7 +233,7 @@ describe('F15 / SCRUM-180 functional — while a hold is active the venue is kep
     expect(setsIn('event_history')).toEqual([expect.objectContaining({ action_type: 'VENUE_BOOKING_APPROVED', old_value: 'HELD', new_value: 'APPROVED' })]);
   });
 
-  test('TC-526 an expired hold can no longer be converted', async () => {
+  test('TC-1130 an expired hold can no longer be converted', async () => {
     staffScene({ booking: activeHold });
 
     await expect(approveVenueBooking({ user: staff, bookingId: 'VB-HOLD', now: sg('2026-10-22', '10:00') }))
@@ -241,7 +241,7 @@ describe('F15 / SCRUM-180 functional — while a hold is active the venue is kep
     expect(mockTransactionUpdate).not.toHaveBeenCalled();
   });
 
-  test("TC-527 another event's request over an active hold cannot be approved", async () => {
+  test("TC-1131 another event's request over an active hold cannot be approved", async () => {
     staffScene({ others: [activeHold] });
 
     await expect(approveVenueBooking({ user: staff, bookingId: 'VB-001', now: sg('2026-10-20', '15:00') }))
@@ -260,7 +260,7 @@ const bookingUpdateRule = () => block('match /venue_bookings/{bookingId}').match
 const compact = (text) => text.replace(/\s+/g, ' ');
 
 describe('F15 / SCRUM-180 rules — a crafted write cannot bend the hold', () => {
-  test('TC-528 only the assigned Venue Staff move a pending request to Held, stamped now, for exactly three working days, ending before the venue is needed', () => {
+  test('TC-1132 only the assigned Venue Staff move a pending request to Held, stamped now, for exactly three working days, ending before the venue is needed', () => {
     const rule = compact(bookingUpdateRule());
     expect(rule).toContain("resource.data.status == 'PENDING' && request.resource.data.status == 'HELD'");
     expect(rule).toContain('request.resource.data.held_by == request.auth.uid');
@@ -273,12 +273,12 @@ describe('F15 / SCRUM-180 rules — a crafted write cannot bend the hold', () =>
     expect(rules).toContain('28800000');
   });
 
-  test('TC-529 a hold converts to an approval only while it has not expired', () => {
+  test('TC-1133 a hold converts to an approval only while it has not expired', () => {
     const rule = compact(bookingUpdateRule());
     expect(rule).toContain("(resource.data.status == 'PENDING' || (resource.data.status == 'HELD' && resource.data.hold_expires_at > request.time)) && request.resource.data.status == 'APPROVED'");
   });
 
-  test('TC-530 the hold’s history row and notice can be written only with the hold itself', () => {
+  test('TC-1134 the hold’s history row and notice can be written only with the hold itself', () => {
     const history = compact(block('match /event_history/{historyId}'));
     expect(history).toContain("request.resource.data.action_type == 'VENUE_BOOKING_HELD'");
     const notices = compact(block('match /notifications/{notificationId}'));

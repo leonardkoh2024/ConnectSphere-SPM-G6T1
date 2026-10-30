@@ -5,7 +5,7 @@
 // The assign *action* itself (select -> Assign -> reviewApi.assign -> notice ->
 // event leaves the queue) is A6 wiring already covered elsewhere, and the new
 // assign *logic* (record + notify organiser) is pinned by the domain unit tests
-// (K2-TC3/TC4), so neither is re-tested here. reviewApi is mocked, mirroring
+// (K2), so neither is re-tested here. reviewApi is mocked, mirroring
 // EventReviewScreen.test.js, so this stays a fast, isolated component test.
 
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -50,7 +50,7 @@ beforeEach(() => {
   reviewApi.leadReassign.mockResolvedValue({ ok: true });
 });
 
-test('K2-FT1 AC1 a read-only event summary opens from the queue with the event basics', async () => {
+test('TC-2292 K2 AC1 a read-only event summary opens from the queue with the event basics', async () => {
   render(<LeadAssignmentScreen view="queue" />);
   await screen.findByText('Gala');
 
@@ -64,7 +64,7 @@ test('K2-FT1 AC1 a read-only event summary opens from the queue with the event b
   expect(screen.getByText(/21:00/)).toBeInTheDocument();
 });
 
-test('K2-FT2 AC2 each assign option shows the coordinator active-event count', async () => {
+test('TC-2293 K2 AC2 each assign option shows the coordinator active-event count', async () => {
   render(<LeadAssignmentScreen view="queue" />);
   await screen.findByText('Gala');
 
@@ -77,7 +77,7 @@ test('K2-FT2 AC2 each assign option shows the coordinator active-event count', a
 // (who may be moved, the one-coordinator result, the three notifications) are pinned
 // by the domain and adapter tests; these check what the Lead actually sees and can do.
 describe('K3 SCRUM-184 reassign from the oversight screen', () => {
-  test('K3-FT1 AC1 only a live assigned event offers Reassign: not a waiting or a finished one', async () => {
+  test('TC-2316 K3 AC1 only a live assigned event offers Reassign: not a waiting or a finished one', async () => {
     render(<LeadAssignmentScreen view="oversight" />);
     await screen.findByText('Workshop');
 
@@ -87,7 +87,7 @@ describe('K3 SCRUM-184 reassign from the oversight screen', () => {
     expect(screen.getAllByRole('button', { name: 'Reassign' })).toHaveLength(1);
   });
 
-  test('K3-FT2 AC2 the current coordinator is not offered as the new one', async () => {
+  test('TC-2317 K3 AC2 the current coordinator is not offered as the new one', async () => {
     render(<LeadAssignmentScreen view="oversight" />);
     await screen.findByText('Workshop');
 
@@ -96,7 +96,7 @@ describe('K3 SCRUM-184 reassign from the oversight screen', () => {
     expect(within(select).queryByRole('option', { name: /Alex/ })).toBeNull();
   });
 
-  test('K3-FT3 AC1 Reassign stays disabled until a coordinator is chosen', async () => {
+  test('TC-2318 K3 AC1 Reassign stays disabled until a coordinator is chosen', async () => {
     render(<LeadAssignmentScreen view="oversight" />);
     await screen.findByText('Workshop');
 
@@ -105,7 +105,7 @@ describe('K3 SCRUM-184 reassign from the oversight screen', () => {
     expect(screen.getByRole('button', { name: 'Reassign' })).toBeEnabled();
   });
 
-  test('K3-FT4 AC1/AC3 choosing a coordinator and pressing Reassign moves the event and shows the new coordinator', async () => {
+  test('TC-2319 K3 AC1/AC3 choosing a coordinator and pressing Reassign moves the event and shows the new coordinator', async () => {
     const onNotice = jest.fn();
     const moved = {
       ...board,
@@ -123,7 +123,7 @@ describe('K3 SCRUM-184 reassign from the oversight screen', () => {
     expect(onNotice).toHaveBeenCalledWith('Reassigned to Priya.');
   });
 
-  test('K3-FT5 AC2 a refused reassignment is shown to the Lead, not swallowed', async () => {
+  test('TC-2320 K3 AC2 a refused reassignment is shown to the Lead, not swallowed', async () => {
     reviewApi.leadReassign.mockRejectedValue(new Error('This event cannot be reassigned to that coordinator.'));
 
     render(<LeadAssignmentScreen view="oversight" />);
@@ -134,7 +134,7 @@ describe('K3 SCRUM-184 reassign from the oversight screen', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('cannot be reassigned');
   });
 
-  test('K3-FT7 a refused reassignment is shown beside the row it belongs to, not off-screen at the top', async () => {
+  test('TC-2321 K3 a refused reassignment is shown beside the row it belongs to, not off-screen at the top', async () => {
     reviewApi.leadReassign.mockRejectedValue(new Error('Missing or insufficient permissions.'));
 
     render(<LeadAssignmentScreen view="oversight" />);
@@ -188,14 +188,14 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     reviewApi.leadBoard.mockResolvedValue(k4Board());
   });
 
-  test('K4-FT1 AC1 the list shows every active event and none that is Completed, Cancelled or Rejected', async () => {
+  test('TC-2361 K4 AC1 the list shows every active event and none that is Completed, Cancelled or Rejected', async () => {
     await openOversight();
 
     ['Gala', 'Workshop', 'Summit', 'Retreat'].forEach((name) => expect(screen.getByText(name)).toBeInTheDocument());
     ['Concert', 'Picnic', 'Rally'].forEach((name) => expect(screen.queryByText(name)).toBeNull());
   });
 
-  test('K4-FT2 AC1 each row shows its coordinator, status, proposed date and time since last activity', async () => {
+  test('TC-2362 K4 AC1 each row shows its coordinator, status, proposed date and time since last activity', async () => {
     await openOversight();
 
     const row = within(rowOf('Workshop'));
@@ -207,7 +207,7 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(within(rowOf('Retreat')).getByText(/2 hrs ago/)).toBeInTheDocument();
   });
 
-  test('K4-FT3 AC1 an active event nobody holds yet is listed as Unassigned, with its time since last activity', async () => {
+  test('TC-2363 K4 AC1 an active event nobody holds yet is listed as Unassigned, with its time since last activity', async () => {
     await openOversight();
 
     const row = within(rowOf('Gala'));
@@ -215,7 +215,7 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(row.getByText(/1 day ago/)).toBeInTheDocument();
   });
 
-  test('K4-FT4 AC1 boundary with only finished events on the board the Lead sees an empty message, not a blank page', async () => {
+  test('TC-2364 K4 AC1 boundary with only finished events on the board the Lead sees an empty message, not a blank page', async () => {
     const finishedOnly = k4Board();
     finishedOnly.events = finishedOnly.events.filter((item) => ['COMPLETED', 'CANCELLED', 'REJECTED'].includes(item.status));
     reviewApi.leadBoard.mockResolvedValue(finishedOnly);
@@ -225,7 +225,7 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(await screen.findByText(/no active events/i)).toBeInTheDocument();
   });
 
-  test('K4-FT5 AC1 a board that fails to load is reported to the Lead', async () => {
+  test('TC-2365 K4 AC1 a board that fails to load is reported to the Lead', async () => {
     reviewApi.leadBoard.mockRejectedValue(new Error('This role cannot oversee event assignments.'));
 
     render(<LeadAssignmentScreen view="oversight" />);
@@ -233,7 +233,7 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('cannot oversee');
   });
 
-  test('K4-FT6 AC2 filtering by coordinator shows only that coordinator\'s events, and All coordinators brings the rest back', async () => {
+  test('TC-2366 K4 AC2 filtering by coordinator shows only that coordinator\'s events, and All coordinators brings the rest back', async () => {
     await openOversight();
     const filter = screen.getByLabelText('Filter by coordinator');
     expect(within(filter).getByRole('option', { name: /all coordinators/i })).toBeInTheDocument();
@@ -249,7 +249,7 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(screen.getByText('Gala')).toBeInTheDocument();
   });
 
-  test('K4-FT7 AC2 filtering by status offers only the active statuses and shows only events in the one chosen', async () => {
+  test('TC-2367 K4 AC2 filtering by status offers only the active statuses and shows only events in the one chosen', async () => {
     await openOversight();
     const filter = screen.getByLabelText('Filter by status');
 
@@ -264,7 +264,7 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(screen.queryByText('Gala')).toBeNull();
   });
 
-  test('K4-FT8 AC2 the two filters combine, and a combination with no match says so instead of going blank', async () => {
+  test('TC-2368 K4 AC2 the two filters combine, and a combination with no match says so instead of going blank', async () => {
     await openOversight();
 
     await userEvent.selectOptions(screen.getByLabelText('Filter by coordinator'), 'c2');
@@ -277,7 +277,7 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(screen.getByText(/no events match/i)).toBeInTheDocument();
   });
 
-  test('K4-FT9 AC3 the summary shows the number of active events per coordinator, finished events and a zero included', async () => {
+  test('TC-2369 K4 AC3 the summary shows the number of active events per coordinator, finished events and a zero included', async () => {
     await openOversight();
 
     // Alex holds two active events and a Completed one, Priya one active and a Cancelled one, Sam none.
@@ -286,7 +286,7 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(summaryItem('Sam')).toHaveTextContent(/\b0\b/);
   });
 
-  test('K4-FT10 AC3 the summary stays the whole board when a filter narrows the list', async () => {
+  test('TC-2370 K4 AC3 the summary stays the whole board when a filter narrows the list', async () => {
     await openOversight();
 
     await userEvent.selectOptions(screen.getByLabelText('Filter by coordinator'), 'c7');
@@ -296,7 +296,7 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(summaryItem('Priya')).toHaveTextContent(/\b1\b/);
   });
 
-  test('K4-FT11 AC3 after an event is reassigned the summary counts move with it', async () => {
+  test('TC-2371 K4 AC3 after an event is reassigned the summary counts move with it', async () => {
     const moved = k4Board();
     moved.events = moved.events.map((item) => (item.id === 'EVT-2' ? { ...item, coordinator_id: 'c7', coordinator_name: 'Priya' } : item));
     reviewApi.leadBoard.mockResolvedValueOnce(k4Board()).mockResolvedValueOnce(moved);
@@ -309,7 +309,7 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(summaryItem('Priya')).toHaveTextContent(/\b2\b/);
   });
 
-  test('K4-FT12 AC4 no event detail can be edited here: no text, number or date fields and no edit or save buttons', async () => {
+  test('TC-2372 K4 AC4 no event detail can be edited here: no text, number or date fields and no edit or save buttons', async () => {
     await openOversight();
 
     expect(screen.queryAllByRole('textbox')).toHaveLength(0);
@@ -317,7 +317,7 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(screen.queryByRole('button', { name: /edit|save|amend|update|change/i })).toBeNull();
   });
 
-  test('K4-FT13 AC4 the only things that can be done are filtering and the permitted reassign, which goes through leadReassign alone', async () => {
+  test('TC-2373 K4 AC4 the only things that can be done are filtering and the permitted reassign, which goes through leadReassign alone', async () => {
     await openOversight();
 
     // Filtering is only a view: it writes nothing.
@@ -335,10 +335,11 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
 
     expect(reviewApi.leadReassign).toHaveBeenCalledTimes(1);
     expect(reviewApi.leadReassign).toHaveBeenCalledWith('EVT-2', 'c7');
-    expect(reviewApi.assign).not.toHaveBeenCalled();
+    expect(reviewApi.assign).not.toHaveBeenCalled();    // Let the reload after the reassignment finish, so no update lands after the test.
+    await waitFor(() => expect(within(rowOf('Workshop')).getByLabelText('Reassign to')).toHaveValue(''));
   });
 
-  test('K4-FT14 AC3 a coordinator no longer active who still holds an active event is in the summary and the filter, but is never offered as a reassign target', async () => {
+  test('TC-2374 K4 AC3 a coordinator no longer active who still holds an active event is in the summary and the filter, but is never offered as a reassign target', async () => {
     const board = k4Board();
     board.events.push({ id: 'EVT-8', coordinator_id: 'c5', coordinator_name: 'Dana', status: 'PLANNING', name: 'Fair', event_date: '2026-09-01', reference_no: 'EVT-0008', updated_at: ago(DAY) });
     reviewApi.leadBoard.mockResolvedValue(board);
@@ -356,7 +357,7 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(within(picker).queryByRole('option', { name: /Dana/ })).toBeNull();
   });
 
-  test('K4-FT15 AC2 the coordinator filter stays set after a reassign, and the moved event leaves that filtered view', async () => {
+  test('TC-2375 K4 AC2 the coordinator filter stays set after a reassign, and the moved event leaves that filtered view', async () => {
     const moved = k4Board();
     moved.events = moved.events.map((item) => (item.id === 'EVT-2' ? { ...item, coordinator_id: 'c7', coordinator_name: 'Priya' } : item));
     reviewApi.leadBoard.mockResolvedValueOnce(k4Board()).mockResolvedValueOnce(moved);
@@ -371,7 +372,7 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(screen.getByLabelText('Filter by coordinator')).toHaveValue('c2');
   });
 
-  test('K4-FT16 AC1 an event with no recorded activity says so, and one dated in the future reads just now', async () => {
+  test('TC-2376 K4 AC1 an event with no recorded activity says so, and one dated in the future reads just now', async () => {
     const board = k4Board();
     delete board.events[0].updated_at;
     delete board.events[0].submitted_at;
@@ -383,7 +384,7 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(within(rowOf('Workshop')).getByText(/just now/)).toBeInTheDocument();
   });
 
-  test('K4-FT17 AC1 an event with no proposed date still shows a row, saying the date is not set', async () => {
+  test('TC-2377 K4 AC1 an event with no proposed date still shows a row, saying the date is not set', async () => {
     const board = k4Board();
     delete board.events[1].event_date;
     reviewApi.leadBoard.mockResolvedValue(board);
@@ -392,7 +393,7 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(within(rowOf('Workshop')).getByText(/date not set/i)).toBeInTheDocument();
   });
 
-  test('K4-FT18 AC3 the summary reads 2 active events, 1 active event and 0 active events, singular only for one', async () => {
+  test('TC-2378 K4 AC3 the summary reads 2 active events, 1 active event and 0 active events, singular only for one', async () => {
     await openOversight();
 
     expect(summaryItem('Alex')).toHaveTextContent(/2 active events/);
@@ -400,7 +401,7 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(summaryItem('Sam')).toHaveTextContent(/0 active events/);
   });
 
-  test('K4-FT19 AC1 with no events and no coordinators the Lead sees plain empty messages, not a blank screen', async () => {
+  test('TC-2379 K4 AC1 with no events and no coordinators the Lead sees plain empty messages, not a blank screen', async () => {
     reviewApi.leadBoard.mockResolvedValue({ events: [], coordinators: [] });
 
     render(<LeadAssignmentScreen view="oversight" />);
@@ -409,7 +410,7 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(screen.getByText(/no (active )?coordinators/i)).toBeInTheDocument();
   });
 
-  test('K4-FT20 AC1 while the board is loading the Lead sees a loading message, then the events', async () => {
+  test('TC-2380 K4 AC1 while the board is loading the Lead sees a loading message, then the events', async () => {
     let release;
     reviewApi.leadBoard.mockReturnValue(new Promise((resolve) => { release = resolve; }));
 
@@ -421,7 +422,7 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(screen.queryByText(/loading events/i)).toBeNull();
   });
 
-  test('K4-FT21 AC1 the list shows the longest-untouched event first, so a stalled one is at the top', async () => {
+  test('TC-2381 K4 AC1 the list shows the longest-untouched event first, so a stalled one is at the top', async () => {
     await openOversight();
 
     const titles = screen.getAllByRole('article').map((row) => within(row).getByRole('heading', { level: 2 }).textContent);
@@ -429,12 +430,95 @@ describe('K4 SCRUM-185 oversee all coordinators assignments', () => {
     expect(titles).toEqual(['Summit', 'Workshop', 'Gala', 'Retreat']);
   });
 
-  test('K4-FT22 AC3 the summary lists the busiest coordinator first, so overload is at the top', async () => {
+  test('TC-2382 K4 AC3 the summary lists the busiest coordinator first, so overload is at the top', async () => {
     await openOversight();
 
     const items = within(screen.getByRole('region', { name: /active events per coordinator/i })).getAllByRole('listitem');
     expect(items[0]).toHaveTextContent(/Alex/);
     expect(items[1]).toHaveTextContent(/Priya/);
     expect(items[2]).toHaveTextContent(/Sam/);
+  });
+});
+
+// K1 / K2 — the assign action on the queue, its edges and its failures.
+describe('K1 / K2 the Lead assigns from the unassigned queue', () => {
+  const minutesAgo = (mins) => new Date(Date.now() - mins * 60000).toISOString();
+
+  test('TC-2294 [normal] K2 AC3 AC4 choosing a coordinator and pressing Assign assigns the event, tells the Lead and empties the queue', async () => {
+    reviewApi.leadBoard.mockResolvedValueOnce(board);
+    reviewApi.leadBoard.mockResolvedValue({ ...board, events: board.events.map((item) => (item.id === 'EVT-1' ? { ...item, coordinator_id: 'c7' } : item)) });
+    const onNotice = jest.fn();
+    // The queue is the default view.
+    render(<LeadAssignmentScreen onNotice={onNotice} />);
+
+    userEvent.selectOptions(await screen.findByLabelText('Assign to'), 'c7');
+    userEvent.click(screen.getByRole('button', { name: 'Assign' }));
+
+    expect(await screen.findByText('No events are waiting for a coordinator.')).toBeInTheDocument();
+    expect(reviewApi.assign).toHaveBeenCalledWith('EVT-1', 'c7');
+    expect(onNotice).toHaveBeenCalledWith('Assigned to Priya.');
+  });
+
+  test('TC-2275 [boundary] K1 AC3 each waiting event reads its time since submission, and missing details read as dashes', async () => {
+    const waiting = (id, submitted_at, extra = {}) => ({ id, status: 'SUBMITTED', coordinator_id: null, submitted_at, ...extra });
+    reviewApi.leadBoard.mockResolvedValue({
+      events: [
+        waiting('none', undefined),
+        waiting('m0', minutesAgo(0.5), { name: 'Half minute' }),
+        waiting('m5', minutesAgo(5), { name: 'Five minutes' }),
+        waiting('h1', minutesAgo(61), { name: 'One hour' }),
+        waiting('h3', minutesAgo(185), { name: 'Three hours' }),
+        waiting('d1', minutesAgo(60 * 25), { name: 'One day' }),
+        waiting('d3', minutesAgo(60 * 24 * 3 + 5), { name: 'Three days' }),
+        waiting('future', new Date(Date.now() + 3600000).toISOString(), { name: 'Clock ahead' })
+      ]
+    });
+    render(<LeadAssignmentScreen view="queue" />);
+
+    expect(await screen.findByText('Untitled event')).toBeInTheDocument();
+    const saved = screen.getAllByText(/Submitted /).map((item) => item.textContent.replace(/^.* · /, ''));
+    // Oldest submission first; no time and a future time both read "just now".
+    expect(saved).toEqual([
+      'Submitted just now', 'Submitted 3 days ago', 'Submitted 1 day ago', 'Submitted 3 hrs ago',
+      'Submitted 1 hr ago', 'Submitted 5 min ago', 'Submitted 1 min ago', 'Submitted just now'
+    ]);
+    expect(screen.getAllByText(/^Attendance not set/)).toHaveLength(8);
+    expect(screen.getAllByText('Date not set')).toHaveLength(8);
+
+    userEvent.click(screen.getAllByRole('button', { name: /view details/i })[0]);
+    const summary = screen.getByText('Purpose').closest('dl');
+    expect(within(summary).getAllByText('—')).toHaveLength(3);
+    expect(within(summary).getByText('— – —')).toBeInTheDocument();
+    // No coordinators were returned, so there is nobody to choose.
+    expect(within(screen.getAllByLabelText('Assign to')[0]).getAllByRole('option')).toHaveLength(1);
+  });
+
+  test('TC-2295 [failure] K2 AC5 a refused assignment is shown beside its row; a board that cannot load says so above an empty queue; an unnamed coordinator is still announced', async () => {
+    reviewApi.leadBoard.mockResolvedValue({ ...board, coordinators: [...board.coordinators, { id: 'c9', active: true }] });
+    reviewApi.assign.mockRejectedValueOnce(new Error('This event cannot be assigned to that coordinator.'));
+    const onNotice = jest.fn();
+    const { unmount } = render(<LeadAssignmentScreen view="queue" onNotice={onNotice} />);
+
+    userEvent.selectOptions(await screen.findByLabelText('Assign to'), 'c7');
+    userEvent.click(screen.getByRole('button', { name: 'Assign' }));
+    const row = screen.getByText('Gala').closest('article');
+    expect(await within(row).findByRole('alert')).toHaveTextContent('This event cannot be assigned to that coordinator.');
+    expect(onNotice).not.toHaveBeenCalled();
+
+    userEvent.selectOptions(screen.getByLabelText('Assign to'), 'c9');
+    userEvent.click(screen.getByRole('button', { name: 'Assign' }));
+    await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Assigned to the coordinator.'));
+    unmount();
+
+    reviewApi.leadBoard.mockRejectedValue(new Error('Missing or insufficient permissions.'));
+    render(<LeadAssignmentScreen view="queue" />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Missing or insufficient permissions.');
+    expect(screen.getByText('No events are waiting for a coordinator.')).toBeInTheDocument();
+  });
+
+  test('TC-2276 [boundary] K1 a board answer with no event or coordinator lists is read as empty', async () => {
+    reviewApi.leadBoard.mockResolvedValue({});
+    render(<LeadAssignmentScreen view="queue" />);
+    expect(await screen.findByText('No events are waiting for a coordinator.')).toBeInTheDocument();
   });
 });

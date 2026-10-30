@@ -60,7 +60,7 @@ const createHarness = ({ role = "EVENT_COORDINATOR" } = {}) => {
   };
 };
 
-test("venue workflows run once when an authorised user refreshes them", async () => {
+test("TC-1148 venue workflows run once when an authorised user refreshes them", async () => {
   const harness = createHarness();
   try {
     const response = await harness.request();
@@ -76,7 +76,7 @@ test("venue workflows run once when an authorised user refreshes them", async ()
   }
 });
 
-test("venue workflow refresh is unavailable to unrelated roles", async () => {
+test("TC-1149 venue workflow refresh is unavailable to unrelated roles", async () => {
   const harness = createHarness({ role: "EVENT_ORGANISER" });
   try {
     const response = await harness.request();

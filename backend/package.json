@@ -9,6 +9,7 @@
     "start": "node --watch src/index.js",
     "serve": "node src/index.js",
     "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 --test-coverage-include=\"src/**/*.js\" --test-coverage-include=\"../frontend/src/domain/*.mjs\" --test-coverage-exclude=\"**/*.test.js\" --test-coverage-exclude=\"**/*.integration.js\" --test-coverage-exclude=src/lib/firebaseAdmin.js",
     "test:integration": "node --test --test-concurrency=1 \"src/**/*.integration.js\" \"testing/**/*.integration.js\""
   },
   "dependencies": {

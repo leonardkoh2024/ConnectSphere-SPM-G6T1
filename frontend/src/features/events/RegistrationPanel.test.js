@@ -17,9 +17,9 @@
 //     the top of a long page (the K3 lesson); typed values survive a refused save;
 //   - Save shows "Saving…", is disabled meanwhile, and a success is a toast via onNotice.
 // registrationApi is mocked, as reviewApi is in EventReviewScreen.test.js; the rules it
-// shows are the domain's (H1-TC10 – TC26), so they are not re-derived here.
+// shows are the domain's (H1), so they are not re-derived here.
 
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import RegistrationPanel from './RegistrationPanel';
 import { registrationApi } from './registrationApi';
@@ -59,7 +59,7 @@ const retype = async (label, value) => {
   await userEvent.type(input, value);
 };
 
-test('H1-FT1 AC2 the tab loads the event\'s settings into labelled fields, with the window grouped and stated in Singapore time', async () => {
+test('TC-1412 H1 AC2 the tab loads the event\'s settings into labelled fields, with the window grouped and stated in Singapore time', async () => {
   await show();
 
   expect(registrationApi.load).toHaveBeenCalledWith('e1');
@@ -73,7 +73,7 @@ test('H1-FT1 AC2 the tab loads the event\'s settings into labelled fields, with 
   expect(saveButton()).toBeEnabled();
 });
 
-test('H1-FT2 shows "Loading registration settings…" while it loads, and the reason if it cannot', async () => {
+test('TC-1413 H1 shows "Loading registration settings…" while it loads, and the reason if it cannot', async () => {
   registrationApi.load.mockReturnValue(new Promise(() => {}));
   const { unmount } = render(<RegistrationPanel eventId="e1" now={NOW} />);
   expect(screen.getByText('Loading registration settings…')).toBeVisible();
@@ -90,12 +90,12 @@ test.each([
   ['SCHEDULED', 'Scheduled'],
   ['OPEN', 'Open'],
   ['CLOSED', 'Closed']
-])('H1-FT3 AC2 the status pill reads %s as "%s"', async (phase, label) => {
+])('TC-1414 H1 AC2 the status pill reads %s as "%s"', async (phase, label) => {
   await show(loaded({ phase }));
   expect(screen.getByTestId('registration-phase')).toHaveTextContent(label);
 });
 
-test('H1-FT4 AC3 the venue limit is stated beside the capacity, set as its max, and read out as its description', async () => {
+test('TC-1415 H1 AC3 the venue limit is stated beside the capacity, set as its max, and read out as its description', async () => {
   await show();
 
   const capacity = screen.getByLabelText(/registration capacity/i);
@@ -105,7 +105,7 @@ test('H1-FT4 AC3 the venue limit is stated beside the capacity, set as its max, 
   expect(capacity).toHaveAccessibleDescription(/venue capacity: 140/i);
 });
 
-test('H1-FT5 AC2 AC3 saving sends the edited values, then shows the saved state and a "Registration settings saved." notice', async () => {
+test('TC-1416 H1 AC2 AC3 saving sends the edited values, then shows the saved state and a "Registration settings saved." notice', async () => {
   registrationApi.save.mockResolvedValue(loaded({ phase: 'OPEN' }));
   const onNotice = jest.fn();
   await show(loaded(), { onNotice });
@@ -125,7 +125,7 @@ test('H1-FT5 AC2 AC3 saving sends the edited values, then shows the saved state 
   expect(await screen.findByText('Open')).toBeVisible();
 });
 
-test('H1-FT6 AC3 a capacity above the venue limit is stopped on the field before any request, and focus goes to it', async () => {
+test('TC-1417 H1 AC3 a capacity above the venue limit is stopped on the field before any request, and focus goes to it', async () => {
   await show();
 
   await retype(/registration capacity/i, '141');
@@ -139,7 +139,7 @@ test('H1-FT6 AC3 a capacity above the venue limit is stopped on the field before
   expect(capacity).toHaveValue(141);
 });
 
-test('H1-FT7 AC3 the limit can be typed exactly: the venue capacity itself is accepted', async () => {
+test('TC-1418 H1 AC3 the limit can be typed exactly: the venue capacity itself is accepted', async () => {
   registrationApi.save.mockResolvedValue(loaded());
   await show();
 
@@ -149,7 +149,7 @@ test('H1-FT7 AC3 the limit can be typed exactly: the venue capacity itself is ac
   await waitFor(() => expect(registrationApi.save).toHaveBeenCalledTimes(1));
 });
 
-test('H1-FT8 AC2 a window that closes before it opens is refused on the close date, with the rule\'s own words', async () => {
+test('TC-1419 H1 AC2 a window that closes before it opens is refused on the close date, with the rule\'s own words', async () => {
   await show();
 
   await retype(/registration close date/i, '2026-11-09');
@@ -160,7 +160,7 @@ test('H1-FT8 AC2 a window that closes before it opens is refused on the close da
     .toHaveAccessibleDescription(/registration close date\/time must be after registration open date\/time\./i);
 });
 
-test('H1-FT9 AC3 when the service refuses, its field message appears on the field, its summary in an alert, and the typed values stay', async () => {
+test('TC-1420 H1 AC3 when the service refuses, its field message appears on the field, its summary in an alert, and the typed values stay', async () => {
   const refusal = Object.assign(new Error('Check the registration settings.'), {
     fields: { registrationCapacity: 'Registration capacity cannot exceed the venue capacity of 100.' }
   });
@@ -177,7 +177,7 @@ test('H1-FT9 AC3 when the service refuses, its field message appears on the fiel
   expect(saveButton()).toBeEnabled();
 });
 
-test('H1-FT10 AC3 with no approved venue booking the capacity is read-only with the reason, while the window stays editable', async () => {
+test('TC-1421 H1 AC3 with no approved venue booking the capacity is read-only with the reason, while the window stays editable', async () => {
   registrationApi.save.mockResolvedValue(loaded({ venueCapacity: null }));
   await show(loaded({ venueCapacity: null }));
 
@@ -194,7 +194,7 @@ test('H1-FT10 AC3 with no approved venue booking the capacity is read-only with 
   })));
 });
 
-test('H1-FT11 AC2 a closed window is shown read-only with the reason, no Save button, and the status Closed', async () => {
+test('TC-1422 H1 AC2 a closed window is shown read-only with the reason, no Save button, and the status Closed', async () => {
   await show(loaded({
     phase: 'CLOSED',
     editable: false,
@@ -207,7 +207,7 @@ test('H1-FT11 AC2 a closed window is shown read-only with the reason, no Save bu
   expect(saveButton()).not.toBeInTheDocument();
 });
 
-test('H1-FT12 AC1 before approval the form is read-only, says to wait for approval, and offers no Save', async () => {
+test('TC-1423 H1 AC1 before approval the form is read-only, says to wait for approval, and offers no Save', async () => {
   await show(loaded({
     phase: 'NOT_SET',
     editable: false,
@@ -219,7 +219,7 @@ test('H1-FT12 AC1 before approval the form is read-only, says to wait for approv
   expect(saveButton()).not.toBeInTheDocument();
 });
 
-test('H1-FT13 while a save is in flight the button reads "Saving…", is disabled, and a second click sends nothing more', async () => {
+test('TC-1424 H1 while a save is in flight the button reads "Saving…", is disabled, and a second click sends nothing more', async () => {
   let finish;
   registrationApi.save.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
   await show();
@@ -234,7 +234,7 @@ test('H1-FT13 while a save is in flight the button reads "Saving…", is disable
   expect(await screen.findByRole('button', { name: /save registration settings/i })).toBeEnabled();
 });
 
-test('H1-FT14 every field has a visible label and the form reads in order: capacity, then the four window fields', async () => {
+test('TC-1425 H1 every field has a visible label and the form reads in order: capacity, then the four window fields', async () => {
   await show();
 
   const order = FIELDS.map((label) => screen.getByLabelText(label));
@@ -244,7 +244,7 @@ test('H1-FT14 every field has a visible label and the form reads in order: capac
   }
 });
 
-test('H1-FT21 AC5 with attendees registered the screen says how many, and the capacity cannot be set below that', async () => {
+test('TC-1426 H1 AC5 with attendees registered the screen says how many, and the capacity cannot be set below that', async () => {
   await show(loaded({ registeredCount: 90, settings: { ...loaded().settings, registrationCapacity: '120' } }));
 
   const capacity = screen.getByLabelText(/registration capacity/i);
@@ -255,12 +255,12 @@ test('H1-FT21 AC5 with attendees registered the screen says how many, and the ca
   expect(capacity).toHaveAccessibleDescription(/venue capacity: 140/i);
 });
 
-test('H1-FT22 AC5 with nobody registered the "Currently registered" line is not shown', async () => {
+test('TC-1427 H1 AC5 with nobody registered the "Currently registered" line is not shown', async () => {
   await show(loaded({ registeredCount: 0 }));
   expect(screen.queryByText(/currently registered/i)).not.toBeInTheDocument();
 });
 
-test('H1-FT23 AC5 a capacity below the registered count is stopped on the field before any request, and focus goes to it', async () => {
+test('TC-1428 H1 AC5 a capacity below the registered count is stopped on the field before any request, and focus goes to it', async () => {
   await show(loaded({ registeredCount: 90, settings: { ...loaded().settings, registrationCapacity: '120' } }));
 
   await retype(/registration capacity/i, '89');
@@ -274,7 +274,7 @@ test('H1-FT23 AC5 a capacity below the registered count is stopped on the field 
   expect(capacity).toHaveValue(89);
 });
 
-test('H1-FT24 AC5 a capacity equal to the registered count is accepted', async () => {
+test('TC-1429 H1 AC5 a capacity equal to the registered count is accepted', async () => {
   registrationApi.save.mockResolvedValue(loaded({ registeredCount: 90 }));
   await show(loaded({ registeredCount: 90, settings: { ...loaded().settings, registrationCapacity: '120' } }));
 
@@ -284,7 +284,7 @@ test('H1-FT24 AC5 a capacity equal to the registered count is accepted', async (
   await waitFor(() => expect(registrationApi.save).toHaveBeenCalledTimes(1));
 });
 
-test('H1-FT25 AC5 when the service refuses a capacity under the registered count, its message appears on the field', async () => {
+test('TC-1430 H1 AC5 when the service refuses a capacity under the registered count, its message appears on the field', async () => {
   const refusal = Object.assign(new Error('Check the registration settings.'), {
     fields: { registrationCapacity: 'Registration capacity cannot be less than the 95 people already registered.' }
   });
@@ -298,4 +298,68 @@ test('H1-FT25 AC5 when the service refuses a capacity under the registered count
   expect(await screen.findByRole('alert')).toHaveTextContent('Check the registration settings.');
   expect(screen.getByLabelText(/registration capacity/i)).toHaveAccessibleDescription(/95 people already registered/i);
   expect(screen.getByLabelText(/registration capacity/i)).toHaveValue(92);
+});
+
+describe('H1 SCRUM-139 registration panel edges', () => {
+  const form = () => screen.getByLabelText(/registration capacity/i).closest('form');
+
+  test('TC-1431 [boundary] AC2 a window with an empty open time is refused as a whole window, and focus goes to the first empty field', async () => {
+    await show();
+    await userEvent.clear(screen.getByLabelText(/registration open time/i));
+    await userEvent.click(saveButton());
+
+    expect(screen.getByLabelText(/registration open time/i)).toHaveFocus();
+    expect(registrationApi.save).not.toHaveBeenCalled();
+  });
+
+  test('TC-1432 [boundary] a phase the screen does not know reads as "Not set up", and an absent venue capacity reads as no venue', async () => {
+    await show(loaded({ phase: 'SOMETHING_NEW', venueCapacity: undefined }));
+    expect(screen.getByTestId('registration-phase')).toHaveTextContent('Not set up');
+    expect(screen.getByLabelText(/registration capacity/i)).toBeDisabled();
+  });
+
+  test('TC-1433 [normal] AC2 with no notice handler and the real clock, a valid save still goes through', async () => {
+    const future = loaded({ settings: { registrationCapacity: '80', registrationOpenDate: '2099-01-10', registrationOpenTime: '09:00', registrationCloseDate: '2099-02-01', registrationCloseTime: '17:00' } });
+    registrationApi.load.mockResolvedValue(future);
+    registrationApi.save.mockResolvedValue(future);
+    render(<RegistrationPanel eventId="e1" />);
+    await userEvent.click(await screen.findByRole('button', { name: /save registration settings/i }));
+    await waitFor(() => expect(registrationApi.save).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole('button', { name: /save registration settings/i })).toBeEnabled();
+  });
+
+  test('TC-1434 [failure] a service refusal without field messages shows only the alert and leaves focus alone', async () => {
+    registrationApi.save.mockRejectedValue(new Error('The registration service is not responding.'));
+    await show();
+    await userEvent.click(saveButton());
+    expect(await screen.findByRole('alert')).toHaveTextContent('The registration service is not responding.');
+    expect(screen.getByLabelText(/registration capacity/i)).not.toHaveAttribute('aria-invalid');
+  });
+
+  test('TC-1435 [conflict] a second submit while saving, or any submit of a read-only form, sends nothing', async () => {
+    let finish;
+    registrationApi.save.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    await show();
+    await userEvent.click(saveButton());
+    fireEvent.submit(form());
+    expect(registrationApi.save).toHaveBeenCalledTimes(1);
+    finish(loaded());
+    await screen.findByRole('button', { name: /save registration settings/i });
+  });
+
+  test('TC-1436 [conflict] AC1 submitting a read-only form (event not approved) sends nothing', async () => {
+    await show(loaded({ editable: false, refusal: null }));
+    fireEvent.submit(form());
+    expect(registrationApi.save).not.toHaveBeenCalled();
+  });
+
+  test.each([['resolves', (p) => p.resolve(loaded())], ['rejects', (p) => p.reject(new Error('late'))]])(
+    'TC-1437 [boundary] a load that %s after the tab is closed changes nothing', async (_label, settle) => {
+      const pending = {};
+      registrationApi.load.mockReturnValue(new Promise((resolve, reject) => { Object.assign(pending, { resolve, reject }); }));
+      const { unmount } = render(<RegistrationPanel eventId="e1" now={NOW} />);
+      unmount();
+      await act(async () => { settle(pending); });
+      expect(registrationApi.load).toHaveBeenCalledTimes(1);
+    });
 });

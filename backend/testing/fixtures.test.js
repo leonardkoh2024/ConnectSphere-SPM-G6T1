@@ -25,19 +25,19 @@ const events = byCollection("events");
 const venues = byCollection("venues");
 const bookings = byCollection("venue_bookings");
 
-test("every document path is a collection/id pair and no path repeats", () => {
+test("TC-2492 every document path is a collection/id pair and no path repeats", () => {
   const paths = docs.map(({ path }) => path);
   for (const path of paths) assert.match(path, /^[a-z_]+\/[^/]+$/, path);
   assert.equal(new Set(paths).size, paths.length, "duplicate path");
 });
 
-test("baseline() returns fresh objects each call", () => {
+test("TC-2493 baseline() returns fresh objects each call", () => {
   const first = baseline();
   first[0].data.name = "changed";
   assert.notEqual(baseline()[0].data.name, "changed");
 });
 
-test("there is a user for every role, all active", () => {
+test("TC-2494 there is a user for every role, all active", () => {
   for (const role of ROLES) assert.ok(users.some((u) => u.role === role), `no ${role}`);
   for (const u of users) {
     assert.ok(ROLES.includes(u.role), `${u.id} has unknown role ${u.role}`);
@@ -47,12 +47,12 @@ test("there is a user for every role, all active", () => {
   }
 });
 
-test("there is an event in every status", () => {
+test("TC-2495 there is an event in every status", () => {
   for (const status of EVENT_STATUSES) assert.ok(events.some((e) => e.status === status), `no ${status} event`);
   for (const e of events) assert.ok(EVENT_STATUSES.includes(e.status), `${e.id}: ${e.status}`);
 });
 
-test("events link to users with the right role", () => {
+test("TC-2496 events link to users with the right role", () => {
   const roleOf = (id) => find("users", id)?.role;
   for (const e of events) {
     assert.equal(roleOf(e.organiser_id), "EVENT_ORGANISER", `${e.id} organiser`);
@@ -65,7 +65,7 @@ test("events link to users with the right role", () => {
   }
 });
 
-test("venues carry every field Venue Staff edits need, with integer sizes", () => {
+test("TC-2497 venues carry every field Venue Staff edits need, with integer sizes", () => {
   for (const v of venues) {
     for (const field of ["max_capacity", "setup_minutes", "turnaround_minutes"]) {
       assert.ok(Number.isInteger(v[field]) && v[field] >= 0, `${v.id}.${field}`);
@@ -81,7 +81,7 @@ test("venues carry every field Venue Staff edits need, with integer sizes", () =
   }
 });
 
-test("bookings are valid and fit their event and venue", () => {
+test("TC-2498 bookings are valid and fit their event and venue", () => {
   for (const b of bookings) {
     const e = find("events", b.event_id);
     const v = find("venues", b.venue_id);
@@ -99,7 +99,7 @@ test("bookings are valid and fit their event and venue", () => {
   }
 });
 
-test("no two active bookings of the same venue overlap", () => {
+test("TC-2499 no two active bookings of the same venue overlap", () => {
   const active = bookings.filter((b) => ACTIVE_BOOKING.includes(b.status));
   for (const a of active) for (const b of active) {
     if (a.id >= b.id || a.venue_id !== b.venue_id) continue;
@@ -108,7 +108,7 @@ test("no two active bookings of the same venue overlap", () => {
   }
 });
 
-test("confirmed and later events point at an approved booking and a passed safety check", () => {
+test("TC-2500 confirmed and later events point at an approved booking and a passed safety check", () => {
   const confirmed = find("events", IDS.events.confirmed);
   const booking = find("venue_bookings", confirmed.approved_venue_booking_id);
   assert.equal(booking.status, "APPROVED");
@@ -119,14 +119,14 @@ test("confirmed and later events point at an approved booking and a passed safet
   assert.equal(find("users", review.reviewer_id).role, "SAFETY_OFFICER");
 });
 
-test("the open clarification belongs to the under-review event", () => {
+test("TC-2501 the open clarification belongs to the under-review event", () => {
   const e = find("events", IDS.events.underReview);
   const c = find("clarification_requests", e.open_clarification_id);
   assert.equal(c.status, "OPEN");
   assert.equal(c.event_id, e.id);
 });
 
-test("registrations fill the confirmed event exactly, with one on the waiting list", () => {
+test("TC-2502 registrations fill the confirmed event exactly, with one on the waiting list", () => {
   const e = find("events", IDS.events.confirmed);
   const regs = byCollection("registrations");
   for (const r of regs) {
@@ -137,7 +137,7 @@ test("registrations fill the confirmed event exactly, with one on the waiting li
   assert.equal(regs.filter((r) => r.status === "WAITLISTED").length, 1);
 });
 
-test("equipment requests and reservations stay within stock and link up", () => {
+test("TC-2503 equipment requests and reservations stay within stock and link up", () => {
   const stock = Object.fromEntries(byCollection("equipment_inventory").map((i) => [i.equipment_type, i.total_quantity]));
   for (const r of byCollection("equipment_requests")) {
     assert.equal(r.id, r.event_id);
@@ -151,7 +151,7 @@ test("equipment requests and reservations stay within stock and link up", () => 
   }
 });
 
-test("every *_id / user reference in the records points at a real document", () => {
+test("TC-2504 every *_id / user reference in the records points at a real document", () => {
   const refs = [
     ["notifications", "user_id", "users"], ["notifications", "event_id", "events"],
     ["event_history", "event_id", "events"], ["change_requests", "event_id", "events"],
@@ -165,7 +165,7 @@ test("every *_id / user reference in the records points at a real document", () 
   }
 });
 
-test("dates are fixed Firestore Timestamps or YYYY-MM-DD / HH:MM strings", () => {
+test("TC-2505 dates are fixed Firestore Timestamps or YYYY-MM-DD / HH:MM strings", () => {
   for (const e of events) {
     if (e.event_date) assert.match(e.event_date, /^\d{4}-\d{2}-\d{2}$/);
     for (const field of ["start_time", "end_time"]) if (e[field]) assert.match(e[field], /^\d{2}:\d{2}$/);

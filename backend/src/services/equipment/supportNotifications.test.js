@@ -33,7 +33,7 @@ const request = (overrides = {}) => ({
 
 // ---- what changed (pure) -------------------------------------------------------------
 
-test("J5-TC1 AC1 AC2 a request seen for the first time is raised, and on-site support is raised with it when asked for", () => {
+test("TC-2168 J5 AC1 AC2 a request seen for the first time is raised, and on-site support is raised with it when asked for", () => {
   assert.deepEqual(supportNoticeChanges({ previous: null, current: request() }), ["EQUIPMENT_REQUEST_RAISED"]);
   assert.deepEqual(
     supportNoticeChanges({ previous: null, current: request({ on_site_support: true, on_site_support_details: "Two technicians" }) }),
@@ -41,14 +41,14 @@ test("J5-TC1 AC1 AC2 a request seen for the first time is raised, and on-site su
   );
 });
 
-test("J5-TC2 AC3 AC4 saving the same request again changes nothing, so nothing is sent", () => {
+test("TC-2169 J5 AC3 AC4 saving the same request again changes nothing, so nothing is sent", () => {
   const current = request({ on_site_support: true, on_site_support_details: "Two technicians" });
   assert.deepEqual(supportNoticeChanges({ previous: noticeState(current), current }), []);
   // The state is a copy of what was told, not a reference to the request.
   assert.deepEqual(supportNoticeChanges({ previous: noticeState(request()), current: request() }), []);
 });
 
-test("J5-TC3 AC3 a changed type, quantity, requirement or number of lines is an amendment", () => {
+test("TC-2170 J5 AC3 a changed type, quantity, requirement or number of lines is an amendment", () => {
   const previous = noticeState(request());
   const changed = [
     request({ lines: [{ ...AUDIO, quantity: 3 }] }),
@@ -59,7 +59,7 @@ test("J5-TC3 AC3 a changed type, quantity, requirement or number of lines is an 
   changed.forEach((current) => assert.deepEqual(supportNoticeChanges({ previous, current }), ["EQUIPMENT_REQUEST_AMENDED"]));
 });
 
-test("J5-TC4 AC2 AC4 on-site support turning on is needed, turning off or being reworded is a change", () => {
+test("TC-2171 J5 AC2 AC4 on-site support turning on is needed, turning off or being reworded is a change", () => {
   const off = noticeState(request());
   const on = noticeState(request({ on_site_support: true, on_site_support_details: "Two technicians" }));
   assert.deepEqual(
@@ -73,7 +73,7 @@ test("J5-TC4 AC2 AC4 on-site support turning on is needed, turning off or being 
   );
 });
 
-test("J5-TC5 AC3 AC4 an amendment and an on-site change in one save are both told, amendment first", () => {
+test("TC-2172 J5 AC3 AC4 an amendment and an on-site change in one save are both told, amendment first", () => {
   assert.deepEqual(
     supportNoticeChanges({
       previous: noticeState(request()),
@@ -85,7 +85,7 @@ test("J5-TC5 AC3 AC4 an amendment and an on-site change in one save are both tol
 
 // ---- what it says ----------------------------------------------------------------------
 
-test("J5-TC6 each message names the event and the change", () => {
+test("TC-2173 J5 each message names the event and the change", () => {
   assert.equal(
     raisedMessage({ eventName: "Partner Summit", lines: [AUDIO] }),
     "Partner Summit: an equipment request was raised. Requested: 2 × audio."
@@ -111,7 +111,7 @@ test("J5-TC6 each message names the event and the change", () => {
 
 // ---- who is told ---------------------------------------------------------------------------
 
-test("J5-TC7 AC1 every active Technical Support member is told, and nobody else", () => {
+test("TC-2174 J5 AC1 every active Technical Support member is told, and nobody else", () => {
   const doc = (id, data) => ({ id, data: () => data });
   assert.deepEqual(
     technicalSupportRecipients([
@@ -177,7 +177,7 @@ const CONFIRMED_EVENT = {
   confirmed_at: new Date("2026-11-03T08:30:00Z")
 };
 
-test("D3-TC1 AC5 confirming tells every active Technical Support member once, naming the event and the SGT time", async () => {
+test("TC-0497 D3 AC5 confirming tells every active Technical Support member once, naming the event and the SGT time", async () => {
   const { created, sets, notifyConfirmed } = fixture({ event: CONFIRMED_EVENT });
   const result = await notifyConfirmed();
 
@@ -194,7 +194,7 @@ test("D3-TC1 AC5 confirming tells every active Technical Support member once, na
   assert.equal(created.length, 2);
 });
 
-test("D3-TC2 AC2 AC5 nothing is sent for an event that is not Confirmed, or that asked for no equipment", async () => {
+test("TC-0498 D3 AC2 AC5 nothing is sent for an event that is not Confirmed, or that asked for no equipment", async () => {
   const notConfirmed = fixture({ event: { ...CONFIRMED_EVENT, status: "SAFETY_REVIEW" } });
   assert.equal((await notConfirmed.notifyConfirmed()).sent, 0);
   const noEquipment = fixture({ event: CONFIRMED_EVENT, current: request({ lines: [] }) });
@@ -202,7 +202,7 @@ test("D3-TC2 AC2 AC5 nothing is sent for an event that is not Confirmed, or that
   assert.equal(notConfirmed.created.length + noEquipment.created.length, 0);
 });
 
-test("J5-TC8 AC1 the first save raises the request to every active Technical Support member, in the inbox's shape", async () => {
+test("TC-2175 J5 AC1 the first save raises the request to every active Technical Support member, in the inbox's shape", async () => {
   const { created, sets, notify } = fixture();
   const result = await notify();
 
@@ -227,7 +227,7 @@ test("J5-TC8 AC1 the first save raises the request to every active Technical Sup
   assert.deepEqual(sets[0].data.notified_at, { serverTimestamp: true });
 });
 
-test("J5-TC9 AC3 asking again with nothing changed sends nothing and writes nothing", async () => {
+test("TC-2176 J5 AC3 asking again with nothing changed sends nothing and writes nothing", async () => {
   const { created, sets, notify } = fixture();
   await notify();
   const [createdBefore, setsBefore] = [created.length, sets.length];
@@ -238,7 +238,7 @@ test("J5-TC9 AC3 asking again with nothing changed sends nothing and writes noth
   assert.equal(sets.length, setsBefore);
 });
 
-test("J5-TC10 AC3 an amended request is told to everyone, with what is now requested", async () => {
+test("TC-2177 J5 AC3 an amended request is told to everyone, with what is now requested", async () => {
   const { state, created, notify } = fixture();
   await notify();
   created.length = 0;
@@ -250,7 +250,7 @@ test("J5-TC10 AC3 an amended request is told to everyone, with what is now reque
   assert.match(created[0].data.message, /^Partner Summit: the equipment request was amended\. Now requested: 3 × audio\.$/);
 });
 
-test("J5-TC11 AC2 a request that needs on-site support tells them so, naming the event and what is needed", async () => {
+test("TC-2178 J5 AC2 a request that needs on-site support tells them so, naming the event and what is needed", async () => {
   const { created, notify } = fixture({ current: request({ on_site_support: true, on_site_support_details: "Two technicians for setup" }) });
   const result = await notify();
 
@@ -261,7 +261,7 @@ test("J5-TC11 AC2 a request that needs on-site support tells them so, naming the
   assert.equal(onSite[0].data.message, "Partner Summit: on-site support is needed. Two technicians for setup");
 });
 
-test("J5-TC12 AC4 withdrawing or rewording the on-site support is told as a change", async () => {
+test("TC-2179 J5 AC4 withdrawing or rewording the on-site support is told as a change", async () => {
   const { state, created, notify } = fixture({ current: request({ on_site_support: true, on_site_support_details: "Two technicians" }) });
   await notify();
   created.length = 0;
@@ -276,7 +276,7 @@ test("J5-TC12 AC4 withdrawing or rewording the on-site support is told as a chan
   assert.equal(created[0].data.message, "Partner Summit: on-site support is no longer needed.");
 });
 
-test("J5-TC13 only the event's coordinator can ask, and a missing event, request or id is refused before any write", async () => {
+test("TC-2180 J5 only the event's coordinator can ask, and a missing event, request or id is refused before any write", async () => {
   const stranger = fixture();
   await assert.rejects(stranger.notify({ userId: "coord-2" }), { statusCode: 403 });
   assert.equal(stranger.created.length + stranger.sets.length, 0);
@@ -293,7 +293,7 @@ test("J5-TC13 only the event's coordinator can ask, and a missing event, request
   assert.equal(blank.created.length + blank.sets.length, 0);
 });
 
-test("J5-TC14 a completed, cancelled or rejected event tells Technical Support nothing", async () => {
+test("TC-2181 J5 a completed, cancelled or rejected event tells Technical Support nothing", async () => {
   for (const status of ["COMPLETED", "CANCELLED", "REJECTED"]) {
     const { created, sets, notify } = fixture({ event: { coordinator_id: "coord-1", name: "Partner Summit", status } });
     assert.deepEqual(await notify(), { eventId: "event-1", sent: 0, types: [] });
@@ -301,7 +301,7 @@ test("J5-TC14 a completed, cancelled or rejected event tells Technical Support n
   }
 });
 
-test("J5-TC15 with nobody active to tell, nothing is written, so the first member to join is still told next time", async () => {
+test("TC-2182 J5 with nobody active to tell, nothing is written, so the first member to join is still told next time", async () => {
   const { created, sets, notify } = fixture({
     users: [["tech-gone", { role: "TECHNICAL_SUPPORT_STAFF", is_active: false }]]
   });

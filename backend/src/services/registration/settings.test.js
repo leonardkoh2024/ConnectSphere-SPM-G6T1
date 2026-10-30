@@ -111,7 +111,7 @@ const refused = async (promise, statusCode, pattern) => {
   });
 };
 
-test("H1-TC27 AC2 saving stores the capacity and window, and the instants the rules compare against", async () => {
+test("TC-1329 H1 AC2 saving stores the capacity and window, and the instants the rules compare against", async () => {
   const { settings, transaction, stored } = fixture();
   const result = await settings.save({ eventId: "e1", userId: "org-1", settings: newSettings });
 
@@ -128,7 +128,7 @@ test("H1-TC27 AC2 saving stores the capacity and window, and the instants the ru
   assert.equal(result.phase, "SCHEDULED");
 });
 
-test("H1-TC28 AC2 saving touches nothing but the registration fields: status, organiser and coordinator stay as they were", async () => {
+test("TC-1330 H1 AC2 saving touches nothing but the registration fields: status, organiser and coordinator stay as they were", async () => {
   const { settings, transaction } = fixture({ event: { coordinator_id: "coord-1" } });
   await settings.save({ eventId: "e1", userId: "org-1", settings: newSettings });
   const written = Object.keys(transaction.updates[0].data);
@@ -137,7 +137,7 @@ test("H1-TC28 AC2 saving touches nothing but the registration fields: status, or
 });
 
 for (const status of ["APPROVED", "PLANNING", "SAFETY_REVIEW", "CONFIRMED"]) {
-  test(`H1-TC29 AC1 an event in ${status} can have registration set up`, async () => {
+  test(`TC-1331 H1 AC1 an event in ${status} can have registration set up`, async () => {
     const { settings, transaction } = fixture({ event: { status } });
     await settings.save({ eventId: "e1", userId: "org-1", settings: newSettings });
     assert.equal(transaction.updates.length, 1);
@@ -145,32 +145,32 @@ for (const status of ["APPROVED", "PLANNING", "SAFETY_REVIEW", "CONFIRMED"]) {
 }
 
 for (const status of ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "COMPLETED", "CANCELLED", "REJECTED"]) {
-  test(`H1-TC30 AC1 an event in ${status} is refused and nothing is written`, async () => {
+  test(`TC-1332 H1 AC1 an event in ${status} is refused and nothing is written`, async () => {
     const { settings, transaction } = fixture({ event: { status } });
     await refused(settings.save({ eventId: "e1", userId: "org-1", settings: newSettings }), 409, /approved|completed, cancelled or rejected/i);
     assert.equal(transaction.updates.length, 0);
   });
 }
 
-test("H1-TC31 AC1 an event without the registration flag is refused and nothing is written", async () => {
+test("TC-1333 H1 AC1 an event without the registration flag is refused and nothing is written", async () => {
   const { settings, transaction } = fixture({ event: { registration_required: false } });
   await refused(settings.save({ eventId: "e1", userId: "org-1", settings: newSettings }), 409, /does not use attendee registration/i);
   assert.equal(transaction.updates.length, 0);
 });
 
-test("H1-TC32 AC1 only the organiser who owns the event may load or save its registration", async () => {
+test("TC-1334 H1 AC1 only the organiser who owns the event may load or save its registration", async () => {
   const { settings, transaction } = fixture();
   await refused(settings.save({ eventId: "e1", userId: "org-2", settings: newSettings }), 403, /your own events/i);
   await refused(settings.load({ eventId: "e1", userId: "org-2" }), 403, /your own events/i);
   assert.equal(transaction.updates.length, 0);
 });
 
-test("H1-TC33 AC1 an event that does not exist is a 404", async () => {
+test("TC-1335 H1 AC1 an event that does not exist is a 404", async () => {
   const { settings } = fixture();
   await refused(settings.save({ eventId: "nope", userId: "org-1", settings: newSettings }), 404);
 });
 
-test("H1-TC34 AC2 a window that has not yet closed can be edited, even after it has opened", async () => {
+test("TC-1336 H1 AC2 a window that has not yet closed can be edited, even after it has opened", async () => {
   const { settings, stored } = fixture({ now: "2026-11-20T02:00:00Z" });
   await settings.save({
     eventId: "e1",
@@ -180,13 +180,13 @@ test("H1-TC34 AC2 a window that has not yet closed can be edited, even after it 
   assert.equal(stored.e1.registration_close_date, "2026-12-03");
 });
 
-test("H1-TC35 AC2 once the window has closed nothing can be changed, and nothing is written", async () => {
+test("TC-1337 H1 AC2 once the window has closed nothing can be changed, and nothing is written", async () => {
   const { settings, transaction } = fixture({ now: "2026-12-01T09:00:00Z" });
   await refused(settings.save({ eventId: "e1", userId: "org-1", settings: newSettings }), 409, /has closed/i);
   assert.equal(transaction.updates.length, 0);
 });
 
-test("H1-TC36 AC3 a capacity above the combined venue capacity is refused with the limit, and nothing is written", async () => {
+test("TC-1338 H1 AC3 a capacity above the combined venue capacity is refused with the limit, and nothing is written", async () => {
   const { settings, transaction } = fixture(); // 100 + 40 = 140
   await assert.rejects(
     settings.save({ eventId: "e1", userId: "org-1", settings: { ...newSettings, registration_capacity: 141 } }),
@@ -199,19 +199,19 @@ test("H1-TC36 AC3 a capacity above the combined venue capacity is refused with t
   assert.equal(transaction.updates.length, 0);
 });
 
-test("H1-TC37 AC3 a capacity equal to the combined venue capacity is accepted", async () => {
+test("TC-1339 H1 AC3 a capacity equal to the combined venue capacity is accepted", async () => {
   const { settings, stored } = fixture();
   await settings.save({ eventId: "e1", userId: "org-1", settings: { ...newSettings, registration_capacity: 140 } });
   assert.equal(stored.e1.registration_capacity, 140);
 });
 
-test("H1-TC38 AC3 the bookings are read inside the same transaction as the write, so the limit cannot go stale between check and save", async () => {
+test("TC-1340 H1 AC3 the bookings are read inside the same transaction as the write, so the limit cannot go stale between check and save", async () => {
   const { settings, transaction, bookingsReadIn } = fixture();
   await settings.save({ eventId: "e1", userId: "org-1", settings: newSettings });
   assert.equal(bookingsReadIn(), transaction);
 });
 
-test("H1-TC39 AC3 only approved bookings set the limit: a pending booking for another venue adds nothing", async () => {
+test("TC-1341 H1 AC3 only approved bookings set the limit: a pending booking for another venue adds nothing", async () => {
   const { settings } = fixture({
     bookings: [{ booking_id: "b1", venue_id: "v1", status: "APPROVED" }, { booking_id: "b2", venue_id: "v2", status: "PENDING" }]
   });
@@ -221,7 +221,7 @@ test("H1-TC39 AC3 only approved bookings set the limit: a pending booking for an
   );
 });
 
-test("H1-TC40 AC3 with no approved venue booking the capacity cannot change, but the window can", async () => {
+test("TC-1342 H1 AC3 with no approved venue booking the capacity cannot change, but the window can", async () => {
   const { settings, stored } = fixture({ bookings: [] });
   await assert.rejects(
     settings.save({ eventId: "e1", userId: "org-1", settings: { ...newSettings, registration_capacity: 90 } }),
@@ -232,7 +232,7 @@ test("H1-TC40 AC3 with no approved venue booking the capacity cannot change, but
   assert.equal(stored.e1.registration_open_date, "2026-11-12");
 });
 
-test("H1-TC41 AC2 an invalid window is refused with every problem named, and nothing is written", async () => {
+test("TC-1343 H1 AC2 an invalid window is refused with every problem named, and nothing is written", async () => {
   const { settings, transaction } = fixture();
   await assert.rejects(
     settings.save({
@@ -249,7 +249,7 @@ test("H1-TC41 AC2 an invalid window is refused with every problem named, and not
   assert.equal(transaction.updates.length, 0);
 });
 
-test("H1-TC42 AC2 AC3 load gives the screen the saved values, the venue limit, the phase and whether it can be edited", async () => {
+test("TC-1344 H1 AC2 AC3 load gives the screen the saved values, the venue limit, the phase and whether it can be edited", async () => {
   const { settings } = fixture();
   assert.deepEqual(await settings.load({ eventId: "e1", userId: "org-1" }), {
     settings: {
@@ -267,7 +267,7 @@ test("H1-TC42 AC2 AC3 load gives the screen the saved values, the venue limit, t
   });
 });
 
-test("H1-TC43 AC1 AC2 load of an event that cannot be edited says why: not approved yet, flag off, or closed", async () => {
+test("TC-1345 H1 AC1 AC2 load of an event that cannot be edited says why: not approved yet, flag off, or closed", async () => {
   const cases = [
     [{ status: "SUBMITTED" }, NOW, "status"],
     [{ registration_required: false }, NOW, "flag_off"],
@@ -282,7 +282,7 @@ test("H1-TC43 AC1 AC2 load of an event that cannot be edited says why: not appro
   }
 });
 
-test("H1-TC44 AC3 load reports no venue limit while no booking is approved", async () => {
+test("TC-1346 H1 AC3 load reports no venue limit while no booking is approved", async () => {
   const { settings } = fixture({ bookings: [] });
   const loaded = await settings.load({ eventId: "e1", userId: "org-1" });
   assert.equal(loaded.venue_capacity, null);
@@ -292,7 +292,7 @@ test("H1-TC44 AC3 load reports no venue limit while no booking is approved", asy
 const registered = (count, eventId = "e1", status = "REGISTERED") =>
   Array.from({ length: count }, (_, index) => ({ event_id: eventId, status, attendee_id: `a-${status}-${eventId}-${index}` }));
 
-test("H1-TC58 AC5 a capacity below the number registered is refused with the count, and nothing is written", async () => {
+test("TC-1347 H1 AC5 a capacity below the number registered is refused with the count, and nothing is written", async () => {
   const { settings, transaction } = fixture({ registrations: registered(90) });
   await assert.rejects(
     settings.save({ eventId: "e1", userId: "org-1", settings: { ...newSettings, registration_capacity: 89 } }),
@@ -305,13 +305,13 @@ test("H1-TC58 AC5 a capacity below the number registered is refused with the cou
   assert.equal(transaction.updates.length, 0);
 });
 
-test("H1-TC59 AC5 a capacity equal to the number registered is accepted", async () => {
+test("TC-1348 H1 AC5 a capacity equal to the number registered is accepted", async () => {
   const { settings, stored } = fixture({ registrations: registered(90) });
   await settings.save({ eventId: "e1", userId: "org-1", settings: { ...newSettings, registration_capacity: 90 } });
   assert.equal(stored.e1.registration_capacity, 90);
 });
 
-test("H1-TC60 AC5 only REGISTERED attendees of this event count: waitlisted, withdrawn, cancelled and other events' registrations do not", async () => {
+test("TC-1349 H1 AC5 only REGISTERED attendees of this event count: waitlisted, withdrawn, cancelled and other events' registrations do not", async () => {
   const { settings, stored } = fixture({
     registrations: [
       ...registered(5),
@@ -329,13 +329,13 @@ test("H1-TC60 AC5 only REGISTERED attendees of this event count: waitlisted, wit
   assert.equal(stored.e1.registration_capacity, 5);
 });
 
-test("H1-TC61 AC5 the registrations are counted inside the same transaction as the write, so a registration landing mid-save cannot slip past", async () => {
+test("TC-1350 H1 AC5 the registrations are counted inside the same transaction as the write, so a registration landing mid-save cannot slip past", async () => {
   const { settings, transaction } = fixture({ registrations: registered(3) });
   await settings.save({ eventId: "e1", userId: "org-1", settings: newSettings });
   assert.ok(transaction.reads.includes("registrations"), "registrations must be read through the transaction");
 });
 
-test("H1-TC62 AC5 a refused save for being under the registered count names every other problem too", async () => {
+test("TC-1351 H1 AC5 a refused save for being under the registered count names every other problem too", async () => {
   const { settings } = fixture({ registrations: registered(90) });
   await assert.rejects(
     settings.save({ eventId: "e1", userId: "org-1", settings: { ...newSettings, registration_capacity: 10, registration_close_date: "2026-11-01", registration_close_time: "09:00" } }),
@@ -343,7 +343,7 @@ test("H1-TC62 AC5 a refused save for being under the registered count names ever
   );
 });
 
-test("H1-TC63 AC5 load tells the screen how many are registered, counting only REGISTERED", async () => {
+test("TC-1352 H1 AC5 load tells the screen how many are registered, counting only REGISTERED", async () => {
   const { settings } = fixture({ registrations: [...registered(12), ...registered(4, "e1", "WAITLISTED")] });
   const loaded = await settings.load({ eventId: "e1", userId: "org-1" });
   assert.equal(loaded.registered_count, 12);

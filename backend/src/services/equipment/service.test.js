@@ -55,14 +55,14 @@ const exerciseRequest = async ({ role, authorization = "Bearer valid-token" }) =
   }
 };
 
-test("TC-304 only Technical Support Staff can reach the reservation transaction", async () => {
+test("TC-1253 only Technical Support Staff can reach the reservation transaction", async () => {
   const { response, transactionCalls } = await exerciseRequest({ role: "EVENT_COORDINATOR" });
   assert.equal(response.status, 403);
   assert.match((await response.json()).error, /only technical support staff/i);
   assert.equal(transactionCalls, 0);
 });
 
-test("TC-304 missing bearer credentials are rejected before profile access", async () => {
+test("TC-1254 missing bearer credentials are rejected before profile access", async () => {
   let profileReads = 0;
   const app = express();
   app.use(express.json());
@@ -135,7 +135,7 @@ const notifyRoute = async ({ role, authorization = "Bearer valid-token", runTran
   }
 };
 
-test("J5-TC16 AC1 only an Event Coordinator can ask the service to notify Technical Support", async () => {
+test("TC-2165 J5 AC1 only an Event Coordinator can ask the service to notify Technical Support", async () => {
   for (const role of ["TECHNICAL_SUPPORT_STAFF", "EVENT_ORGANISER", "VENUE_STAFF", "ATTENDEE"]) {
     const { response, transactionCalls } = await notifyRoute({
       role,
@@ -147,7 +147,7 @@ test("J5-TC16 AC1 only an Event Coordinator can ask the service to notify Techni
   }
 });
 
-test("J5-TC17 AC1 a request with no bearer token is refused before any profile or notice work", async () => {
+test("TC-2166 J5 AC1 a request with no bearer token is refused before any profile or notice work", async () => {
   const { response, transactionCalls } = await notifyRoute({
     role: "EVENT_COORDINATOR",
     authorization: "",
@@ -157,7 +157,7 @@ test("J5-TC17 AC1 a request with no bearer token is refused before any profile o
   assert.equal(transactionCalls, 0);
 });
 
-test("J5-TC18 AC1 AC3 an Event Coordinator reaches the notifier, and its result is returned", async () => {
+test("TC-2167 J5 AC1 AC3 an Event Coordinator reaches the notifier, and its result is returned", async () => {
   const { response, transactionCalls } = await notifyRoute({
     role: "EVENT_COORDINATOR",
     runTransaction: async () => ({ eventId: "event-1", sent: 2, types: ["EQUIPMENT_REQUEST_RAISED"] })
@@ -218,13 +218,13 @@ const cancelReservationsRoute = async ({ role, authorization = "Bearer valid-tok
   }
 };
 
-test("D4 only an Event Coordinator can release reservations after event cancellation", async () => {
+test("TC-0515 D4 only an Event Coordinator can release reservations after event cancellation", async () => {
   const { response, transactionCalls } = await cancelReservationsRoute({ role: "TECHNICAL_SUPPORT_STAFF" });
   assert.equal(response.status, 403);
   assert.equal(transactionCalls, 0);
 });
 
-test("D4 an authenticated coordinator reaches the cancellation release operation", async () => {
+test("TC-0516 D4 an authenticated coordinator reaches the cancellation release operation", async () => {
   const { response, transactionCalls } = await cancelReservationsRoute({ role: "EVENT_COORDINATOR" });
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { released: 0 });

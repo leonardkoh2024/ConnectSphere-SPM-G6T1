@@ -120,13 +120,13 @@ const request = async ({ firestore, authorization = "Bearer valid-token", uid = 
   }
 };
 
-test("TC-557 an attendee is given only the events open for registration now, soonest first", async () => {
+test("TC-1444 an attendee is given only the events open for registration now, soonest first", async () => {
   const { status, body } = await request({ firestore: fakeFirestore(data()) });
   assert.equal(status, 200);
   assert.deepEqual(body.events.map((entry) => entry.id), ["open", "multi"]);
 });
 
-test("TC-558 each entry names its approved venues and counts only Registered places", async () => {
+test("TC-1445 each entry names its approved venues and counts only Registered places", async () => {
   const { body } = await request({ firestore: fakeFirestore(data()) });
   const [open, multi] = body.events;
   assert.deepEqual(open, {
@@ -148,7 +148,7 @@ test("TC-558 each entry names its approved venues and counts only Registered pla
   assert.equal(multi.remaining_places, 2);
 });
 
-test("TC-559 no internal event field is sent to the attendee", async () => {
+test("TC-1446 no internal event field is sent to the attendee", async () => {
   const { body } = await request({ firestore: fakeFirestore(data()) });
   for (const entry of body.events) {
     for (const field of ["organiser_id", "coordinator_id", "reference_no", "status", "registration_required"]) {
@@ -157,7 +157,7 @@ test("TC-559 no internal event field is sent to the attendee", async () => {
   }
 });
 
-test("TC-560 venues and registrations are read only for events that are open", async () => {
+test("TC-1447 venues and registrations are read only for events that are open", async () => {
   const firestore = fakeFirestore(data());
   await request({ firestore });
   // Two open events of seven: one booking lookup and one count each, no more.
@@ -165,7 +165,7 @@ test("TC-560 venues and registrations are read only for events that are open", a
   assert.equal(firestore.touched.filter((name) => name === "registrations:count").length, 2);
 });
 
-test("TC-561 a request without a bearer token is refused before anything is read", async () => {
+test("TC-1448 a request without a bearer token is refused before anything is read", async () => {
   const firestore = fakeFirestore(data());
   const { status, body } = await request({ firestore, authorization: null });
   assert.equal(status, 401);
@@ -173,7 +173,7 @@ test("TC-561 a request without a bearer token is refused before anything is read
   assert.deepEqual(firestore.touched, []);
 });
 
-test("TC-561 an invalid or expired token is refused", async () => {
+test("TC-1449 an invalid or expired token is refused", async () => {
   const firestore = fakeFirestore(data());
   const { status } = await request({ firestore, verifyIdToken: async () => { throw new Error("expired"); } });
   assert.equal(status, 401);
@@ -181,7 +181,7 @@ test("TC-561 an invalid or expired token is refused", async () => {
 });
 
 for (const uid of ["organiser-1", "coordinator-1", "nobody"]) {
-  test(`TC-562 a caller who is not an Attendee (${uid}) is refused`, async () => {
+  test(`TC-1450 a caller who is not an Attendee (${uid}) is refused`, async () => {
     const firestore = fakeFirestore(data());
     const { status, body } = await request({ firestore, uid });
     assert.equal(status, 403);
@@ -190,7 +190,7 @@ for (const uid of ["organiser-1", "coordinator-1", "nobody"]) {
   });
 }
 
-test("TC-563 a failed read is reported as a server error rather than an empty list", async () => {
+test("TC-1451 a failed read is reported as a server error rather than an empty list", async () => {
   const firestore = fakeFirestore(data());
   const broken = {
     collection(name) {

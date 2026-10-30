@@ -61,32 +61,32 @@ async function openRequest(props = {}) {
   });
   if (!screen.queryByRole('button', { name: /view request/i })) {
     const statusFilter = screen.queryByRole('combobox', { name: /filter by status/i });
-    if (statusFilter) await userEvent.selectOptions(statusFilter, 'ALL');
+    if (statusFilter) userEvent.selectOptions(statusFilter, 'ALL');
   }
-  await userEvent.click(await screen.findByRole('button', { name: /view request/i }));
+  userEvent.click(await screen.findByRole('button', { name: /view request/i }));
   await screen.findByRole('button', { name: /back to events/i });
 }
 
 // The clarification exchange and its action are on their own tab.
 const openClarifications = () => userEvent.click(screen.getByRole('tab', { name: /^Clarifications/ }));
 
-test('TC-060/061 requests clarification only after a non-empty message', async () => {
+test('TC-0218 /061 requests clarification only after a non-empty message', async () => {
   await openRequest();
   await openClarifications();
-  await userEvent.click(screen.getByRole('button', { name: /request clarification/i }));
-  await userEvent.click(screen.getByRole('button', { name: /send request/i }));
+  userEvent.click(screen.getByRole('button', { name: /request clarification/i }));
+  userEvent.click(screen.getByRole('button', { name: /send request/i }));
   expect(screen.getByRole('alert')).toHaveTextContent('Clarification message is required.');
   expect(screen.getByRole('textbox')).toHaveAttribute('aria-invalid', 'true');
   expect(reviewApi.clarify).not.toHaveBeenCalled();
 
-  await userEvent.type(screen.getByRole('textbox'), 'Please confirm attendance.');
+  userEvent.type(screen.getByRole('textbox'), 'Please confirm attendance.');
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   expect(screen.getByRole('textbox')).toHaveAttribute('aria-invalid', 'false');
-  await userEvent.click(screen.getByRole('button', { name: /send request/i }));
+  userEvent.click(screen.getByRole('button', { name: /send request/i }));
   await waitFor(() => expect(reviewApi.clarify).toHaveBeenCalledWith('e1', 'Please confirm attendance.'));
 });
 
-test('TC-062 hides clarification and rejection actions while awaiting the organiser', async () => {
+test('TC-0219 hides clarification and rejection actions while awaiting the organiser', async () => {
   reviewApi.detail.mockResolvedValue(detail({ open_clarification_id: 'q1' }));
   await openRequest();
   expect(screen.getByText(/awaiting the organiser/i)).toBeInTheDocument();
@@ -96,7 +96,7 @@ test('TC-062 hides clarification and rejection actions while awaiting the organi
   expect(screen.queryByRole('button', { name: /request clarification/i })).not.toBeInTheDocument();
 });
 
-test('TC-063 retains the timestamped clarification exchange', async () => {
+test('TC-0220 retains the timestamped clarification exchange', async () => {
   reviewApi.detail.mockResolvedValue({ ...detail(), clarifications: [{ id: 'q1', message: 'Confirm attendance', created_at: '2026-09-23T10:00:00Z' }], responses: [{ id: 'a1', message: 'It is 150.', created_at: '2026-09-23T11:00:00Z' }] });
   await openRequest();
   await openClarifications();
@@ -105,20 +105,20 @@ test('TC-063 retains the timestamped clarification exchange', async () => {
   expect(within(history).getByText('It is 150.')).toBeInTheDocument();
 });
 
-test('TC-072/073 requires a rejection reason and sends the recorded reason', async () => {
+test('TC-0306 /073 requires a rejection reason and sends the recorded reason', async () => {
   await openRequest();
-  await userEvent.click(screen.getByRole('button', { name: /reject request/i }));
-  await userEvent.click(screen.getByRole('button', { name: /reject event/i }));
+  userEvent.click(screen.getByRole('button', { name: /reject request/i }));
+  userEvent.click(screen.getByRole('button', { name: /reject event/i }));
   expect(screen.getByRole('alert')).toHaveTextContent('Rejection reason is required.');
   expect(screen.getByRole('textbox')).toHaveAttribute('aria-invalid', 'true');
   expect(reviewApi.reject).not.toHaveBeenCalled();
-  await userEvent.type(screen.getByRole('textbox'), 'No suitable venue can be secured.');
+  userEvent.type(screen.getByRole('textbox'), 'No suitable venue can be secured.');
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: /reject event/i }));
+  userEvent.click(screen.getByRole('button', { name: /reject event/i }));
   await waitFor(() => expect(reviewApi.reject).toHaveBeenCalledWith('e1', 'No suitable venue can be secured.'));
 });
 
-test('L1 SCRUM-187 D3 the coordinator can send a planning event for its safety check once arrangements are secured', async () => {
+test('TC-2444 L1 SCRUM-187 D3 the coordinator can send a planning event for its safety check once arrangements are secured', async () => {
   const onNotice = jest.fn();
   reviewApi.detail.mockResolvedValue({
     ...detail({ status: 'PLANNING' }),
@@ -126,12 +126,12 @@ test('L1 SCRUM-187 D3 the coordinator can send a planning event for its safety c
     equipmentArrangements: { lines: [{ key: '0-AUDIO', label: 'Audio × 2', arranged: true, status: { label: 'Approved', tone: 'positive' } }] }
   });
   await openRequest({ onNotice });
-  await userEvent.click(screen.getByRole('button', { name: /send for safety check/i }));
+  userEvent.click(screen.getByRole('button', { name: /send for safety check/i }));
   await waitFor(() => expect(sendEventForSafetyCheck).toHaveBeenCalledWith('e1'));
   expect(onNotice).toHaveBeenCalledWith('Event sent for its safety check.');
 });
 
-test('D3 AC3 sending is unavailable while an arrangement is missing, and the view names it', async () => {
+test('TC-0505 D3 AC3 sending is unavailable while an arrangement is missing, and the view names it', async () => {
   reviewApi.detail.mockResolvedValue({
     ...detail({ status: 'PLANNING' }),
     venueBookings: [{ booking_id: 'b1', venue_name: 'Hall A', status: 'APPROVED' }],
@@ -142,32 +142,32 @@ test('D3 AC3 sending is unavailable while an arrangement is missing, and the vie
   expect(screen.getByText(/still outstanding: Lighting × 1/i)).toBeInTheDocument();
 });
 
-test('D3 AC3 an event with no approved venue booking names that as outstanding', async () => {
+test('TC-0506 D3 AC3 an event with no approved venue booking names that as outstanding', async () => {
   reviewApi.detail.mockResolvedValue(detail({ status: 'PLANNING' }));
   await openRequest();
   expect(screen.getByRole('button', { name: /send for safety check/i })).toBeDisabled();
   expect(screen.getByText(/still outstanding: an approved venue booking/i)).toBeInTheDocument();
 });
 
-test('D3 AC4 a confirmed event shows its confirmation time in SGT', async () => {
+test('TC-0507 D3 AC4 a confirmed event shows its confirmation time in SGT', async () => {
   reviewApi.detail.mockResolvedValue(detail({ status: 'CONFIRMED', confirmed_at: '2026-11-03T08:30:00.000Z' }));
   await openRequest();
   expect(screen.getByText(/16:30 SGT/)).toBeInTheDocument();
 });
 
-test('D4 cancellation requires a reason and explicit confirmation, then releases arrangements', async () => {
+test('TC-0519 D4 cancellation requires a reason and explicit confirmation, then releases arrangements', async () => {
   const onNotice = jest.fn();
   reviewApi.detail.mockResolvedValue(detail({ status: 'PLANNING' }));
   await openRequest({ onNotice });
-  await userEvent.click(screen.getByRole('button', { name: /^cancel event$/i }));
+  userEvent.click(screen.getByRole('button', { name: /^cancel event$/i }));
 
   const confirm = screen.getByRole('button', { name: /confirm cancellation/i });
   expect(confirm).toBeDisabled();
-  await userEvent.type(screen.getByLabelText(/^reason/i), 'Speaker unavailable');
+  userEvent.type(screen.getByLabelText(/^reason/i), 'Speaker unavailable');
   expect(confirm).toBeDisabled();
-  await userEvent.click(screen.getByRole('checkbox'));
+  userEvent.click(screen.getByRole('checkbox'));
   expect(confirm).toBeEnabled();
-  await userEvent.click(confirm);
+  userEvent.click(confirm);
 
   await waitFor(() => expect(reviewApi.cancel).toHaveBeenCalledWith('e1', 'Speaker unavailable'));
   expect(reviewApi.notifyCancelledAttendees).toHaveBeenCalledWith(expect.objectContaining({
@@ -183,46 +183,46 @@ test('D4 cancellation requires a reason and explicit confirmation, then releases
   expect(onNotice).toHaveBeenCalledWith('Event cancelled and arrangements released.');
 });
 
-test("D5 AC1/AC2 offers completion after the event end and sends the completion action", async () => {
+test("TC-0546 D5 AC1/AC2 offers completion after the event end and sends the completion action", async () => {
   const finished = { ...baseEvent, status: "CONFIRMED", event_date: "2020-01-01" };
   const onNotice = jest.fn();
   reviewApi.list.mockResolvedValue({ events: [finished] });
   reviewApi.detail.mockResolvedValue(detail(finished));
 
   await openRequest({ onNotice });
-  await userEvent.click(screen.getByRole("button", { name: /mark completed/i }));
+  userEvent.click(screen.getByRole("button", { name: /mark completed/i }));
 
   await waitFor(() => expect(reviewApi.complete).toHaveBeenCalledWith("e1"));
   await waitFor(() => expect(onNotice).toHaveBeenCalledWith("Event marked completed."));
 });
 
-test('D4 cancellation cleanup failures are reported after retaining the cancellation', async () => {
+test('TC-0520 D4 cancellation cleanup failures are reported after retaining the cancellation', async () => {
   const onNotice = jest.fn();
   reviewApi.detail.mockResolvedValue(detail({ status: 'PLANNING' }));
   releaseCancelledEventReservations
     .mockRejectedValueOnce(new Error('Equipment service unavailable.'))
     .mockResolvedValueOnce({ released: 1 });
   await openRequest({ onNotice });
-  await userEvent.click(screen.getByRole('button', { name: /^cancel event$/i }));
-  await userEvent.type(screen.getByLabelText(/^reason/i), 'Speaker unavailable');
-  await userEvent.click(screen.getByRole('checkbox'));
-  await userEvent.click(screen.getByRole('button', { name: /confirm cancellation/i }));
+  userEvent.click(screen.getByRole('button', { name: /^cancel event$/i }));
+  userEvent.type(screen.getByLabelText(/^reason/i), 'Speaker unavailable');
+  userEvent.click(screen.getByRole('checkbox'));
+  userEvent.click(screen.getByRole('button', { name: /confirm cancellation/i }));
 
   expect(await screen.findByRole('alert')).toHaveTextContent(/event was cancelled, but cleanup is incomplete/i);
   expect(screen.getByRole('alert')).toHaveTextContent(/equipment service unavailable/i);
   expect(releaseCancelledEventBookings).toHaveBeenCalled();
 
-  await userEvent.click(screen.getByRole('button', { name: /retry incomplete cleanup/i }));
+  userEvent.click(screen.getByRole('button', { name: /retry incomplete cleanup/i }));
 
   await waitFor(() => expect(releaseCancelledEventReservations).toHaveBeenCalledTimes(2));
   await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Cancellation cleanup completed.'));
   expect(screen.queryByRole('button', { name: /retry incomplete cleanup/i })).not.toBeInTheDocument();
 });
 
-// K3 / SCRUM-184 — this replaces C9's old TC-077 (the coordinator reassigning their own
+// K3 / SCRUM-184 — this replaces C9's old test (the coordinator reassigning their own
 // event). Only the Event Coordinator Lead reassigns now, from the oversight screen, so the
 // coordinator in charge has no Reassign control at all, on any status.
-test('K3-FT6 AC (replaces C9 criterion 5) the coordinator in charge has no Reassign control', async () => {
+test('TC-2315 K3 AC (replaces C9 criterion 5) the coordinator in charge has no Reassign control', async () => {
   await openRequest();
 
   expect(screen.getByRole('button', { name: /reject request/i })).toBeInTheDocument();
@@ -230,11 +230,11 @@ test('K3-FT6 AC (replaces C9 criterion 5) the coordinator in charge has no Reass
   expect(screen.queryByRole('combobox', { name: /new active coordinator/i })).not.toBeInTheDocument();
 });
 
-// TC-078 (an outgoing coordinator gets a read-only assignment view) is replaced by K5 SCRUM-186:
-// a coordinator an event was reassigned away from has no view of it at all (K5-FT1, K5-TC3).
+// C9's read-only assignment view for an outgoing coordinator is replaced by K5 SCRUM-186:
+// a coordinator an event was reassigned away from has no view of it at all (K5).
 
 test.each(['SUBMITTED', 'UNDER_REVIEW', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'REJECTED', 'SAFETY_REVIEW'])(
-  'F1 disables Find venues while an assigned event is %s',
+  'TC-0877 F1 disables Find venues while an assigned event is %s',
   async (status) => {
     reviewApi.detail.mockResolvedValue(detail({ status }));
     const onFindVenues = jest.fn();
@@ -244,23 +244,23 @@ test.each(['SUBMITTED', 'UNDER_REVIEW', 'CONFIRMED', 'COMPLETED', 'CANCELLED', '
     expect(button).toBeDisabled();
     expect(button).toHaveClass('cs-find-venues');
     expect(screen.getByText(/only for events with approved or planning status/i)).toBeInTheDocument();
-    await userEvent.click(button);
+    userEvent.click(button);
     expect(onFindVenues).not.toHaveBeenCalled();
   }
 );
 
-test.each(['APPROVED', 'PLANNING'])('F1 enables Find venues while an assigned event is %s', async (status) => {
+test.each(['APPROVED', 'PLANNING'])('TC-0878 F1 enables Find venues while an assigned event is %s', async (status) => {
   reviewApi.detail.mockResolvedValue(detail({ status }));
   const onFindVenues = jest.fn();
   await openRequest({ onFindVenues });
 
   const button = screen.getByRole('button', { name: /find venues/i });
   expect(button).toBeEnabled();
-  await userEvent.click(button);
+  userEvent.click(button);
   expect(onFindVenues).toHaveBeenCalledWith(expect.objectContaining({ id: 'e1', status }));
 });
 
-test('F7 shows each venue booking with its complete decision information inside the event view', async () => {
+test('TC-0955 F7 shows each venue booking with its complete decision information inside the event view', async () => {
   const reason = 'The loading bay is unavailable throughout the requested setup window.';
   reviewApi.detail.mockResolvedValue({
     ...detail({ status: 'PLANNING' }),
@@ -280,7 +280,7 @@ test('F7 shows each venue booking with its complete decision information inside 
 
   await openRequest();
 
-  await userEvent.click(screen.getByRole('tab', { name: /^Arrangements/ }));
+  userEvent.click(screen.getByRole('tab', { name: /^Arrangements/ }));
   const section = screen.getByRole('region', { name: /venue booking status/i });
   expect(within(section).getByText('Harbour Hall')).toBeInTheDocument();
   expect(within(section).getByText('Garden Pavilion')).toBeInTheDocument();
@@ -288,20 +288,20 @@ test('F7 shows each venue booking with its complete decision information inside 
   expect(within(section).getAllByText(/2026|nov/i).length).toBeGreaterThan(0);
 });
 
-test('TC-470 D2 shows all existing arrangements and requires acknowledgement before saving', async () => {
+test('TC-0468 D2 shows all existing arrangements and requires acknowledgement before saving', async () => {
   const planningEvent = { ...baseEvent, status: 'PLANNING' };
   let resolveImpact;
   reviewApi.list.mockResolvedValue({ events: [planningEvent] });
   reviewApi.detail.mockResolvedValue(detail(planningEvent));
   reviewApi.significantChangeImpact.mockImplementation(() => new Promise((resolve) => { resolveImpact = resolve; }));
   await openRequest();
-  await userEvent.click(screen.getByRole('button', { name: /^edit event$/i }));
+  userEvent.click(screen.getByRole('button', { name: /^edit event$/i }));
 
   // Arrangements are checked only once a significant field changes.
   expect(reviewApi.significantChangeImpact).not.toHaveBeenCalled();
   expect(screen.getByRole('button', { name: /save changes/i })).toBeDisabled();
-  await userEvent.clear(screen.getByLabelText(/expected attendance/i));
-  await userEvent.type(screen.getByLabelText(/expected attendance/i), '125');
+  userEvent.clear(screen.getByLabelText(/expected attendance/i));
+  userEvent.type(screen.getByLabelText(/expected attendance/i), '125');
   expect(reviewApi.significantChangeImpact).toHaveBeenCalledWith('e1');
   expect(screen.getByRole('button', { name: /save changes/i })).toBeDisabled();
 
@@ -319,9 +319,9 @@ test('TC-470 D2 shows all existing arrangements and requires acknowledgement bef
 
   const save = screen.getByRole('button', { name: /save changes/i });
   expect(save).toBeDisabled();
-  await userEvent.click(screen.getByLabelText(/reviewed and acknowledge/i));
+  userEvent.click(screen.getByLabelText(/reviewed and acknowledge/i));
   expect(save).toBeEnabled();
-  await userEvent.click(save);
+  userEvent.click(save);
   await waitFor(() => expect(reviewApi.saveEventEdit).toHaveBeenCalledWith(expect.objectContaining({
     eventId: 'e1',
     values: expect.objectContaining({ expected_attendance: 125 }),
@@ -330,33 +330,33 @@ test('TC-470 D2 shows all existing arrangements and requires acknowledgement bef
   })));
 });
 
-test('TC-471 D2 cancelling a significant edit leaves the event unsaved', async () => {
+test('TC-0469 D2 cancelling a significant edit leaves the event unsaved', async () => {
   const planningEvent = { ...baseEvent, status: 'PLANNING' };
   reviewApi.list.mockResolvedValue({ events: [planningEvent] });
   reviewApi.detail.mockResolvedValue(detail(planningEvent));
   reviewApi.significantChangeImpact.mockResolvedValue({ venueBookings: [], equipmentReservations: [], registrationsCount: 0 });
   await openRequest();
-  await userEvent.click(screen.getByRole('button', { name: /^edit event$/i }));
-  await userEvent.clear(screen.getByLabelText(/expected attendance/i));
-  await userEvent.type(screen.getByLabelText(/expected attendance/i), '125');
+  userEvent.click(screen.getByRole('button', { name: /^edit event$/i }));
+  userEvent.clear(screen.getByLabelText(/expected attendance/i));
+  userEvent.type(screen.getByLabelText(/expected attendance/i), '125');
   await screen.findByRole('complementary', { name: 'Significant change impact' });
-  await userEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+  userEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
   expect(reviewApi.saveEventEdit).not.toHaveBeenCalled();
   expect(screen.queryByRole('region', { name: /^edit event$/i })).not.toBeInTheDocument();
 });
 
-test('TC-472 D2 an open clarification locks only the date, size and venue fields', async () => {
+test('TC-0470 D2 an open clarification locks only the date, size and venue fields', async () => {
   const planningEvent = { ...baseEvent, status: 'PLANNING', open_clarification_id: 'q1' };
   reviewApi.list.mockResolvedValue({ events: [planningEvent] });
   reviewApi.detail.mockResolvedValue(detail(planningEvent));
   await openRequest();
-  await userEvent.click(screen.getByRole('button', { name: /^edit event$/i }));
+  userEvent.click(screen.getByRole('button', { name: /^edit event$/i }));
   expect(screen.getByLabelText(/expected attendance/i)).toBeDisabled();
   expect(screen.getByLabelText(/^event name/i)).toBeEnabled();
   expect(screen.getByText(/unavailable while a clarification is open/i)).toBeInTheDocument();
 });
 
-test('TC-473 D2 when the arrangements changed during editing, the warning is reloaded and must be acknowledged again', async () => {
+test('TC-0471 D2 when the arrangements changed during editing, the warning is reloaded and must be acknowledged again', async () => {
   const planningEvent = { ...baseEvent, status: 'PLANNING' };
   reviewApi.list.mockResolvedValue({ events: [planningEvent] });
   reviewApi.detail.mockResolvedValue(detail(planningEvent));
@@ -365,12 +365,12 @@ test('TC-473 D2 when the arrangements changed during editing, the warning is rel
     .mockResolvedValueOnce({ venueBookings: [{ id: 'b9', label: 'Garden Pavilion', status: 'APPROVED' }], equipmentReservations: [], registrationsCount: 0 });
   reviewApi.saveEventEdit.mockRejectedValueOnce(new Error('The existing arrangements changed while you were editing. Review the updated warning before saving.'));
   await openRequest();
-  await userEvent.click(screen.getByRole('button', { name: /^edit event$/i }));
-  await userEvent.clear(screen.getByLabelText(/expected attendance/i));
-  await userEvent.type(screen.getByLabelText(/expected attendance/i), '125');
+  userEvent.click(screen.getByRole('button', { name: /^edit event$/i }));
+  userEvent.clear(screen.getByLabelText(/expected attendance/i));
+  userEvent.type(screen.getByLabelText(/expected attendance/i), '125');
   await screen.findByRole('complementary', { name: 'Significant change impact' });
-  await userEvent.click(screen.getByLabelText(/reviewed and acknowledge/i));
-  await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+  userEvent.click(screen.getByLabelText(/reviewed and acknowledge/i));
+  userEvent.click(screen.getByRole('button', { name: /save changes/i }));
 
   expect(await screen.findByText(/arrangements changed during editing/i)).toBeInTheDocument();
   expect(within(screen.getByRole('complementary', { name: 'Significant change impact' })).getByText(/garden pavilion/i)).toBeInTheDocument();
@@ -381,18 +381,18 @@ test('TC-473 D2 when the arrangements changed during editing, the warning is rel
 // C6 — approve a request the coordinator has reviewed (Under Review -> Approved).
 // This is the UI that the venue merge dropped: reviewApi.approve and canApproveEvent
 // existed, but nothing on the screen called them. These tests guard the button.
-// J2 / SCRUM-151 AC3 changed TC1, TC2 and TC6 below: Approve now opens a Reason box and the
+// J2 / SCRUM-151 AC3 changed below: Approve now opens a Reason box and the
 // decision is sent from there, so each types a reason and confirms with "Approve event".
-// TC7 (locked while sending) is replaced by J2-FT7, which covers the same lock on the new
+// (locked while sending) is replaced by J2, which covers the same lock on the new
 // confirm button.
 const approveWith = async (reason = 'Looks complete.') => {
-  await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
-  await userEvent.type(screen.getByRole('textbox', { name: /reason/i }), reason);
-  await userEvent.click(screen.getByRole('button', { name: 'Approve event' }));
+  userEvent.click(screen.getByRole('button', { name: 'Approve' }));
+  userEvent.type(screen.getByRole('textbox', { name: /reason/i }), reason);
+  userEvent.click(screen.getByRole('button', { name: 'Approve event' }));
 };
 
 describe('C6 approve a submitted request', () => {
-  test('C6 TC1 the assigned coordinator sees Approve on an Under Review request and it calls reviewApi.approve', async () => {
+  test('TC-0402 C6 TC1 the assigned coordinator sees Approve on an Under Review request and it calls reviewApi.approve', async () => {
     const onNotice = jest.fn();
     await openRequest({ onNotice });
 
@@ -405,7 +405,7 @@ describe('C6 approve a submitted request', () => {
     await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Event request approved.'));
   });
 
-  test('C6 TC2 after approving, the detail refreshes to Approved and Approve is no longer offered', async () => {
+  test('TC-0403 C6 TC2 after approving, the detail refreshes to Approved and Approve is no longer offered', async () => {
     reviewApi.detail
       .mockResolvedValueOnce(detail())
       .mockResolvedValue(detail({ status: 'APPROVED' }));
@@ -421,7 +421,7 @@ describe('C6 approve a submitted request', () => {
   });
 
   test.each(['SUBMITTED', 'APPROVED', 'PLANNING', 'REJECTED', 'CANCELLED', 'COMPLETED'])(
-    'C6 TC3 Approve is not offered while the event is %s',
+    'TC-0404 C6 TC3 Approve is not offered while the event is %s',
     async (status) => {
       reviewApi.detail.mockResolvedValue(detail({ status }));
       await openRequest();
@@ -429,14 +429,14 @@ describe('C6 approve a submitted request', () => {
     }
   );
 
-  test('C6 TC5 Approve is unavailable while a clarification is open, and the screen says so', async () => {
+  test('TC-0405 C6 TC5 Approve is unavailable while a clarification is open, and the screen says so', async () => {
     reviewApi.detail.mockResolvedValue(detail({ open_clarification_id: 'q1' }));
     await openRequest();
     expect(screen.queryByRole('button', { name: /^approve/i })).not.toBeInTheDocument();
     expect(screen.getByText(/awaiting the organiser/i)).toHaveTextContent(/approve/i);
   });
 
-  test('C6 TC6 a failed approval shows the error, keeps the event Under Review and offers Approve again', async () => {
+  test('TC-0406 C6 TC6 a failed approval shows the error, keeps the event Under Review and offers Approve again', async () => {
     const onNotice = jest.fn();
     reviewApi.approve.mockRejectedValueOnce(new Error('This event cannot be approved now.'));
     await openRequest({ onNotice });
@@ -462,7 +462,7 @@ const assignedEvents = [
 ];
 const rowNames = () => screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent);
 
-test('TC-126 each assigned row shows name, organiser, proposed date, status and time since last activity', async () => {
+test('TC-0751 each assigned row shows name, organiser, proposed date, status and time since last activity', async () => {
   reviewApi.list.mockResolvedValue({ events: [assignedEvents[0]] });
   render(<EventReviewScreen />);
   const row = (await screen.findByRole('heading', { name: 'Alumni Mixer' })).closest('article');
@@ -472,19 +472,19 @@ test('TC-126 each assigned row shows name, organiser, proposed date, status and 
   expect(within(row).getByText(/last activity:/i)).toBeInTheDocument();
 });
 
-test('TC-127 the status filter narrows the list to the chosen status', async () => {
+test('TC-0752 the status filter narrows the list to the chosen status', async () => {
   reviewApi.list.mockResolvedValue({ events: assignedEvents });
   render(<EventReviewScreen />);
   await screen.findByRole('heading', { name: 'Alumni Mixer' });
   expect(screen.getByRole('heading', { name: 'Partner Summit' })).toBeInTheDocument();
 
-  await userEvent.selectOptions(screen.getByRole('combobox', { name: /filter by status/i }), 'SUBMITTED');
+  userEvent.selectOptions(screen.getByRole('combobox', { name: /filter by status/i }), 'SUBMITTED');
   expect(screen.getByRole('heading', { name: 'Partner Summit' })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Alumni Mixer' })).not.toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Careers Fair' })).not.toBeInTheDocument();
 });
 
-test("D5 AC2/AC3 completed events leave the active list and remain viewable via the status filter", async () => {
+test("TC-0547 D5 AC2/AC3 completed events leave the active list and remain viewable via the status filter", async () => {
   const completed = { ...assignedEvents[0], id: "e-completed", name: "Past Summit", status: "COMPLETED" };
   reviewApi.list.mockResolvedValue({ events: [...assignedEvents, completed] });
   reviewApi.detail.mockResolvedValue(detail({ ...baseEvent, ...completed }));
@@ -493,25 +493,25 @@ test("D5 AC2/AC3 completed events leave the active list and remain viewable via 
   await screen.findByRole("heading", { name: "Alumni Mixer" });
   expect(screen.queryByRole("heading", { name: "Past Summit" })).not.toBeInTheDocument();
 
-  await userEvent.selectOptions(screen.getByRole("combobox", { name: /filter by status/i }), "COMPLETED");
-  await userEvent.click(await screen.findByRole("button", { name: /view request/i }));
+  userEvent.selectOptions(screen.getByRole("combobox", { name: /filter by status/i }), "COMPLETED");
+  userEvent.click(await screen.findByRole("button", { name: /view request/i }));
   expect(await screen.findByRole("heading", { name: "Past Summit" })).toBeInTheDocument();
   expect(screen.getByText("COMPLETED", { selector: ".cs-pill" })).toBeInTheDocument();
 });
 
-test('TC-128 sorting by proposed date orders ascending, then descending on toggle', async () => {
+test('TC-0753 sorting by proposed date orders ascending, then descending on toggle', async () => {
   reviewApi.list.mockResolvedValue({ events: assignedEvents });
   render(<EventReviewScreen />);
   await screen.findByRole('heading', { name: 'Alumni Mixer' });
   expect(rowNames()).toEqual(['Alumni Mixer', 'Careers Fair', 'Partner Summit']);
 
-  await userEvent.click(screen.getByRole('button', { name: /sort by proposed date/i }));
+  userEvent.click(screen.getByRole('button', { name: /sort by proposed date/i }));
   expect(rowNames()).toEqual(['Partner Summit', 'Careers Fair', 'Alumni Mixer']);
 });
 
-// The event detail page is split into tabs. TC-276 – TC-278 in docs/test-cases.md.
+// The event detail page is split into tabs.
 describe('the coordinator event detail tabs', () => {
-  test('TC-276 the detail opens on the request, with the clarifications on a second tab', async () => {
+  test('TC-2029 the detail opens on the request, with the clarifications on a second tab', async () => {
     reviewApi.detail.mockResolvedValue({ ...detail(), clarifications: [{ id: 'q1', message: 'Confirm attendance', created_at: '2026-09-23T10:00:00Z' }], responses: [] });
     await openRequest();
 
@@ -525,7 +525,7 @@ describe('the coordinator event detail tabs', () => {
     expect(screen.getByText('Annual summit')).not.toBeVisible();
   });
 
-  test('TC-277 Request clarification is on the Clarifications tab; Reject stays on the request', async () => {
+  test('TC-2030 Request clarification is on the Clarifications tab; Reject stays on the request', async () => {
     await openRequest();
 
     expect(screen.queryByRole('button', { name: /request clarification/i })).not.toBeInTheDocument();
@@ -537,13 +537,13 @@ describe('the coordinator event detail tabs', () => {
     expect(screen.queryByRole('button', { name: /reject request/i })).not.toBeInTheDocument();
   });
 
-  test('TC-278 switching tab closes a half-written action form', async () => {
+  test('TC-2031 switching tab closes a half-written action form', async () => {
     await openRequest();
-    await userEvent.click(screen.getByRole('button', { name: /reject request/i }));
+    userEvent.click(screen.getByRole('button', { name: /reject request/i }));
     expect(screen.getByRole('heading', { name: 'Reject request' })).toBeInTheDocument();
 
     await openClarifications();
-    await userEvent.click(screen.getByRole('tab', { name: 'Event request' }));
+    userEvent.click(screen.getByRole('tab', { name: 'Event request' }));
 
     expect(screen.queryByRole('heading', { name: 'Reject request' })).not.toBeInTheDocument();
     expect(reviewApi.reject).not.toHaveBeenCalled();
@@ -554,7 +554,7 @@ describe('the coordinator event detail tabs', () => {
 // request can be understood fully before a decision. The review detail (Event
 // request tab) must show every requirement group and the submission metadata
 // (AC1, AC2); opening a Submitted request starts the review (AC3). SCRUM id to be
-// confirmed. TC-279 – TC-281 in docs/test-cases.md.
+// confirmed.
 describe('C3 the full event request in the review view', () => {
   // A request submitted with every optional section filled in.
   const fullDetail = () => ({
@@ -575,7 +575,7 @@ describe('C3 the full event request in the review view', () => {
     organiser: { id: 'u1', name: 'Nadia Organiser', email: 'nadia@smu.edu.sg', phone: '+65 9123 4567' }
   });
 
-  test('TC-279 the request tab shows venue requirements, accessibility, equipment and registration needs', async () => {
+  test('TC-0348 the request tab shows venue requirements, accessibility, equipment and registration needs', async () => {
     reviewApi.detail.mockResolvedValue(fullDetail());
     await openRequest();
 
@@ -592,7 +592,7 @@ describe('C3 the full event request in the review view', () => {
     expect(screen.getByText(/120/)).toBeInTheDocument();                        // registration capacity
   });
 
-  test('TC-280 the view shows the reference number, submission timestamp and the organiser contact', async () => {
+  test('TC-0349 the view shows the reference number, submission timestamp and the organiser contact', async () => {
     reviewApi.detail.mockResolvedValue(fullDetail());
     await openRequest();
 
@@ -603,13 +603,13 @@ describe('C3 the full event request in the review view', () => {
     expect(screen.getByText(/9123 4567/)).toBeInTheDocument();
   });
 
-  test('TC-281 opening a Submitted request starts the review (Submitted -> Under Review)', async () => {
+  test('TC-0350 opening a Submitted request starts the review (Submitted -> Under Review)', async () => {
     const submitted = { ...baseEvent, id: 'e9', status: 'SUBMITTED', editable: true };
     reviewApi.list.mockResolvedValue({ events: [submitted] });
     reviewApi.detail.mockResolvedValue(detail({ id: 'e9', status: 'UNDER_REVIEW' }));
 
     render(<EventReviewScreen />);
-    await userEvent.click(await screen.findByRole('button', { name: /view request/i }));
+    userEvent.click(await screen.findByRole('button', { name: /view request/i }));
     await screen.findByRole('button', { name: /back to events/i });
 
     // The transition (and the record of who opened it) is reviewApi.openReview.
@@ -617,10 +617,10 @@ describe('C3 the full event request in the review view', () => {
   });
 });
 
-// A7 / SCRUM-170 AC3 — TC-370. The coordinator finds the safety planning notes on
+// A7 / SCRUM-170 AC3. The coordinator finds the safety planning notes on
 // the event they are planning, and saving them reloads the event and says so.
-describe("TC-370 safety planning notes on the coordinator's event", () => {
-  test('a Planning event offers the notes for editing, and a save reloads the event', async () => {
+describe("safety planning notes on the coordinator's event", () => {
+  test('TC-0134 a Planning event offers the notes for editing, and a save reloads the event', async () => {
     const { savePlanningNotes } = require('../safety/safetyApi');
     reviewApi.list.mockResolvedValue({ events: [{ ...baseEvent, status: 'PLANNING' }] });
     reviewApi.detail.mockResolvedValue(detail({ status: 'PLANNING', equipment_placement: 'Speakers by the stage' }));
@@ -629,14 +629,14 @@ describe("TC-370 safety planning notes on the coordinator's event", () => {
 
     const notes = screen.getByRole('region', { name: 'Safety planning notes' });
     expect(within(notes).getByLabelText('Equipment placement')).toHaveValue('Speakers by the stage');
-    await userEvent.click(within(notes).getByRole('button', { name: 'Save safety notes' }));
+    userEvent.click(within(notes).getByRole('button', { name: 'Save safety notes' }));
 
     expect(savePlanningNotes).toHaveBeenCalledWith({ eventId: 'e1', values: { equipment_placement: 'Speakers by the stage', crowd_movement: '' } });
     await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Safety planning notes saved.'));
     expect(reviewApi.detail).toHaveBeenCalledTimes(2);
   });
 
-  test('an event still Under Review shows the notes read only', async () => {
+  test('TC-0135 an event still Under Review shows the notes read only', async () => {
     await openRequest();
     const notes = screen.getByRole('region', { name: 'Safety planning notes' });
     expect(within(notes).queryByRole('textbox')).not.toBeInTheDocument();
@@ -650,7 +650,7 @@ describe("TC-370 safety planning notes on the coordinator's event", () => {
 describe('K5 SCRUM-186 an event that is not assigned to the coordinator cannot be opened', () => {
   const refusal = 'You are not authorised to view this event.';
 
-  test('K5-FT1 AC3 opening an event by id that is refused shows the not-authorised message and no event details or actions', async () => {
+  test('TC-2394 K5 AC3 opening an event by id that is refused shows the not-authorised message and no event details or actions', async () => {
     reviewApi.list.mockResolvedValue({ events: [] });
     reviewApi.detail.mockRejectedValue(new Error(refusal));
 
@@ -662,18 +662,18 @@ describe('K5 SCRUM-186 an event that is not assigned to the coordinator cannot b
     expect(screen.queryByText('Partner Summit')).not.toBeInTheDocument();
   });
 
-  test('K5-FT2 AC3 a refused event leaves the coordinator on their list, and the events assigned to them still open', async () => {
+  test('TC-2395 K5 AC3 a refused event leaves the coordinator on their list, and the events assigned to them still open', async () => {
     reviewApi.detail.mockRejectedValueOnce(new Error(refusal));
 
     render(<EventReviewScreen initialEventId="e2" />);
     expect(await screen.findByRole('alert')).toHaveTextContent(refusal);
 
-    await userEvent.click(await screen.findByRole('button', { name: /view request/i }));
+    userEvent.click(await screen.findByRole('button', { name: /view request/i }));
     expect(await screen.findByRole('button', { name: /back to events/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Partner Summit' })).toBeInTheDocument();
   });
 
-  test('K5-FT3 AC1 the assigned events list shows only what is assigned and has no read-only reassigned view', async () => {
+  test('TC-2396 K5 AC1 the assigned events list shows only what is assigned and has no read-only reassigned view', async () => {
     reviewApi.list.mockResolvedValue({ events: [baseEvent, { ...baseEvent, id: 'e5', name: 'Second Workshop', reference_no: 'EVT-005' }] });
 
     render(<EventReviewScreen />);
@@ -681,7 +681,7 @@ describe('K5 SCRUM-186 an event that is not assigned to the coordinator cannot b
     expect(await screen.findByText('Partner Summit')).toBeInTheDocument();
     expect(screen.getByText('Second Workshop')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /view request/i })).toHaveLength(2);
-    await userEvent.click(screen.getAllByRole('button', { name: /view request/i })[0]);
+    userEvent.click(screen.getAllByRole('button', { name: /view request/i })[0]);
     await screen.findByRole('button', { name: /back to events/i });
     expect(screen.queryByText(/was reassigned|previously assigned/i)).not.toBeInTheDocument();
   });
@@ -690,19 +690,19 @@ describe('K5 SCRUM-186 an event that is not assigned to the coordinator cannot b
 describe('D1 SCRUM-111 ordinary event details and the Activity tab', () => {
   const planningEvent = { ...baseEvent, status: 'PLANNING' };
 
-  test('TC-465 D1 AC1 an ordinary edit saves with no arrangement check or acknowledgement', async () => {
+  test('TC-0434 D1 AC1 an ordinary edit saves with no arrangement check or acknowledgement', async () => {
     reviewApi.list.mockResolvedValue({ events: [planningEvent] });
     reviewApi.detail.mockResolvedValue({ ...detail(planningEvent), organiser: { id: 'org1', name: 'Nadia Organiser', email: 'nadia@smu.edu.sg' } });
     await openRequest();
-    await userEvent.click(screen.getByRole('button', { name: /^edit event$/i }));
+    userEvent.click(screen.getByRole('button', { name: /^edit event$/i }));
 
     const save = screen.getByRole('button', { name: /save changes/i });
     expect(save).toBeDisabled();
     expect(screen.getByLabelText(/contact name/i)).toHaveValue('Nadia Organiser');
-    await userEvent.type(screen.getByLabelText(/internal notes/i), 'Keynote TBC');
+    userEvent.type(screen.getByLabelText(/internal notes/i), 'Keynote TBC');
     expect(save).toBeEnabled();
     expect(screen.queryByRole('complementary', { name: 'Significant change impact' })).not.toBeInTheDocument();
-    await userEvent.click(save);
+    userEvent.click(save);
 
     await waitFor(() => expect(reviewApi.saveEventEdit).toHaveBeenCalledWith(expect.objectContaining({
       eventId: 'e1',
@@ -714,7 +714,7 @@ describe('D1 SCRUM-111 ordinary event details and the Activity tab', () => {
     expect(reviewApi.significantChangeImpact).not.toHaveBeenCalled();
   });
 
-  test('TC-466 D1 AC3 a terminal event offers no Edit event', async () => {
+  test('TC-0435 D1 AC3 a terminal event offers no Edit event', async () => {
     const completed = { ...baseEvent, status: 'COMPLETED' };
     reviewApi.list.mockResolvedValue({ events: [completed] });
     reviewApi.detail.mockResolvedValue(detail(completed));
@@ -722,7 +722,7 @@ describe('D1 SCRUM-111 ordinary event details and the Activity tab', () => {
     expect(screen.queryByRole('button', { name: /^edit event$/i })).not.toBeInTheDocument();
   });
 
-  test('TC-467 D1 AC2 the Activity tab lists each edit with field, old and new value, actor and time', async () => {
+  test('TC-0436 D1 AC2 the Activity tab lists each edit with field, old and new value, actor and time', async () => {
     reviewApi.list.mockResolvedValue({ events: [planningEvent] });
     reviewApi.detail.mockResolvedValue({
       ...detail(planningEvent),
@@ -730,7 +730,7 @@ describe('D1 SCRUM-111 ordinary event details and the Activity tab', () => {
       actorNames: { c1: 'Sam Coordinator' }
     });
     await openRequest();
-    await userEvent.click(screen.getByRole('tab', { name: /^Activity/ }));
+    userEvent.click(screen.getByRole('tab', { name: /^Activity/ }));
 
     const log = screen.getByRole('region', { name: /event activity/i });
     expect(within(log).getByText('Updated event details')).toBeInTheDocument();
@@ -742,7 +742,7 @@ describe('D1 SCRUM-111 ordinary event details and the Activity tab', () => {
   });
 
   test.each(['COMPLETED', 'CANCELLED', 'REJECTED'])(
-    'D6 keeps event history available when the event is %s',
+    'TC-0553 D6 keeps event history available when the event is %s',
     async (status) => {
       reviewApi.list.mockResolvedValue({ events: [{ ...baseEvent, status }] });
       reviewApi.detail.mockResolvedValue({
@@ -756,7 +756,7 @@ describe('D1 SCRUM-111 ordinary event details and the Activity tab', () => {
       });
 
       await openRequest();
-      await userEvent.click(screen.getByRole('tab', { name: /^Activity/ }));
+      userEvent.click(screen.getByRole('tab', { name: /^Activity/ }));
 
       const log = screen.getByRole('region', { name: /event activity/i });
       expect(within(log).getByText('Rejected the request')).toBeInTheDocument();
@@ -765,23 +765,23 @@ describe('D1 SCRUM-111 ordinary event details and the Activity tab', () => {
     }
   );
 
-  test('TC-468 an invalid ordinary value is named and cannot be saved', async () => {
+  test('TC-0437 an invalid ordinary value is named and cannot be saved', async () => {
     reviewApi.list.mockResolvedValue({ events: [planningEvent] });
     reviewApi.detail.mockResolvedValue(detail(planningEvent));
     await openRequest();
-    await userEvent.click(screen.getByRole('button', { name: /^edit event$/i }));
+    userEvent.click(screen.getByRole('button', { name: /^edit event$/i }));
 
-    await userEvent.clear(screen.getByLabelText(/^event name/i));
+    userEvent.clear(screen.getByLabelText(/^event name/i));
     expect(screen.getByRole('alert')).toHaveTextContent('Event name is required.');
     expect(screen.getByRole('button', { name: /save changes/i })).toBeDisabled();
 
-    await userEvent.type(screen.getByLabelText(/^event name/i), 'Partner Summit');
-    await userEvent.type(screen.getByLabelText(/contact email/i), '{selectall}not-an-email');
+    userEvent.type(screen.getByLabelText(/^event name/i), 'Partner Summit');
+    userEvent.type(screen.getByLabelText(/contact email/i), '{selectall}not-an-email');
     expect(screen.getByRole('alert')).toHaveTextContent('Enter a valid contact email.');
     expect(reviewApi.saveEventEdit).not.toHaveBeenCalled();
   });
 
-  test('TC-469 internal notes are shown to the coordinator on the request', async () => {
+  test('TC-0438 internal notes are shown to the coordinator on the request', async () => {
     reviewApi.list.mockResolvedValue({ events: [planningEvent] });
     reviewApi.detail.mockResolvedValue(detail({ ...planningEvent, internal_notes: 'Keynote TBC' }));
     await openRequest();
@@ -794,7 +794,7 @@ describe('D1 SCRUM-111 ordinary event details and the Activity tab', () => {
 describe('equipment reservations on the coordinator event page', () => {
   const planningEvent = { ...baseEvent, status: 'PLANNING' };
 
-  test('TC-486 G4 an equipment line Technical Support reserved shows an Approved badge, and the decision is on the Activity tab', async () => {
+  test('TC-1300 G4 an equipment line Technical Support reserved shows an Approved badge, and the decision is on the Activity tab', async () => {
     reviewApi.list.mockResolvedValue({ events: [planningEvent] });
     reviewApi.detail.mockResolvedValue({
       ...detail(planningEvent),
@@ -810,7 +810,7 @@ describe('equipment reservations on the coordinator event page', () => {
     });
     await openRequest();
 
-    await userEvent.click(screen.getByRole('tab', { name: /^Arrangements/ }));
+    userEvent.click(screen.getByRole('tab', { name: /^Arrangements/ }));
     const section = screen.getByRole('region', { name: /equipment reservation status/i });
     const audio = within(section).getByText('Audio system × 2').closest('article');
     expect(within(audio).getByText('Approved')).toHaveClass('cs-pill-positive');
@@ -818,22 +818,22 @@ describe('equipment reservations on the coordinator event page', () => {
     expect(within(projector).getByText('Pending')).toBeInTheDocument();
     expect(within(projector).getByText('Not reserved yet')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('tab', { name: /^Activity/ }));
+    userEvent.click(screen.getByRole('tab', { name: /^Activity/ }));
     const log = screen.getByRole('region', { name: /event activity/i });
     expect(within(log).getByText('Approved an equipment reservation')).toBeInTheDocument();
     expect(within(log).getByText(/by Technical Support/)).toBeInTheDocument();
     expect(within(log).getByText('Audio system × 2 — Approved')).toBeInTheDocument();
   });
 
-  test('TC-487 G4 an event with no equipment request says so', async () => {
+  test('TC-1301 G4 an event with no equipment request says so', async () => {
     reviewApi.list.mockResolvedValue({ events: [planningEvent] });
     reviewApi.detail.mockResolvedValue(detail(planningEvent));
     await openRequest();
-    await userEvent.click(screen.getByRole('tab', { name: /^Arrangements/ }));
+    userEvent.click(screen.getByRole('tab', { name: /^Arrangements/ }));
     const section = screen.getByRole('region', { name: /equipment reservation status/i });
     expect(within(section).getByText(/no equipment request has been sent/i)).toBeInTheDocument();
   });
-  test('TC-488 opened from Equipment requests, the event starts on its Arrangements tab, which counts bookings and equipment lines', async () => {
+  test('TC-1302 opened from Equipment requests, the event starts on its Arrangements tab, which counts bookings and equipment lines', async () => {
     reviewApi.list.mockResolvedValue({ events: [planningEvent] });
     reviewApi.detail.mockResolvedValue({
       ...detail(planningEvent),
@@ -853,9 +853,9 @@ describe('equipment reservations on the coordinator event page', () => {
   });
 });
 
-// F12 / SCRUM-177 AC5 — TC-508 in docs/test-cases.md.
+// F12 / SCRUM-177 AC5.
 describe('F12 SCRUM-177 the event view lists every venue booking', () => {
-  test('TC-508 AC5 each booking shows its label, venue, window and status', async () => {
+  test('TC-1067 AC5 each booking shows its label, venue, window and status', async () => {
     const planningEvent = { ...baseEvent, status: 'PLANNING' };
     const window = { start_datetime: '2026-11-04T01:00:00.000Z', end_datetime: '2026-11-04T09:00:00.000Z' };
     reviewApi.list.mockResolvedValue({ events: [planningEvent] });
@@ -884,17 +884,17 @@ describe('F12 SCRUM-177 the event view lists every venue booking', () => {
 
 // J2 / SCRUM-151 AC3 — an approval carries its reason, as a rejection already does, so
 // Approve now opens the same Reason box instead of sending at once. These replace the
-// one-click behaviour pinned by C6 TC1, TC2, TC6 and TC7 above, which are updated to the
+// one-click behaviour pinned by C6, above, which are updated to the
 // two-step flow with the code.
 describe('J2 SCRUM-151 approving needs a reason', () => {
   const approveButton = () => screen.getByRole('button', { name: 'Approve' });
   const confirmButton = () => screen.getByRole('button', { name: 'Approve event' });
   const reasonBox = () => screen.getByRole('textbox', { name: /reason/i });
 
-  test('J2-FT1 AC3 Approve opens a required Reason box and sends nothing yet', async () => {
+  test('TC-2138 J2 AC3 Approve opens a required Reason box and sends nothing yet', async () => {
     await openRequest();
 
-    await userEvent.click(approveButton());
+    userEvent.click(approveButton());
 
     expect(screen.getByRole('heading', { name: 'Approve request' })).toBeInTheDocument();
     expect(reasonBox()).toBeRequired();
@@ -902,64 +902,64 @@ describe('J2 SCRUM-151 approving needs a reason', () => {
     expect(reviewApi.approve).not.toHaveBeenCalled();
   });
 
-  test('J2-FT2 AC3 confirming with no reason is refused beside the box, and typing clears the message', async () => {
+  test('TC-2139 J2 AC3 confirming with no reason is refused beside the box, and typing clears the message', async () => {
     await openRequest();
-    await userEvent.click(approveButton());
+    userEvent.click(approveButton());
 
-    await userEvent.click(confirmButton());
+    userEvent.click(confirmButton());
 
     expect(screen.getByRole('alert')).toHaveTextContent('Approval reason is required.');
     expect(reasonBox()).toHaveAttribute('aria-invalid', 'true');
     expect(reviewApi.approve).not.toHaveBeenCalled();
-    await userEvent.type(reasonBox(), 'Venue and equipment are confirmed.');
+    userEvent.type(reasonBox(), 'Venue and equipment are confirmed.');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(reasonBox()).toHaveAttribute('aria-invalid', 'false');
   });
 
-  test('J2-FT3 AC3 a reason made only of spaces is refused too', async () => {
+  test('TC-2140 J2 AC3 a reason made only of spaces is refused too', async () => {
     await openRequest();
-    await userEvent.click(approveButton());
-    await userEvent.type(reasonBox(), '   ');
+    userEvent.click(approveButton());
+    userEvent.type(reasonBox(), '   ');
 
-    await userEvent.click(confirmButton());
+    userEvent.click(confirmButton());
 
     expect(screen.getByRole('alert')).toHaveTextContent('Approval reason is required.');
     expect(reviewApi.approve).not.toHaveBeenCalled();
   });
 
-  test('J2-FT4 AC3 confirming with a reason approves the event and sends the reason with it', async () => {
+  test('TC-2141 J2 AC3 confirming with a reason approves the event and sends the reason with it', async () => {
     const onNotice = jest.fn();
     await openRequest({ onNotice });
-    await userEvent.click(approveButton());
-    await userEvent.type(reasonBox(), 'Venue and equipment are confirmed.');
+    userEvent.click(approveButton());
+    userEvent.type(reasonBox(), 'Venue and equipment are confirmed.');
 
-    await userEvent.click(confirmButton());
+    userEvent.click(confirmButton());
 
     await waitFor(() => expect(reviewApi.approve).toHaveBeenCalledWith('e1', 'Venue and equipment are confirmed.'));
     expect(reviewApi.approve).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Event request approved.'));
   });
 
-  test('J2-FT5 Cancel closes the box without approving, and Approve is offered again', async () => {
+  test('TC-2142 J2 Cancel closes the box without approving, and Approve is offered again', async () => {
     await openRequest();
-    await userEvent.click(approveButton());
-    await userEvent.type(reasonBox(), 'Half-written reason');
+    userEvent.click(approveButton());
+    userEvent.type(reasonBox(), 'Half-written reason');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     expect(screen.queryByRole('textbox', { name: /reason/i })).not.toBeInTheDocument();
     expect(reviewApi.approve).not.toHaveBeenCalled();
     expect(approveButton()).toBeEnabled();
   });
 
-  test('J2-FT6 a failed approval shows its error in the box and keeps the reason that was typed', async () => {
+  test('TC-2143 J2 a failed approval shows its error in the box and keeps the reason that was typed', async () => {
     reviewApi.approve.mockRejectedValueOnce(new Error('This event cannot be approved now.'));
     const onNotice = jest.fn();
     await openRequest({ onNotice });
-    await userEvent.click(approveButton());
-    await userEvent.type(reasonBox(), 'Venue and equipment are confirmed.');
+    userEvent.click(approveButton());
+    userEvent.type(reasonBox(), 'Venue and equipment are confirmed.');
 
-    await userEvent.click(confirmButton());
+    userEvent.click(confirmButton());
 
     expect(await screen.findByRole('alert')).toHaveTextContent('This event cannot be approved now.');
     expect(onNotice).not.toHaveBeenCalled();
@@ -967,30 +967,30 @@ describe('J2 SCRUM-151 approving needs a reason', () => {
     expect(confirmButton()).toBeEnabled();
   });
 
-  test('J2-FT7 while the approval is being sent, confirm and Reject are locked so it cannot go twice', async () => {
+  test('TC-2144 J2 while the approval is being sent, confirm and Reject are locked so it cannot go twice', async () => {
     let finish;
     reviewApi.approve.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
     await openRequest();
-    await userEvent.click(approveButton());
-    await userEvent.type(reasonBox(), 'Venue and equipment are confirmed.');
+    userEvent.click(approveButton());
+    userEvent.type(reasonBox(), 'Venue and equipment are confirmed.');
 
-    await userEvent.click(confirmButton());
+    userEvent.click(confirmButton());
 
     const busy = await screen.findByRole('button', { name: /saving/i });
     expect(busy).toBeDisabled();
     expect(screen.getByRole('button', { name: /reject request/i })).toBeDisabled();
-    await userEvent.click(busy);
+    userEvent.click(busy);
     expect(reviewApi.approve).toHaveBeenCalledTimes(1);
 
     await act(async () => { finish({ ok: true }); });
   });
 
-  test('J2-FT8 switching from Approve to Reject starts the Reason box afresh, under the right heading', async () => {
+  test('TC-2145 J2 switching from Approve to Reject starts the Reason box afresh, under the right heading', async () => {
     await openRequest();
-    await userEvent.click(approveButton());
-    await userEvent.type(reasonBox(), 'Venue and equipment are confirmed.');
+    userEvent.click(approveButton());
+    userEvent.type(reasonBox(), 'Venue and equipment are confirmed.');
 
-    await userEvent.click(screen.getByRole('button', { name: /reject request/i }));
+    userEvent.click(screen.getByRole('button', { name: /reject request/i }));
 
     expect(screen.getByRole('heading', { name: 'Reject request' })).toBeInTheDocument();
     expect(reasonBox()).toHaveValue('');
@@ -1009,30 +1009,34 @@ describe('I3 SCRUM-149 the Edit event form and re-requesting arrangements', () =
     reviewApi.list.mockResolvedValue({ events: [event] });
     reviewApi.detail.mockResolvedValue(detail(event));
     await openRequest(props);
-    await userEvent.click(screen.getByRole('button', { name: /^edit event$/i }));
+    userEvent.click(screen.getByRole('button', { name: /^edit event$/i }));
+    // Let the editor's registered-count read land inside act, not between later steps.
+    await act(async () => {});
   };
   const changeAttendance = async (value = '125') => {
-    await userEvent.clear(screen.getByLabelText(/expected attendance/i));
-    await userEvent.type(screen.getByLabelText(/expected attendance/i), value);
+    userEvent.clear(screen.getByLabelText(/expected attendance/i));
+    userEvent.type(screen.getByLabelText(/expected attendance/i), value);
+    // The impact lookup this starts resolves inside act.
+    await act(async () => {});
   };
   const setCapacity = async (value) => {
     const field = await screen.findByLabelText(/registration capacity/i);
-    await userEvent.clear(field);
-    await userEvent.type(field, value);
+    userEvent.clear(field);
+    userEvent.type(field, value);
   };
 
-  test('I3-FT1 AC4 the registration capacity field appears only when the event takes registrations', async () => {
+  test('TC-2032 I3 AC4 the registration capacity field appears only when the event takes registrations', async () => {
     await openEditor(confirmedEvent);
     expect(await screen.findByLabelText(/registration capacity/i)).toHaveValue(100);
   });
 
-  test('I3-FT2 AC4 an event without registration has no capacity field and never asks for the registered count', async () => {
+  test('TC-2033 I3 AC4 an event without registration has no capacity field and never asks for the registered count', async () => {
     await openEditor({ ...confirmedEvent, registration_required: false, registration_capacity: undefined });
     expect(screen.queryByLabelText(/registration capacity/i)).not.toBeInTheDocument();
     expect(reviewApi.registeredCount).not.toHaveBeenCalled();
   });
 
-  test('I3-FT3 AC4 a capacity below the registered count shows a warning and keeps Save off until acknowledged', async () => {
+  test('TC-2034 I3 AC4 a capacity below the registered count shows a warning and keeps Save off until acknowledged', async () => {
     reviewApi.registeredCount.mockResolvedValue(60);
     await openEditor(planningEvent);
     await setCapacity('40');
@@ -1040,9 +1044,9 @@ describe('I3 SCRUM-149 the Edit event form and re-requesting arrangements', () =
     expect(await screen.findByText(/below the 60 people already registered/i)).toBeInTheDocument();
     const save = screen.getByRole('button', { name: /save changes/i });
     expect(save).toBeDisabled();
-    await userEvent.click(screen.getByLabelText(/below the number already registered/i));
+    userEvent.click(screen.getByLabelText(/below the number already registered/i));
     expect(save).toBeEnabled();
-    await userEvent.click(save);
+    userEvent.click(save);
 
     await waitFor(() => expect(reviewApi.saveEventEdit).toHaveBeenCalledWith(expect.objectContaining({
       eventId: 'e1',
@@ -1052,15 +1056,15 @@ describe('I3 SCRUM-149 the Edit event form and re-requesting arrangements', () =
     })));
   });
 
-  test('I3-FT4 AC4 un-ticking the acknowledgement, or raising the capacity again, takes the gate away or puts it back', async () => {
+  test('TC-2035 I3 AC4 un-ticking the acknowledgement, or raising the capacity again, takes the gate away or puts it back', async () => {
     reviewApi.registeredCount.mockResolvedValue(60);
     await openEditor(planningEvent);
     await setCapacity('40');
     const save = screen.getByRole('button', { name: /save changes/i });
     const box = await screen.findByLabelText(/below the number already registered/i);
-    await userEvent.click(box);
+    userEvent.click(box);
     expect(save).toBeEnabled();
-    await userEvent.click(box);
+    userEvent.click(box);
     expect(save).toBeDisabled();
 
     await setCapacity('70');
@@ -1069,20 +1073,20 @@ describe('I3 SCRUM-149 the Edit event form and re-requesting arrangements', () =
     expect(save).toBeEnabled();
   });
 
-  test('I3-FT5 AC4 a capacity change that does not go below the registered count needs no acknowledgement', async () => {
+  test('TC-2036 I3 AC4 a capacity change that does not go below the registered count needs no acknowledgement', async () => {
     reviewApi.registeredCount.mockResolvedValue(60);
     await openEditor(planningEvent);
     await setCapacity('80');
 
     expect(screen.queryByLabelText(/below the number already registered/i)).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    userEvent.click(screen.getByRole('button', { name: /save changes/i }));
     await waitFor(() => expect(reviewApi.saveEventEdit).toHaveBeenCalledWith(expect.objectContaining({
       values: expect.objectContaining({ registration_capacity: 80 }),
       capacityAcknowledged: false
     })));
   });
 
-  test('I3-FT6 AC4 a capacity the person never touched leaves Save off, as for any other untouched form', async () => {
+  test('TC-2037 I3 AC4 a capacity the person never touched leaves Save off, as for any other untouched form', async () => {
     reviewApi.registeredCount.mockResolvedValue(150);
     await openEditor(planningEvent);
     expect(await screen.findByLabelText(/registration capacity/i)).toBeInTheDocument();
@@ -1090,7 +1094,7 @@ describe('I3 SCRUM-149 the Edit event form and re-requesting arrangements', () =
     expect(screen.queryByText(/already registered/i)).not.toBeInTheDocument();
   });
 
-  test('I3-FT7 AC1 AC3 the impact warning for a Confirmed event says it goes back to Planning and that bookings are kept as a reference', async () => {
+  test('TC-2038 I3 AC1 AC3 the impact warning for a Confirmed event says it goes back to Planning and that bookings are kept as a reference', async () => {
     await openEditor(confirmedEvent);
     await changeAttendance();
 
@@ -1101,7 +1105,7 @@ describe('I3 SCRUM-149 the Edit event form and re-requesting arrangements', () =
     expect(within(warning).getByText(/not cancelled/i)).toBeInTheDocument();
   });
 
-  test('I3-FT8 AC1 the warning for an event already in Planning still says to re-request but not that the status moves', async () => {
+  test('TC-2039 I3 AC1 the warning for an event already in Planning still says to re-request but not that the status moves', async () => {
     await openEditor(planningEvent);
     await changeAttendance();
 
@@ -1110,25 +1114,25 @@ describe('I3 SCRUM-149 the Edit event form and re-requesting arrangements', () =
     expect(within(warning).queryByText(/moved back to planning/i)).not.toBeInTheDocument();
   });
 
-  test('I3-FT9 AC1 AC2 after a significant save the screen waits for the re-request, then reports the change as saved', async () => {
+  test('TC-2040 I3 AC1 AC2 after a significant save the screen waits for the re-request, then reports the change as saved', async () => {
     const onNotice = jest.fn();
     reviewApi.saveEventEdit.mockResolvedValue({ ok: true, changed: 1, rerequest: { sent: true, changeId: 'h1' } });
     await openEditor(confirmedEvent, { onNotice });
     await changeAttendance();
-    await userEvent.click(await screen.findByLabelText(/reviewed and acknowledge/i));
-    await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    userEvent.click(await screen.findByLabelText(/reviewed and acknowledge/i));
+    userEvent.click(screen.getByRole('button', { name: /save changes/i }));
 
     await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Event changes saved.'));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  test('I3-FT10 AC1 when the re-request did not go through the screen says so, offers Retry, and does not report plain success', async () => {
+  test('TC-2041 I3 AC1 when the re-request did not go through the screen says so, offers Retry, and does not report plain success', async () => {
     const onNotice = jest.fn();
     reviewApi.saveEventEdit.mockResolvedValue({ ok: true, changed: 1, rerequest: { sent: false, changeId: 'h1', error: 'Could not reach the service.' } });
     await openEditor(confirmedEvent, { onNotice });
     await changeAttendance();
-    await userEvent.click(await screen.findByLabelText(/reviewed and acknowledge/i));
-    await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    userEvent.click(await screen.findByLabelText(/reviewed and acknowledge/i));
+    userEvent.click(screen.getByRole('button', { name: /save changes/i }));
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(/saved/i);
@@ -1137,52 +1141,210 @@ describe('I3 SCRUM-149 the Edit event form and re-requesting arrangements', () =
     expect(onNotice).not.toHaveBeenCalledWith('Event changes saved.');
   });
 
-  test('I3-FT11 AC1 Retry asks again for the same change and, once it works, reports the change as saved', async () => {
+  test('TC-2042 I3 AC1 Retry asks again for the same change and, once it works, reports the change as saved', async () => {
     const onNotice = jest.fn();
     reviewApi.saveEventEdit.mockResolvedValue({ ok: true, changed: 1, rerequest: { sent: false, changeId: 'h1', error: 'Could not reach the service.' } });
     await openEditor(confirmedEvent, { onNotice });
     await changeAttendance();
-    await userEvent.click(await screen.findByLabelText(/reviewed and acknowledge/i));
-    await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
-    await userEvent.click(await screen.findByRole('button', { name: /^retry$/i }));
+    userEvent.click(await screen.findByLabelText(/reviewed and acknowledge/i));
+    userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    userEvent.click(await screen.findByRole('button', { name: /^retry$/i }));
 
     await waitFor(() => expect(reviewApi.retryRerequest).toHaveBeenCalledWith({ eventId: 'e1', changeId: 'h1' }));
     await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Event changes saved.'));
     expect(reviewApi.saveEventEdit).toHaveBeenCalledTimes(1);
   });
 
-  test('I3-FT12 AC1 a Retry that fails again keeps the message and the button, and says why', async () => {
+  test('TC-2043 I3 AC1 a Retry that fails again keeps the message and the button, and says why', async () => {
     reviewApi.saveEventEdit.mockResolvedValue({ ok: true, changed: 1, rerequest: { sent: false, changeId: 'h1', error: 'Could not reach the service.' } });
     reviewApi.retryRerequest.mockRejectedValue(new Error('That change is no longer the latest.'));
     await openEditor(confirmedEvent);
     await changeAttendance();
-    await userEvent.click(await screen.findByLabelText(/reviewed and acknowledge/i));
-    await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
-    await userEvent.click(await screen.findByRole('button', { name: /^retry$/i }));
+    userEvent.click(await screen.findByLabelText(/reviewed and acknowledge/i));
+    userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    userEvent.click(await screen.findByRole('button', { name: /^retry$/i }));
 
     expect(await screen.findByText(/that change is no longer the latest/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^retry$/i })).toBeInTheDocument();
   });
 
-  test('I3-FT13 an ordinary save carries no re-request and reports success straight away', async () => {
+  test('TC-2044 I3 an ordinary save carries no re-request and reports success straight away', async () => {
     const onNotice = jest.fn();
     await openEditor(confirmedEvent, { onNotice });
-    await userEvent.type(screen.getByLabelText(/internal notes/i), 'Keynote TBC');
-    await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    userEvent.type(screen.getByLabelText(/internal notes/i), 'Keynote TBC');
+    userEvent.click(screen.getByRole('button', { name: /save changes/i }));
 
     await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Event changes saved.'));
     expect(screen.queryByRole('button', { name: /^retry$/i })).not.toBeInTheDocument();
   });
 
-  test('I3-FT14 AC4 a refusal from the capacity check is shown and nothing is reported as saved', async () => {
+  test('TC-2045 I3 AC4 a refusal from the capacity check is shown and nothing is reported as saved', async () => {
     const onNotice = jest.fn();
     reviewApi.registeredCount.mockResolvedValue(10);
     reviewApi.saveEventEdit.mockRejectedValue(new Error('The capacity cannot exceed the venue capacity of 120.'));
     await openEditor(planningEvent, { onNotice });
     await setCapacity('500');
-    await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    userEvent.click(screen.getByRole('button', { name: /save changes/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('The capacity cannot exceed the venue capacity of 120.');
     expect(onNotice).not.toHaveBeenCalledWith('Event changes saved.');
   });
 });
+
+// C1 / C2 / C4 / D4 — the review queue, the header back button, and the screen's
+// failure paths.
+describe('the review queue, the back button and failures on the coordinator screen', () => {
+  const queued = [
+    { ...baseEvent, id: 'q1', status: 'SUBMITTED', name: 'Fresh request' },
+    { id: 'q2', status: 'UNDER_REVIEW', coordinator_id: 'c1', editable: true },
+    { ...baseEvent, id: 'q3', status: 'PLANNING', name: 'Already planning' },
+    { ...baseEvent, id: 'q4', status: 'SUBMITTED', name: 'Not mine any more', editable: false }
+  ];
+
+  test('TC-0307 [normal] C1 the queue lists only the requests waiting for this coordinator, and opens one', async () => {
+    reviewApi.list.mockResolvedValue({ events: queued });
+    render(<EventReviewScreen queueOnly />);
+
+    expect(await screen.findByText('Fresh request')).toBeInTheDocument();
+    expect(screen.getByText('Untitled event')).toBeInTheDocument();
+    expect(screen.getByText('Date not set')).toBeInTheDocument();
+    expect(screen.getAllByText('Current assignment')).toHaveLength(2);
+    expect(screen.queryByText('Already planning')).not.toBeInTheDocument();
+    expect(screen.queryByText('Not mine any more')).not.toBeInTheDocument();
+
+    userEvent.click(screen.getAllByRole('button', { name: /view request/i })[0]);
+    expect(await screen.findByRole('button', { name: /back to events/i })).toBeInTheDocument();
+  });
+
+  test('TC-0308 [boundary] C1 / C2 an empty answer reads as no requests and no assigned events', async () => {
+    reviewApi.list.mockResolvedValue({});
+    const { unmount } = render(<EventReviewScreen queueOnly />);
+    expect(await screen.findByText('No requests are waiting for review.')).toBeInTheDocument();
+    unmount();
+
+    render(<EventReviewScreen />);
+    expect(await screen.findByText('No events are assigned to you.')).toBeInTheDocument();
+  });
+
+  test('TC-0309 [failure] C1 / C2 a list that cannot be read says why, in the queue and in the assigned list', async () => {
+    reviewApi.list.mockRejectedValue(new Error('Missing or insufficient permissions.'));
+    const { unmount } = render(<EventReviewScreen queueOnly />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Missing or insufficient permissions.');
+    unmount();
+
+    render(<EventReviewScreen />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Missing or insufficient permissions.');
+  });
+
+  test('TC-0310 [failure] C1 a request that cannot be opened from the queue is reported above the queue', async () => {
+    reviewApi.list.mockResolvedValue({ events: queued });
+    reviewApi.openReview.mockRejectedValue(new Error('You are not authorised to view this event.'));
+    render(<EventReviewScreen queueOnly />);
+
+    userEvent.click((await screen.findAllByRole('button', { name: /view request/i }))[0]);
+    expect(await screen.findByRole('alert')).toHaveTextContent('You are not authorised to view this event.');
+    expect(screen.getByText('Fresh request')).toBeInTheDocument();
+  });
+
+  test('TC-2046 [normal] the page header gets a back action while a request is open, which closes it, and loses it on leaving', async () => {
+    const onBackChange = jest.fn();
+    const { unmount } = render(<EventReviewScreen onBackChange={onBackChange} />);
+    await waitFor(() => expect(onBackChange).toHaveBeenLastCalledWith(null));
+
+    userEvent.click(await screen.findByRole('button', { name: /view request/i }));
+    await waitFor(() => expect(onBackChange).toHaveBeenLastCalledWith(expect.any(Function)));
+    const back = onBackChange.mock.calls[onBackChange.mock.calls.length - 1][0];
+    act(() => back());
+    expect(await screen.findByRole('button', { name: /view request/i })).toBeInTheDocument();
+    expect(onBackChange).toHaveBeenLastCalledWith(null);
+
+    onBackChange.mockClear();
+    unmount();
+    expect(onBackChange).toHaveBeenCalledWith(null);
+  });
+
+  test('TC-0367 [failure] C4 AC1 an empty clarification message is refused on screen and nothing is sent', async () => {
+    await openRequest();
+    await openClarifications();
+    userEvent.click(screen.getByRole('button', { name: 'Request clarification' }));
+    userEvent.click(screen.getByRole('button', { name: 'Send request' }));
+
+    expect(screen.getByText('Clarification message is required.')).toBeInTheDocument();
+    expect(reviewApi.clarify).not.toHaveBeenCalled();
+  });
+
+  test('TC-0521 [failure] D4 confirming a cancellation with no reason is refused and nothing is cancelled', async () => {
+    reviewApi.detail.mockResolvedValue(detail({ status: 'PLANNING' }));
+    await openRequest();
+    userEvent.click(screen.getByRole('button', { name: /^cancel event$/i }));
+    userEvent.click(screen.getByRole('checkbox'));
+    userEvent.click(screen.getByRole('button', { name: /confirm cancellation/i }));
+
+    expect(screen.getByText('Cancellation reason is required.')).toBeInTheDocument();
+    expect(reviewApi.cancel).not.toHaveBeenCalled();
+  });
+
+  test('TC-0522 [failure] D4 a cleanup retry that fails again keeps the retry and names what is still incomplete', async () => {
+    reviewApi.detail.mockResolvedValue(detail({ status: 'PLANNING' }));
+    releaseCancelledEventBookings.mockRejectedValue(new Error(''));
+    await openRequest();
+    userEvent.click(screen.getByRole('button', { name: /^cancel event$/i }));
+    userEvent.type(screen.getByLabelText(/^reason/i), 'Speaker unavailable');
+    userEvent.click(screen.getByRole('checkbox'));
+    userEvent.click(screen.getByRole('button', { name: /confirm cancellation/i }));
+    // A failure with no message is named by what failed.
+    expect(await screen.findByRole('alert')).toHaveTextContent('venue bookings: operation failed');
+
+    userEvent.click(screen.getByRole('button', { name: /retry incomplete cleanup/i }));
+    await waitFor(() => expect(releaseCancelledEventBookings).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole('alert')).toHaveTextContent('The event remains cancelled, but cleanup is incomplete (venue bookings: operation failed).');
+    expect(screen.getByRole('button', { name: /retry incomplete cleanup/i })).toBeEnabled();
+  });
+
+  test('TC-0351 [boundary] C3 / C8 / F7 / G4 missing details read "Not set", and every recorded reason is shown', async () => {
+    const event = { ...baseEvent, status: 'PLANNING', registration_required: 'YES', decision_reason: 'Fits the brief', decided_at: '2026-10-01T02:00:00Z' };
+    reviewApi.list.mockResolvedValue({ events: [event] });
+    reviewApi.detail.mockResolvedValue({
+      ...detail(event),
+      venueBookings: undefined,
+      equipmentArrangements: { lines: [{ key: 'l1', label: 'Projector × 1', status: { tone: 'danger', label: 'Unable to fulfil' }, reason: 'None in stock', decidedAt: null, reservedFrom: null }] }
+    });
+    await openRequest();
+
+    expect(screen.getByText(/Fits the brief ·/)).toBeInTheDocument();
+    const registration = screen.getByRole('heading', { name: 'Registration' }).closest('section');
+    expect(within(registration).getAllByText('Not set')).toHaveLength(3);
+
+    userEvent.click(screen.getByRole('tab', { name: /^Arrangements/ }));
+    expect(screen.getByText('No venue booking requests have been raised for this event.')).toBeInTheDocument();
+    expect(screen.getByText('None in stock')).toBeInTheDocument();
+  });
+
+  test('TC-0327 [boundary] C2 / F11 an undated row says so, a lost venue is flagged, and the date sort toggles both ways', async () => {
+    reviewApi.list.mockResolvedValue({ events: [
+      { ...baseEvent, id: 'x1', name: 'Undated', event_date: '', replacement_needed: true },
+      { ...baseEvent, id: 'x2', name: 'Dated' }
+    ] });
+    reviewApi.detail.mockResolvedValue(detail({ venueBookings: undefined }));
+    render(<EventReviewScreen />);
+
+    expect(await screen.findByText('Replacement venue needed')).toBeInTheDocument();
+    expect(screen.getByText('Date not set')).toBeInTheDocument();
+    const sort = screen.getByRole('button', { name: 'Sort by proposed date' });
+    userEvent.click(sort);
+    expect(sort).toHaveTextContent('↓');
+    userEvent.click(sort);
+    expect(sort).toHaveTextContent('↑');
+  });
+
+  test('TC-0956 [conflict] F7 a released booking shows its release reason beside its decision', async () => {
+    reviewApi.detail.mockResolvedValue({ ...detail({ status: 'PLANNING' }), venueBookings: [
+      { booking_id: 'b1', venue_name: 'Hall A', status: 'Released', decision_reason: 'Approved first', release_reason: 'Moved to Hall B', decided_at: null }
+    ] });
+    await openRequest();
+    userEvent.click(screen.getByRole('tab', { name: /^Arrangements/ }));
+    expect(screen.getByText('Moved to Hall B')).toBeInTheDocument();
+    expect(screen.getByText('Approved first')).toBeInTheDocument();
+  });
+});
+

@@ -20,8 +20,8 @@ The emulator is in-memory, needs no credentials, and is thrown away when it stop
 
 2. When to write an integration test (and when not to)
 Write one if the service uses runTransaction, batched writes, serverTimestamp, or its correctness depends on concurrency, ordering, or uniqueness (e.g. C1 assignment; likely C9 reassignment, venue bookings).
-Don't bother for pure domain rules — the in-memory unit test or the test.js spec-first style already covers those.
-Rules testing (proving firestore.rules allow/deny the right client writes, e.g. TC-080) uses the same emulator but the @firebase/rules-unit-testing library.
+Don't bother for pure domain rules — the in-memory unit test next to the domain module already covers those.
+Rules testing (proving firestore.rules allow/deny the right client writes) uses the same emulator but the @firebase/rules-unit-testing library.
 3. Naming matters (avoids a real footgun)
 
 node --test with no path auto-discovers every *.test.js file and runs it. An integration test needs the emulator, so if you name it *.integration.test.js it gets swept into the normal unit run and fails (its safety guard throws with no emulator).

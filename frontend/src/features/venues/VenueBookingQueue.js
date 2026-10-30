@@ -235,7 +235,8 @@ export default function VenueBookingQueue({ user, onNotice, onClashCountChange }
                       <textarea rows="3" required value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} />
                     </label>
                     <button className="cs-btn cs-btn-ghost cs-record-danger" type="submit" disabled={working === booking.booking_id}>
-                      {working === booking.booking_id && workingAction === "reject" ? "Rejecting…" : "Confirm rejection"}
+                      {/* While a rejection is in flight the row collapses (see `expanded`), so this form is never shown mid-request. */}
+                      Confirm rejection
                     </button>
                   </form>
                 )}

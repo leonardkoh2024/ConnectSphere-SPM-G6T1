@@ -65,7 +65,7 @@ const refusedWith = async (promise, statusCode, reason, message) => {
 
 // ---- AC1: joining a full event ------------------------------------------------------
 
-test("TC-686 H6 AC1 an attendee joins the waiting list of a full event and is Waitlisted at once", async () => {
+test("TC-1636 H6 AC1 an attendee joins the waiting list of a full event and is Waitlisted at once", async () => {
   const { firestore, join } = setup();
   const result = await join();
 
@@ -84,7 +84,7 @@ test("TC-686 H6 AC1 an attendee joins the waiting list of a full event and is Wa
   assert.equal(result.registration.waitlist_position, 1);
 });
 
-test("TC-687 H6 AC2 each later joiner is placed behind everyone already waiting", async () => {
+test("TC-1637 H6 AC2 each later joiner is placed behind everyone already waiting", async () => {
   const { join } = setup({
     registrations: { ...full(), e1_w1: record("w1", "WAITLISTED", { waitlisted_at: "2026-11-04T01:00:00.000Z" }) }
   });
@@ -92,13 +92,13 @@ test("TC-687 H6 AC2 each later joiner is placed behind everyone already waiting"
   assert.equal((await join("a2")).registration.waitlist_position, 3);
 });
 
-test("TC-688 H6 AC1 while a place is free the attendee is told to register instead, and nothing is written", async () => {
+test("TC-1638 H6 AC1 while a place is free the attendee is told to register instead, and nothing is written", async () => {
   const { firestore, join } = setup({ registrations: { e1_x1: record("x1", "REGISTERED") } });
   await refusedWith(join(), 409, "places_available", /a place is free/i);
   assert.deepEqual(firestore.log.writes, []);
 });
 
-test("TC-689 H6 the join, the count and the check are one transaction", async () => {
+test("TC-1639 H6 the join, the count and the check are one transaction", async () => {
   const { firestore, join } = setup();
   await join();
   assert.equal(firestore.log.transactions, 1);
@@ -107,7 +107,7 @@ test("TC-689 H6 the join, the count and the check are one transaction", async ()
   assert.ok(firestore.log.reads.includes("registrations?event_id=e1"));
 });
 
-test("TC-690 H6 an attendee who withdrew may join the waiting list, in the same record", async () => {
+test("TC-1640 H6 an attendee who withdrew may join the waiting list, in the same record", async () => {
   const { firestore, join } = setup({
     registrations: { ...full(), "e1_attendee-1": record("attendee-1", "WITHDRAWN", { withdrawn_at: "earlier" }) }
   });
@@ -118,13 +118,13 @@ test("TC-690 H6 an attendee who withdrew may join the waiting list, in the same 
 
 // ---- AC3: never both Registered and Waitlisted --------------------------------------
 
-test("TC-691 H6 AC3 an attendee already registered cannot also join the waiting list", async () => {
+test("TC-1641 H6 AC3 an attendee already registered cannot also join the waiting list", async () => {
   const { firestore, join } = setup({ registrations: { "e1_attendee-1": record("attendee-1", "REGISTERED"), e1_x2: record("x2", "REGISTERED") } });
   await refusedWith(join(), 409, "already_registered", /already registered/i);
   assert.deepEqual(firestore.log.writes, []);
 });
 
-test("TC-692 H6 AC3 an attendee already waiting cannot join twice, even under an older record id", async () => {
+test("TC-1642 H6 AC3 an attendee already waiting cannot join twice, even under an older record id", async () => {
   const { firestore, join } = setup();
   await join();
   await refusedWith(join(), 409, "already_waitlisted", /already on the waiting list/i);
@@ -135,7 +135,7 @@ test("TC-692 H6 AC3 an attendee already waiting cannot join twice, even under an
   assert.deepEqual(firestore.log.writes, ["registrations/e1_attendee-1"]);
 });
 
-test("TC-693 H6 AC3 a waitlisted attendee cannot register past the queue, even when a place frees", async () => {
+test("TC-1643 H6 AC3 a waitlisted attendee cannot register past the queue, even when a place frees", async () => {
   const { firestore, register } = setup({
     registrations: { e1_x1: record("x1", "REGISTERED"), "e1_attendee-1": record("attendee-1", "WAITLISTED") }
   });
@@ -146,7 +146,7 @@ test("TC-693 H6 AC3 a waitlisted attendee cannot register past the queue, even w
 
 // ---- the event must still be taking registrations (H1 AC4's window) -----------------
 
-test("TC-694 H6 the waiting list closes with registration", async () => {
+test("TC-1644 H6 the waiting list closes with registration", async () => {
   const closed = setup({ eventChanges: { registration_close_date: "2026-11-04" } });
   await refusedWith(closed.join(), 409, "closed");
   const early = setup({ eventChanges: { registration_open_date: "2026-11-06" } });
@@ -158,7 +158,7 @@ test("TC-694 H6 the waiting list closes with registration", async () => {
   for (const { firestore } of [closed, early, cancelled, off]) assert.deepEqual(firestore.log.writes, []);
 });
 
-test("TC-695 H6 an event that does not exist, or has no usable capacity, is refused", async () => {
+test("TC-1645 H6 an event that does not exist, or has no usable capacity, is refused", async () => {
   const { firestore, join } = setup();
   await refusedWith(join("attendee-1", "missing"), 404, "not_found");
   const noCapacity = setup({ eventChanges: { registration_capacity: null } });
@@ -208,7 +208,7 @@ const waitingStore = () => fakeFirestore({
   }
 });
 
-test("TC-696 H6 AC2 My registrations gives the attendee's exact position, worked out from join times", async () => {
+test("TC-1646 H6 AC2 My registrations gives the attendee's exact position, worked out from join times", async () => {
   const { status, body } = await call({ firestore: waitingStore(), path: "/api/registrations/mine" });
   assert.equal(status, 200);
   const entry = body.registrations.find((item) => item.event_id === "e1");
@@ -216,7 +216,7 @@ test("TC-696 H6 AC2 My registrations gives the attendee's exact position, worked
   assert.equal(entry.waitlist_position, 2);
 });
 
-test("TC-697 H6 AC2 the open-events list gives the attendee's status and position on the event", async () => {
+test("TC-1647 H6 AC2 the open-events list gives the attendee's status and position on the event", async () => {
   const { body } = await call({ firestore: waitingStore(), path: "/api/registrations/open-events" });
   const entry = body.events.find((item) => item.id === "e1");
   assert.equal(entry.registration_status, "WAITLISTED");
@@ -224,7 +224,7 @@ test("TC-697 H6 AC2 the open-events list gives the attendee's status and positio
   assert.equal(entry.remaining_places, 0);
 });
 
-test("TC-698 H6 AC1 POST waitlist answers 201 with the Waitlisted registration and its position", async () => {
+test("TC-1648 H6 AC1 POST waitlist answers 201 with the Waitlisted registration and its position", async () => {
   const firestore = fakeFirestore({
     users: { "attendee-1": { role: "ATTENDEE" } },
     events: { e1: event() },
@@ -237,7 +237,7 @@ test("TC-698 H6 AC1 POST waitlist answers 201 with the Waitlisted registration a
   assert.deepEqual(body.registration.venue_names, ["Harbour Hall"]);
 });
 
-test("TC-699 H6 a refusal is answered with its reason; only a signed-in Attendee may join", async () => {
+test("TC-1649 H6 a refusal is answered with its reason; only a signed-in Attendee may join", async () => {
   const firestore = fakeFirestore({
     users: { "attendee-1": { role: "ATTENDEE" }, "organiser-1": { role: "EVENT_ORGANISER" } },
     events: { e1: event() },

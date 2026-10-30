@@ -61,7 +61,7 @@ const AUDIO = { equipment_type: "AUDIO", quantity: 2, technical_requirements: "W
 
 // ---- what the rules say (pure) ---------------------------------------------------------------------
 
-test("I3-TC1 AC1 every kind of significant change is a trigger", () => {
+test("TC-1923 I3 AC1 every kind of significant change is a trigger", () => {
   [
     { event_date: { old_value: "2026-11-04", new_value: "2026-11-05" } },
     { start_time: { old_value: "09:00", new_value: "10:00" } },
@@ -74,29 +74,29 @@ test("I3-TC1 AC1 every kind of significant change is a trigger", () => {
   ].forEach((significantChanges) => assert.equal(changeTriggersReRequest({ significantChanges }), true));
 });
 
-test("I3-TC2 AC1 an equipment requirement change is a trigger on its own", () => {
+test("TC-1924 I3 AC1 an equipment requirement change is a trigger on its own", () => {
   assert.equal(changeTriggersReRequest({ significantChanges: {}, equipmentChanged: true }), true);
 });
 
-test("I3-TC3 AC1 no significant change and no equipment change is not a trigger", () => {
+test("TC-1925 I3 AC1 no significant change and no equipment change is not a trigger", () => {
   assert.equal(changeTriggersReRequest({}), false);
   assert.equal(changeTriggersReRequest({ significantChanges: {}, equipmentChanged: false }), false);
 });
 
-test("I3-TC4 AC1 a Confirmed event goes back to Planning when triggered; every other status is left alone", () => {
+test("TC-1926 I3 AC1 a Confirmed event goes back to Planning when triggered; every other status is left alone", () => {
   assert.equal(statusAfterChange("CONFIRMED", true), "PLANNING");
   assert.equal(statusAfterChange("PLANNING", true), "PLANNING");
   assert.equal(statusAfterChange("APPROVED", true), "APPROVED");
   assert.equal(statusAfterChange("CONFIRMED", false), "CONFIRMED");
 });
 
-test("I3-TC5 AC1 a venue-side change affects venue bookings and equipment; an equipment-only change affects equipment alone", () => {
+test("TC-1927 I3 AC1 a venue-side change affects venue bookings and equipment; an equipment-only change affects equipment alone", () => {
   assert.deepEqual(affectedKinds({ significantChanges: { event_date: {} } }), { venue: true, equipment: true });
   assert.deepEqual(affectedKinds({ significantChanges: {}, equipmentChanged: true }), { venue: false, equipment: true });
   assert.deepEqual(affectedKinds({}), { venue: false, equipment: false });
 });
 
-test("I3-TC6 the changed fields read as labels, in the order the Edit event form lists them", () => {
+test("TC-1928 I3 the changed fields read as labels, in the order the Edit event form lists them", () => {
   assert.deepEqual(
     changedFieldLabels({ start_time: {}, event_date: {}, expected_attendance: {} }),
     ["Expected attendance", "Event date", "Start time"]
@@ -104,7 +104,7 @@ test("I3-TC6 the changed fields read as labels, in the order the Edit event form
   assert.deepEqual(changedFieldLabels({}, true), ["Equipment"]);
 });
 
-test("I3-TC7 AC1 live venue bookings are affected; ended ones are not", () => {
+test("TC-1929 I3 AC1 live venue bookings are affected; ended ones are not", () => {
   const bookings = [
     { id: "b1", status: "PENDING" },
     { id: "b2", status: "HELD" },
@@ -117,7 +117,7 @@ test("I3-TC7 AC1 live venue bookings are affected; ended ones are not", () => {
   assert.deepEqual(affectedVenueBookings(bookings).map((item) => item.id), ["b1", "b2", "b3", "b7"]);
 });
 
-test("I3-TC8 AC1 live equipment reservations are affected; released ones are not", () => {
+test("TC-1930 I3 AC1 live equipment reservations are affected; released ones are not", () => {
   const reservations = [
     { id: "r1", status: "RESERVED" },
     { id: "r2", status: "APPROVED" },
@@ -127,7 +127,7 @@ test("I3-TC8 AC1 live equipment reservations are affected; released ones are not
   assert.deepEqual(affectedEquipmentReservations(reservations).map((item) => item.id), ["r1", "r2"]);
 });
 
-test("I3-TC9 AC3 the marker carries the flag, the change and the reason, and never a status", () => {
+test("TC-1931 I3 AC3 the marker carries the flag, the change and the reason, and never a status", () => {
   const marker = reRequestMarker({ changeId: "h7", reason: "Event date changed" });
   assert.deepEqual(marker, {
     rerequest_required: true,
@@ -139,31 +139,31 @@ test("I3-TC9 AC3 the marker carries the flag, the change and the reason, and nev
   assert.equal(Object.keys(marker).some((key) => /cancel|release|withdraw/i.test(key)), false);
 });
 
-test("I3-TC10 AC2 the notice names the event and what changed", () => {
+test("TC-1932 I3 AC2 the notice names the event and what changed", () => {
   const message = arrangementReRequestMessage({ eventName: "Partner Summit", changed: ["Event date", "Start time"] });
   assert.match(message, /^Partner Summit:/);
   assert.match(message, /Event date, Start time/);
   assert.match(message, /re-request/i);
 });
 
-test("I3-TC11 AC3 the notice says the existing arrangement stays as a reference and is not cancelled", () => {
+test("TC-1933 I3 AC3 the notice says the existing arrangement stays as a reference and is not cancelled", () => {
   const message = arrangementReRequestMessage({ eventName: "Partner Summit", changed: ["Equipment"] });
   assert.match(message, /reference/i);
   assert.match(message, /not (been )?cancelled/i);
 });
 
-test("I3-TC12 an unnamed event reads as 'An event'", () => {
+test("TC-1934 I3 an unnamed event reads as 'An event'", () => {
   assert.match(arrangementReRequestMessage({ changed: ["Event date"] }), /^An event:/);
 });
 
-test("I3-TC13 the two notice types are distinct, and registration review is not an arrangement notice", () => {
+test("TC-1935 I3 the two notice types are distinct, and registration review is not an arrangement notice", () => {
   assert.deepEqual(REREQUEST_NOTICE_TYPES, {
     ARRANGEMENT: "ARRANGEMENT_REREQUEST_REQUIRED",
     REGISTRATION_REVIEW: "REGISTRATION_NEEDS_REVIEW"
   });
 });
 
-test("I3-TC26 AC5 the review message names the event and each reason, and promises no automatic edit", () => {
+test("TC-1936 I3 AC5 the review message names the event and each reason, and promises no automatic edit", () => {
   const message = registrationReviewMessage({
     eventName: "Partner Summit", reasons: ["CLOSES_AFTER_START", "CAPACITY_ABOVE_VENUE"]
   });
@@ -281,7 +281,7 @@ const fixture = ({
 
 // ---- AC1 the affected arrangements are marked and the event goes back to Planning -------------
 
-test("I3-TC27 AC1 a significant change on a Confirmed event moves it back to Planning", async () => {
+test("TC-1937 I3 AC1 a significant change on a Confirmed event moves it back to Planning", async () => {
   const { apply, updatesAt, store } = fixture();
   const result = await apply();
 
@@ -294,7 +294,7 @@ test("I3-TC27 AC1 a significant change on a Confirmed event moves it back to Pla
   assert.equal(store.get("events/event-1").status, "PLANNING");
 });
 
-test("I3-TC28 AC1 the move is recorded in the event's history, with the change it answers", async () => {
+test("TC-1938 I3 AC1 the move is recorded in the event's history, with the change it answers", async () => {
   const { apply, writes } = fixture();
   await apply();
 
@@ -310,7 +310,7 @@ test("I3-TC28 AC1 the move is recorded in the event's history, with the change i
   assert.deepEqual(row.data.created_at, NOW);
 });
 
-test("I3-TC29 AC1 only live venue bookings of this event are marked", async () => {
+test("TC-1939 I3 AC1 only live venue bookings of this event are marked", async () => {
   const { apply, updatesAt } = fixture();
   const result = await apply();
 
@@ -319,7 +319,7 @@ test("I3-TC29 AC1 only live venue bookings of this event are marked", async () =
   assert.equal(result.venueBookings, 3);
 });
 
-test("I3-TC30 AC1 only live equipment reservations, and the equipment request, are marked", async () => {
+test("TC-1940 I3 AC1 only live equipment reservations, and the equipment request, are marked", async () => {
   const { apply, updatesAt } = fixture();
   const result = await apply();
 
@@ -328,7 +328,7 @@ test("I3-TC30 AC1 only live equipment reservations, and the equipment request, a
   assert.equal(result.equipment, 2);
 });
 
-test("I3-TC31 AC1 each marked arrangement carries the flag, the change, the reason and the time", async () => {
+test("TC-1941 I3 AC1 each marked arrangement carries the flag, the change, the reason and the time", async () => {
   const { apply, updatesAt } = fixture();
   await apply();
 
@@ -341,7 +341,7 @@ test("I3-TC31 AC1 each marked arrangement carries the flag, the change, the reas
   });
 });
 
-test("I3-TC32 AC1 a change already in Planning still marks and tells, and leaves the status alone", async () => {
+test("TC-1942 I3 AC1 a change already in Planning still marks and tells, and leaves the status alone", async () => {
   const { apply, updatesAt, store } = fixture({ event: baseEvent({ status: "PLANNING" }) });
   const result = await apply();
 
@@ -351,7 +351,7 @@ test("I3-TC32 AC1 a change already in Planning still marks and tells, and leaves
   assert.equal(store.get("events/event-1").status, "PLANNING");
 });
 
-test("I3-TC33 AC1 an Approved event keeps its status", async () => {
+test("TC-1943 I3 AC1 an Approved event keeps its status", async () => {
   const { apply, store } = fixture({ event: baseEvent({ status: "APPROVED" }) });
   await apply();
   assert.equal(store.get("events/event-1").status, "APPROVED");
@@ -359,7 +359,7 @@ test("I3-TC33 AC1 an Approved event keeps its status", async () => {
 
 // ---- AC3 nothing is cancelled, released or removed ------------------------------------------------
 
-test("I3-TC34 AC3 no booking, reservation or request has its status changed, and nothing is deleted", async () => {
+test("TC-1944 I3 AC3 no booking, reservation or request has its status changed, and nothing is deleted", async () => {
   const { apply, writes, store } = fixture();
   await apply();
 
@@ -378,7 +378,7 @@ test("I3-TC34 AC3 no booking, reservation or request has its status changed, and
   assert.equal(store.get("equipment_requests/event-1").status, "PENDING");
 });
 
-test("I3-TC35 AC3 arrangements that had already ended, and other events' arrangements, are not touched", async () => {
+test("TC-1945 I3 AC3 arrangements that had already ended, and other events' arrangements, are not touched", async () => {
   const { apply, writes } = fixture();
   await apply();
 
@@ -389,7 +389,7 @@ test("I3-TC35 AC3 arrangements that had already ended, and other events' arrange
 
 // ---- AC2 Venue Staff and Technical Support are told -----------------------------------------------
 
-test("I3-TC36 AC2 the Venue Staff holding an affected booking are told, once each, and nobody else", async () => {
+test("TC-1946 I3 AC2 the Venue Staff holding an affected booking are told, once each, and nobody else", async () => {
   const { apply, notices } = fixture();
   const result = await apply();
 
@@ -399,7 +399,7 @@ test("I3-TC36 AC2 the Venue Staff holding an affected booking are told, once eac
   assert.equal(result.notified.venueStaff, 2);
 });
 
-test("I3-TC37 AC2 every active Technical Support member is told when equipment arrangements are affected", async () => {
+test("TC-1947 I3 AC2 every active Technical Support member is told when equipment arrangements are affected", async () => {
   const { apply, notices } = fixture();
   const result = await apply();
 
@@ -408,7 +408,7 @@ test("I3-TC37 AC2 every active Technical Support member is told when equipment a
   assert.equal(result.notified.technicalSupport, 2);
 });
 
-test("I3-TC38 AC2 each notice is in the inbox's shape, names the event and the change, and says nothing was cancelled", async () => {
+test("TC-1948 I3 AC2 each notice is in the inbox's shape, names the event and the change, and says nothing was cancelled", async () => {
   const { apply, notices } = fixture();
   await apply();
 
@@ -425,7 +425,7 @@ test("I3-TC38 AC2 each notice is in the inbox's shape, names the event and the c
   });
 });
 
-test("I3-TC39 AC2 every notice is created with its own id, equal to its document id", async () => {
+test("TC-1949 I3 AC2 every notice is created with its own id, equal to its document id", async () => {
   const { apply, writes } = fixture();
   await apply();
 
@@ -438,7 +438,7 @@ test("I3-TC39 AC2 every notice is created with its own id, equal to its document
   assert.equal(new Set(created.map(({ ref }) => ref.id)).size, created.length);
 });
 
-test("I3-TC40 AC2 an event with no equipment arrangements tells no Technical Support, and one with no venue booking tells no Venue Staff", async () => {
+test("TC-1950 I3 AC2 an event with no equipment arrangements tells no Technical Support, and one with no venue booking tells no Venue Staff", async () => {
   const noEquipment = fixture({ equipmentRequest: null, reservations: {} });
   const resultA = await noEquipment.apply();
   assert.equal(resultA.notified.technicalSupport, 0);
@@ -453,7 +453,7 @@ test("I3-TC40 AC2 an event with no equipment arrangements tells no Technical Sup
 
 // ---- applying once ------------------------------------------------------------------------------------
 
-test("I3-TC41 asking again for the same change applies nothing and tells nobody twice", async () => {
+test("TC-1951 I3 asking again for the same change applies nothing and tells nobody twice", async () => {
   const { apply, writes } = fixture();
   await apply();
   const before = writes.length;
@@ -463,7 +463,7 @@ test("I3-TC41 asking again for the same change applies nothing and tells nobody 
   assert.equal(writes.length, before);
 });
 
-test("I3-TC42 what was applied is remembered, with the equipment request as it stood", async () => {
+test("TC-1952 I3 what was applied is remembered, with the equipment request as it stood", async () => {
   const { apply, store } = fixture();
   await apply();
 
@@ -474,7 +474,7 @@ test("I3-TC42 what was applied is remembered, with the equipment request as it s
   assert.deepEqual(state.applied_at, NOW);
 });
 
-test("I3-TC43 a later significant change is applied again", async () => {
+test("TC-1953 I3 a later significant change is applied again", async () => {
   const { apply, store } = fixture();
   await apply();
   store.set("event_history/h2", dateChange({ old_value: { start_time: "09:00" }, new_value: { start_time: "10:00" } }));
@@ -489,32 +489,32 @@ test("I3-TC43 a later significant change is applied again", async () => {
 
 // ---- who may ask, and for what -------------------------------------------------------------------------
 
-test("I3-TC44 only the event's own coordinator may ask", async () => {
+test("TC-1954 I3 only the event's own coordinator may ask", async () => {
   const { apply, writes } = fixture();
   await assert.rejects(apply({ userId: "coord-2" }), { statusCode: 403 });
   assert.equal(writes.length, 0);
 });
 
-test("I3-TC45 an unknown event, and a missing event id, are refused", async () => {
+test("TC-1955 I3 an unknown event, and a missing event id, are refused", async () => {
   const { apply } = fixture({ event: null });
   await assert.rejects(apply(), { statusCode: 404 });
   await assert.rejects(apply({ eventId: " " }), { statusCode: 400 });
 });
 
-test("I3-TC46 a change that is not the event's latest significant change is refused", async () => {
+test("TC-1956 I3 a change that is not the event's latest significant change is refused", async () => {
   const { apply, writes } = fixture();
   await assert.rejects(apply({ changeId: "h0" }), { statusCode: 409 });
   await assert.rejects(apply({ changeId: undefined }), { statusCode: 400 });
   assert.equal(writes.length, 0);
 });
 
-test("I3-TC47 a change id whose history row is not a significant change is refused", async () => {
+test("TC-1957 I3 a change id whose history row is not a significant change is refused", async () => {
   const { apply, writes } = fixture({ history: { h1: { event_id: "event-1", action_type: "EVENT_DETAILS_UPDATED" } } });
   await assert.rejects(apply(), { statusCode: 409 });
   assert.equal(writes.length, 0);
 });
 
-test("I3-TC48 a Completed, Cancelled or Rejected event is left alone", async () => {
+test("TC-1958 I3 a Completed, Cancelled or Rejected event is left alone", async () => {
   for (const status of ["COMPLETED", "CANCELLED", "REJECTED"]) {
     const { apply, writes } = fixture({ event: baseEvent({ status }) });
     const result = await apply();
@@ -536,7 +536,7 @@ const equipmentFixture = (overrides = {}) => {
   });
 };
 
-test("I3-TC49 AC1 a changed equipment request re-requests the equipment only, and moves the event back to Planning", async () => {
+test("TC-1959 I3 AC1 a changed equipment request re-requests the equipment only, and moves the event back to Planning", async () => {
   const { apply, updatesAt, store, notices } = equipmentFixture();
   const result = await apply({ source: "EQUIPMENT", changeId: undefined });
 
@@ -549,7 +549,7 @@ test("I3-TC49 AC1 a changed equipment request re-requests the equipment only, an
   assert.deepEqual(notices().filter((item) => item.type === "ARRANGEMENT_REREQUEST_REQUIRED").map((item) => item.user_id).sort(), ["tech-1", "tech-2"]);
 });
 
-test("I3-TC50 saving the equipment request again unchanged re-requests nothing", async () => {
+test("TC-1960 I3 saving the equipment request again unchanged re-requests nothing", async () => {
   const { apply, writes } = equipmentFixture({
     equipmentRequest: { event_id: "event-1", status: "PENDING", lines: [AUDIO] }
   });
@@ -559,7 +559,7 @@ test("I3-TC50 saving the equipment request again unchanged re-requests nothing",
   assert.equal(writes.length, 0);
 });
 
-test("I3-TC51 the same equipment change is applied once, and the next different one again", async () => {
+test("TC-1961 I3 the same equipment change is applied once, and the next different one again", async () => {
   const { apply, store, writes } = equipmentFixture();
   await apply({ source: "EQUIPMENT", changeId: undefined });
   const before = writes.length;
@@ -573,7 +573,7 @@ test("I3-TC51 the same equipment change is applied once, and the next different 
   assert.equal(store.get("events/event-1").status, "PLANNING");
 });
 
-test("I3-TC52 a first equipment request, with no reservation yet to invalidate, re-requests nothing", async () => {
+test("TC-1962 I3 a first equipment request, with no reservation yet to invalidate, re-requests nothing", async () => {
   const { apply, writes } = fixture({
     history: {},
     event: baseEvent({ last_significant_change_id: undefined }),
@@ -586,7 +586,7 @@ test("I3-TC52 a first equipment request, with no reservation yet to invalidate, 
   assert.equal(writes.length, 0);
 });
 
-test("I3-TC53 the equipment signature ignores whitespace around a requirement but not its type or quantity", () => {
+test("TC-1963 I3 the equipment signature ignores whitespace around a requirement but not its type or quantity", () => {
   const base = equipmentSignature({ lines: [AUDIO] });
   assert.equal(equipmentSignature({ lines: [{ ...AUDIO, technical_requirements: "  Wireless " }] }), base);
   assert.notEqual(equipmentSignature({ lines: [{ ...AUDIO, quantity: 3 }] }), base);
@@ -608,7 +608,7 @@ const registered = (overrides = {}) => baseEvent({
 });
 const REVIEW_KEYS = ["registration_needs_review", "registration_review_flagged_at", "registration_review_reasons"];
 
-test("I3-TC54 AC5 a close time now after the new event start flags the registration and tells the organiser", async () => {
+test("TC-1964 I3 AC5 a close time now after the new event start flags the registration and tells the organiser", async () => {
   const { apply, updatesAt, notices } = fixture({
     event: registered({ event_date: "2026-11-03" }),
     history: { h1: dateChange({ new_value: { event_date: "2026-11-03" } }) }
@@ -627,7 +627,7 @@ test("I3-TC54 AC5 a close time now after the new event start flags the registrat
   assert.match(organiser[0].message, /closes after/i);
 });
 
-test("I3-TC55 AC5 a registration capacity above the venue capacity of the approved bookings flags it", async () => {
+test("TC-1965 I3 AC5 a registration capacity above the venue capacity of the approved bookings flags it", async () => {
   const { apply, updatesAt, notices } = fixture({
     event: registered({ registration_capacity: 150 }),
     history: { h1: dateChange({ old_value: { start_time: "10:00" }, new_value: { start_time: "09:00" } }) }
@@ -640,7 +640,7 @@ test("I3-TC55 AC5 a registration capacity above the venue capacity of the approv
   assert.equal(notices().filter((item) => item.type === "REGISTRATION_NEEDS_REVIEW").length, 1);
 });
 
-test("I3-TC56 AC5 the registration itself is never edited, closed or cancelled", async () => {
+test("TC-1966 I3 AC5 the registration itself is never edited, closed or cancelled", async () => {
   const { apply, writes, store } = fixture({
     event: registered({ event_date: "2026-11-03", registration_capacity: 500 }),
     history: { h1: dateChange({ new_value: { event_date: "2026-11-03" } }) }
@@ -658,7 +658,7 @@ test("I3-TC56 AC5 the registration itself is never edited, closed or cancelled",
   assert.equal(writes.some(({ ref }) => ref.collectionName === "registrations"), false);
 });
 
-test("I3-TC57 AC5 a window and capacity that still fit raise no flag and no notice", async () => {
+test("TC-1967 I3 AC5 a window and capacity that still fit raise no flag and no notice", async () => {
   const { apply, updatesAt, notices } = fixture({ event: registered() });
   const result = await apply();
 
@@ -668,7 +668,7 @@ test("I3-TC57 AC5 a window and capacity that still fit raise no flag and no noti
   assert.equal(notices().some((item) => item.type === "REGISTRATION_NEEDS_REVIEW"), false);
 });
 
-test("I3-TC58 AC5 a change to the end time alone does not re-check the registration", async () => {
+test("TC-1968 I3 AC5 a change to the end time alone does not re-check the registration", async () => {
   const { apply, updatesAt, notices } = fixture({
     event: registered({ event_date: "2026-11-03", registration_capacity: 500 }),
     history: { h1: dateChange({ old_value: { end_time: "16:00" }, new_value: { end_time: "17:00" } }) }
@@ -680,7 +680,7 @@ test("I3-TC58 AC5 a change to the end time alone does not re-check the registrat
   assert.equal(notices().some((item) => item.type === "REGISTRATION_NEEDS_REVIEW"), false);
 });
 
-test("I3-TC59 AC5 an event without registration has nothing to flag", async () => {
+test("TC-1969 I3 AC5 an event without registration has nothing to flag", async () => {
   const { apply, notices } = fixture({
     event: registered({ registration_required: false, event_date: "2026-11-03", registration_capacity: 500 }),
     history: { h1: dateChange({ new_value: { event_date: "2026-11-03" } }) }
@@ -691,7 +691,7 @@ test("I3-TC59 AC5 an event without registration has nothing to flag", async () =
   assert.equal(notices().some((item) => item.type === "REGISTRATION_NEEDS_REVIEW"), false);
 });
 
-test("I3-TC60 AC5 an event already in Planning is still re-checked, and asking again flags and tells once", async () => {
+test("TC-1970 I3 AC5 an event already in Planning is still re-checked, and asking again flags and tells once", async () => {
   const { apply, notices } = fixture({
     event: registered({ status: "PLANNING", event_date: "2026-11-03" }),
     history: { h1: dateChange({ new_value: { event_date: "2026-11-03" } }) }
@@ -721,7 +721,7 @@ const capacityFixture = ({ registrations = attendees(60), event = registered({ r
   ...rest
 });
 
-test("I3-TC61 AC4 a capacity lowered but still at or above the registered count is saved with no acknowledgement, and nothing else moves", async () => {
+test("TC-1971 I3 AC4 a capacity lowered but still at or above the registered count is saved with no acknowledgement, and nothing else moves", async () => {
   const { setCapacity, updatesAt, store } = capacityFixture();
   const result = await setCapacity({ capacity: 80 });
 
@@ -734,7 +734,7 @@ test("I3-TC61 AC4 a capacity lowered but still at or above the registered count 
   assert.equal(updatesAt("venue_bookings/").length, 0);
 });
 
-test("I3-TC62 AC4 a capacity lowered below the registered count is refused without the acknowledgement, and nothing is written", async () => {
+test("TC-1972 I3 AC4 a capacity lowered below the registered count is refused without the acknowledgement, and nothing is written", async () => {
   const { setCapacity, writes } = capacityFixture();
   await assert.rejects(setCapacity({ capacity: 40 }), (error) => {
     assert.equal(error.statusCode, 409);
@@ -747,7 +747,7 @@ test("I3-TC62 AC4 a capacity lowered below the registered count is refused witho
   assert.equal(writes.length, 0);
 });
 
-test("I3-TC63 AC4 with the acknowledgement the lower capacity is saved, recorded, and nobody is unregistered", async () => {
+test("TC-1973 I3 AC4 with the acknowledgement the lower capacity is saved, recorded, and nobody is unregistered", async () => {
   const { setCapacity, writes, store } = capacityFixture();
   const result = await setCapacity({ capacity: 40, acknowledged: true });
 
@@ -769,7 +769,7 @@ test("I3-TC63 AC4 with the acknowledgement the lower capacity is saved, recorded
   assert.equal([...store.keys()].filter((path) => path.startsWith("registrations/")).length, 60);
 });
 
-test("I3-TC64 AC4 only attendees holding a place count: waitlisted, withdrawn and cancelled do not", async () => {
+test("TC-1974 I3 AC4 only attendees holding a place count: waitlisted, withdrawn and cancelled do not", async () => {
   const registrations = { ...attendees(40), ...attendees(30, "WAITLISTED"), ...attendees(5, "WITHDRAWN"), ...attendees(5, "CANCELLED") };
   const { setCapacity } = capacityFixture({ registrations });
 
@@ -778,18 +778,18 @@ test("I3-TC64 AC4 only attendees holding a place count: waitlisted, withdrawn an
   await assert.rejects(setCapacity({ capacity: 39 }), { statusCode: 409 });
 });
 
-test("I3-TC65 AC4 a capacity equal to the registered count, or with nobody registered, needs no acknowledgement", async () => {
+test("TC-1975 I3 AC4 a capacity equal to the registered count, or with nobody registered, needs no acknowledgement", async () => {
   assert.equal((await capacityFixture().setCapacity({ capacity: 60 })).capacity, 60);
   assert.equal((await capacityFixture({ registrations: {} }).setCapacity({ capacity: 1 })).capacity, 1);
 });
 
-test("I3-TC66 AC4 a registered count that was already above the capacity is not a reduction needing acknowledgement when the capacity is raised or kept", async () => {
+test("TC-1976 I3 AC4 a registered count that was already above the capacity is not a reduction needing acknowledgement when the capacity is raised or kept", async () => {
   const { setCapacity } = capacityFixture({ event: registered({ registration_capacity: 40 }) });
   assert.equal((await setCapacity({ capacity: 50 })).capacity, 50);
   assert.equal((await setCapacity({ capacity: 50 })).changed, false);
 });
 
-test("I3-TC67 the capacity must be a whole number greater than zero", async () => {
+test("TC-1977 I3 the capacity must be a whole number greater than zero", async () => {
   const { setCapacity, writes } = capacityFixture();
   for (const capacity of [0, -3, 2.5, "abc", "", null, undefined]) {
     await assert.rejects(setCapacity({ capacity }), { statusCode: 400 });
@@ -797,7 +797,7 @@ test("I3-TC67 the capacity must be a whole number greater than zero", async () =
   assert.equal(writes.length, 0);
 });
 
-test("I3-TC68 the capacity cannot exceed the venue capacity of the approved bookings", async () => {
+test("TC-1978 I3 the capacity cannot exceed the venue capacity of the approved bookings", async () => {
   const { setCapacity, writes } = capacityFixture();
   await assert.rejects(setCapacity({ capacity: 121 }), (error) => {
     assert.equal(error.statusCode, 400);
@@ -808,14 +808,14 @@ test("I3-TC68 the capacity cannot exceed the venue capacity of the approved book
   assert.equal((await setCapacity({ capacity: 120 })).capacity, 120);
 });
 
-test("I3-TC69 an unchanged capacity writes nothing", async () => {
+test("TC-1979 I3 an unchanged capacity writes nothing", async () => {
   const { setCapacity, writes } = capacityFixture();
   const result = await setCapacity({ capacity: 100 });
   assert.equal(result.changed, false);
   assert.equal(writes.length, 0);
 });
 
-test("I3-TC70 only the event's coordinator, on an event with registration, in a live status, with an approved booking", async () => {
+test("TC-1980 I3 only the event's coordinator, on an event with registration, in a live status, with an approved booking", async () => {
   await assert.rejects(capacityFixture().setCapacity({ userId: "coord-2" }), { statusCode: 403 });
   await assert.rejects(capacityFixture({ event: null }).setCapacity(), { statusCode: 404 });
   await assert.rejects(capacityFixture({ event: registered({ registration_required: false }) }).setCapacity(), { statusCode: 409 });
@@ -858,7 +858,7 @@ const withServer = async (setup, run) => {
   }
 };
 
-test("I3-TC71 a request with no bearer token, or an invalid one, is refused before any profile or event is read", async () => {
+test("TC-1981 I3 a request with no bearer token, or an invalid one, is refused before any profile or event is read", async () => {
   const setup = fixture();
   await withServer(setup, async ({ call, writes }) => {
     assert.equal((await call("/event-1/rerequest-arrangements", { authorization: null })).status, 401);
@@ -868,7 +868,7 @@ test("I3-TC71 a request with no bearer token, or an invalid one, is refused befo
   });
 });
 
-test("I3-TC72 only an Event Coordinator account may use either route", async () => {
+test("TC-1982 I3 only an Event Coordinator account may use either route", async () => {
   const setup = fixture({ users: { "coord-1": { role: "EVENT_ORGANISER", is_active: true } } });
   await withServer(setup, async ({ call, writes }) => {
     const first = await call("/event-1/rerequest-arrangements", { body: { source: "EVENT_EDIT", change_id: "h1" } });
@@ -879,7 +879,7 @@ test("I3-TC72 only an Event Coordinator account may use either route", async () 
   });
 });
 
-test("I3-TC73 a coordinator's saved edit is applied through the route, and the answer says what was done", async () => {
+test("TC-1983 I3 a coordinator's saved edit is applied through the route, and the answer says what was done", async () => {
   await withServer(fixture(), async ({ call, store }) => {
     const response = await call("/event-1/rerequest-arrangements", { body: { source: "EVENT_EDIT", change_id: "h1" } });
     assert.equal(response.status, 200);
@@ -890,7 +890,7 @@ test("I3-TC73 a coordinator's saved edit is applied through the route, and the a
   });
 });
 
-test("I3-TC74 an equipment change is applied through the same route with source EQUIPMENT", async () => {
+test("TC-1984 I3 an equipment change is applied through the same route with source EQUIPMENT", async () => {
   const setup = fixture({
     history: {},
     event: baseEvent({ last_significant_change_id: undefined }),
@@ -903,7 +903,7 @@ test("I3-TC74 an equipment change is applied through the same route with source 
   });
 });
 
-test("I3-TC75 a refusal from the service reaches the browser with its status and message", async () => {
+test("TC-1985 I3 a refusal from the service reaches the browser with its status and message", async () => {
   await withServer(fixture(), async ({ call }) => {
     const stale = await call("/event-1/rerequest-arrangements", { body: { source: "EVENT_EDIT", change_id: "h0" } });
     assert.equal(stale.status, 409);
@@ -913,7 +913,7 @@ test("I3-TC75 a refusal from the service reaches the browser with its status and
   });
 });
 
-test("I3-TC76 the capacity route saves with the acknowledgement and refuses without it", async () => {
+test("TC-1986 I3 the capacity route saves with the acknowledgement and refuses without it", async () => {
   await withServer(capacityFixture(), async ({ call, store }) => {
     const refused = await call("/event-1/registration-capacity", { body: { capacity: 40 } });
     assert.equal(refused.status, 409);
@@ -923,5 +923,112 @@ test("I3-TC76 the capacity route saves with the acknowledgement and refuses with
     assert.equal(saved.status, 200);
     assert.equal((await saved.json()).capacity, 40);
     assert.equal(store.get("events/event-1").registration_capacity, 40);
+  });
+});
+
+// coverage of the remaining edges -------------------------------------------
+
+test("TC-1987 [boundary] I3 labels: an unknown field reads as a sentence-case label, and no changes give no labels", () => {
+  assert.deepEqual(changedFieldLabels({ room_size_sqm: {}, event_date: {} }), ["Event date", "Room size sqm"]);
+  assert.deepEqual(changedFieldLabels(null, true), ["Equipment"]);
+  assert.deepEqual(changedFieldLabels(), []);
+});
+
+test("TC-1988 [boundary] I3 a booking or reservation with no status is not live; an equipment line with blanks still signs", () => {
+  assert.deepEqual(affectedVenueBookings([{}, { status: "approved" }]), [{ status: "approved" }]);
+  assert.deepEqual(affectedEquipmentReservations([{ status: null }]), []);
+  assert.equal(equipmentSignature({ lines: [{ quantity: 1 }] }), JSON.stringify([["", 1, ""]]));
+  assert.equal(equipmentSignature(null), "[]");
+});
+
+test("TC-1989 [boundary] I3 AC5 an unknown review reason is passed through as written", () => {
+  assert.match(registrationReviewMessage({ eventName: "Gala", reasons: ["CUSTOM_REASON"] }), /needs review after a change to the event\. CUSTOM_REASON Please review/);
+});
+
+test("TC-1990 [failure] I3 a change id with no history row, or one whose old and new values carry no fields, applies nothing", async () => {
+  const missing = fixture({ history: {} });
+  await assert.rejects(missing.apply(), { statusCode: 409, message: "That change is not a significant change to this event." });
+
+  const empty = fixture({ history: { h1: dateChange({ old_value: "n/a", new_value: null }) } });
+  const result = await empty.apply();
+  assert.equal(result.applied, false);
+  assert.equal(empty.writes.length, 0);
+});
+
+test("TC-1991 [normal] I3 a history row with only new values still names the fields that changed", async () => {
+  const { apply, notices } = fixture({ history: { h1: dateChange({ old_value: undefined, new_value: { expected_attendance: 150 } }) } });
+  const result = await apply();
+  assert.equal(result.applied, true);
+  assert.match(notices()[0].message, /^Partner Summit: Expected attendance changed/);
+});
+
+test("TC-1992 [boundary] I3 an equipment change with no equipment request on file applies nothing", async () => {
+  const { apply, writes } = equipmentFixture({ equipmentRequest: null });
+  assert.equal((await apply({ source: "EQUIPMENT", changeId: undefined })).applied, false);
+  assert.equal(writes.length, 0);
+});
+
+test("TC-1993 [boundary] I3 AC2 a booked venue with no Venue Staff assignment notifies nobody for it", async () => {
+  const { apply } = fixture({ venueStaff: {} });
+  const result = await apply();
+  assert.equal(result.applied, true);
+  assert.equal(result.notified.venueStaff, 0);
+});
+
+test("TC-1994 [boundary] I3 AC4 capacity given as a numeric string is accepted; '0' and ' ' are not", async () => {
+  const { setCapacity, store } = capacityFixture();
+  assert.equal((await setCapacity({ capacity: "80" })).capacity, 80);
+  assert.equal(store.get("events/event-1").registration_capacity, 80);
+  await assert.rejects(setCapacity({ capacity: "0" }), { statusCode: 400 });
+  await assert.rejects(setCapacity({ capacity: " " }), { statusCode: 400 });
+});
+
+test("TC-1995 [boundary] I3 AC4 a fraction is refused, a capacity equal to one registered attendee needs no acknowledgement, and a first capacity has no previous value", async () => {
+  const single = capacityFixture({ registrations: attendees(1), event: registered({ registration_capacity: 3 }) });
+  await assert.rejects(single.setCapacity({ capacity: 0.5 }), { statusCode: 400 });
+  assert.equal((await single.setCapacity({ capacity: 1 })).registeredCount, 1);
+  const lowered = capacityFixture({ registrations: attendees(2), event: registered({ registration_capacity: 3 }) });
+  await assert.rejects(lowered.setCapacity({ capacity: 1 }), (error) => /below the 2 people/.test(error.message));
+  const first = capacityFixture({ registrations: {}, event: registered({ registration_capacity: undefined }) });
+  assert.equal((await first.setCapacity({ capacity: 50 })).previousCapacity, null);
+});
+
+test("TC-1996 [boundary] I3 AC4 the registered count falls back to the documents when the snapshot has no size", async () => {
+  const setup = capacityFixture({ registrations: attendees(60) });
+  const run = setup.firestore.runTransaction;
+  setup.firestore.runTransaction = (callback) => run((transaction) => callback({
+    ...transaction,
+    get: async (target) => {
+      const snapshot = await transaction.get(target);
+      if (snapshot.docs) delete snapshot.size;
+      return snapshot;
+    }
+  }));
+  await assert.rejects(setup.setCapacity({ capacity: 1 }), (error) => /below the 60 people/.test(error.message));
+});
+
+test("TC-1997 [normal] I3 the route treats a request with no source as an event edit", async () => {
+  await withServer(fixture(), async ({ call, store }) => {
+    const response = await call("/event-1/rerequest-arrangements", { body: { change_id: "h1" } });
+    assert.equal(response.status, 200);
+    assert.equal(store.get("events/event-1").status, "PLANNING");
+  });
+});
+
+test("TC-1998 [failure] I3 a failing profile read or a failing transaction answers 500, not a hang", async () => {
+  const profileDown = fixture();
+  const collection = profileDown.firestore.collection.bind(profileDown.firestore);
+  profileDown.firestore.collection = (name) => (name === "users"
+    ? { doc: () => ({ get: async () => { throw new Error("unavailable"); } }) }
+    : collection(name));
+  await withServer(profileDown, async ({ call }) => {
+    assert.equal((await call("/event-1/rerequest-arrangements", { body: { change_id: "h1" } })).status, 500);
+  });
+
+  const transactionDown = fixture();
+  transactionDown.firestore.runTransaction = async () => { throw new Error("aborted"); };
+  await withServer(transactionDown, async ({ call, writes }) => {
+    assert.equal((await call("/event-1/registration-capacity", { body: { capacity: 80 } })).status, 500);
+    assert.equal(writes.length, 0);
   });
 });

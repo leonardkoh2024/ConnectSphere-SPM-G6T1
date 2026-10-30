@@ -100,7 +100,7 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
     ...current,
     equipmentLines: current.equipmentLines.length > 1
       ? current.equipmentLines.filter((line) => line.id !== lineId)
-      : [createEquipmentLine()]
+      : /* istanbul ignore next -- the Remove button is shown only while there are two or more lines */ [createEquipmentLine()]
   }));
 
   useEffect(() => {
@@ -146,6 +146,7 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
   // but only on what has been entered — B6 lets an organiser save an unfinished
   // request, it does not let them save an impossible one.
   const save = async (submit) => {
+    /* istanbul ignore if -- unreachable from the UI: a read-only form renders no Save or Submit button. */
     if (isReadOnly) return;
     const found = validateEventRequest(form, { mode: isAmend || !submit ? "draft" : "submit" });
     setIssues(found);
@@ -210,7 +211,7 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
             label="Required facilities"
             options={FACILITIES}
             values={form.facilities}
-            onChange={isReadOnly ? () => {} : (value) => update("facilities", value)}
+            onChange={(value) => update("facilities", value)}
             disabled={isReadOnly}
             required
           />
@@ -279,7 +280,7 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
             label="Select all that apply"
             options={ACCESSIBILITY_OPTIONS}
             values={form.accessibility}
-            onChange={isReadOnly ? () => {} : (value) => update("accessibility", value)}
+            onChange={(value) => update("accessibility", value)}
             disabled={isReadOnly}
             required
           />

@@ -1,4 +1,4 @@
-import { equipmentActivity, equipmentArrangements, equipmentLineStatus, equipmentRequestStatus, equipmentUpdateText } from './eventEquipment';
+import { equipmentActivity, equipmentArrangements, equipmentLineStatus, equipmentRequestStatus, equipmentTypeLabel, equipmentUpdateText } from './eventEquipment';
 import { activityEntries } from './ordinaryEventChanges';
 
 const request = {
@@ -12,14 +12,14 @@ const request = {
 const reservations = [{ id: 'r1', reservation_id: 'r1', start_datetime: '2026-11-04T01:00:00.000Z', end_datetime: '2026-11-04T09:00:00.000Z', status: 'RESERVED' }];
 
 describe('equipment arrangements on the coordinator event page', () => {
-  test('TC-477 G4 a reserved line reads Approved, like an approved venue booking; others read Pending or Unable to fulfil', () => {
+  test('TC-1283 G4 a reserved line reads Approved, like an approved venue booking; others read Pending or Unable to fulfil', () => {
     expect(equipmentLineStatus({ fulfillment_status: 'RESERVED' })).toEqual({ label: 'Approved', tone: 'positive' });
     expect(equipmentLineStatus({ fulfillment_status: 'PENDING' })).toEqual({ label: 'Pending', tone: 'warning' });
     expect(equipmentLineStatus({ fulfillment_status: 'RESOLVED' })).toEqual({ label: 'Unable to fulfil', tone: 'danger' });
     expect(equipmentLineStatus({ fulfillment_status: 'RELEASED' })).toEqual({ label: 'Released', tone: 'neutral' });
   });
 
-  test('TC-478 G4 each request line carries its status, and an approved line its reservation window', () => {
+  test('TC-1284 G4 each request line carries its status, and an approved line its reservation window', () => {
     const view = equipmentArrangements(request, reservations);
     expect(view.status.label).toBe('Pending');
     expect(view.lines.map((line) => [line.label, line.status.label])).toEqual([
@@ -31,7 +31,7 @@ describe('equipment arrangements on the coordinator event page', () => {
     expect(equipmentArrangements(null)).toBeNull();
   });
 
-  test('TC-479 G4 Technical Support decisions become Activity entries credited to Technical Support', () => {
+  test('TC-1285 G4 Technical Support decisions become Activity entries credited to Technical Support', () => {
     const rows = equipmentActivity([
       { id: 'q1', action: 'LINE_RESERVED', actor_id: 'tech1', created_at: '2026-10-05T02:00:00.000Z', equipment_type: 'AUDIO_SYSTEM', quantity: 2 },
       { id: 'q2', action: 'LINE_UNABLE_TO_FULFILL', actor_id: 'tech1', created_at: '2026-10-06T02:00:00.000Z', equipment_type: 'STAGE_LIGHTING', quantity: 4, reason: 'None free that day' },
@@ -47,7 +47,7 @@ describe('equipment arrangements on the coordinator event page', () => {
     expect(unable).toMatchObject({ action: 'Marked equipment unable to fulfil', reason: 'None free that day' });
   });
 
-  test('G5-TC5 AC3 a reservation released by a cancellation stays in the Activity entries with its reason, time and who released it', () => {
+  test('TC-1317 G5 AC3 a reservation released by a cancellation stays in the Activity entries with its reason, time and who released it', () => {
     const rows = equipmentActivity([
       { id: 'q9', action: 'LINE_RESERVATION_RELEASED', actor_id: 'coord1', actor_role: 'Event Coordinator', created_at: '2026-10-28T02:00:00.000Z', equipment_type: 'AUDIO', quantity: 2, reason: 'Speaker unavailable' }
     ]);
@@ -62,7 +62,7 @@ describe('equipment arrangements on the coordinator event page', () => {
     expect(activityEntries(rows, {})[0].actor).toBe('Event Coordinator');
   });
 
-  test('TC-480 a venue booking approval with no readable Venue Staff name is credited to Venue Staff', () => {
+  test('TC-1286 a venue booking approval with no readable Venue Staff name is credited to Venue Staff', () => {
     const [entry] = activityEntries([{ id: 'h1', action_type: 'VENUE_BOOKING_APPROVED', actor_id: 'vs1', created_at: '2026-10-05T02:00:00.000Z' }], {});
     expect(entry.actor).toBe('Venue Staff');
   });
@@ -71,7 +71,7 @@ describe('equipment arrangements on the coordinator event page', () => {
 describe('the coordinator equipment requests screen wording', () => {
   const lines = (...statuses) => statuses.map((fulfillment_status) => ({ equipment_type: 'AUDIO', quantity: 1, fulfillment_status }));
 
-  test('TC-481 G4 a finished request reads Reserved, Partly reserved or Unable to fulfil, never Arranged', () => {
+  test('TC-1287 G4 a finished request reads Reserved, Partly reserved or Unable to fulfil, never Arranged', () => {
     expect(equipmentRequestStatus(null).label).toBe('Not submitted');
     expect(equipmentRequestStatus({ status: 'PENDING', lines: lines('RESERVED', 'PENDING') }).label).toBe('Pending');
     expect(equipmentRequestStatus({ status: 'ARRANGED', lines: lines('RESERVED', 'RESERVED') })).toEqual({ label: 'Reserved', tone: 'positive' });
@@ -80,12 +80,41 @@ describe('the coordinator equipment requests screen wording', () => {
     expect(equipmentRequestStatus({ status: 'CANCELLED', lines: lines('RELEASED') })).toEqual({ label: 'Cancelled', tone: 'neutral' });
   });
 
-  test('TC-482 G4 each Technical Support decision reads as a plain sentence', () => {
+  test('TC-1288 G4 each Technical Support decision reads as a plain sentence', () => {
     expect(equipmentUpdateText({ action: 'LINE_RESERVED', equipment_type: 'STAGING', quantity: 1 })).toBe('Reserved 1 × staging');
     expect(equipmentUpdateText({ action: 'LINE_UNABLE_TO_FULFILL', equipment_type: 'VISUAL', quantity: 3, reason: 'None free' })).toBe('Unable to fulfil 3 × visual: None free');
     expect(equipmentUpdateText({ action: 'LINE_RESERVATION_RELEASED', equipment_type: 'AUDIO', quantity: 2, reason: 'Not needed' })).toBe('Released 2 × audio: Not needed');
     expect(equipmentUpdateText({
       action: 'LINE_AMENDED', old_values: { equipment_type: 'AUDIO', quantity: 2 }, new_values: { equipment_type: 'VISUAL', quantity: 3 }, note: 'Substitute'
     })).toBe('Amended 2 × audio → 3 × visual: Substitute');
+  });
+});
+
+describe('equipment arrangement edges', () => {
+  test('TC-1289 [boundary] missing request details read as one unit of equipment, pending', () => {
+    expect(equipmentLineStatus()).toEqual({ label: 'Pending', tone: 'warning' });
+    expect(equipmentTypeLabel()).toBe('Equipment');
+    expect(equipmentRequestStatus(null)).toEqual({ label: 'Not submitted', tone: 'neutral' });
+    expect(equipmentRequestStatus({ status: 'CANCELLED' })).toEqual({ label: 'Cancelled', tone: 'neutral' });
+    expect(equipmentRequestStatus({ status: 'ARRANGED' })).toEqual({ label: 'Unable to fulfil', tone: 'danger' });
+    expect(equipmentArrangements(null)).toBeNull();
+    expect(equipmentArrangements({ status: 'PENDING' })).toEqual({ status: { label: 'Pending', tone: 'warning' }, lines: [] });
+    expect(equipmentArrangements({ status: 'PENDING', lines: [{ reservation_id: 'by-id' }] }, [{ id: 'by-id', start_datetime: 'S', end_datetime: 'E' }]).lines[0])
+      .toMatchObject({ reservedFrom: 'S', reservedTo: 'E' });
+    expect(equipmentArrangements({ status: 'PENDING', lines: [{ equipment_type: 'AUDIO', reservation_id: 'gone' }] }).lines[0])
+      .toMatchObject({ label: 'Audio × 1', reservedFrom: null, reservedTo: null, decidedAt: null, reason: null });
+  });
+
+  test('TC-1290 [boundary] an unknown action is a plain update, and an amendment with no values still reads', () => {
+    expect(equipmentUpdateText()).toBe('Updated the request');
+    expect(equipmentUpdateText({ action: 'LINE_AMENDED' })).toBe('Amended 1 × equipment → 1 × equipment');
+    expect(equipmentUpdateText({ action: 'LINE_RESERVATION_RELEASED', quantity: 2, equipment_type: 'AUDIO' })).toBe('Released 2 × audio');
+    expect(equipmentActivity()).toEqual([]);
+    expect(equipmentActivity([{ id: 'h1', action: 'LINE_AMENDED', actor_id: 'u1', actor_role: 'Lead technician' }, { id: 'h2', action: 'NOTE' }]))
+      .toEqual([expect.objectContaining({
+        id: 'equipment-h1', actor_role: 'Lead technician', old_value: 'Equipment × 1', new_value: 'Equipment × 1', reason: null
+      })]);
+    expect(equipmentActivity([{ id: 'h3', action: 'LINE_UNABLE_TO_FULFILL' }, { id: 'h4', action: 'LINE_RESERVATION_RELEASED' }])
+      .map((entry) => entry.reason)).toEqual([null, null]);
   });
 });

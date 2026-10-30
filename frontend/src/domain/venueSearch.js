@@ -85,7 +85,7 @@ const asIsoDate = (value) => {
 };
 
 // Touching endpoints do not overlap (07:00–09:00 vs 09:00–17:00 is free).
-// Revisit if Session 3 adds setup / turnaround time (TC-097).
+// Revisit if Session 3 adds setup / turnaround time.
 export const timesOverlap = (aStart, aEnd, bStart, bEnd) => aStart < bEnd && bStart < aEnd;
 
 const isApproved = (status) => String(status || "").toUpperCase() === "APPROVED";

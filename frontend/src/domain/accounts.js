@@ -27,7 +27,8 @@ const STAFF_ROLE_PATTERNS = [
 // Only the mailbox name and any sub-domains are matched, so a company domain such
 // as "eventco.com" cannot accidentally set somebody's role.
 function roleScope(email) {
-  const [mailbox = "", domain = ""] = String(email).toLowerCase().trim().split("@");
+  // split always yields at least one element, so only the domain can be missing.
+  const [mailbox, domain = ""] = String(email).toLowerCase().trim().split("@");
   const labels = domain.split(".");
   const subDomains = labels.slice(0, Math.max(labels.length - 2, 0));
   return [mailbox, ...subDomains].join(".");
