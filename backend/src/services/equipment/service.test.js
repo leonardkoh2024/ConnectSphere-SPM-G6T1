@@ -230,3 +230,81 @@ test("D4 an authenticated coordinator reaches the cancellation release operation
   assert.deepEqual(await response.json(), { released: 0 });
   assert.equal(transactionCalls, 1);
 });
+
+// G6 / SCRUM-138 AC3 — the routes Technical Support use to reassess a flagged reservation.
+// The rules themselves are in reservations.test.js (G6-TC1 to TC12); these pin who may call them.
+const reassessRoute = async ({ role, path, body = {}, authorization = "Bearer valid-token", runTransaction }) => {
+  let transactionCalls = 0;
+  const firestore = {
+    collection() {
+      return { doc: () => ({ get: async () => ({ exists: true, data: () => ({ role }) }) }) };
+    },
+    async runTransaction(...args) {
+      transactionCalls += 1;
+      return runTransaction(...args);
+    }
+  };
+  const app = express();
+  app.use(express.json());
+  app.use("/api/equipment", createEquipmentService({
+    firestore,
+    verifyIdToken: async () => ({ uid: "user-1" }),
+    serverTimestamp: () => ({ serverTimestamp: true }),
+    getApprovedEventBookings: async () => []
+  }));
+  const server = app.listen(0);
+  try {
+    await new Promise((resolve) => server.once("listening", resolve));
+    const { port } = server.address();
+    const response = await fetch(`http://127.0.0.1:${port}/api/equipment${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: authorization },
+      body: JSON.stringify(body)
+    });
+    return { response, transactionCalls };
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+};
+const G6_ROUTES = [
+  ["/events/event-1/recheck-availability", {}],
+  ["/reservations/res-1/keep", { note: "Fits" }],
+  ["/reservations/res-1/amend", { quantity: 3, note: "More" }]
+];
+
+test("G6-TC18 AC3 only Technical Support Staff can re-check, keep or amend, and nothing is read or written for anyone else", async () => {
+  for (const [path, body] of G6_ROUTES) {
+    for (const role of ["EVENT_COORDINATOR", "EVENT_ORGANISER", "VENUE_STAFF", "ATTENDEE"]) {
+      const { response, transactionCalls } = await reassessRoute({
+        role, path, body,
+        runTransaction: async () => { throw new Error("An unauthorised caller reached the reassessment transaction."); }
+      });
+      assert.equal(response.status, 403, `${role} ${path}`);
+      assert.match((await response.json()).error, /only technical support staff/i);
+      assert.equal(transactionCalls, 0);
+    }
+  }
+});
+
+test("G6-TC19 AC3 a request with no bearer token is refused before any profile or reservation is touched", async () => {
+  for (const [path, body] of G6_ROUTES) {
+    const { response, transactionCalls } = await reassessRoute({
+      role: "TECHNICAL_SUPPORT_STAFF", path, body, authorization: "",
+      runTransaction: async () => { throw new Error("Unauthenticated request reached Firestore."); }
+    });
+    assert.equal(response.status, 401, path);
+    assert.equal(transactionCalls, 0);
+  }
+});
+
+test("G6-TC20 AC3 a Technical Support member reaches each operation, and a refusal comes back with its status and reason", async () => {
+  for (const [path, body] of G6_ROUTES) {
+    const { response, transactionCalls } = await reassessRoute({
+      role: "TECHNICAL_SUPPORT_STAFF", path, body,
+      runTransaction: async () => { throw Object.assign(new Error("Nothing is waiting for reassessment."), { statusCode: 409 }); }
+    });
+    assert.equal(response.status, 409, path);
+    assert.deepEqual(await response.json(), { error: "Nothing is waiting for reassessment." });
+    assert.equal(transactionCalls, 1);
+  }
+});

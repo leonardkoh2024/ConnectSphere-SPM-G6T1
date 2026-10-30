@@ -21,9 +21,12 @@ import { getDocs, runTransaction, serverTimestamp } from "firebase/firestore";
 import { auth } from "../../lib/firebase";
 import {
   amendEquipmentRequestLine,
+  amendEquipmentReservation,
+  keepEquipmentReservation,
   listPendingEquipmentRequests,
   loadEquipmentCatalogue,
   markEquipmentLineUnableToFulfill,
+  recheckEquipmentReassessment,
   releaseEquipmentReservation,
   releaseCancelledEventReservations,
   reserveEquipmentForEvent,
@@ -381,5 +384,59 @@ describe("J5 SCRUM-154 saving an equipment request and telling Technical Support
     asCoordinator({ event: { coordinator_id: "someone-else", status: "APPROVED" } });
     await expect(submitEquipmentRequest(submitted)).rejects.toThrow(/only the assigned event coordinator/i);
     expect(rerequestCalls()).toHaveLength(0);
+  });
+});
+
+// G6 / SCRUM-138 AC3 — the browser side of reassessing a flagged reservation. Re-checking, keeping
+// and amending go through the equipment service; releasing is the existing release (TC-305).
+describe("G6 SCRUM-138 reassessing a flagged reservation", () => {
+  test("G6-TC21 AC3 re-checking asks the service about the event's new window with the caller's token", async () => {
+    const body = { windowStart: "2026-11-12T00:30:00.000Z", windowEnd: "2026-11-12T10:00:00.000Z", lines: [] };
+    mockFetch.mockResolvedValue({ ok: true, json: async () => body });
+
+    await expect(recheckEquipmentReassessment({ eventId: "event-1" })).resolves.toEqual(body);
+    expect(mockFetch).toHaveBeenCalledWith("/api/equipment/events/event-1/recheck-availability", expect.any(Object));
+    const [, options] = mockFetch.mock.calls[0];
+    expect(options.method).toBe("POST");
+    expect(options.headers.Authorization).toMatch(/^Bearer /);
+  });
+
+  test("G6-TC22 AC3 keeping and amending send the reservation, the note and the new quantity", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ reservationId: "res/1", status: "RESERVED" }) });
+
+    await keepEquipmentReservation({ reservationId: "res/1", note: "Still fits" });
+    expect(mockFetch).toHaveBeenLastCalledWith("/api/equipment/reservations/res%2F1/keep", expect.any(Object));
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({ note: "Still fits" });
+
+    await amendEquipmentReservation({ reservationId: "res/1", quantity: 4, note: "Larger crowd" });
+    expect(mockFetch).toHaveBeenLastCalledWith("/api/equipment/reservations/res%2F1/amend", expect.any(Object));
+    expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({ quantity: 4, note: "Larger crowd" });
+    mockFetch.mock.calls.forEach(([, options]) => expect(options.headers.Authorization).toMatch(/^Bearer /));
+  });
+
+  test("G6-TC23 AC3 only Technical Support Staff can reassess, and nothing is sent for anyone else or without a choice", async () => {
+    mockGetDoc.mockResolvedValue(snapshot({ role: "EVENT_COORDINATOR" }));
+    await expect(recheckEquipmentReassessment({ eventId: "event-1" })).rejects.toThrow("Only Technical Support Staff can reassess equipment reservations.");
+    await expect(keepEquipmentReservation({ reservationId: "res-1" })).rejects.toThrow("Only Technical Support Staff can reassess equipment reservations.");
+    await expect(amendEquipmentReservation({ reservationId: "res-1", quantity: 2, note: "x" })).rejects.toThrow("Only Technical Support Staff can reassess equipment reservations.");
+
+    mockGetDoc.mockResolvedValue(snapshot({ role: "TECHNICAL_SUPPORT_STAFF" }));
+    await expect(recheckEquipmentReassessment({ eventId: "" })).rejects.toThrow("Choose an event to re-check.");
+    await expect(keepEquipmentReservation({ reservationId: "" })).rejects.toThrow("Choose an equipment reservation to keep.");
+    await expect(amendEquipmentReservation({ reservationId: "" , quantity: 2, note: "x" })).rejects.toThrow("Choose an equipment reservation to amend.");
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test("G6-TC24 AC3 a refusal shows the service's reason, a fallback without one, and an unreachable service plainly", async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 409, json: async () => ({ error: "Requested quantity unavailable for the required time period: 1 free, 1 more needed." }) });
+    await expect(keepEquipmentReservation({ reservationId: "res-1" })).rejects.toThrow(/1 free, 1 more needed/);
+
+    mockFetch.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) });
+    await expect(recheckEquipmentReassessment({ eventId: "event-1" })).rejects.toThrow("The availability could not be re-checked.");
+    await expect(keepEquipmentReservation({ reservationId: "res-1" })).rejects.toThrow("The reservation could not be kept.");
+    await expect(amendEquipmentReservation({ reservationId: "res-1", quantity: 2, note: "x" })).rejects.toThrow("The reservation could not be amended.");
+
+    mockFetch.mockRejectedValue(new TypeError("Failed to fetch"));
+    await expect(keepEquipmentReservation({ reservationId: "res-1" })).rejects.toThrow(/equipment service is not responding/);
   });
 });

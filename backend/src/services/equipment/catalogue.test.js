@@ -75,7 +75,9 @@ test("TC-406 the catalogue returns stock, unavailability and every reservation w
       start_datetime: "2026-11-04T01:00:00.000Z", end_datetime: "2026-11-04T09:00:00.000Z",
       reserved_by: "tech-1", created_at: "2026-10-16T08:00:00.000Z",
       released_at: null, released_by: null, release_reason: null,
-      event_name: "Partner Summit", reference_no: "EVT-001", event_date: "2026-11-04"
+      event_name: "Partner Summit", reference_no: "EVT-001", event_date: "2026-11-04",
+      // G6 — the catalogue now says whether the reservation waits for reassessment.
+      rerequest_required: false, rerequest_reason: null, rerequest_flagged_at: null
     },
     {
       // The event's request is gone: the reservation is still listed, without its name.
@@ -83,7 +85,8 @@ test("TC-406 the catalogue returns stock, unavailability and every reservation w
       start_datetime: "2026-10-01T01:00:00.000Z", end_datetime: "2026-10-01T09:00:00.000Z",
       reserved_by: "tech-2", created_at: null,
       released_at: "2026-09-20T08:00:00.000Z", released_by: null, release_reason: "Event cancelled",
-      event_name: null, reference_no: null, event_date: null
+      event_name: null, reference_no: null, event_date: null,
+      rerequest_required: false, rerequest_reason: null, rerequest_flagged_at: null
     }
   ]);
   // Each event's request is read once, and nothing else is read.
@@ -187,4 +190,30 @@ test("TC-406 only signed-in Technical Support Staff can read the catalogue", asy
   const anonymous = fakeFirestore();
   assert.equal((await getCatalogue(anonymous, null)).status, 401);
   assert.deepEqual(anonymous.reads, []);
+});
+
+// G6 / SCRUM-138 AC1 — Technical Support must be able to see which reservations I3 flagged.
+test("G6-TC13 AC1 the catalogue says which reservations wait for reassessment, why, and since when", async () => {
+  const flagged = {
+    reservation_id: "res-f", event_id: "event-1", equipment_type: "AUDIO", quantity: 2, status: "RESERVED",
+    start_datetime: "2026-11-04T01:00:00.000Z", end_datetime: "2026-11-04T09:00:00.000Z",
+    rerequest_required: true, rerequest_change_id: "chg-1", rerequest_reason: "Event date changed",
+    rerequest_flagged_at: timestamp("2026-10-30T03:00:00.000Z")
+  };
+  const clean = { ...flagged, reservation_id: "res-c", rerequest_required: false, rerequest_reason: undefined, rerequest_flagged_at: undefined };
+  const odd = { ...flagged, reservation_id: "res-o", rerequest_required: "yes", rerequest_reason: "" };
+  const firestore = {
+    collection(name) {
+      const data = { equipment_reservations: [["res-f", flagged], ["res-c", clean], ["res-o", odd]] }[name] || [];
+      return { get: async () => rows(data), doc: () => ({ get: async () => ({ exists: false, data: () => undefined }) }) };
+    }
+  };
+  const { reservations } = await createEquipmentCatalogue({ firestore }).load();
+  const flags = Object.fromEntries(reservations.map((item) =>
+    [item.id, [item.rerequest_required, item.rerequest_reason, item.rerequest_flagged_at]]));
+
+  assert.deepEqual(flags["res-f"], [true, "Event date changed", "2026-10-30T03:00:00.000Z"]);
+  assert.deepEqual(flags["res-c"], [false, null, null]);
+  // Only a real `true` is a flag; anything else reads as not flagged.
+  assert.deepEqual(flags["res-o"], [false, null, "2026-10-30T03:00:00.000Z"]);
 });

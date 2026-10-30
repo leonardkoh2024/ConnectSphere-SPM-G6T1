@@ -121,5 +121,58 @@ test("TC-405 reservations split into current (soonest first) and past (latest fi
   expect(mine.current.map((item) => item.id)).toEqual(["in-use", "tomorrow"]);
   expect(mine.past.map((item) => item.id)).toEqual(["last-month"]);
 
-  expect(reservationGroups(undefined, { now: NOW })).toEqual({ current: [], past: [] });
+  // G6 added the `reassess` group (reservations flagged by I3), so an empty list now has three.
+  expect(reservationGroups(undefined, { now: NOW })).toEqual({ reassess: [], current: [], past: [] });
+});
+
+// G6 / SCRUM-138 — reservations I3 flagged come out of Current into their own group.
+describe("G6 reservations that wait for reassessment", () => {
+  const flagged = (overrides) => reservation({ rerequest_required: true, rerequest_reason: "Event date changed", ...overrides });
+
+  test("G6-TC14 AC1 a flagged live reservation is listed to reassess, soonest first, and not again under Current", () => {
+    const all = [
+      reservation({ id: "plain-later", start_datetime: "2026-11-12T01:00:00.000Z", end_datetime: "2026-11-12T09:00:00.000Z" }),
+      flagged({ id: "flag-later", start_datetime: "2026-11-11T01:00:00.000Z", end_datetime: "2026-11-11T09:00:00.000Z" }),
+      flagged({ id: "flag-now" }),
+      reservation({ id: "plain-now" })
+    ];
+    const groups = reservationGroups(all, { now: NOW });
+
+    expect(groups.reassess.map((item) => item.id)).toEqual(["flag-now", "flag-later"]);
+    expect(groups.current.map((item) => item.id)).toEqual(["plain-now", "plain-later"]);
+    expect(groups.past).toEqual([]);
+    // It is still the same reservation: its state is that of any other.
+    expect(groups.reassess[0].state).toBe("IN_USE");
+  });
+
+  test("G6-TC15 AC2 a flagged reservation is still active, so it keeps counting against free stock", () => {
+    const rows = catalogueRows({
+      inventory: [{ equipment_type: "AUDIO", total_quantity: 10 }],
+      reservations: [flagged({ id: "flag-now", quantity: 4 })],
+      now: NOW
+    });
+    const audio = rows.find((row) => row.equipmentType === "AUDIO");
+    expect([audio.reservedNow, audio.freeNow]).toEqual([4, 6]);
+  });
+
+  test("G6-TC16 AC3 only a live reservation can be reassessed: released and finished ones stay in Past, whatever their flag", () => {
+    const groups = reservationGroups([
+      flagged({ id: "released", status: "RELEASED" }),
+      flagged({ id: "finished", start_datetime: "2026-11-01T01:00:00.000Z", end_datetime: "2026-11-01T09:00:00.000Z" }),
+      flagged({ id: "unflagged-false", rerequest_required: false }),
+      flagged({ id: "flag-as-text", rerequest_required: "true" })
+    ], { now: NOW });
+
+    expect(groups.reassess).toEqual([]);
+    expect(groups.past.map((item) => item.id).sort()).toEqual(["finished", "released"]);
+    expect(groups.current.map((item) => item.id).sort()).toEqual(["flag-as-text", "unflagged-false"]);
+  });
+
+  test("G6-TC17 the 'only mine' filter applies to reservations to reassess too", () => {
+    const groups = reservationGroups([
+      flagged({ id: "mine", reserved_by: "tech-1" }),
+      flagged({ id: "theirs", reserved_by: "tech-2" })
+    ], { now: NOW, onlyReservedBy: "tech-1" });
+    expect(groups.reassess.map((item) => item.id)).toEqual(["mine"]);
+  });
 });
