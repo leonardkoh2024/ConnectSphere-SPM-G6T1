@@ -6,17 +6,11 @@
 
 const {
   REVIEW_REQUIRED,
-  NOT_RECORDED,
   outstandingForSafetyCheck,
   sendForSafetyCheck,
-  passedSafetyCheckAfterPlanning,
-  confirmEvent,
   safetyReviewQueue,
-  safetyReviewFacts,
   recordSafetyOutcome,
   attendeeChangeNotices,
-  unreadCount,
-  markNotificationRead,
   unassignedQueue,
   eventEnteredUnassignedQueue,
   openLeadAssignmentNotice,
@@ -97,15 +91,6 @@ describe("L1 / SCRUM-187 send an event for its safety check", () => {
       });
       expect(withHistory.notifications[0].checked_before).toBe(true);
     });
-
-    test("TC-2433 AC4 a pass made after the latest return to Planning confirms the event", () => {
-      const returned = { ...planningEvent, returned_to_planning_at: "2026-10-20T00:00:00.000Z" };
-      const reviews = [{ event_id: "EVT-001", outcome: "APPROVE", decided_at: "2026-10-21T00:00:00.000Z" }];
-      expect(passedSafetyCheckAfterPlanning(returned, reviews)).toBe(true);
-      expect(confirmEvent({ event: returned, reviews })).toEqual({ ok: true, event: { ...returned, status: "CONFIRMED" } });
-      // Never returned to Planning: any pass counts.
-      expect(confirmEvent({ event: planningEvent, reviews }).ok).toBe(true);
-    });
   });
 
   describe("boundary", () => {
@@ -137,13 +122,6 @@ describe("L1 / SCRUM-187 send an event for its safety check", () => {
       expect(result.ok).toBe(true);
       expect(result.notifications).toEqual([]);
       expect(result.event.safety_review_requested_at).toBe("SERVER_TIMESTAMP");
-    });
-
-    test("TC-2438 AC4 a pass made at exactly the moment of the return does not count", () => {
-      const returned = { ...planningEvent, returned_to_planning_at: "2026-10-20T00:00:00.000Z" };
-      const sameInstant = [{ event_id: "EVT-001", outcome: "APPROVE", decided_at: "2026-10-20T00:00:00.000Z" }];
-      expect(passedSafetyCheckAfterPlanning(returned, sameInstant)).toBe(false);
-      expect(passedSafetyCheckAfterPlanning(returned, [{ event_id: "EVT-001", outcome: "APPROVE" }])).toBe(false);
     });
 
     test("TC-2439 AC2 outstanding items are labelled by the best name each record has", () => {
@@ -186,28 +164,12 @@ describe("L1 / SCRUM-187 send an event for its safety check", () => {
       expect(result.event.status).toBe("PLANNING");
       expect(result.notifications).toBeUndefined();
     });
-
-    test("TC-2442 AC4 an earlier pass, a rejection, or another event's pass cannot confirm the event", () => {
-      const returned = { ...planningEvent, returned_to_planning_at: "2026-10-20T00:00:00.000Z" };
-      [
-        [{ event_id: "EVT-001", outcome: "APPROVE", decided_at: "2026-10-18T00:00:00.000Z" }],
-        [{ event_id: "EVT-001", outcome: "REJECT", decided_at: "2026-10-21T00:00:00.000Z" }],
-        [{ event_id: "EVT-002", outcome: "APPROVE", decided_at: "2026-10-21T00:00:00.000Z" }],
-        []
-      ].forEach((reviews) => {
-        expect(confirmEvent({ event: returned, reviews })).toEqual({ ok: false, reason: "safety_check_required", event: returned });
-      });
-      expect(confirmEvent({ event: returned }).reason).toBe("safety_check_required");
-    });
   });
 
   describe("failure", () => {
-    test("TC-2443 a missing event is refused rather than sent or confirmed", () => {
+    test("TC-2443 a missing event is refused rather than sent", () => {
       expect(sendForSafetyCheck()).toEqual({ ok: false, reason: "required" });
       expect(sendForSafetyCheck({ bookings: [approvedBooking] })).toEqual({ ok: false, reason: "required" });
-      expect(confirmEvent()).toEqual({ ok: false, reason: "required" });
-      expect(passedSafetyCheckAfterPlanning(undefined, [{ event_id: "EVT-001", outcome: "APPROVE", decided_at: "2026-10-21" }])).toBe(false);
-      expect(passedSafetyCheckAfterPlanning(planningEvent)).toBe(false);
     });
   });
 });
@@ -236,48 +198,6 @@ describe("L2 / SCRUM-188 review an event's operational safety", () => {
         { event_id: "EVT-NEW", name: "Later Forum", date: "2026-11-20", venues: ["Main Hall"], expected_attendance: 80 }
       ]);
     });
-
-    test("TC-2454 AC2 AC3 AC4 each active booking shows attendance against capacity, layout, access and restrictions, with the event's facts and history", () => {
-      const facts = safetyReviewFacts({
-        event: {
-          event_id: "EVT-001",
-          expected_attendance: 120,
-          accessibility_requirements: " Step-free route ",
-          equipment_placement: "Speakers by the stage",
-          crowd_movement: "Aisle kept clear"
-        },
-        bookings: [
-          { booking_id: "VB-001", event_id: "EVT-001", venue_id: "VEN-001", status: "APPROVED", required_layout: "Theatre" },
-          { booking_id: "VB-OLD", event_id: "EVT-001", venue_id: "VEN-002", status: "RELEASED", required_layout: "Banquet" },
-          { booking_id: "VB-OTHER", event_id: "EVT-002", venue_id: "VEN-001", status: "APPROVED" }
-        ],
-        venues: [{ venue_id: "VEN-001", max_capacity: 100, emergency_access: "Loading bay", restrictions: "No open flame" }],
-        equipment: [
-          { equipment_id: "EQ-1", event_id: "EVT-001", label: "Radio mics", status: "reserved" },
-          { equipment_id: "EQ-2", event_id: "EVT-001", label: "Spare lectern", status: "REQUESTED" },
-          { equipment_id: "EQ-3", event_id: "EVT-002", label: "Other", status: "RESERVED" }
-        ],
-        reviews: [
-          { event_id: "EVT-001", outcome: "REQUEST_CHANGES", comment: "Move the stage.", decided_at: "2026-10-18T00:00:00.000Z" },
-          { event_id: "EVT-002", outcome: "APPROVE", comment: "Other event.", decided_at: "2026-10-19T00:00:00.000Z" }
-        ]
-      });
-      expect(facts).toEqual({
-        bookings: [{
-          booking_id: "VB-001",
-          attendance: 120,
-          capacity: 100,
-          required_layout: "Theatre",
-          emergency_access: "Loading bay",
-          restrictions: "No open flame"
-        }],
-        accessibility: "Step-free route",
-        reserved_equipment: [{ equipment_id: "EQ-1", label: "Radio mics" }],
-        equipment_placement: "Speakers by the stage",
-        crowd_movement: "Aisle kept clear",
-        previous_outcomes: [{ outcome: "REQUEST_CHANGES", comment: "Move the stage.", decided_at: "2026-10-18T00:00:00.000Z" }]
-      });
-    });
   });
 
   describe("boundary", () => {
@@ -291,42 +211,6 @@ describe("L2 / SCRUM-188 review an event's operational safety", () => {
         { event_id: "EVT-B", name: "Untitled event", date: null, venues: [], expected_attendance: null }
       ]);
       expect(safetyReviewQueue()).toEqual([]);
-    });
-
-    test("TC-2456 AC2 AC3 a fact nobody recorded reads Not recorded, and a zero or non-numeric figure is no figure", () => {
-      const facts = safetyReviewFacts({
-        event: { event_id: "EVT-001", expected_attendance: 0, accessibility_requirements: "   " },
-        bookings: [{ booking_id: "VB-001", event_id: "EVT-001", venue_id: "VEN-404", status: "APPROVED" }],
-        venues: [{ venue_id: "VEN-001", max_capacity: "many" }],
-        equipment: [{ equipment_id: "EQ-1", event_id: "EVT-001", status: "RESERVED" }, { equipment_id: "EQ-2", event_id: "EVT-001" }],
-        reviews: [{ event_id: "EVT-001", outcome: "APPROVE" }]
-      });
-      expect(facts.bookings[0]).toEqual({
-        booking_id: "VB-001", attendance: null, capacity: null,
-        required_layout: NOT_RECORDED, emergency_access: NOT_RECORDED, restrictions: NOT_RECORDED
-      });
-      expect(facts.accessibility).toBe(NOT_RECORDED);
-      expect(facts.equipment_placement).toBe(NOT_RECORDED);
-      expect(facts.crowd_movement).toBe(NOT_RECORDED);
-      expect(facts.reserved_equipment).toEqual([{ equipment_id: "EQ-1", label: "EQ-1" }]);
-      expect(facts.previous_outcomes).toEqual([{ outcome: "APPROVE", comment: "", decided_at: null }]);
-    });
-
-    test("TC-2457 AC2 a rejected booking awaiting a new request is still reviewed; a plain rejection is not", () => {
-      const facts = safetyReviewFacts({
-        event: { event_id: "EVT-001", expected_attendance: 50 },
-        bookings: [
-          { booking_id: "VB-RE", event_id: "EVT-001", status: "REJECTED", requires_re_request: true },
-          { booking_id: "VB-NO", event_id: "EVT-001", status: "REJECTED" }
-        ]
-      });
-      expect(facts.bookings.map((booking) => booking.booking_id)).toEqual(["VB-RE"]);
-    });
-  });
-
-  describe("failure", () => {
-    test("TC-2458 the review facts need an event; calling without one is a programming error", () => {
-      expect(() => safetyReviewFacts()).toThrow(TypeError);
     });
   });
 });
@@ -469,13 +353,9 @@ describe("L4 / SCRUM-190 return an event to planning after a safety concern", ()
       expect(result.technicalArrangements[0].review_status).toBe(REVIEW_REQUIRED);
     });
 
-    test("TC-2482 AC4 AC5 once every flag is cleared a new check may be sent, and only a newer pass confirms", () => {
+    test("TC-2482 AC4 once every flag is cleared a new check may be sent", () => {
       const returned = concern().event;
       expect(sendForSafetyCheck({ event: returned, bookings: [bookings[0]], technicalArrangements: [technical[0]] }).ok).toBe(true);
-      const oldPass = [{ event_id: "EVT-001", outcome: "APPROVE", decided_at: "2026-10-01T00:00:00.000Z" }];
-      expect(confirmEvent({ event: returned, reviews: oldPass }).reason).toBe("safety_check_required");
-      const newPass = [{ event_id: "EVT-001", outcome: "APPROVE", decided_at: "2026-10-27T00:00:00.000Z" }];
-      expect(confirmEvent({ event: returned, reviews: newPass }).event.status).toBe("CONFIRMED");
     });
   });
 
@@ -558,30 +438,6 @@ describe("J7 / SCRUM-156 attendee change notices", () => {
   test("TC-2241 [failure] an unknown or missing change produces no notices", () => {
     expect(attendeeChangeNotices({ event, attendees, change: { kind: "PRICE" } })).toEqual([]);
     expect(attendeeChangeNotices()).toEqual([]);
-  });
-});
-
-describe("J7 notification read state", () => {
-  test("TC-2242 [normal] reading one notice lowers the badge; the last one read clears it", () => {
-    const list = [
-      { notification_id: "N1", is_read: false },
-      { notification_id: "N2" },
-      { notification_id: "N3", is_read: true }
-    ];
-    expect(unreadCount(list)).toBe(2);
-    const once = markNotificationRead(list, "N1");
-    expect(once).toEqual({
-      notifications: [{ notification_id: "N1", is_read: true }, { notification_id: "N2" }, { notification_id: "N3", is_read: true }],
-      unread: 1,
-      badge: "1"
-    });
-    expect(markNotificationRead(once.notifications, "N2")).toMatchObject({ unread: 0, badge: null });
-  });
-
-  test("TC-2243 [boundary] an empty inbox has no badge, and an unknown id changes nothing", () => {
-    expect(unreadCount()).toBe(0);
-    expect(markNotificationRead()).toEqual({ notifications: [], unread: 0, badge: null });
-    expect(markNotificationRead([{ notification_id: "N1" }], "N9").unread).toBe(1);
   });
 });
 

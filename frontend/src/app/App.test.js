@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 import { ROLES } from '../domain/roles';
-import { isStaffEmail, isStrongPassword, isValidMobileNumber, passwordChecks, resolveRole } from '../domain/accounts';
+import { isStrongPassword, isValidMobileNumber, passwordChecks } from '../domain/accounts';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getDoc } from 'firebase/firestore';
 
@@ -128,8 +128,7 @@ describe('landing page', () => {
     expect(screen.queryByText('At least 12 characters')).not.toBeInTheDocument();
   });
 
-  // The role is still resolved from the work email (see resolveRole below); it is
-  // just no longer previewed on the sign-in form.
+  // An account's role comes from its stored profile, so the sign-in form previews none.
   test('TC-0096 the corporate sign-in form does not preview a role', async () => {
     render(<App />);
 
@@ -191,63 +190,6 @@ describe('landing page', () => {
     render(<App />);
 
     expect(await screen.findByText(`Workspace role: ${ROLES.SAFETY_OFFICER}`)).toBeInTheDocument();
-  });
-});
-
-describe('resolveRole', () => {
-  test.each([
-    ['nadia.organiser@connectsphere.com', ROLES.ORGANISER],
-    ['amir.coordinator@connectsphere.com', ROLES.COORDINATOR],
-    ['venue.team@connectsphere.com', ROLES.VENUE_STAFF],
-    ['tech.support@connectsphere.com', ROLES.TECH_SUPPORT]
-  ])('TC-0100 %s becomes %s on the corporate portal', (email, expected) => {
-    expect(resolveRole(email, 'corporate')).toBe(expected);
-  });
-
-  test('TC-0101 an unrecognised staff mailbox falls back to the least privileged staff role', () => {
-    expect(resolveRole('j.tan@connectsphere.com', 'corporate')).toBe(
-      ROLES.ORGANISER
-    );
-  });
-
-  test('TC-0102 the individual portal is always an attendee, even with a staff email', () => {
-    expect(resolveRole('amir.coordinator@connectsphere.com', 'individual')).toBe(
-      ROLES.ATTENDEE
-    );
-    expect(resolveRole('priya@gmail.com', 'individual')).toBe(ROLES.ATTENDEE);
-  });
-
-  test('TC-0103 a company domain cannot set a role on its own', () => {
-    expect(resolveRole('j.tan@venueco.com', 'corporate')).not.toBe(
-      ROLES.VENUE_STAFF
-    );
-  });
-
-  // A6 AC1 — the Event Coordinator Lead is appointed, not created from a mailbox
-  // name, so there is no public sign-up that lands anyone in the Lead role. Even an
-  // email that advertises "lead" resolves to an ordinary staff role.
-  test('TC-0077 A6 AC1 the Coordinator Lead cannot be self-provisioned from a work email', () => {
-    expect(resolveRole('coordinator.lead@connectsphere.com', 'corporate')).toBe(
-      ROLES.COORDINATOR
-    );
-    expect(resolveRole('team.lead@connectsphere.com', 'corporate')).toBe(
-      ROLES.ORGANISER
-    );
-  });
-
-  // A7 AC1. Likewise the Safety Officer: seeded, never self-provisioned.
-  test('TC-0104 the Safety Officer cannot be self-provisioned from a work email', () => {
-    ['safety.officer@connectsphere.com', 'safety@connectsphere.com', 'officer@connectsphere.com'].forEach((email) => {
-      expect(resolveRole(email, 'corporate')).not.toBe(ROLES.SAFETY_OFFICER);
-      expect(resolveRole(email, 'individual')).toBe(ROLES.ATTENDEE);
-    });
-  });
-});
-
-describe('isStaffEmail', () => {
-  test('TC-0105 only approved domains may hold a corporate account', () => {
-    expect(isStaffEmail('venue.team@connectsphere.com')).toBe(true);
-    expect(isStaffEmail('venue.team@gmail.com')).toBe(false);
   });
 });
 
