@@ -125,7 +125,7 @@ npm run build        # production build into frontend/build/
 from `eslint-plugin-jest`, which ESLint cannot resolve once dependencies hoist to the workspace root — it
 fails the production build with `Environment key "jest/globals" is unknown`. The config uses ESLint's
 built-in `jest` env instead, which needs no plugin. Linting is otherwise unchanged and still fails the build
-on real problems.
+on real problems. `npm run lint` runs the same rules with `--max-warnings 0`, and CI runs it on every PR.
 
 - Firebase config comes from `REACT_APP_FIREBASE_*` env vars via `frontend/src/lib/firebase.js`. There is **one
   `.env`, at the repo root**, serving both workspaces; the root scripts load it with `dotenv-cli` before
@@ -155,10 +155,17 @@ on real problems.
   frontend/src/
     app/        App.js (auth gate) · Workspace.js (role shell) · routes.js (hash format) · Icon.js · App.css
     domain/     roles · portals · accounts · events — no React, no Firebase
-    features/   auth/ · events/ — one folder per epic, each with its own components/
-    lib/        firebase.js — the only module that imports firebase/*
+    features/   auth/ · events/ · venues/ · … — one folder per epic, each with its own components/ and *Api.js
+    lib/        firebase.js — initialises Firebase and exports auth and db
     sandbox/    unimported spike screens, safe to delete
   ```
+
+- **Screens never call Firebase or `fetch` themselves.** A feature's data access lives in its `*Api.js`
+  modules (shared helpers in `*ApiSupport.js`), whether it goes through the browser SDK or a backend service.
+  Which of the two to use is in [ADR 0002](docs/adr/0002-frontend-data-access.md). Lint enforces this:
+  importing `firebase/*` or calling `fetch` outside an `*Api.js`, a test or the app shell fails
+  `npm run lint`. When an `*Api.js` grows past a few hundred lines, split it by workflow and keep the
+  original file as the re-exporting entry point, as `venuesApi.js` and `reviewApi.js` do.
 
 - **`domain/` holds the rules, not the UI.** Roles, portals, account rules and catalogue values live there as
   plain functions and constants. Nothing in `domain/` may import React or Firebase — that is what lets it move
