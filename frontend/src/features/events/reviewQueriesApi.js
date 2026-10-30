@@ -9,9 +9,7 @@ import { editableEventStatuses } from "../../domain/significantEventChanges";
 import { equipmentActivity, equipmentArrangements } from "../../domain/eventEquipment";
 import { REGISTERED_STATUS } from "../../domain/registrationWindow";
 import { NOT_AUTHORISED } from "./reviewApiSupport";
-import { requireUser } from "../../lib/apiSupport";
-import { asIso } from "../../lib/apiSupport";
-
+import { asIso, requireUser } from "../../lib/apiSupport";
 
 const record = (snapshot) => {
   const data = snapshot.data();
@@ -115,24 +113,14 @@ const equipmentView = (requestSnapshot, reservationsSnapshot) => {
   return equipmentArrangements({ ...request, lines }, reservations);
 };
 
-export const detail = async (eventId) => {
-  const user = requireUser();
-  // K5 / SCRUM-186 AC3 — a refused read, a missing event and (below) an event held by
-  // another coordinator all answer the same way and read nothing further.
-  const eventSnapshot = await getDoc(doc(db, "events", eventId)).catch(() => null);
-  if (!eventSnapshot || !eventSnapshot.exists()) throw new Error(NOT_AUTHORISED);
-  const event = record(eventSnapshot);
-  // Organisers also use this shared detail loader. Resolve the profile before
-  // starting role-specific reads so their existing event view never attempts a
-  // venue_bookings query that Firestore correctly reserves for internal staff.
-  const profile = await profileFor(user.uid);
-  // The adapter's own check, behind firestore.rules: even if a read were permitted, a
-  // coordinator is never handed an event that is not currently assigned to them.
-  if (profile.role === ROLES.COORDINATOR && event.coordinator_id !== user.uid) throw new Error(NOT_AUTHORISED);
-  const isCoordinator = profile.role === ROLES.COORDINATOR;
-  // Technical Support's arrangements for this event, beside its venue bookings.
-  // Supplementary: a refused or failed read leaves the section empty rather than
-  // failing the whole detail.
+const byCreated = (a, b) => String(a.created_at || "").localeCompare(String(b.created_at || ""));
+const byStart = (left, right) => String(left.start_datetime || "").localeCompare(String(right.start_datetime || ""));
+
+// Everything detail reads about an event besides the event itself, in one round.
+// Venue bookings and Technical Support's arrangements are read for a coordinator
+// only; equipment reads are supplementary, so a refused or failed one leaves that
+// section empty rather than failing the whole detail.
+const readEventRecords = async (eventId, event, isCoordinator) => {
   const none = { docs: [] };
   const [questions, assignments, history, coordinator, requirement, facilities, accessibility, equipment, organiserSnapshot, venueBookings,
     equipmentRequest, equipmentReservations, equipmentHistory] = await Promise.all([
@@ -151,86 +139,133 @@ export const detail = async (eventId) => {
     event.organiser_id ? getDoc(doc(db, "users", event.organiser_id)).catch(() => null) : Promise.resolve(null),
     // F7 — keep booking decisions with the event they belong to. Historical
     // Released/Replaced rows are deliberately retained for audit visibility.
-    profile.role === ROLES.COORDINATOR
+    isCoordinator
       ? getDocs(query(collection(db, "venue_bookings"), where("event_id", "==", eventId)))
       : Promise.resolve({ docs: [] }),
     isCoordinator ? getDoc(doc(db, "equipment_requests", eventId)).catch(() => null) : Promise.resolve(null),
     isCoordinator ? getDocs(query(collection(db, "equipment_reservations"), where("event_id", "==", eventId))).catch(() => none) : Promise.resolve(none),
     isCoordinator ? getDocs(query(collection(db, "equipment_request_history"), where("event_id", "==", eventId))).catch(() => none) : Promise.resolve(none)
   ]);
-  const venueIds = [...new Set(venueBookings.docs.map((item) => item.data().venue_id).filter(Boolean))];
-  const [coordinators, responseSnapshots, venueSnapshots] = await Promise.all([
-    profile.role === ROLES.COORDINATOR ? activeCoordinators() : Promise.resolve([]),
-    Promise.all(questions.docs.map((question) => getDocs(query(collection(db, "clarification_responses"), where("clarification_id", "==", question.id))))),
-    Promise.all(venueIds.map((venueId) => getDoc(doc(db, "venues", venueId))))
-  ]);
-  const venueNames = new Map(venueSnapshots.filter((item) => item.exists()).map((item) => [item.id, item.data().name]));
-  const byCreated = (a, b) => String(a.created_at || "").localeCompare(String(b.created_at || ""));
-  const historyRecords = history.docs.map(record).sort(byCreated);
-  const equipmentRows = (equipmentHistory?.docs || []).map(record);
-  // D1 AC2 — the Activity tab names who made each change. A profile this user may
-  // not read falls back to the id rather than failing the whole detail.
+  return {
+    questions, assignments, history, coordinator, requirement, facilities, accessibility, equipment, organiserSnapshot, venueBookings,
+    equipmentRequest, equipmentReservations, equipmentHistory
+  };
+};
+
+// C3 — the venue requirements, facilities, accessibility and equipment lines the
+// organiser asked for, as fields on the event.
+const requestedNeeds = ({ requirement, facilities, accessibility, equipment }) => ({
+  preferred_location: requirement.data()?.preferred_location || null,
+  required_layout: requirement.data()?.required_layout || null,
+  facilities_required: requirement.data()?.facilities_required ?? null,
+  accessibility_needed: requirement.data()?.accessibility_needed ?? null,
+  accessibility_notes: requirement.data()?.accessibility_notes || "",
+  facilities: facilities.docs.map((item) => item.data().facility_id).filter(Boolean),
+  accessibility: accessibility.docs.map((item) => item.data().accessibility_id).filter(Boolean),
+  // C3 — the equipment lines the organiser requested (AC1).
+  equipment: equipment.docs.map((item) => ({
+    equipment_type: item.data().equipment_type,
+    quantity: item.data().quantity || 1,
+    notes: item.data().technical_note || item.data().notes || null
+  }))
+});
+
+// C8 — the latest approve or reject decision in the event's history.
+const latestDecision = (historyRecords) => {
+  const decisions = historyRecords.filter((item) => ["EVENT_APPROVED", "EVENT_REJECTED"].includes(item.action_type));
+  const decision = decisions.length ? decisions[decisions.length - 1] : null;
+  return {
+    decision: decision?.new_value || null, decision_reason: decision?.description || null,
+    decided_by: decision?.actor_id || null, decided_at: decision?.created_at || null
+  };
+};
+
+// C3 — the organiser's own contact details (AC2), or null when the profile cannot be read.
+const organiserContact = (organiserSnapshot, organiserId) => {
+  const organiserData = organiserSnapshot && organiserSnapshot.exists?.() ? organiserSnapshot.data() : null;
+  return organiserData
+    ? { id: organiserId, name: organiserData.name || null, email: organiserData.email || null, phone: organiserData.phone || organiserData.contact_number || null }
+    : null;
+};
+
+// D1 AC2 — the Activity tab names who made each change. A profile this user may
+// not read falls back to the id rather than failing the whole detail.
+const actorNamesFor = async (historyRecords) => {
   const actorIds = [...new Set(historyRecords.map((item) => item.actor_id).filter(Boolean))];
   const actorSnapshots = await Promise.all(actorIds.map((id) => getDoc(doc(db, "users", id)).catch(() => null)));
-  const actorNames = Object.fromEntries(actorSnapshots.filter((item) => item && item.exists?.()).map((item) => {
+  return Object.fromEntries(actorSnapshots.filter((item) => item && item.exists?.()).map((item) => {
     const data = item.data();
     return [item.id, data.name || data.full_name || data.display_name || data.staff_name].filter(([, name]) => name);
   }));
-  const decisions = historyRecords.filter((item) => ["EVENT_APPROVED", "EVENT_REJECTED"].includes(item.action_type));
-  const decision = decisions.length ? decisions[decisions.length - 1] : null;
-  // C3 — the organiser's own contact details (AC2).
-  const organiserData = organiserSnapshot && organiserSnapshot.exists?.() ? organiserSnapshot.data() : null;
-  const organiser = organiserData
-    ? { id: event.organiser_id, name: organiserData.name || null, email: organiserData.email || null, phone: organiserData.phone || organiserData.contact_number || null }
-    : null;
+};
+
+// F7 — one venue booking as the coordinator's event detail shows it.
+const bookingRow = (item, venueNames) => {
+  const booking = item.data();
+  return {
+    booking_id: booking.booking_id || item.id,
+    // F12 AC5 — an event may hold several bookings; each is told apart by its label.
+    booking_label: booking.booking_label || null,
+    expected_attendance: booking.expected_attendance ?? null,
+    layout: booking.layout_snapshot || null,
+    venue_id: booking.venue_id,
+    venue_name: venueNames.get(booking.venue_id) || booking.venue_name || booking.venue_id,
+    start_datetime: asIso(booking.start_datetime),
+    end_datetime: asIso(booking.end_datetime),
+    status: booking.status || "Status not recorded",
+    decision_reason: booking.decision_reason || null,
+    decided_at: asIso(booking.decided_at),
+    released_at: asIso(booking.released_at),
+    release_reason: booking.release_reason || null,
+    replacement_needed: booking.replacement_needed === true,
+    replacement_reason: booking.replacement_reason || null,
+    replaced_by_booking_id: booking.replaced_by_booking_id || null,
+    required_facilities_snapshot: booking.required_facilities_snapshot || []
+  };
+};
+
+export const detail = async (eventId) => {
+  const user = requireUser();
+  // K5 / SCRUM-186 AC3 — a refused read, a missing event and (below) an event held by
+  // another coordinator all answer the same way and read nothing further.
+  const eventSnapshot = await getDoc(doc(db, "events", eventId)).catch(() => null);
+  if (!eventSnapshot || !eventSnapshot.exists()) throw new Error(NOT_AUTHORISED);
+  const event = record(eventSnapshot);
+  // Organisers also use this shared detail loader. Resolve the profile before
+  // starting role-specific reads so their existing event view never attempts a
+  // venue_bookings query that Firestore correctly reserves for internal staff.
+  const profile = await profileFor(user.uid);
+  // The adapter's own check, behind firestore.rules: even if a read were permitted, a
+  // coordinator is never handed an event that is not currently assigned to them.
+  if (profile.role === ROLES.COORDINATOR && event.coordinator_id !== user.uid) throw new Error(NOT_AUTHORISED);
+  const isCoordinator = profile.role === ROLES.COORDINATOR;
+
+  const records = await readEventRecords(eventId, event, isCoordinator);
+  const venueIds = [...new Set(records.venueBookings.docs.map((item) => item.data().venue_id).filter(Boolean))];
+  const [coordinators, responseSnapshots, venueSnapshots] = await Promise.all([
+    isCoordinator ? activeCoordinators() : Promise.resolve([]),
+    Promise.all(records.questions.docs.map((question) => getDocs(query(collection(db, "clarification_responses"), where("clarification_id", "==", question.id))))),
+    Promise.all(venueIds.map((venueId) => getDoc(doc(db, "venues", venueId))))
+  ]);
+  const venueNames = new Map(venueSnapshots.filter((item) => item.exists()).map((item) => [item.id, item.data().name]));
+  const historyRecords = records.history.docs.map(record).sort(byCreated);
+  const equipmentRows = (records.equipmentHistory?.docs || []).map(record);
+  const actorNames = await actorNamesFor(historyRecords);
   return {
     event: {
       ...event,
-      preferred_location: requirement.data()?.preferred_location || null,
-      required_layout: requirement.data()?.required_layout || null,
-      facilities_required: requirement.data()?.facilities_required ?? null,
-      accessibility_needed: requirement.data()?.accessibility_needed ?? null,
-      accessibility_notes: requirement.data()?.accessibility_notes || "",
-      facilities: facilities.docs.map((item) => item.data().facility_id).filter(Boolean),
-      accessibility: accessibility.docs.map((item) => item.data().accessibility_id).filter(Boolean),
-      // C3 — the equipment lines the organiser requested (AC1).
-      equipment: equipment.docs.map((item) => ({
-        equipment_type: item.data().equipment_type,
-        quantity: item.data().quantity || 1,
-        notes: item.data().technical_note || item.data().notes || null
-      })),
-      editable: event.coordinator_id === user.uid, decision: decision?.new_value || null, decision_reason: decision?.description || null, decided_by: decision?.actor_id || null, decided_at: decision?.created_at || null
+      ...requestedNeeds(records),
+      editable: event.coordinator_id === user.uid,
+      ...latestDecision(historyRecords)
     },
-    coordinator, coordinators, organiser,
+    coordinator: records.coordinator, coordinators, organiser: organiserContact(records.organiserSnapshot, event.organiser_id),
     // The Activity tab lists Technical Support's decisions with the event's own history.
     history: [...historyRecords, ...equipmentActivity(equipmentRows)].sort(byCreated), actorNames,
-    equipmentArrangements: equipmentView(equipmentRequest, equipmentReservations),
-    clarifications: questions.docs.map(record).sort(byCreated),
+    equipmentArrangements: equipmentView(records.equipmentRequest, records.equipmentReservations),
+    clarifications: records.questions.docs.map(record).sort(byCreated),
     responses: responseSnapshots.flatMap((snapshot) => snapshot.docs.map(record)).sort(byCreated),
-    assignments: assignments.docs.map(record).sort(byCreated),
-    venueBookings: venueBookings.docs.map((item) => {
-      const booking = item.data();
-      return {
-        booking_id: booking.booking_id || item.id,
-        // F12 AC5 — an event may hold several bookings; each is told apart by its label.
-        booking_label: booking.booking_label || null,
-        expected_attendance: booking.expected_attendance ?? null,
-        layout: booking.layout_snapshot || null,
-        venue_id: booking.venue_id,
-        venue_name: venueNames.get(booking.venue_id) || booking.venue_name || booking.venue_id,
-        start_datetime: asIso(booking.start_datetime),
-        end_datetime: asIso(booking.end_datetime),
-        status: booking.status || "Status not recorded",
-        decision_reason: booking.decision_reason || null,
-        decided_at: asIso(booking.decided_at),
-        released_at: asIso(booking.released_at),
-        release_reason: booking.release_reason || null,
-        replacement_needed: booking.replacement_needed === true,
-        replacement_reason: booking.replacement_reason || null,
-        replaced_by_booking_id: booking.replaced_by_booking_id || null,
-        required_facilities_snapshot: booking.required_facilities_snapshot || []
-      };
-    }).sort((left, right) => String(left.start_datetime || "").localeCompare(String(right.start_datetime || "")))
+    assignments: records.assignments.docs.map(record).sort(byCreated),
+    venueBookings: records.venueBookings.docs.map((item) => bookingRow(item, venueNames)).sort(byStart)
   };
 };
 
