@@ -159,7 +159,7 @@ const writeVenueChangeHistory = (transaction, { changed, current, venueId, userI
 const notifyRelatedEvents = (transaction, { bookingSnapshot, current, venueId, userId }) => {
   const relatedEvents = [...new Set(
     bookingSnapshot.docs
-      .filter((item) => item.data().status && ["PENDING", "APPROVED"].includes(String(item.data().status || "").toUpperCase()))
+      .filter((item) => item.data().status && ["PENDING", "APPROVED"].includes(String(item.data().status).toUpperCase()))
       .map((item) => item.data().event_id)
       .filter(Boolean)
   )];

@@ -360,7 +360,7 @@ export const prepareClashReplacement = async ({ user, bookingId, clash }) => {
       safety_review_required: true,
       updated_at: stamp
     };
-    if (String(event.status || "").toUpperCase() === "CONFIRMED") {
+    if (String(event.status).toUpperCase() === "CONFIRMED") {
       Object.assign(eventUpdate, {
         status: "PLANNING",
         approved_venue_booking_id: null,
@@ -484,7 +484,7 @@ export const releaseVenueBooking = async ({ user, bookingId, reason }) => {
       last_venue_release_id: historyRef.id,
       updated_at: stamp
     };
-    if (["CONFIRMED", "SAFETY_REVIEW"].includes(String(event.status || "").toUpperCase())) {
+    if (["CONFIRMED", "SAFETY_REVIEW"].includes(String(event.status).toUpperCase())) {
       Object.assign(eventUpdate, {
         status: "PLANNING",
         last_safety_review_id: null,

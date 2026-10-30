@@ -1,7 +1,7 @@
 // B8 / SCRUM-99 — deleting a draft removes the event and every record hanging off it,
 // children first, so the child rules can still find the parent to prove ownership.
 import * as firestore from 'firebase/firestore';
-import deleteEventRequest from './deleteEventRequest';
+import { deleteEventRequest } from './eventRequestApi';
 
 jest.mock('../../lib/firebase', () => ({ db: {} }));
 jest.mock('firebase/firestore', () => ({

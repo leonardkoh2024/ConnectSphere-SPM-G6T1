@@ -106,7 +106,7 @@ const equipmentView = (requestSnapshot, reservationsSnapshot) => {
   const lines = (request.lines || []).map((line) => ({
     ...line, fulfilled_at: asIso(line.fulfilled_at), resolved_at: asIso(line.resolved_at)
   }));
-  const reservations = (reservationsSnapshot?.docs || []).map((item) => {
+  const reservations = reservationsSnapshot.docs.map((item) => {
     const reservation = item.data();
     return { ...reservation, id: item.id, start_datetime: asIso(reservation.start_datetime), end_datetime: asIso(reservation.end_datetime) };
   });
@@ -249,7 +249,7 @@ export const detail = async (eventId) => {
   ]);
   const venueNames = new Map(venueSnapshots.filter((item) => item.exists()).map((item) => [item.id, item.data().name]));
   const historyRecords = records.history.docs.map(record).sort(byCreated);
-  const equipmentRows = (records.equipmentHistory?.docs || []).map(record);
+  const equipmentRows = records.equipmentHistory.docs.map(record);
   const actorNames = await actorNamesFor(historyRecords);
   return {
     event: {

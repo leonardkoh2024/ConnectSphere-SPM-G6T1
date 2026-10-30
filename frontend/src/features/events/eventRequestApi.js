@@ -106,7 +106,7 @@ const notifySubmission = async ({ user, eventId, eventName, eventDate }) => {
           notificationId: leadRef.id, userId: notice.user_id, eventId,
           type: notice.type, message: notice.message, createdAt: serverTimestamp()
         }),
-        link_screen: notice.link?.screen || "Unassigned queue"
+        link_screen: notice.link.screen
       });
     }));
   } catch (leadError) { console.error("Could not tell the Event Coordinator Leads:", leadError); }
@@ -204,7 +204,7 @@ export const saveEventRequest = async ({ user, draft, form, submit, isAmend }) =
   // Coordinator Lead's unassigned queue, where the Lead assigns it (A6). The old
   // auto-assign call to /api/coordinator-assignment (C1) is deliberately removed.
   if (submit && !isAmend) {
-    await notifySubmission({ user, eventId: eventRef.id, eventName: fieldData.name || referenceNo, eventDate: fieldData.event_date });
+    await notifySubmission({ user, eventId: eventRef.id, eventName: fieldData.name, eventDate: fieldData.event_date });
   }
   return { eventId: eventRef.id, referenceNo, eventData };
 };
