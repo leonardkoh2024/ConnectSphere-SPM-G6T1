@@ -32,9 +32,9 @@ unless it's pointed at an emulator.
 - **Write one** if the service uses `runTransaction`, batched writes, `serverTimestamp`, or its
   correctness depends on **concurrency, ordering, or uniqueness** (e.g. C1 assignment; likely
   C9 reassignment, venue bookings).
-- **Don't bother** for pure domain rules — the in-memory unit test or the `test.js` spec-first
-  style already covers those.
-- **Rules testing** (proving `firestore.rules` allow/deny the right client writes, e.g. TC-080)
+- **Don't bother** for pure domain rules — the in-memory unit test next to the domain
+  module already covers those.
+- **Rules testing** (proving `firestore.rules` allow/deny the right client writes)
   uses the same emulator but the `@firebase/rules-unit-testing` library.
 
 ## 3. Naming matters (avoids a real footgun)
