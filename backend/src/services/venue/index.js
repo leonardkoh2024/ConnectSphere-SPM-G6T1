@@ -187,7 +187,10 @@ export function createVenueService({ firestore, verifyIdToken, serverTimestamp }
           decision_reason: reason,
           assigned_staff_id: user.uid,
           decided_by: user.uid,
-          decided_at: decidedAt
+          decided_at: decidedAt,
+          // A rejection cannot be overridden, so the coordinator must request another venue;
+          // until then the booking blocks the safety check (domain/safetyReview.js).
+          requires_re_request: true
         });
         transaction.set(historyRef, {
           history_id: historyRef.id,
