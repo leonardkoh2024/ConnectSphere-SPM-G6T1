@@ -4,7 +4,7 @@
 // it is in Safety Review, and write only the outcome of its check (AC6).
 
 import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
-import { auth, db } from "../../lib/firebase";
+import { db } from "../../lib/firebase";
 import { EVENT_STATUS } from "../../domain/eventReview";
 import { eventHistoryRecord, notificationRecord } from "../../domain/eventReviewRecords";
 import {
@@ -24,13 +24,8 @@ import {
 } from "../../domain/safetyReview";
 import { REVIEW_REQUIRED, recordSafetyOutcome as planSafetyReturn, sendForSafetyCheck } from "../../domain/safetyAndNotices";
 import { callEquipmentService } from "../equipment/equipmentApi";
+import { asIso, requireUser } from "../../lib/apiSupport";
 
-const requireUser = () => {
-  if (!auth.currentUser) throw new Error("Please sign in again.");
-  return auth.currentUser;
-};
-
-const asIso = (value) => value?.toDate?.().toISOString?.() || value || null;
 const byEvent = (name, eventId) => getDocs(query(collection(db, name), where("event_id", "==", eventId)));
 
 // A refused read says which collection it was, so a rule gap shows on screen.

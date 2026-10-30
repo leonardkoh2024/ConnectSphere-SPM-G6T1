@@ -1,19 +1,11 @@
 // Event request creation and drafts (epic B). One form serves both: "Save draft"
 // writes status DRAFT, "Submit" writes status SUBMITTED and stamps submitted_at.
-//
-// A request spans five collections — events, event_venue_requirements,
-// event_facilities, event_equipment and event_accessibility — so every write here
-// must keep them consistent with each other.
+// How a request is stored across its five collections is in eventRequestApi.js.
 
 import React, { useEffect, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
-import { db } from "../../lib/firebase";
 import { LAYOUTS, FACILITIES, ACCESSIBILITY_OPTIONS, PREFERRED_LOCATIONS, EQUIPMENT_TYPES } from "../../domain/events";
-import { NO, UNANSWERED, YES, createReferenceNo, equipmentLinesWithContent, todayIso, validateEventRequest } from "../../domain/eventRequest";
-import { notificationRecord } from "../../domain/eventReviewRecords";
-import { eventSubmittedMessage } from "../../domain/notifications";
-import { eventEnteredUnassignedQueue } from "../../domain/safetyAndNotices";
-import { ROLES } from "../../domain/roles";
+import { NO, UNANSWERED, YES, todayIso, validateEventRequest } from "../../domain/eventRequest";
+import { loadEventRequestDetails, saveEventRequest } from "./eventRequestApi";
 import ToggleList from "./components/ToggleList";
 import YesNo from "./components/YesNo";
 import Icon from "../../app/Icon";
@@ -116,19 +108,13 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
     const loadDraft = async () => {
       if (!draft) { setForm(initialForm); return; }
       try {
-        const [venueRequirement, facilitySnapshot, equipmentSnapshot, accessibilitySnapshot] = await Promise.all([
-          getDoc(doc(db, "event_venue_requirements", draft.id)),
-          getDocs(query(collection(db, "event_facilities"), where("event_id", "==", draft.id))),
-          getDocs(query(collection(db, "event_equipment"), where("event_id", "==", draft.id))),
-          getDocs(query(collection(db, "event_accessibility"), where("event_id", "==", draft.id)))
-        ]);
-        const requirement = venueRequirement.exists() ? venueRequirement.data() : {};
-        const equipmentLines = equipmentSnapshot.docs.length
-          ? equipmentSnapshot.docs.map((item) => createEquipmentLine({
+        const { requirement, facilities, equipment, accessibility } = await loadEventRequestDetails(draft.id);
+        const equipmentLines = equipment.length
+          ? equipment.map((item) => createEquipmentLine({
               id: `${draft.id}_${item.id}`,
-              equipmentType: item.data().equipment_type || "",
-              quantity: item.data().quantity != null ? String(item.data().quantity) : "",
-              technicalNote: item.data().technical_note || ""
+              equipmentType: item.equipment_type || "",
+              quantity: item.quantity != null ? String(item.quantity) : "",
+              technicalNote: item.technical_note || ""
             }))
           : [createEquipmentLine()];
         if (mounted) setForm({
@@ -137,7 +123,7 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
           expectedAttendance: draft.expected_attendance ? String(draft.expected_attendance) : "",
           preferredLocation: requirement.preferred_location || "", requiredLayout: requirement.required_layout || "",
           facilitiesRequired: toAnswer(requirement.facilities_required),
-          facilities: facilitySnapshot.docs.map((item) => item.data().facility_id),
+          facilities,
           equipmentRequired: toAnswer(draft.equipment_required),
           equipmentLines,
           registrationRequired: toAnswer(draft.registration_required) || NO,
@@ -147,7 +133,7 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
           registrationCloseDate: draft.registration_close_date || "",
           registrationCloseTime: draft.registration_close_time || "",
           accessibilityRequired: toAnswer(requirement.accessibility_needed),
-          accessibility: accessibilitySnapshot.docs.map((item) => item.data().accessibility_id),
+          accessibility,
           accessibilityNotes: requirement.accessibility_notes || ""
         });
       } catch (loadError) { console.error("Could not load draft requirements:", loadError); if (mounted) setError("We could not load this draft. Please try again."); }
@@ -167,138 +153,9 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
     setError("");
     setBusy(true);
     try {
-      const referenceNo = draft?.reference_no || createReferenceNo();
-      const answeredAs = (answer) => (answer === YES ? true : answer === NO ? false : null);
-      const needsRegistration = form.registrationRequired === YES;
-      const fieldData = {
-        name: form.name.trim(),
-        purpose: form.purpose.trim(),
-        description: form.description.trim(),
-        event_date: form.eventDate || null,
-        start_time: form.startTime || null,
-        end_time: form.endTime || null,
-        expected_attendance: form.expectedAttendance ? Number(form.expectedAttendance) : null,
-        equipment_required: answeredAs(form.equipmentRequired),
-        registration_required: answeredAs(form.registrationRequired),
-        registration_capacity: needsRegistration && form.registrationCapacity ? Number(form.registrationCapacity) : null,
-        registration_open_date: needsRegistration ? form.registrationOpenDate || null : null,
-        registration_open_time: needsRegistration ? form.registrationOpenTime || null : null,
-        registration_close_date: needsRegistration ? form.registrationCloseDate || null : null,
-        registration_close_time: needsRegistration ? form.registrationCloseTime || null : null,
-        updated_at: serverTimestamp()
-      };
-      const eventData = isAmend
-        ? fieldData
-        : {
-            reference_no: referenceNo,
-            organiser_id: user.uid,
-            coordinator_id: null,
-            ...fieldData,
-            status: submit ? "SUBMITTED" : "DRAFT",
-            created_by: user.uid,
-            ...(submit ? { submitted_at: serverTimestamp() } : {})
-          };
-      let eventRef;
-      if (draft) {
-        eventRef = doc(db, "events", draft.id);
-        await updateDoc(eventRef, eventData);
-      } else eventRef = await addDoc(collection(db, "events"), { ...eventData, created_at: serverTimestamp() });
-
-      // Requirements are intentionally persisted for drafts too, including blank
-      // values, so no information is lost when an organiser comes back later.
-      await setDoc(doc(db, "event_venue_requirements", eventRef.id), {
-        event_id: eventRef.id,
-        preferred_location: form.preferredLocation.trim(),
-        required_layout: form.requiredLayout || null,
-        facilities_required: answeredAs(form.facilitiesRequired),
-        accessibility_needed: answeredAs(form.accessibilityRequired),
-        accessibility_notes: form.accessibilityNotes.trim()
-      });
-      // Only the sections answered Yes contribute rows; a No leaves none behind,
-      // including when the answer has just been changed from Yes.
-      const equipmentLines = form.equipmentRequired === YES ? equipmentLinesWithContent(form) : [];
-      const facilities = form.facilitiesRequired === YES ? form.facilities : [];
-      const accessibility = form.accessibilityRequired === YES ? form.accessibility : [];
-      const [existingFacilities, existingEquipment, existingAccessibility] = await Promise.all([
-        getDocs(query(collection(db, "event_facilities"), where("event_id", "==", eventRef.id))),
-        getDocs(query(collection(db, "event_equipment"), where("event_id", "==", eventRef.id))),
-        getDocs(query(collection(db, "event_accessibility"), where("event_id", "==", eventRef.id)))
-      ]);
-      await Promise.all([
-        ...existingFacilities.docs.map((item) => deleteDoc(item.ref)),
-        ...existingEquipment.docs.map((item) => deleteDoc(item.ref)),
-        ...existingAccessibility.docs.map((item) => deleteDoc(item.ref)),
-        ...facilities.map((facilityId) =>
-          setDoc(doc(db, "event_facilities", `${eventRef.id}_${facilityId}`), { event_id: eventRef.id, facility_id: facilityId })
-        ),
-        ...equipmentLines.map((line, index) =>
-          setDoc(doc(db, "event_equipment", `${eventRef.id}_${index}`), {
-            event_id: eventRef.id,
-            equipment_type: line.equipmentType.trim(),
-            quantity: Number(line.quantity),
-            technical_note: line.technicalNote.trim() || null
-          })
-        ),
-        ...accessibility.map((accessibilityId) =>
-          setDoc(doc(db, "event_accessibility", `${eventRef.id}_${accessibilityId}`), { event_id: eventRef.id, accessibility_id: accessibilityId })
-        )
-      ]);
-      await addDoc(collection(db, "event_history"), {
-        event_id: eventRef.id,
-        actor_id: user.uid,
-        action_type: isAmend ? "CLARIFICATION_AMENDED" : submit ? "EVENT_SUBMITTED" : "DRAFT_CREATED",
-        description: isAmend
-          ? "Organiser amended the request while answering a clarification."
-          : submit ? "Event request submitted by organiser." : "Event draft created by organiser.",
-        created_at: serverTimestamp()
-      });
-      // K1 / SCRUM-182 AC1 — a submitted event is NOT auto-assigned a coordinator.
-      // It is written with coordinator_id: null above and now waits in the Event
-      // Coordinator Lead's unassigned queue, where the Lead assigns it (A6). The old
-      // auto-assign call to /api/coordinator-assignment (C1) is deliberately removed.
-      // J2 / SCRUM-151 AC1 — submission received. Only a real submission tells the
-      // organiser (not a draft, and not an answer to a clarification), and only after the
-      // event itself is saved. If the notice cannot be written the request is still
-      // reported as submitted: the event exists, and an error here would invite a second
-      // submission of the same request.
-      if (submit && !isAmend) {
-        try {
-          const noticeRef = doc(collection(db, "notifications"));
-          await setDoc(noticeRef, notificationRecord({ notificationId: noticeRef.id, userId: user.uid, eventId: eventRef.id, type: "EVENT_SUBMITTED", message: eventSubmittedMessage({ eventName: fieldData.name || referenceNo }), createdAt: serverTimestamp() }));
-        } catch (noticeError) { console.error("Could not record the submission notice:", noticeError); }
-        // J8 / SCRUM-191 — every active Lead is told the request is waiting, unassigned.
-        try {
-          const [profile, leadSnapshot] = await Promise.all([
-            getDoc(doc(db, "users", user.uid)),
-            getDocs(query(collection(db, "users"), where("role", "==", ROLES.COORDINATOR_LEAD), where("is_active", "==", true)))
-          ]);
-          const waiting = eventEnteredUnassignedQueue({
-            event: {
-              event_id: eventRef.id,
-              status: "SUBMITTED",
-              name: fieldData.name || referenceNo,
-              organiser_name: profile.exists() ? (profile.data().name || user.email) : user.email,
-              event_date: fieldData.event_date,
-              submitted_at: new Date().toISOString()
-            },
-            leads: leadSnapshot.docs.map((item) => ({
-              user_id: item.id, role: item.data().role, active: item.data().is_active !== false
-            }))
-          });
-          await Promise.all(waiting.notifications.map(async (notice) => {
-            const leadRef = doc(collection(db, "notifications"));
-            await setDoc(leadRef, {
-              ...notificationRecord({
-                notificationId: leadRef.id, userId: notice.user_id, eventId: eventRef.id,
-                type: notice.type, message: notice.message, createdAt: serverTimestamp()
-              }),
-              link_screen: notice.link?.screen || "Unassigned queue"
-            });
-          }));
-        } catch (leadError) { console.error("Could not tell the Event Coordinator Leads:", leadError); }
-      }
+      const { eventId, referenceNo, eventData } = await saveEventRequest({ user, draft, form, submit, isAmend });
       if (isAmend) {
-        onSaved("Request details updated.", { ...draft, ...eventData, id: eventRef.id, status: draft.status, open_clarification_id: draft.open_clarification_id });
+        onSaved("Request details updated.", { ...draft, ...eventData, id: eventId, status: draft.status, open_clarification_id: draft.open_clarification_id });
         return;
       }
       setForm(initialForm);
@@ -306,7 +163,7 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
         submit
           ? `Event request ${referenceNo} submitted for coordinator review.`
           : `Draft ${referenceNo} saved. You can return to it from My events.`,
-        submit ? null : { id: eventRef.id, ...eventData }
+        submit ? null : { id: eventId, ...eventData }
       );
     } catch (saveError) {
       console.error("Could not save event request:", saveError);

@@ -5,8 +5,8 @@
 import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { newestFirst } from "../../domain/notifications";
+import { asIso } from "../../lib/apiSupport";
 
-const asIso = (value) => value?.toDate?.().toISOString?.() || value || null;
 
 const record = (snapshot) => {
   const data = snapshot.data();
