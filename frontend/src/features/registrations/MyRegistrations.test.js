@@ -28,7 +28,7 @@ const entry = (changes = {}) => ({
 
 const rowFor = async (name) => (await screen.findByRole("heading", { name })).closest(".cs-record");
 
-test("TC-627 H4 AC1 each registration shows the event's name, date, window, venue and the attendee's status", async () => {
+test("TC-1562 H4 AC1 each registration shows the event's name, date, window, venue and the attendee's status", async () => {
   loadMyRegistrations.mockResolvedValue([entry()]);
   render(<MyRegistrations />);
   const row = await rowFor("Harbour Tech Forum");
@@ -39,7 +39,7 @@ test("TC-627 H4 AC1 each registration shows the event's name, date, window, venu
   expect(within(row).getByText("Registered")).toHaveClass("cs-pill-positive");
 });
 
-test("TC-628 H4 AC1 AC3 Waitlisted, Withdrawn and Cancelled each read as themselves, Cancelled marked as danger", async () => {
+test("TC-1563 H4 AC1 AC3 Waitlisted, Withdrawn and Cancelled each read as themselves, Cancelled marked as danger", async () => {
   loadMyRegistrations.mockResolvedValue([
     entry({ registration_id: "w", event_id: "w", name: "Waiting Event", status: "WAITLISTED", waitlist_position: 2 }),
     entry({ registration_id: "x", event_id: "x", name: "Left Event", status: "WITHDRAWN" }),
@@ -52,13 +52,13 @@ test("TC-628 H4 AC1 AC3 Waitlisted, Withdrawn and Cancelled each read as themsel
   expect(within(await rowFor("Called-off Event")).getByText("Cancelled")).toHaveClass("cs-pill-danger");
 });
 
-test("TC-629 H4 AC1 a registration with no approved venue yet says so", async () => {
+test("TC-1564 H4 AC1 a registration with no approved venue yet says so", async () => {
   loadMyRegistrations.mockResolvedValue([entry({ venue_names: [] })]);
   render(<MyRegistrations />);
   expect(within(await rowFor("Harbour Tech Forum")).getByText("Venue to be confirmed")).toBeInTheDocument();
 });
 
-test("TC-629 H4 AC3 a cancelled event whose venue was released says so, rather than to be confirmed", async () => {
+test("TC-1565 H4 AC3 a cancelled event whose venue was released says so, rather than to be confirmed", async () => {
   loadMyRegistrations.mockResolvedValue([entry({ status: "CANCELLED", venue_names: [] })]);
   render(<MyRegistrations />);
   const row = await rowFor("Harbour Tech Forum");
@@ -69,7 +69,7 @@ test("TC-629 H4 AC3 a cancelled event whose venue was released says so, rather t
   expect(within(details).getByText("No venue — event cancelled")).toBeInTheDocument();
 });
 
-test("TC-630 H4 AC2 selecting an entry shows the event's details for an attendee", async () => {
+test("TC-1566 H4 AC2 selecting an entry shows the event's details for an attendee", async () => {
   loadMyRegistrations.mockResolvedValue([entry()]);
   render(<MyRegistrations />);
 
@@ -83,7 +83,7 @@ test("TC-630 H4 AC2 selecting an entry shows the event's details for an attendee
   expect(within(details).getByText("5 Nov 2026, 12:00")).toBeInTheDocument();
 });
 
-test("TC-631 H4 AC2 a waitlisted entry's details give the place in the queue", async () => {
+test("TC-1567 H4 AC2 a waitlisted entry's details give the place in the queue", async () => {
   loadMyRegistrations.mockResolvedValue([entry({ status: "WAITLISTED", waitlist_position: 2 })]);
   render(<MyRegistrations />);
 
@@ -93,7 +93,7 @@ test("TC-631 H4 AC2 a waitlisted entry's details give the place in the queue", a
   expect(within(details).getByText("2")).toBeInTheDocument();
 });
 
-test("TC-632 H4 AC2 AC3 a withdrawn or cancelled entry's details say so", async () => {
+test("TC-1568 H4 AC2 AC3 a withdrawn or cancelled entry's details say so", async () => {
   loadMyRegistrations.mockResolvedValue([
     entry({ status: "WITHDRAWN", withdrawn_at: "2026-11-06T02:00:00.000Z" }),
     entry({ registration_id: "c", event_id: "c", name: "Called-off Event", status: "CANCELLED" })
@@ -111,7 +111,7 @@ test("TC-632 H4 AC2 AC3 a withdrawn or cancelled entry's details say so", async 
   expect(within(details).getByText("This event has been cancelled.")).toBeInTheDocument();
 });
 
-test("TC-633 H4 AC2 the details view hands the shell its way back, and back returns to the list", async () => {
+test("TC-1569 H4 AC2 the details view hands the shell its way back, and back returns to the list", async () => {
   loadMyRegistrations.mockResolvedValue([entry()]);
   const onBackChange = jest.fn();
   render(<MyRegistrations onBackChange={onBackChange} />);
@@ -124,7 +124,7 @@ test("TC-633 H4 AC2 the details view hands the shell its way back, and back retu
   expect(await rowFor("Harbour Tech Forum")).toBeInTheDocument();
 });
 
-test("TC-634 H4 the list is shown in the order the service gives it", async () => {
+test("TC-1570 H4 the list is shown in the order the service gives it", async () => {
   loadMyRegistrations.mockResolvedValue([entry({ registration_id: "a", name: "First" }), entry({ registration_id: "b", name: "Second" })]);
   render(<MyRegistrations />);
   await screen.findByRole("heading", { name: "First" });
@@ -132,13 +132,13 @@ test("TC-634 H4 the list is shown in the order the service gives it", async () =
   expect(within(upcoming).getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual(["First", "Second"]);
 });
 
-test("TC-635 H4 with no registrations the attendee is told so", async () => {
+test("TC-1571 H4 with no registrations the attendee is told so", async () => {
   loadMyRegistrations.mockResolvedValue([]);
   render(<MyRegistrations />);
   expect(await screen.findByText(/you have not registered for any events yet/i)).toBeInTheDocument();
 });
 
-test("TC-636 H4 loading and a load failure are shown, not an empty list", async () => {
+test("TC-1572 H4 loading and a load failure are shown, not an empty list", async () => {
   let fail;
   loadMyRegistrations.mockReturnValue(new Promise((_resolve, reject) => { fail = reject; }));
   render(<MyRegistrations />);
@@ -159,7 +159,7 @@ const refusal = (message, reason) => Object.assign(new Error(message), { reason 
 
 const withdrawButtonIn = async (name) => within(await rowFor(name)).getByRole("button", { name: "Withdraw" });
 
-test("TC-664 H5 AC1 AC5 active registrations are listed under Upcoming, and the rest apart from them", async () => {
+test("TC-1611 H5 AC1 AC5 active registrations are listed under Upcoming, and the rest apart from them", async () => {
   loadMyRegistrations.mockResolvedValue([
     entry({ registration_id: "a", event_id: "a", name: "Going" }),
     entry({ registration_id: "w", event_id: "w", name: "Waiting", status: "WAITLISTED", can_withdraw: false }),
@@ -175,14 +175,14 @@ test("TC-664 H5 AC1 AC5 active registrations are listed under Upcoming, and the 
   expect(within(rest).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Left", "Called off"]);
 });
 
-test("TC-664 H5 AC1 with nothing upcoming the attendee is told so, and the rest still show", async () => {
+test("TC-1612 H5 AC1 with nothing upcoming the attendee is told so, and the rest still show", async () => {
   loadMyRegistrations.mockResolvedValue([entry({ status: "WITHDRAWN", active: false, can_withdraw: false })]);
   render(<MyRegistrations />);
   expect(await screen.findByText("You have no upcoming registrations.")).toBeInTheDocument();
   expect(within(screen.getByRole("region", { name: "Past, withdrawn and cancelled" })).getByText("Harbour Tech Forum")).toBeInTheDocument();
 });
 
-test("TC-665 H5 AC2 AC6 Withdraw is offered only on a place the attendee can withdraw", async () => {
+test("TC-1613 H5 AC2 AC6 Withdraw is offered only on a place the attendee can withdraw", async () => {
   loadMyRegistrations.mockResolvedValue([
     entry({ registration_id: "a", event_id: "a", name: "Going" }),
     entry({ registration_id: "w", event_id: "w", name: "Waiting", status: "WAITLISTED", can_withdraw: true }),
@@ -195,7 +195,7 @@ test("TC-665 H5 AC2 AC6 Withdraw is offered only on a place the attendee can wit
   expect(within(await rowFor("Left")).queryByRole("button", { name: "Withdraw" })).not.toBeInTheDocument();
 });
 
-test("TC-666 H5 AC2 withdrawing asks first; keeping the place changes nothing", async () => {
+test("TC-1614 H5 AC2 withdrawing asks first; keeping the place changes nothing", async () => {
   loadMyRegistrations.mockResolvedValue([entry()]);
   render(<MyRegistrations />);
 
@@ -209,7 +209,7 @@ test("TC-666 H5 AC2 withdrawing asks first; keeping the place changes nothing", 
   expect(withdrawFromEvent).not.toHaveBeenCalled();
 });
 
-test("TC-667 H5 AC2 AC3 AC5 confirming withdraws, confirms it, and moves the event out of Upcoming", async () => {
+test("TC-1615 H5 AC2 AC3 AC5 confirming withdraws, confirms it, and moves the event out of Upcoming", async () => {
   loadMyRegistrations.mockResolvedValue([entry()]);
   withdrawFromEvent.mockResolvedValue(withdrawnReply());
   const onNotice = jest.fn();
@@ -227,7 +227,7 @@ test("TC-667 H5 AC2 AC3 AC5 confirming withdraws, confirms it, and moves the eve
   expect(within(row).queryByRole("button", { name: "Withdraw" })).not.toBeInTheDocument();
 });
 
-test("TC-668 H5 AC6 a refusal is shown in the dialog, and Withdraw is taken away when the place is not held", async () => {
+test("TC-1616 H5 AC6 a refusal is shown in the dialog, and Withdraw is taken away when the place is not held", async () => {
   loadMyRegistrations.mockResolvedValue([entry()]);
   withdrawFromEvent.mockRejectedValue(refusal("You are not registered for this event.", "not_registered"));
   const onNotice = jest.fn();
@@ -244,7 +244,7 @@ test("TC-668 H5 AC6 a refusal is shown in the dialog, and Withdraw is taken away
   expect(onNotice).not.toHaveBeenCalled();
 });
 
-test("TC-669 H5 a failure that might pass on a retry leaves Withdraw to try again", async () => {
+test("TC-1617 H5 a failure that might pass on a retry leaves Withdraw to try again", async () => {
   loadMyRegistrations.mockResolvedValue([entry()]);
   withdrawFromEvent.mockRejectedValue(new Error(""));
   render(<MyRegistrations />);
@@ -256,7 +256,7 @@ test("TC-669 H5 a failure that might pass on a retry leaves Withdraw to try agai
   expect(within(dialog).getByRole("button", { name: "Yes, withdraw" })).toBeEnabled();
 });
 
-test("TC-669 H5 the confirm button cannot be pressed twice while the first is on its way", async () => {
+test("TC-1618 H5 the confirm button cannot be pressed twice while the first is on its way", async () => {
   let finish;
   loadMyRegistrations.mockResolvedValue([entry()]);
   withdrawFromEvent.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
@@ -273,7 +273,7 @@ test("TC-669 H5 the confirm button cannot be pressed twice while the first is on
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
-test("TC-671 H5 AC2 the details view offers Withdraw; withdrawing there updates the details in place", async () => {
+test("TC-1619 H5 AC2 the details view offers Withdraw; withdrawing there updates the details in place", async () => {
   loadMyRegistrations.mockResolvedValue([entry()]);
   withdrawFromEvent.mockResolvedValue(withdrawnReply());
   const onNotice = jest.fn();
@@ -291,7 +291,7 @@ test("TC-671 H5 AC2 the details view offers Withdraw; withdrawing there updates 
   expect(within(after).queryByRole("button", { name: "Withdraw" })).not.toBeInTheDocument();
 });
 
-test("TC-671 H5 AC6 the details view of a place that cannot be withdrawn offers no Withdraw", async () => {
+test("TC-1620 H5 AC6 the details view of a place that cannot be withdrawn offers no Withdraw", async () => {
   loadMyRegistrations.mockResolvedValue([entry({ status: "WITHDRAWN", active: false, can_withdraw: false })]);
   render(<MyRegistrations />);
   await userEvent.click(within(await rowFor("Harbour Tech Forum")).getByRole("button", { name: "View details" }));
@@ -299,7 +299,7 @@ test("TC-671 H5 AC6 the details view of a place that cannot be withdrawn offers 
   expect(within(details).queryByRole("button", { name: "Withdraw" })).not.toBeInTheDocument();
 });
 
-test("TC-673 rows on My registrations share fixed columns, so venue and status line up", async () => {
+test("TC-1621 rows on My registrations share fixed columns, so venue and status line up", async () => {
   loadMyRegistrations.mockResolvedValue([entry()]);
   render(<MyRegistrations />);
   expect(await rowFor("Harbour Tech Forum")).toHaveClass("cs-record", "cs-registration-record");
@@ -316,7 +316,7 @@ const mixed = () => [
 
 const listedNames = () => screen.queryAllByRole("heading", { level: 3 }).map((heading) => heading.textContent);
 
-test("TC-674 the Show filter offers every status, and starts on all registrations", async () => {
+test("TC-1622 the Show filter offers every status, and starts on all registrations", async () => {
   loadMyRegistrations.mockResolvedValue(mixed());
   render(<MyRegistrations />);
   await screen.findByRole("heading", { name: "Harbour Tech Forum" });
@@ -333,7 +333,7 @@ test.each([
   ["WAITLISTED", ["Data Summit"]],
   ["WITHDRAWN", ["Coding Workshop"]],
   ["CANCELLED", ["Winter Gala"]]
-])("TC-675 showing %s lists only those registrations", async (status, names) => {
+])("TC-1623 showing %s lists only those registrations", async (status, names) => {
   loadMyRegistrations.mockResolvedValue(mixed());
   render(<MyRegistrations />);
   await screen.findByRole("heading", { name: "Harbour Tech Forum" });
@@ -342,7 +342,7 @@ test.each([
   expect(listedNames()).toEqual(names);
 });
 
-test("TC-676 search matches the event name or the venue, whatever the case", async () => {
+test("TC-1624 search matches the event name or the venue, whatever the case", async () => {
   loadMyRegistrations.mockResolvedValue(mixed());
   render(<MyRegistrations />);
   await screen.findByRole("heading", { name: "Harbour Tech Forum" });
@@ -357,7 +357,7 @@ test("TC-676 search matches the event name or the venue, whatever the case", asy
   expect(listedNames()).toHaveLength(4);
 });
 
-test("TC-677 the two filters combine", async () => {
+test("TC-1625 the two filters combine", async () => {
   loadMyRegistrations.mockResolvedValue(mixed());
   render(<MyRegistrations />);
   await screen.findByRole("heading", { name: "Harbour Tech Forum" });
@@ -369,7 +369,7 @@ test("TC-677 the two filters combine", async () => {
   expect(screen.queryByText("You have no upcoming registrations.")).not.toBeInTheDocument();
 });
 
-test("TC-678 while filtering, an empty section says nothing matches rather than that there is nothing upcoming", async () => {
+test("TC-1626 while filtering, an empty section says nothing matches rather than that there is nothing upcoming", async () => {
   loadMyRegistrations.mockResolvedValue(mixed());
   render(<MyRegistrations />);
   await screen.findByRole("heading", { name: "Harbour Tech Forum" });
@@ -379,7 +379,7 @@ test("TC-678 while filtering, an empty section says nothing matches rather than 
   expect(within(screen.getByRole("region", { name: "Past, withdrawn and cancelled" })).getByText("Coding Workshop")).toBeInTheDocument();
 });
 
-test("TC-679 a filter is kept after viewing an event's details and coming back", async () => {
+test("TC-1627 a filter is kept after viewing an event's details and coming back", async () => {
   loadMyRegistrations.mockResolvedValue(mixed());
   render(<MyRegistrations />);
   await screen.findByRole("heading", { name: "Harbour Tech Forum" });
@@ -393,14 +393,14 @@ test("TC-679 a filter is kept after viewing an event's details and coming back",
 
 // ---- H6 / SCRUM-144 — the position on the waiting list -----------------------------
 
-test("TC-709 H6 AC2 a waitlisted row gives the attendee's exact position", async () => {
+test("TC-1681 H6 AC2 a waitlisted row gives the attendee's exact position", async () => {
   loadMyRegistrations.mockResolvedValue([entry({ status: "WAITLISTED", waitlist_position: 4, can_withdraw: false })]);
   render(<MyRegistrations />);
   const row = await rowFor("Harbour Tech Forum");
   expect(within(row).getByText("Position 4 on the waiting list")).toBeInTheDocument();
 });
 
-test("TC-709 H6 a row that is not waitlisted gives no position", async () => {
+test("TC-1682 H6 a row that is not waitlisted gives no position", async () => {
   loadMyRegistrations.mockResolvedValue([entry()]);
   render(<MyRegistrations />);
   expect(within(await rowFor("Harbour Tech Forum")).queryByText(/on the waiting list/)).not.toBeInTheDocument();
@@ -408,7 +408,7 @@ test("TC-709 H6 a row that is not waitlisted gives no position", async () => {
 
 // ---- H6 — leaving the waiting list ------------------------------------------------
 
-test("TC-714 H6 leaving the waiting list asks first, saying the place in the queue is lost", async () => {
+test("TC-1683 H6 leaving the waiting list asks first, saying the place in the queue is lost", async () => {
   loadMyRegistrations.mockResolvedValue([entry({ status: "WAITLISTED", waitlist_position: 2 })]);
   render(<MyRegistrations />);
 
@@ -417,7 +417,7 @@ test("TC-714 H6 leaving the waiting list asks first, saying the place in the que
   expect(within(dialog).getByText(/you will lose your place in the queue/i)).toBeInTheDocument();
 });
 
-test("TC-715 H6 leaving the waiting list confirms it and moves the event out of Upcoming", async () => {
+test("TC-1684 H6 leaving the waiting list confirms it and moves the event out of Upcoming", async () => {
   loadMyRegistrations.mockResolvedValue([entry({ status: "WAITLISTED", waitlist_position: 2 })]);
   withdrawFromEvent.mockResolvedValue(withdrawnReply({ waitlist_position: null }));
   const onNotice = jest.fn();
@@ -444,7 +444,7 @@ const invited = (changes = {}) => entry({
   ...changes
 });
 
-test("TC-747 H7 AC1 an offered place is shown with when the offer ends, and Accept and Decline", async () => {
+test("TC-1743 H7 AC1 an offered place is shown with when the offer ends, and Accept and Decline", async () => {
   loadMyRegistrations.mockResolvedValue([invited()]);
   render(<MyRegistrations />);
   const row = await rowFor("Harbour Tech Forum");
@@ -455,7 +455,7 @@ test("TC-747 H7 AC1 an offered place is shown with when the offer ends, and Acce
   expect(within(row).queryByRole("button", { name: "Withdraw" })).not.toBeInTheDocument();
 });
 
-test("TC-748 H7 AC2 accepting registers the attendee and confirms it", async () => {
+test("TC-1744 H7 AC2 accepting registers the attendee and confirms it", async () => {
   loadMyRegistrations.mockResolvedValue([invited()]);
   acceptInvitation.mockResolvedValue({ registration: { ...invited(), status: "REGISTERED", invitation_active: false, can_accept: false, waitlist_position: null, can_withdraw: true } });
   const onNotice = jest.fn();
@@ -469,7 +469,7 @@ test("TC-748 H7 AC2 accepting registers the attendee and confirms it", async () 
   expect(within(row).queryByRole("button", { name: "Accept place" })).not.toBeInTheDocument();
 });
 
-test("TC-749 H7 AC3 an offer that expired before accepting is explained, and the row shows the lapse", async () => {
+test("TC-1745 H7 AC3 an offer that expired before accepting is explained, and the row shows the lapse", async () => {
   loadMyRegistrations.mockResolvedValue([invited()]);
   acceptInvitation.mockRejectedValue(Object.assign(new Error("This invitation has expired. You are still on the waiting list."), { reason: "invitation_expired" }));
   render(<MyRegistrations />);
@@ -481,7 +481,7 @@ test("TC-749 H7 AC3 an offer that expired before accepting is explained, and the
   expect(within(row).getByText(/your invitation expired/i)).toBeInTheDocument();
 });
 
-test("TC-750 H7 AC4 declining asks first, then removes the attendee from the waiting list", async () => {
+test("TC-1746 H7 AC4 declining asks first, then removes the attendee from the waiting list", async () => {
   loadMyRegistrations.mockResolvedValue([invited()]);
   declineInvitation.mockResolvedValue({ registration: { ...invited(), status: "WITHDRAWN", active: false, invitation_active: false, can_accept: false, can_withdraw: false, waitlist_position: null } });
   const onNotice = jest.fn();
@@ -499,7 +499,7 @@ test("TC-750 H7 AC4 declining asks first, then removes the attendee from the wai
   expect(within(row).getByText("Withdrawn")).toBeInTheDocument();
 });
 
-test("TC-751 H7 AC4 a lapsed offer leaves the attendee on the list, saying so, with Withdraw still available", async () => {
+test("TC-1747 H7 AC4 a lapsed offer leaves the attendee on the list, saying so, with Withdraw still available", async () => {
   loadMyRegistrations.mockResolvedValue([invited({ invitation_active: false, invitation_lapsed: true, can_accept: false, can_withdraw: true })]);
   render(<MyRegistrations />);
   const row = await rowFor("Harbour Tech Forum");
@@ -510,7 +510,7 @@ test("TC-751 H7 AC4 a lapsed offer leaves the attendee on the list, saying so, w
   expect(within(row).getByRole("button", { name: "Withdraw" })).toBeInTheDocument();
 });
 
-test("TC-752 H7 AC1 the details of an offered place carry Accept and Decline at the top right", async () => {
+test("TC-1748 H7 AC1 the details of an offered place carry Accept and Decline at the top right", async () => {
   loadMyRegistrations.mockResolvedValue([invited()]);
   render(<MyRegistrations />);
   await userEvent.click(within(await rowFor("Harbour Tech Forum")).getByRole("button", { name: "View details" }));
@@ -522,7 +522,7 @@ test("TC-752 H7 AC1 the details of an offered place carry Accept and Decline at 
 
 // J1 — View on a notification opens My registrations on that event's details.
 
-test("TC-758 opened from a notification, the event's details show at once with its actions", async () => {
+test("TC-1749 opened from a notification, the event's details show at once with its actions", async () => {
   loadMyRegistrations.mockResolvedValue([
     entry(),
     entry({ registration_id: "w", event_id: "w", name: "Waitlist Demo Workshop", status: "WAITLISTED", waitlist_position: 1, can_withdraw: true, can_accept: true, invitation_active: true, invitation_expires_at: "2026-11-07T04:00:00.000Z" })
@@ -535,7 +535,7 @@ test("TC-758 opened from a notification, the event's details show at once with i
   expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument();
 });
 
-test("TC-758 an event with no registration of theirs leaves the list showing", async () => {
+test("TC-1750 an event with no registration of theirs leaves the list showing", async () => {
   loadMyRegistrations.mockResolvedValue([entry()]);
   render(<MyRegistrations focusEventId="gone" />);
   expect(within(await rowFor("Harbour Tech Forum")).getByRole("button", { name: "View details" })).toBeInTheDocument();

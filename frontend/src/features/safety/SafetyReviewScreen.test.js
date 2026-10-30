@@ -1,5 +1,5 @@
 // A7 / SCRUM-170 AC2–AC4 — the Safety Officer's queue, review view and outcome
-// form. TC-362 to TC-367 in docs/test-cases.md.
+// form.
 
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -48,7 +48,7 @@ const openReview = async (props = {}) => {
 const section = (name) => screen.getByRole('region', { name });
 
 // AC2 — the events awaiting a check, with what tells them apart (L2 AC1).
-test('TC-362 the queue lists each event awaiting its check with date, time, venues and attendance', async () => {
+test('TC-0152 the queue lists each event awaiting its check with date, time, venues and attendance', async () => {
   render(<SafetyReviewScreen />);
   const card = (await screen.findByRole('heading', { level: 2, name: 'Partner Summit' })).closest('article');
   expect(card).toHaveTextContent('2026-11-04 · 09:00–17:00');
@@ -58,7 +58,7 @@ test('TC-362 the queue lists each event awaiting its check with date, time, venu
   expect(within(card).getByRole('button', { name: 'Review safety' })).toBeInTheDocument();
 });
 
-test('TC-362 an empty queue and a refused read each say so', async () => {
+test('TC-0153 an empty queue and a refused read each say so', async () => {
   listSafetyQueue.mockResolvedValueOnce([]);
   const { unmount } = render(<SafetyReviewScreen />);
   expect(await screen.findByText('No events are awaiting a safety check.')).toBeInTheDocument();
@@ -70,7 +70,7 @@ test('TC-362 an empty queue and a refused read each say so', async () => {
 });
 
 // AC3 — every fact the story lists, for each active venue booking.
-test('TC-363 the review shows attendance against capacity, layout, emergency access and restrictions per booking', async () => {
+test('TC-0154 the review shows attendance against capacity, layout, emergency access and restrictions per booking', async () => {
   await openReview();
   expect(safetyReviewDetail).toHaveBeenCalledWith('e1');
   const bookings = section('Venue bookings');
@@ -84,7 +84,7 @@ test('TC-363 the review shows attendance against capacity, layout, emergency acc
   expect(booking).toHaveTextContent('Known restrictionsNo open flames');
 });
 
-test('TC-364 the review shows accessibility, equipment, placement, crowd movement and earlier checks', async () => {
+test('TC-0155 the review shows accessibility, equipment, placement, crowd movement and earlier checks', async () => {
   await openReview();
   expect(section('Accessibility requirements')).toHaveTextContent('WHEELCHAIR_ACCESS');
   expect(section('Accessibility requirements')).toHaveTextContent('Two wheelchair users');
@@ -98,7 +98,7 @@ test('TC-364 the review shows accessibility, equipment, placement, crowd movemen
   expect(earlier).toHaveTextContent('Move the stage away from the exit.');
 });
 
-test('TC-364 a review with nothing recorded says so in every section', async () => {
+test('TC-0156 a review with nothing recorded says so in every section', async () => {
   safetyReviewDetail.mockResolvedValueOnce({
     event: { ...QUEUED, accessibility: [], accessibility_notes: '', equipment: [], equipment_placement: '', crowd_movement: '' },
     bookings: [{ ...REVIEW.bookings[0], capacity: null, exceeds: false, layout: null, emergency_access_notes: '', known_restrictions: '' }],
@@ -119,7 +119,7 @@ test('TC-364 a review with nothing recorded says so in every section', async () 
 });
 
 // AC4 — a comment is required before Reject or Request changes is sent.
-test('TC-365 Request changes without a comment is refused on screen; with one it is recorded', async () => {
+test('TC-0157 Request changes without a comment is refused on screen; with one it is recorded', async () => {
   const onNotice = jest.fn();
   await openReview({ onNotice });
   const form = section('Record outcome');
@@ -140,7 +140,7 @@ test('TC-365 Request changes without a comment is refused on screen; with one it
   expect(listSafetyQueue).toHaveBeenCalledTimes(2);
 });
 
-test('TC-366 Approve needs no comment, and nothing is sent until an outcome is chosen', async () => {
+test('TC-0158 Approve needs no comment, and nothing is sent until an outcome is chosen', async () => {
   await openReview();
   const form = section('Record outcome');
   await userEvent.click(within(form).getByRole('button', { name: 'Record outcome' }));
@@ -155,7 +155,7 @@ test('TC-366 Approve needs no comment, and nothing is sent until an outcome is c
 
 // AC6 — a refusal from Firestore (or the API's own guard) is shown, and the
 // review stays open so nothing is lost.
-test('TC-367 a refused outcome is shown and the review stays open', async () => {
+test('TC-0159 a refused outcome is shown and the review stays open', async () => {
   recordSafetyOutcome.mockRejectedValueOnce(new Error('This event has no approved venue booking, so it cannot be confirmed.'));
   await openReview();
   const form = section('Record outcome');
@@ -166,7 +166,7 @@ test('TC-367 a refused outcome is shown and the review stays open', async () => 
 });
 
 // The way back: the workspace header when it hosts one, otherwise the screen's own.
-test('TC-367 the review closes back to the queue, through the header when the workspace hosts it', async () => {
+test('TC-0160 the review closes back to the queue, through the header when the workspace hosts it', async () => {
   const onBackChange = jest.fn();
   await openReview({ onBackChange });
   expect(screen.queryByRole('button', { name: 'Back to safety reviews' })).not.toBeInTheDocument();
@@ -177,8 +177,93 @@ test('TC-367 the review closes back to the queue, through the header when the wo
   expect(onBackChange).toHaveBeenLastCalledWith(null);
 });
 
-test('TC-367 standalone, the review offers its own way back', async () => {
+test('TC-0161 standalone, the review offers its own way back', async () => {
   await openReview();
   await userEvent.click(screen.getByRole('button', { name: 'Back to safety reviews' }));
   expect(await screen.findByRole('button', { name: 'Review safety' })).toBeInTheDocument();
+});
+
+describe('L2 / L3 edges', () => {
+  test('TC-2463 [boundary] a queued event with nothing recorded still reads plainly', async () => {
+    listSafetyQueue.mockResolvedValueOnce([{ id: 'e9', status: 'SAFETY_REVIEW' }]);
+    render(<SafetyReviewScreen />);
+    const card = (await screen.findByRole('heading', { level: 2, name: 'Untitled event' })).closest('article');
+    expect(card).toHaveTextContent('Date not set · Time not set–Time not set');
+    expect(card).toHaveTextContent('Venues: None booked');
+    expect(card).toHaveTextContent('Expected attendance: Not recorded');
+  });
+
+  test('TC-2464 [boundary] a review with no name, date, attendance, booking or dated check says so', async () => {
+    safetyReviewDetail.mockResolvedValueOnce({
+      event: { id: 'e1', status: 'SAFETY_REVIEW', accessibility: [], equipment: [{ equipment_type: 'VISUAL', quantity: 1 }] },
+      bookings: [], reservations: [],
+      reviews: [{ review_id: 's9', outcome: 'ESCALATED' }]
+    });
+    render(<SafetyReviewScreen />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Review safety' }));
+    expect(await screen.findByRole('heading', { level: 2, name: 'Untitled event' })).toBeInTheDocument();
+    expect(screen.getByText('Event date').nextSibling).toHaveTextContent('Not recorded');
+    expect(screen.getAllByText('Expected attendance')[0].nextSibling).toHaveTextContent('Not recorded');
+    expect(section('Venue bookings')).toHaveTextContent('No active venue bookings.');
+    expect(section('Equipment')).toHaveTextContent('VISUAL × 1');
+    expect(section('Equipment')).not.toHaveTextContent('—');
+    expect(section('Previous safety checks')).toHaveTextContent('ESCALATED · Not recorded');
+  });
+
+  test('TC-2465 [boundary] a booking with no attendance or times reads Not recorded', async () => {
+    safetyReviewDetail.mockResolvedValueOnce({
+      ...REVIEW,
+      bookings: [{ ...REVIEW.bookings[0], attendance: null, start_datetime: null, end_datetime: null, exceeds: false }]
+    });
+    await openReview();
+    const booking = within(section('Venue bookings')).getByRole('article');
+    expect(booking).toHaveTextContent('Not recorded–Not recorded');
+    expect(booking).toHaveTextContent('Expected attendanceNot recorded of 120');
+  });
+
+  test('TC-2491 [normal] L4 AC2 Request changes sends only the arrangements left ticked; Reject sends none', async () => {
+    await openReview();
+    const form = section('Record outcome');
+    await userEvent.click(within(form).getByRole('radio', { name: 'Request changes' }));
+    await userEvent.click(within(form).getByRole('checkbox', { name: 'Venue' }));
+    await userEvent.type(within(form).getByLabelText(/Comment/), 'Add a second technician.');
+    await userEvent.click(within(form).getByRole('button', { name: 'Record outcome' }));
+    expect(recordSafetyOutcome).toHaveBeenCalledWith({
+      eventId: 'e1', outcome: 'REQUEST_CHANGES', comment: 'Add a second technician.', marked: ['technical']
+    });
+    await screen.findByRole('button', { name: 'Review safety' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Review safety' }));
+    const again = await screen.findByRole('region', { name: 'Record outcome' });
+    await userEvent.click(within(again).getByRole('radio', { name: 'Reject' }));
+    await userEvent.type(within(again).getByLabelText(/Comment/), 'Exit blocked.');
+    await userEvent.click(within(again).getByRole('button', { name: 'Record outcome' }));
+    expect(recordSafetyOutcome).toHaveBeenLastCalledWith({ eventId: 'e1', outcome: 'REJECT', comment: 'Exit blocked.' });
+    await screen.findByRole('button', { name: 'Review safety' });
+  });
+
+  test('TC-2466 [failure] failures without a reason get plain messages, and a review that will not open leaves the queue in place', async () => {
+    recordSafetyOutcome.mockRejectedValueOnce(new Error(''));
+    await openReview();
+    const form = section('Record outcome');
+    await userEvent.click(within(form).getByRole('radio', { name: 'Approve' }));
+    await userEvent.click(within(form).getByRole('button', { name: 'Record outcome' }));
+    expect(await within(form).findByRole('alert')).toHaveTextContent('The outcome could not be recorded.');
+    await userEvent.click(screen.getByRole('button', { name: 'Back to safety reviews' }));
+
+    safetyReviewDetail.mockRejectedValueOnce(new Error(''));
+    await userEvent.click(await screen.findByRole('button', { name: 'Review safety' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('The review could not be opened.');
+    expect(screen.getByRole('button', { name: 'Review safety' })).toBeInTheDocument();
+
+    safetyReviewDetail.mockRejectedValueOnce(new Error('This event is not awaiting a safety check.'));
+    await userEvent.click(screen.getByRole('button', { name: 'Review safety' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('This event is not awaiting a safety check.');
+  });
+
+  test('TC-2467 [failure] a queue that cannot be read for no stated reason says so plainly', async () => {
+    listSafetyQueue.mockRejectedValueOnce(new Error(''));
+    render(<SafetyReviewScreen />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('The safety review queue could not be loaded.');
+  });
 });

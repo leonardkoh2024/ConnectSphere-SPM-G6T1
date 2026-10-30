@@ -41,7 +41,7 @@ beforeEach(() => {
   });
 });
 
-test('C2 TC1 an unreadable organiser profile does not stop the assigned events loading', async () => {
+test('TC-0328 C2 TC1 an unreadable organiser profile does not stop the assigned events loading', async () => {
   const { events } = await reviewApi.list();
 
   expect(events).toHaveLength(1);
@@ -50,14 +50,14 @@ test('C2 TC1 an unreadable organiser profile does not stop the assigned events l
   expect(events[0].organiser_name).toBeNull();
 });
 
-test('C3 TC1 an unreadable organiser profile does not stop the event detail loading', async () => {
+test('TC-0352 C3 TC1 an unreadable organiser profile does not stop the event detail loading', async () => {
   const detail = await reviewApi.detail('e1');
 
   expect(detail.event).toMatchObject({ id: 'e1', name: 'Partner Summit' });
   expect(detail.organiser).toBeNull();
 });
 
-test('C2 TC2 a readable organiser profile still supplies the name', async () => {
+test('TC-0329 C2 TC2 a readable organiser profile still supplies the name', async () => {
   firestore.getDoc.mockImplementation(async (ref) => {
     if (ref.path === 'users/c1') return snapshot('c1', { role: 'EVENT_COORDINATOR', name: 'Joshua Chua', is_active: true });
     if (ref.path === 'users/org1') return snapshot('org1', { name: 'Nadia Organiser', email: 'nadia@smu.edu.sg' });
@@ -69,7 +69,7 @@ test('C2 TC2 a readable organiser profile still supplies the name', async () => 
   expect(events[0].organiser_name).toBe('Nadia Organiser');
 });
 
-test('C2 TC3 other failures are still reported, and say which step failed', async () => {
+test('TC-0330 C2 TC3 other failures are still reported, and say which step failed', async () => {
   firestore.getDocs.mockImplementation(async (q) => {
     if (q.name === 'events') throw permissionDenied();
     return docs([]);
@@ -104,13 +104,13 @@ describe('K3 SCRUM-184 the Lead reassigns an event', () => {
 
   const setsAt = (prefix) => writes.sets.filter(([path]) => path.startsWith(prefix)).map(([, data]) => data);
 
-  test('K3 TC1 AC3 the event ends up with exactly the one new coordinator', async () => {
+  test('TC-2322 K3 TC1 AC3 the event ends up with exactly the one new coordinator', async () => {
     await reviewApi.leadReassign('e2', 'c2');
 
     expect(writes.updates).toEqual([['events/e2', { coordinator_id: 'c2', assigned_at: 'TS', updated_at: 'TS' }]]);
   });
 
-  test('K3 TC2 AC3 the previous assignment keeps its original time, the reassignment time and the Lead', async () => {
+  test('TC-2323 K3 TC2 AC3 the previous assignment keeps its original time, the reassignment time and the Lead', async () => {
     await reviewApi.leadReassign('e2', 'c2');
 
     const previous = writes.sets.find(([path]) => path === 'coordinator_assignments/e2_c1')[1];
@@ -119,7 +119,7 @@ describe('K3 SCRUM-184 the Lead reassigns an event', () => {
     expect(next).toMatchObject({ coordinator_id: 'c2', assigned_at: 'TS', ended_at: null });
   });
 
-  test('K3 TC3 AC3 the history entry records who, from whom, to whom and both times', async () => {
+  test('TC-2324 K3 TC3 AC3 the history entry records who, from whom, to whom and both times', async () => {
     await reviewApi.leadReassign('e2', 'c2');
 
     expect(setsAt('event_history')[0]).toMatchObject({
@@ -128,7 +128,7 @@ describe('K3 SCRUM-184 the Lead reassigns an event', () => {
     });
   });
 
-  test('K3 TC4 AC5 the outgoing coordinator, the incoming coordinator and the organiser are each told, in their own words', async () => {
+  test('TC-2325 K3 TC4 AC5 the outgoing coordinator, the incoming coordinator and the organiser are each told, in their own words', async () => {
     await reviewApi.leadReassign('e2', 'c2');
 
     const notices = setsAt('notifications');
@@ -139,14 +139,14 @@ describe('K3 SCRUM-184 the Lead reassigns an event', () => {
     expect(notices[2].message).toMatch(/Alex Coordinator/);
   });
 
-  test('K3 TC5 AC2 reassigning to the coordinator who already holds the event is refused and writes nothing', async () => {
+  test('TC-2326 K3 TC5 AC2 reassigning to the coordinator who already holds the event is refused and writes nothing', async () => {
     await expect(reviewApi.leadReassign('e2', 'c1')).rejects.toThrow('cannot be reassigned');
 
     expect(writes.updates).toEqual([]);
     expect(writes.sets).toEqual([]);
   });
 
-  test('K3 TC6 AC1 only the Lead may reassign: a coordinator calling it is refused and writes nothing', async () => {
+  test('TC-2327 K3 TC6 AC1 only the Lead may reassign: a coordinator calling it is refused and writes nothing', async () => {
     auth.currentUser = { uid: 'c1' };
 
     await expect(reviewApi.leadReassign('e2', 'c2')).rejects.toThrow('cannot be reassigned');
@@ -155,7 +155,7 @@ describe('K3 SCRUM-184 the Lead reassigns an event', () => {
     expect(writes.sets).toEqual([]);
   });
 
-  test('K3 TC7 AC1 a finished event is refused and writes nothing', async () => {
+  test('TC-2328 K3 TC7 AC1 a finished event is refused and writes nothing', async () => {
     stored['events/e2'] = { ...stored['events/e2'], status: 'COMPLETED' };
 
     await expect(reviewApi.leadReassign('e2', 'c2')).rejects.toThrow('cannot be reassigned');
@@ -164,7 +164,7 @@ describe('K3 SCRUM-184 the Lead reassigns an event', () => {
     stored['events/e2'] = { ...stored['events/e2'], status: 'UNDER_REVIEW' };
   });
 
-  test('K3 TC8 (replaces C9 criterion 5) the adapter offers no coordinator-side reassign, only the Lead\'s', () => {
+  test('TC-2329 K3 TC8 (replaces C9 criterion 5) the adapter offers no coordinator-side reassign, only the Lead\'s', () => {
     expect(reviewApi.reassign).toBeUndefined();
     expect(typeof reviewApi.leadReassign).toBe('function');
   });
@@ -220,7 +220,7 @@ describe("K4 SCRUM-185 the Lead's oversight board", () => {
     });
   });
 
-  test('K4 TC1 AC1 every submitted event is on the board with its coordinator name and last-activity time', async () => {
+  test('TC-2383 K4 TC1 AC1 every submitted event is on the board with its coordinator name and last-activity time', async () => {
     const { events } = await reviewApi.leadBoard();
 
     expect(events.map((item) => item.id).sort()).toEqual(['e1', 'e2', 'e4']);
@@ -232,39 +232,39 @@ describe("K4 SCRUM-185 the Lead's oversight board", () => {
     expect(events.find((item) => item.id === 'e2').coordinator_name).toBeNull();
   });
 
-  test('K4 TC2 AC1 a draft never reaches the board, so it cannot appear in the oversight view', async () => {
+  test('TC-2384 K4 TC2 AC1 a draft never reaches the board, so it cannot appear in the oversight view', async () => {
     const { events } = await reviewApi.leadBoard();
 
     expect(events.some((item) => item.status === 'DRAFT')).toBe(false);
   });
 
-  test('K4 TC3 AC3 the coordinators the summary counts for are the active ones', async () => {
+  test('TC-2385 K4 TC3 AC3 the coordinators the summary counts for are the active ones', async () => {
     const { coordinators } = await reviewApi.leadBoard();
 
     expect(coordinators.map((item) => item.id).sort()).toEqual(['c1', 'c2']);
     expect(coordinators.find((item) => item.id === 'c2').name).toBe('Alex Coordinator');
   });
 
-  test('K4 TC4 AC4 loading the board writes nothing', async () => {
+  test('TC-2386 K4 TC4 AC4 loading the board writes nothing', async () => {
     await reviewApi.leadBoard();
 
     expect(firestore.runTransaction).not.toHaveBeenCalled();
   });
 
-  test('K4 TC5 only the Lead may load the board: a coordinator is refused', async () => {
+  test('TC-2387 K4 TC5 only the Lead may load the board: a coordinator is refused', async () => {
     auth.currentUser = { uid: 'c1' };
 
     await expect(reviewApi.leadBoard()).rejects.toThrow('cannot oversee');
   });
 
-  test('K4 TC6 AC1 under the real read rules the Lead can load every event, every coordinator name and the active coordinator list', async () => {
+  test('TC-2388 K4 TC6 AC1 under the real read rules the Lead can load every event, every coordinator name and the active coordinator list', async () => {
     const { events, coordinators } = await reviewApi.leadBoard();
 
     expect(events.length).toBeGreaterThan(0);
     expect(coordinators.length).toBeGreaterThan(0);
   });
 
-  test('K4 TC7 AC1 the active-coordinator list is asked for the way the rules demand: limited to active coordinators', async () => {
+  test('TC-2389 K4 TC7 AC1 the active-coordinator list is asked for the way the rules demand: limited to active coordinators', async () => {
     await reviewApi.leadBoard();
 
     const userQuery = firestore.query.mock.calls.map(([source, ...constraints]) => ({ name: source.name, constraints }))
@@ -275,7 +275,7 @@ describe("K4 SCRUM-185 the Lead's oversight board", () => {
     ]));
   });
 
-  test('K4 TC8 AC1 a profile the Lead cannot read does not blank the board: the row falls back to the id', async () => {
+  test('TC-2390 K4 TC8 AC1 a profile the Lead cannot read does not blank the board: the row falls back to the id', async () => {
     firestore.getDoc.mockImplementation(async (ref) => {
       if (ref.path === 'users/lead1') return snapshot('lead1', stored['users/lead1']);
       if (ref.path === 'users/c1') throw permissionDenied();
@@ -370,14 +370,14 @@ describe('K5 SCRUM-186 a coordinator sees and opens only the events assigned to 
     });
   });
 
-  test('K5-TC1 AC1 the active event list holds only events currently assigned to the signed-in coordinator', async () => {
+  test('TC-2397 K5 AC1 the active event list holds only events currently assigned to the signed-in coordinator', async () => {
     const { events } = await reviewApi.list();
 
     expect(events.map((item) => item.id)).toEqual(['e1']);
     expect(events[0]).toMatchObject({ coordinator_id: 'c1', editable: true });
   });
 
-  test('K5-TC2 AC1 a reassigned-away event stays out of the list even though an assignment record for this coordinator remains', async () => {
+  test('TC-2398 K5 AC1 a reassigned-away event stays out of the list even though an assignment record for this coordinator remains', async () => {
     const { events } = await reviewApi.list();
 
     expect(events.some((item) => item.id === 'e3')).toBe(false);
@@ -392,11 +392,11 @@ describe('K5 SCRUM-186 a coordinator sees and opens only the events assigned to 
     ['one this coordinator held before it was reassigned', 'e3'],
     ['not assigned to anyone yet', 'e4'],
     ['an id that does not exist', 'no-such-event']
-  ])('K5-TC3 AC3 opening an event by id that is %s is refused with the same not-authorised response', async (_label, eventId) => {
+  ])('TC-2399 K5 AC3 opening an event by id that is %s is refused with the same not-authorised response', async (_label, eventId) => {
     await expect(reviewApi.detail(eventId)).rejects.toThrow('You are not authorised to view this event.');
   });
 
-  test('K5-TC4 AC3 the refusal reveals nothing about the event: no name, no description, and no further reads', async () => {
+  test('TC-2400 K5 AC3 the refusal reveals nothing about the event: no name, no description, and no further reads', async () => {
     const error = await reviewApi.detail('e2').catch((failure) => failure);
 
     expect(error).toBeInstanceOf(Error);
@@ -404,7 +404,7 @@ describe('K5 SCRUM-186 a coordinator sees and opens only the events assigned to 
     expect(reads.queries).toEqual([]);
   });
 
-  test('K5-TC5 AC3 the adapter refuses on its own, too: an event that is not theirs is never returned even if a read slipped through', async () => {
+  test('TC-2401 K5 AC3 the adapter refuses on its own, too: an event that is not theirs is never returned even if a read slipped through', async () => {
     looseEventRule = true;
 
     await expect(reviewApi.detail('e2')).rejects.toThrow('You are not authorised to view this event.');
@@ -412,13 +412,13 @@ describe('K5 SCRUM-186 a coordinator sees and opens only the events assigned to 
     expect(reads.queries).toEqual([]);
   });
 
-  test('K5-TC6 AC3 the coordinator an event is assigned to can still open it', async () => {
+  test('TC-2402 K5 AC3 the coordinator an event is assigned to can still open it', async () => {
     const detail = await reviewApi.detail('e1');
 
     expect(detail.event).toMatchObject({ id: 'e1', name: 'Partner Summit', editable: true });
   });
 
-  test("K5-TC7 AC3 the organiser still opens their own event: the check is on coordinators, not on everyone using the loader", async () => {
+  test("TC-2403 K5 AC3 the organiser still opens their own event: the check is on coordinators, not on everyone using the loader", async () => {
     auth.currentUser = { uid: 'org1' };
     firestore.getDoc.mockImplementation(async (ref) => {
       const [collectionName, id] = ref.path.split('/');
@@ -470,7 +470,7 @@ describe('D1 SCRUM-111 / D2 SCRUM-112 saving an Edit event form', () => {
     }));
   });
 
-  test('TC-456 D1 AC1/AC2 only the changed event fields are written, with one history row per field', async () => {
+  test('TC-0439 D1 AC1/AC2 only the changed event fields are written, with one history row per field', async () => {
     const result = await reviewApi.saveEventEdit({
       eventId: 'e1', before: planning, organiser,
       values: { ...formFor(planning), name: 'Partner Summit 2026', internal_notes: 'Keynote TBC' }
@@ -488,7 +488,7 @@ describe('D1 SCRUM-111 / D2 SCRUM-112 saving an Edit event form', () => {
     expect(writes.sets[1][1]).toMatchObject({ field_name: 'internal_notes', old_value: '', new_value: 'Keynote TBC' });
   });
 
-  test('TC-457 D1 AC3 a terminal event is refused and nothing is written', async () => {
+  test('TC-0440 D1 AC3 a terminal event is refused and nothing is written', async () => {
     for (const status of ['COMPLETED', 'CANCELLED', 'REJECTED']) {
       stored = { ...planning, status };
       await expect(reviewApi.saveEventEdit({ eventId: 'e1', before: stored, organiser, values: { ...formFor(stored), name: 'New' } }))
@@ -498,7 +498,7 @@ describe('D1 SCRUM-111 / D2 SCRUM-112 saving an Edit event form', () => {
     expect(writes.sets).toHaveLength(0);
   });
 
-  test('TC-458 D1 AC4 repeated edits are each saved and recorded', async () => {
+  test('TC-0441 D1 AC4 repeated edits are each saved and recorded', async () => {
     for (const name of ['Summit A', 'Summit B', 'Summit C']) {
       await reviewApi.saveEventEdit({ eventId: 'e1', before: stored, organiser, values: { ...formFor(stored), name } });
       stored = { ...stored, name };
@@ -507,7 +507,7 @@ describe('D1 SCRUM-111 / D2 SCRUM-112 saving an Edit event form', () => {
     expect(writes.sets.map(([, data]) => data.new_value)).toEqual(['Summit A', 'Summit B', 'Summit C']);
   });
 
-  test('TC-459 D1 an edit made meanwhile by someone else is not overwritten', async () => {
+  test('TC-0442 D1 an edit made meanwhile by someone else is not overwritten', async () => {
     const opened = { ...planning };
     stored = { ...planning, name: 'Renamed elsewhere' };
     await expect(reviewApi.saveEventEdit({ eventId: 'e1', before: opened, organiser, values: { ...formFor(opened), purpose: 'New purpose' } }))
@@ -515,13 +515,13 @@ describe('D1 SCRUM-111 / D2 SCRUM-112 saving an Edit event form', () => {
     expect(writes.updates).toHaveLength(0);
   });
 
-  test('TC-460 D2 a significant change without acknowledgement is refused and nothing is written', async () => {
+  test('TC-0472 D2 a significant change without acknowledgement is refused and nothing is written', async () => {
     await expect(reviewApi.saveEventEdit({ eventId: 'e1', before: planning, organiser, impact: noImpact, values: { ...formFor(planning), expected_attendance: 125 } }))
       .rejects.toThrow(/Acknowledge the impact warning/);
     expect(writes.updates).toHaveLength(0);
   });
 
-  test('TC-461 D1+D2 one save carrying both kinds of change commits once, with both kinds of history', async () => {
+  test('TC-0443 D1+D2 one save carrying both kinds of change commits once, with both kinds of history', async () => {
     await reviewApi.saveEventEdit({
       eventId: 'e1', before: planning, organiser, impact: noImpact, acknowledged: true,
       values: { ...formFor(planning), name: 'Partner Summit 2026', expected_attendance: 125 }
@@ -541,7 +541,7 @@ describe('D1 SCRUM-111 / D2 SCRUM-112 saving an Edit event form', () => {
       })
     ]);
   });
-  test('TC-462 D2 a significant change is refused when the arrangements changed after the warning was shown', async () => {
+  test('TC-0473 D2 a significant change is refused when the arrangements changed after the warning was shown', async () => {
     const shown = { venueBookings: [{ id: 'b1', label: 'Main Hall', status: 'APPROVED' }], equipmentReservations: [], registrationsCount: 0 };
     await expect(reviewApi.saveEventEdit({
       eventId: 'e1', before: planning, organiser, impact: shown, acknowledged: true,
@@ -551,7 +551,7 @@ describe('D1 SCRUM-111 / D2 SCRUM-112 saving an Edit event form', () => {
     expect(writes.sets).toHaveLength(0);
   });
 
-  test('TC-463 D2 a significant change is refused while a clarification is open; an ordinary one is not', async () => {
+  test('TC-0474 D2 a significant change is refused while a clarification is open; an ordinary one is not', async () => {
     stored = { ...planning, open_clarification_id: 'q1' };
     await expect(reviewApi.saveEventEdit({
       eventId: 'e1', before: stored, organiser, impact: noImpact, acknowledged: true,
@@ -563,7 +563,7 @@ describe('D1 SCRUM-111 / D2 SCRUM-112 saving an Edit event form', () => {
     expect(writes.updates).toHaveLength(1);
   });
 
-  test('J7 SCRUM-156 a date change tells registered attendees, and a time or venue change names what changed', async () => {
+  test('TC-2244 J7 SCRUM-156 a date change tells registered attendees, and a time or venue change names what changed', async () => {
     firestore.getDocs.mockImplementation(async (q) => {
       if (q.name !== 'registrations') return { docs: [], size: 0 };
       const registeredOnly = (q.constraints || []).some((item) => item.field === 'status' && item.value === 'REGISTERED');
@@ -584,7 +584,7 @@ describe('D1 SCRUM-111 / D2 SCRUM-112 saving an Edit event form', () => {
     expect(notices.every((notice) => notice.user_id === 'attendee-1' && notice.is_read === false)).toBe(true);
   });
 
-  test('TC-464 D2 a venue-requirement change rewrites the requirement, facility and accessibility rows with the acknowledged record', async () => {
+  test('TC-0475 D2 a venue-requirement change rewrites the requirement, facility and accessibility rows with the acknowledged record', async () => {
     const withNeeds = { ...planning, facilities_required: true, facilities: ['WIFI'], accessibility_needed: false };
     const rows = {
       'event_facilities/e1_WIFI': { event_id: 'e1', facility_id: 'WIFI' },
@@ -643,7 +643,7 @@ describe('the coordinator event detail carries its equipment arrangements', () =
     });
   });
 
-  test('TC-483 G4 reserved lines read Approved with their window, and the reservation is in the activity history', async () => {
+  test('TC-1303 G4 reserved lines read Approved with their window, and the reservation is in the activity history', async () => {
     const detail = await reviewApi.detail('e1');
 
     expect(detail.equipmentArrangements.lines).toEqual([expect.objectContaining({
@@ -653,7 +653,7 @@ describe('the coordinator event detail carries its equipment arrangements', () =
     expect(detail.history.map((item) => item.action_type)).toEqual(['EVENT_APPROVED', 'EQUIPMENT_RESERVED']);
   });
 
-  test('TC-484 G4 an equipment read that fails leaves the section empty instead of failing the detail', async () => {
+  test('TC-1304 G4 an equipment read that fails leaves the section empty instead of failing the detail', async () => {
     const getDoc = firestore.getDoc.getMockImplementation();
     firestore.getDoc.mockImplementation(async (ref) => {
       if (ref.path === 'equipment_requests/e1') throw permissionDenied();
@@ -663,7 +663,7 @@ describe('the coordinator event detail carries its equipment arrangements', () =
     expect(detail.equipmentArrangements).toBeNull();
     expect(detail.event).toMatchObject({ id: 'e1' });
   });
-  test('TC-485 the Activity tab names each actor it may read, and leaves the rest for the role fallback', async () => {
+  test('TC-1305 the Activity tab names each actor it may read, and leaves the rest for the role fallback', async () => {
     const getDoc = firestore.getDoc.getMockImplementation();
     firestore.getDocs.mockImplementation(async (q) => {
       if (q.name === 'event_history') return docs([
@@ -681,7 +681,7 @@ describe('the coordinator event detail carries its equipment arrangements', () =
     expect(detail.actorNames).toEqual({ c1: 'Joshua Chua' });
   });
 
-  test('D6 resolves actor display names from supported profile name fields', async () => {
+  test('TC-0554 D6 resolves actor display names from supported profile name fields', async () => {
     const getDoc = firestore.getDoc.getMockImplementation();
     firestore.getDoc.mockImplementation(async (ref) => {
       if (ref.path === 'users/c1') return snapshot('c1', { role: 'EVENT_COORDINATOR', full_name: 'Joshua Chua' });
@@ -726,7 +726,7 @@ describe('D4 cancel an assigned event', () => {
     }));
   });
 
-  test('D4 requires a reason and atomically cancels, records history and notifies the organiser', async () => {
+  test('TC-0523 D4 requires a reason and atomically cancels, records history and notifies the organiser', async () => {
     await expect(reviewApi.cancel('e4', '  ')).rejects.toThrow('Cancellation reason is required.');
     expect(firestore.runTransaction).not.toHaveBeenCalled();
 
@@ -762,7 +762,7 @@ describe('D4 cancel an assigned event', () => {
     ]));
   });
 
-  test('J9 SCRUM-192 cancelling an event in Safety Review tells each active Safety Officer', async () => {
+  test('TC-2263 J9 SCRUM-192 cancelling an event in Safety Review tells each active Safety Officer', async () => {
     storedEvent.status = 'SAFETY_REVIEW';
     firestore.getDocs.mockImplementation(async (q) => {
       if (q.name === 'users') return docs([['so-1', { role: 'SAFETY_OFFICER', is_active: true }], ['so-2', { role: 'SAFETY_OFFICER', is_active: false }]]);
@@ -779,7 +779,7 @@ describe('D4 cancel an assigned event', () => {
     storedEvent.status = 'PLANNING';
   });
 
-  test('D4 sends cancellation notices to registered attendees only', async () => {
+  test('TC-0524 D4 sends cancellation notices to registered attendees only', async () => {
     const committed = {
       eventId: 'e4',
       eventName: 'Partner Summit',
@@ -800,9 +800,9 @@ describe('D4 cancel an assigned event', () => {
   });
 });
 
-// F12 / SCRUM-177 AC5 — TC-507 in docs/test-cases.md.
+// F12 / SCRUM-177 AC5.
 describe('F12 SCRUM-177 the event detail carries every venue booking', () => {
-  test("TC-507 AC5 each booking comes back with its label, venue, window, status, attendance and layout", async () => {
+  test("TC-1068 AC5 each booking comes back with its label, venue, window, status, attendance and layout", async () => {
     const booking = (id, data) => [id, {
       event_id: 'e1', status: 'PENDING',
       start_datetime: '2026-11-20T01:00:00.000Z', end_datetime: '2026-11-20T09:00:00.000Z', ...data
@@ -862,7 +862,7 @@ describe('J2 SCRUM-151 the organiser is told how a decision went', () => {
 
   const setsAt = (prefix) => writes.sets.filter(([path]) => path.startsWith(prefix)).map(([, data]) => data);
 
-  test('J2-TC10 AC1 AC3 approving records the reason in the history entry instead of a fixed sentence', async () => {
+  test('TC-2146 J2 AC1 AC3 approving records the reason in the history entry instead of a fixed sentence', async () => {
     await reviewApi.approve('e3', ' Venue and equipment are confirmed. ');
 
     expect(writes.updates).toEqual([['events/e3', { status: 'APPROVED', updated_at: 'TS' }]]);
@@ -873,7 +873,7 @@ describe('J2 SCRUM-151 the organiser is told how a decision went', () => {
     });
   });
 
-  test('J2-TC11 AC1 AC2 AC3 approving tells the organiser, once, naming the event, the change and the reason', async () => {
+  test('TC-2147 J2 AC1 AC2 AC3 approving tells the organiser, once, naming the event, the change and the reason', async () => {
     await reviewApi.approve('e3', 'Venue and equipment are confirmed.');
 
     const notices = setsAt('notifications');
@@ -885,14 +885,14 @@ describe('J2 SCRUM-151 the organiser is told how a decision went', () => {
     expect(notices[0].notification_id).toBe('auto');
   });
 
-  test.each([[''], ['   '], [undefined]])('J2-TC12 AC3 approving with the reason %p is refused and writes nothing', async (reason) => {
+  test.each([[''], ['   '], [undefined]])('TC-2148 J2 AC3 approving with the reason %p is refused and writes nothing', async (reason) => {
     await expect(reviewApi.approve('e3', reason)).rejects.toThrow('Approval reason is required.');
 
     expect(firestore.runTransaction).not.toHaveBeenCalled();
     expect(writes).toEqual({ updates: [], sets: [] });
   });
 
-  test('J2-TC13 AC1 AC2 AC3 rejecting still tells the organiser, with the event, the change and the reason', async () => {
+  test('TC-2149 J2 AC1 AC2 AC3 rejecting still tells the organiser, with the event, the change and the reason', async () => {
     await reviewApi.reject('e3', 'No suitable venue can be secured.');
 
     expect(writes.updates).toEqual([['events/e3', { status: 'REJECTED', updated_at: 'TS' }]]);
@@ -905,13 +905,13 @@ describe('J2 SCRUM-151 the organiser is told how a decision went', () => {
     });
   });
 
-  test('J2-TC14 AC3 rejecting without a reason is refused and writes nothing', async () => {
+  test('TC-2150 J2 AC3 rejecting without a reason is refused and writes nothing', async () => {
     await expect(reviewApi.reject('e3', '   ')).rejects.toThrow('Rejection reason is required.');
 
     expect(firestore.runTransaction).not.toHaveBeenCalled();
   });
 
-  test('J2-TC15 AC1 AC2 returning a request for clarification tells the organiser what was asked', async () => {
+  test('TC-2151 J2 AC1 AC2 returning a request for clarification tells the organiser what was asked', async () => {
     await reviewApi.clarify('e3', 'Please confirm attendance.');
 
     const notices = setsAt('notifications');
@@ -922,7 +922,7 @@ describe('J2 SCRUM-151 the organiser is told how a decision went', () => {
     });
   });
 
-  test('J2-TC16 AC1 an event with no name is still named, by its reference', async () => {
+  test('TC-2152 J2 AC1 an event with no name is still named, by its reference', async () => {
     stored['events/e4'] = { organiser_id: 'org1', coordinator_id: 'c1', reference_no: 'EVT-100999', status: 'UNDER_REVIEW' };
 
     await reviewApi.approve('e4', 'Fine.');
@@ -988,7 +988,7 @@ describe('I3 SCRUM-149 saving a significant change asks the arrangements service
     });
   });
 
-  test('I3-TC77 AC1 AC2 once a significant change is saved, the service is asked to re-request with that change\'s id', async () => {
+  test('TC-2047 I3 AC1 AC2 once a significant change is saved, the service is asked to re-request with that change\'s id', async () => {
     const result = await save();
 
     expect(result).toMatchObject({ ok: true, rerequest: { sent: true } });
@@ -1001,12 +1001,12 @@ describe('I3 SCRUM-149 saving a significant change asks the arrangements service
     expect(call.body).toEqual({ source: 'EVENT_EDIT', change_id: significant[1].history_id });
   });
 
-  test('I3-TC78 the service is asked after the save is committed, never before', async () => {
+  test('TC-2048 I3 the service is asked after the save is committed, never before', async () => {
     await save();
     expect(order).toEqual(['transaction', 'service']);
   });
 
-  test('I3-TC79 an ordinary-only edit does not ask the service to re-request', async () => {
+  test('TC-2049 I3 an ordinary-only edit does not ask the service to re-request', async () => {
     const result = await save({ values: { ...formFor(confirmed), name: 'Renamed' } });
 
     expect(result).toMatchObject({ ok: true, changed: 1 });
@@ -1014,13 +1014,13 @@ describe('I3 SCRUM-149 saving a significant change asks the arrangements service
     expect(result.rerequest).toBeUndefined();
   });
 
-  test('I3-TC80 an edit that changes nothing writes nothing and calls nothing', async () => {
+  test('TC-2050 I3 an edit that changes nothing writes nothing and calls nothing', async () => {
     await expect(save({ values: formFor(confirmed) })).rejects.toThrow(/no changes to save/i);
     expect(writes.updates).toHaveLength(0);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  test('I3-TC81 AC1 when the service cannot be reached the save stays committed and the result says the re-request did not go through', async () => {
+  test('TC-2051 I3 AC1 when the service cannot be reached the save stays committed and the result says the re-request did not go through', async () => {
     fetchMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
     const result = await save();
 
@@ -1029,7 +1029,7 @@ describe('I3 SCRUM-149 saving a significant change asks the arrangements service
     expect(result.rerequest.error).toBeTruthy();
   });
 
-  test('I3-TC82 a refusal from the service is reported the same way, with its message, and the save is not undone', async () => {
+  test('TC-2052 I3 a refusal from the service is reported the same way, with its message, and the save is not undone', async () => {
     fetchMock.mockResolvedValue({ ok: false, json: async () => ({ error: 'Only the event\'s coordinator can do this.' }) });
     const result = await save();
 
@@ -1037,7 +1037,7 @@ describe('I3 SCRUM-149 saving a significant change asks the arrangements service
     expect(result.rerequest).toMatchObject({ sent: false, error: 'Only the event\'s coordinator can do this.' });
   });
 
-  test('I3-TC83 AC1 retryRerequest asks the service again for the same change', async () => {
+  test('TC-2053 I3 AC1 retryRerequest asks the service again for the same change', async () => {
     fetchMock.mockRejectedValueOnce(new Error('connect ECONNREFUSED'));
     const { rerequest } = await save();
 
@@ -1045,12 +1045,12 @@ describe('I3 SCRUM-149 saving a significant change asks the arrangements service
     expect(serviceCalls().at(-1)).toMatchObject({ path: '/api/events/e1/rerequest-arrangements', body: { source: 'EVENT_EDIT', change_id: rerequest.changeId } });
   });
 
-  test('I3-TC84 retryRerequest throws the service\'s message when it still fails, so the screen can keep the Retry button', async () => {
+  test('TC-2054 I3 retryRerequest throws the service\'s message when it still fails, so the screen can keep the Retry button', async () => {
     fetchMock.mockResolvedValue({ ok: false, json: async () => ({ error: 'That change is no longer the latest.' }) });
     await expect(reviewApi.retryRerequest({ eventId: 'e1', changeId: 'h2' })).rejects.toThrow('That change is no longer the latest.');
   });
 
-  test('I3-TC85 only an assigned coordinator may retry: a signed-out user is refused before any call', async () => {
+  test('TC-2055 I3 only an assigned coordinator may retry: a signed-out user is refused before any call', async () => {
     auth.currentUser = null;
     await expect(reviewApi.retryRerequest({ eventId: 'e1', changeId: 'h2' })).rejects.toThrow();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -1058,7 +1058,7 @@ describe('I3 SCRUM-149 saving a significant change asks the arrangements service
 
   // ---- AC4 -------------------------------------------------------------------------------------
 
-  test('I3-TC86 AC4 a capacity below the registered count is refused before any write or call unless it is acknowledged', async () => {
+  test('TC-2056 I3 AC4 a capacity below the registered count is refused before any write or call unless it is acknowledged', async () => {
     await expect(save({ values: { ...formFor(confirmed), registration_capacity: 40 }, registeredCount: 60 }))
       .rejects.toThrow(/below the 60 people already registered/i);
     await expect(save({ values: { ...formFor(confirmed), registration_capacity: 40 }, registeredCount: 60, capacityAcknowledged: false }))
@@ -1069,7 +1069,7 @@ describe('I3 SCRUM-149 saving a significant change asks the arrangements service
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  test('I3-TC87 AC4 an acknowledged lower capacity is sent to the service with the acknowledgement, before the event is saved', async () => {
+  test('TC-2057 I3 AC4 an acknowledged lower capacity is sent to the service with the acknowledgement, before the event is saved', async () => {
     const result = await save({ values: { ...formFor(confirmed), expected_attendance: 125, registration_capacity: 40 }, registeredCount: 60, capacityAcknowledged: true });
 
     const capacityCall = serviceCalls().find(({ path }) => path === '/api/events/e1/registration-capacity');
@@ -1079,7 +1079,7 @@ describe('I3 SCRUM-149 saving a significant change asks the arrangements service
     expect(result).toMatchObject({ ok: true });
   });
 
-  test('I3-TC88 AC4 a capacity the service refuses stops the whole save: nothing is written', async () => {
+  test('TC-2058 I3 AC4 a capacity the service refuses stops the whole save: nothing is written', async () => {
     fetchMock.mockResolvedValue({ ok: false, json: async () => ({ error: 'The capacity cannot exceed the venue capacity of 120.' }) });
     await expect(save({ values: { ...formFor(confirmed), registration_capacity: 500 }, registeredCount: 60 }))
       .rejects.toThrow('The capacity cannot exceed the venue capacity of 120.');
@@ -1087,17 +1087,17 @@ describe('I3 SCRUM-149 saving a significant change asks the arrangements service
     expect(writes.sets).toHaveLength(0);
   });
 
-  test('I3-TC89 AC4 a capacity at or above the registered count needs no acknowledgement', async () => {
+  test('TC-2059 I3 AC4 a capacity at or above the registered count needs no acknowledgement', async () => {
     await save({ values: { ...formFor(confirmed), registration_capacity: 60 }, registeredCount: 60, capacityAcknowledged: false });
     expect(serviceCalls().find(({ path }) => path.endsWith('/registration-capacity')).body).toEqual({ capacity: 60, acknowledged: false });
   });
 
-  test('I3-TC90 an unchanged capacity is not sent to the service at all', async () => {
+  test('TC-2060 I3 an unchanged capacity is not sent to the service at all', async () => {
     await save();
     expect(serviceCalls().map(({ path }) => path)).toEqual(['/api/events/e1/rerequest-arrangements']);
   });
 
-  test('I3-TC91 a capacity-only save sends the capacity and writes no significant-change record', async () => {
+  test('TC-2061 I3 a capacity-only save sends the capacity and writes no significant-change record', async () => {
     const result = await save({ values: { ...formFor(confirmed), expected_attendance: 100, registration_capacity: 80 }, impact: undefined, acknowledged: false, registeredCount: 10 });
 
     expect(serviceCalls().map(({ path }) => path)).toEqual(['/api/events/e1/registration-capacity']);
@@ -1105,12 +1105,12 @@ describe('I3 SCRUM-149 saving a significant change asks the arrangements service
     expect(result).toMatchObject({ ok: true });
   });
 
-  test('I3-TC92 the capacity is never written to the event by the browser', async () => {
+  test('TC-2062 I3 the capacity is never written to the event by the browser', async () => {
     await save({ values: { ...formFor(confirmed), registration_capacity: 40 }, registeredCount: 60, capacityAcknowledged: true });
     writes.updates.forEach(([, data]) => expect(data).not.toHaveProperty('registration_capacity'));
   });
 
-  test('I3-TC93 registeredCount counts only the people holding a place', async () => {
+  test('TC-2063 I3 registeredCount counts only the people holding a place', async () => {
     firestore.getDocs.mockResolvedValue({
       size: 5,
       docs: ['REGISTERED', 'REGISTERED', 'WAITLISTED', 'WITHDRAWN', 'CANCELLED'].map((status, index) => snapshot(`r${index}`, { event_id: 'e1', status }))
@@ -1118,7 +1118,7 @@ describe('I3 SCRUM-149 saving a significant change asks the arrangements service
     await expect(reviewApi.registeredCount('e1')).resolves.toBe(2);
   });
 
-  test('I3-TC94 registeredCount is zero when nobody has registered', async () => {
+  test('TC-2064 I3 registeredCount is zero when nobody has registered', async () => {
     await expect(reviewApi.registeredCount('e1')).resolves.toBe(0);
   });
 });

@@ -56,7 +56,7 @@ const tickVenue = async (name) => {
 const dayCell = (label) => screen.getByRole("button", { name: new RegExp(`^${label}`, "i") }).closest("td");
 const detail = () => screen.getByRole("region", { name: /day detail/i });
 
-test("TC-218 the calendar opens on the current month across every venue", () => {
+test("TC-0657 the calendar opens on the current month across every venue", () => {
   renderCalendar();
   expect(screen.getByRole("heading", { name: "October 2026" })).toBeInTheDocument();
   expect(venuesField()).toHaveTextContent("All venues");
@@ -68,7 +68,7 @@ test("TC-218 the calendar opens on the current month across every venue", () => 
   expect(within(monday).getByText(/Hall A/, { selector: ".cs-month-chip-blocked *" })).toBeInTheDocument();
 });
 
-test("TC-219 the chosen day shows each venue's free, booked and blocked time", () => {
+test("TC-0658 the chosen day shows each venue's free, booked and blocked time", () => {
   renderCalendar();
   expect(within(detail()).getByRole("heading", { name: /monday 12 october 2026/i })).toBeInTheDocument();
   const hallDay = within(detail()).getByRole("region", { name: "Hall A" });
@@ -81,7 +81,7 @@ test("TC-219 the chosen day shows each venue's free, booked and blocked time", (
   expect(screen.getByRole("list", { name: /legend/i })).toHaveTextContent(/free.*booked.*pending.*blocked.*closed/i);
 });
 
-test("TC-220 a pending request is shown apart from approved bookings", async () => {
+test("TC-0659 a pending request is shown apart from approved bookings", async () => {
   renderCalendar();
   expect(dayCell("Tue 13 Oct").querySelector(".cs-month-chip-pending")).toHaveTextContent("Hall A");
   await userEvent.click(screen.getByRole("button", { name: /^tue 13 oct/i }));
@@ -91,7 +91,7 @@ test("TC-220 a pending request is shown apart from approved bookings", async () 
   expect(within(hallDay).queryByText("Booked")).not.toBeInTheDocument();
 });
 
-test("TC-221 with one venue chosen, days it does not open are shown closed", async () => {
+test("TC-0660 with one venue chosen, days it does not open are shown closed", async () => {
   renderCalendar();
   await tickVenue("Hall A");
   expect(within(dayCell("Wed 14 Oct")).getByText("Closed")).toBeInTheDocument();
@@ -100,14 +100,14 @@ test("TC-221 with one venue chosen, days it does not open are shown closed", asy
   expect(within(detail()).getByText(/closed all day/i)).toBeInTheDocument();
 });
 
-test("TC-222 an external viewer does not see event names", () => {
+test("TC-0661 an external viewer does not see event names", () => {
   renderCalendar({ role: ROLES.ORGANISER });
   expect(screen.queryByText("Annual Gala")).not.toBeInTheDocument();
   expect(screen.queryByText("Board Retreat")).not.toBeInTheDocument();
   expect(within(within(detail()).getByRole("region", { name: "Hall A" })).getByText("Booked")).toBeInTheDocument();
 });
 
-test("TC-223 the month steps forward and back, and Today returns", async () => {
+test("TC-0662 the month steps forward and back, and Today returns", async () => {
   renderCalendar();
   await userEvent.click(screen.getByRole("button", { name: /next month/i }));
   expect(screen.getByRole("heading", { name: "November 2026" })).toBeInTheDocument();
@@ -118,7 +118,7 @@ test("TC-223 the month steps forward and back, and Today returns", async () => {
   expect(screen.getByRole("heading", { name: "October 2026" })).toBeInTheDocument();
 });
 
-test("TC-224 choosing venues narrows the month to them, and All venues resets", async () => {
+test("TC-0663 choosing venues narrows the month to them, and All venues resets", async () => {
   renderCalendar();
   await tickVenue("Annex");
   expect(venuesField()).toHaveTextContent("Annex");
@@ -137,7 +137,7 @@ test("TC-224 choosing venues narrows the month to them, and All venues resets", 
   expect(screen.getByRole("checkbox", { name: "Annex" })).not.toBeChecked();
 });
 
-test("TC-225 location and kind filters narrow the month, and one action clears them", async () => {
+test("TC-0664 location and kind filters narrow the month, and one action clears them", async () => {
   renderCalendar();
   await userEvent.selectOptions(screen.getByLabelText(/^location$/i), "CENTRAL");
   expect(dayCell("Mon 12 Oct").querySelectorAll(".cs-month-chip")).toHaveLength(2);
@@ -148,26 +148,26 @@ test("TC-225 location and kind filters narrow the month, and one action clears t
   expect(screen.getByLabelText(/^location$/i)).toHaveValue("");
 });
 
-test("TC-226 a venue with no operating hours says it has no availability data", async () => {
+test("TC-0665 a venue with no operating hours says it has no availability data", async () => {
   renderCalendar();
   await tickVenue("Annex");
   expect(screen.getByRole("status")).toHaveTextContent(/no availability data/i);
 });
 
-test("TC-227 a venue that cannot be found says so", () => {
+test("TC-0666 a venue that cannot be found says so", () => {
   renderCalendar({ venueId: "VEN-404" });
   expect(screen.getByRole("status")).toHaveTextContent(/venue could not be found/i);
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
 });
 
-test("TC-228 the back button returns to the catalogue", async () => {
+test("TC-0667 the back button returns to the catalogue", async () => {
   const onBack = jest.fn();
   renderCalendar({ onBack });
   await userEvent.click(screen.getByRole("button", { name: /back to catalogue/i }));
   expect(onBack).toHaveBeenCalled();
 });
 
-test("TC-231 a busy day shows three entries and how many more", () => {
+test("TC-0668 a busy day shows three entries and how many more", () => {
   const busy = [9, 10, 11, 13, 14].map((hour) => ({
     booking_id: `x${hour}`, venue_id: "VEN-002", status: "APPROVED", event_name: `Session ${hour}`, start_datetime: at(15, hour), end_datetime: at(15, hour + 1)
   }));
@@ -175,4 +175,50 @@ test("TC-231 a busy day shows three entries and how many more", () => {
   const thursday = dayCell("Thu 15 Oct");
   expect(thursday.querySelectorAll(".cs-month-chip")).toHaveLength(3);
   expect(within(thursday).getByText("+2 more")).toBeInTheDocument();
+});
+
+describe("normal", () => {
+  test("TC-0669 E4 — clicking anywhere in a day cell selects that day, and a lone entry is counted singular", () => {
+    renderCalendar({ bookings: [bookings[1]], unavailability: [] });
+    const cell = dayCell("Tue 13 Oct");
+    expect(within(cell).getByRole("button")).toHaveAccessibleName("Tue 13 Oct, 1 entry");
+    userEvent.click(cell);
+    expect(within(cell).getByRole("button")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("TC-0670 E4 — a kind turned off and back on returns in legend order", () => {
+    renderCalendar();
+    const blocked = screen.getByRole("checkbox", { name: /blocked/i });
+    userEvent.click(blocked);
+    expect(blocked).not.toBeChecked();
+    userEvent.click(blocked);
+    expect(blocked).toBeChecked();
+    expect(screen.queryByRole("button", { name: /clear filters/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("boundary", () => {
+  test("TC-0671 E4 — a block over the whole day reads All day; with one venue the chip names the entry", async () => {
+    const allDay = { id: "u9", venue_id: "VEN-001", start_datetime: at(14, 0), end_datetime: new Date(2026, 9, 15, 0, 0).toISOString(), reason: "Blocked" };
+    renderCalendar({ venueId: "VEN-001", bookings: [], unavailability: [allDay] });
+    const chip = dayCell("Wed 14 Oct").querySelector(".cs-month-chip");
+    expect(chip).toHaveTextContent("All day");
+    expect(chip.getAttribute("title")).toMatch(/All day$/);
+  });
+
+  test("TC-0672 E4 — with no props it renders an empty month; unknown location codes and nameless venues still list", async () => {
+    const empty = render(<VenueCalendar />);
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.getByText(/no venues match these filters/i)).toBeInTheDocument();
+    empty.unmount();
+
+    const nameless = render(<VenueCalendar venues={[{ venue_id: "VEN-7", operating_hours: [] }]} today={today} />);
+    expect(screen.getByRole("status")).toHaveTextContent("this venue has no operating hours recorded");
+    nameless.unmount();
+
+    renderCalendar({ venues: [hall, { venue_id: "VEN-9", location: "OUTER_RIM", operating_hours: [] }, { venue_id: "VEN-8", operating_hours: [] }] });
+    expect([...screen.getByLabelText(/^location$/i).options].map((option) => option.textContent)).toContain("OUTER RIM");
+    await openVenues();
+    expect(screen.getAllByRole("checkbox").length).toBeGreaterThan(3);
+  });
 });

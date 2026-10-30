@@ -18,7 +18,7 @@ describe("G2 pooled equipment availability", () => {
     ...changes
   });
 
-  test("TC-290 held stock less overlapping reservations and unavailable quantity gives free stock", () => {
+  test("TC-1208 held stock less overlapping reservations and unavailable quantity gives free stock", () => {
     const result = calculateEquipmentAvailability(input({
       reservations: [
         { equipment_type: "AUDIO", quantity: 3, status: "RESERVED", start_datetime: "2026-11-04T10:00:00+08:00", end_datetime: "2026-11-04T16:00:00+08:00" },
@@ -42,7 +42,7 @@ describe("G2 pooled equipment availability", () => {
     });
   });
 
-  test("TC-291 reports the shortfall as a numeric quantity", () => {
+  test("TC-1209 reports the shortfall as a numeric quantity", () => {
     const result = calculateEquipmentAvailability(input({
       requestedQuantity: 8,
       reservations: [{ equipment_type: "AUDIO", quantity: 5, status: "APPROVED", start_datetime: start, end_datetime: end }]
@@ -52,7 +52,7 @@ describe("G2 pooled equipment availability", () => {
     expect(result.available).toBe(false);
   });
 
-  test("TC-292 excludes windows that touch but do not overlap", () => {
+  test("TC-1210 excludes windows that touch but do not overlap", () => {
     const result = calculateEquipmentAvailability(input({
       reservations: [{ equipment_type: "AUDIO", quantity: 12, status: "RESERVED", start_datetime: "2026-11-04T01:00:00+08:00", end_datetime: start }],
       unavailability: [{ equipment_type: "AUDIO", quantity: 12, start_datetime: end, end_datetime: "2026-11-04T18:00:00+08:00" }]
@@ -60,7 +60,7 @@ describe("G2 pooled equipment availability", () => {
     expect(result.freeQuantity).toBe(12);
   });
 
-  test("TC-293 excludes the event's existing reservation from its own availability check", () => {
+  test("TC-1211 excludes the event's existing reservation from its own availability check", () => {
     const result = calculateEquipmentAvailability(input({
       eventId: "evt-1",
       reservations: [{ event_id: "evt-1", equipment_type: "AUDIO", quantity: 4, status: "RESERVED", start_datetime: start, end_datetime: end }]
@@ -69,7 +69,7 @@ describe("G2 pooled equipment availability", () => {
     expect(result.freeQuantity).toBe(12);
   });
 
-  test("G5-TC4 AC2 a reservation released with its cancelled event frees its quantity for another event straight away", () => {
+  test("TC-1316 G5 AC2 a reservation released with its cancelled event frees its quantity for another event straight away", () => {
     const heldByCancelledEvent = (status) => [
       { event_id: "evt-a", equipment_type: "AUDIO", quantity: 12, status, start_datetime: start, end_datetime: end }
     ];
@@ -80,7 +80,7 @@ describe("G2 pooled equipment availability", () => {
     expect(after).toMatchObject({ reservedQuantity: 0, freeQuantity: 12, shortfall: 0, available: true });
   });
 
-  test("TC-294 rejects invalid quantity and window inputs instead of returning a success-shaped result", () => {
+  test("TC-1212 rejects invalid quantity and window inputs instead of returning a success-shaped result", () => {
     expect(() => calculateEquipmentAvailability(input({ requestedQuantity: 1.5 }))).toThrow(/whole number greater than zero/i);
     expect(() => calculateEquipmentAvailability(input({ windowEnd: start }))).toThrow(/valid availability window/i);
     expect(() => calculateEquipmentAvailability(input({ inventory: {} }))).toThrow(/held quantity.*missing or invalid/i);
@@ -89,7 +89,7 @@ describe("G2 pooled equipment availability", () => {
     }))).toThrow(/active AUDIO availability record has an invalid time window/i);
   });
 
-  test("TC-299 takes setup and teardown from all approved venue occupied windows", () => {
+  test("TC-1213 takes setup and teardown from all approved venue occupied windows", () => {
     const window = equipmentWindowFromVenueBookings([
       {
         status: "APPROVED",
@@ -106,7 +106,7 @@ describe("G2 pooled equipment availability", () => {
     expect(window.windowEnd.toISOString()).toBe("2026-11-04T09:30:00.000Z");
   });
 
-  test("TC-302 equipment is available for a future event when the prior use ends first", () => {
+  test("TC-1214 equipment is available for a future event when the prior use ends first", () => {
     const result = calculateEquipmentAvailability(input({
       windowStart: "2026-11-04T13:00:00+08:00",
       windowEnd: "2026-11-04T17:00:00+08:00",
@@ -122,7 +122,7 @@ describe("G2 pooled equipment availability", () => {
     expect(result.available).toBe(true);
   });
 
-  test("TC-306 only concurrent commitments reduce quantity throughout the full window", () => {
+  test("TC-1215 only concurrent commitments reduce quantity throughout the full window", () => {
     const result = calculateEquipmentAvailability(input({
       requestedQuantity: 3,
       inventory: { total_quantity: 10 },
@@ -148,7 +148,7 @@ describe("G2 pooled equipment availability", () => {
     expect(result.available).toBe(true);
   });
 
-  test("an approved venue booking is required to calculate a buffered equipment window", () => {
+  test("TC-1216 an approved venue booking is required to calculate a buffered equipment window", () => {
     expect(() => equipmentWindowFromVenueBookings([])).toThrow(/approved venue booking is required/i);
     expect(() => equipmentWindowFromVenueBookings([{
       status: "APPROVED",

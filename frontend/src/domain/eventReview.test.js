@@ -38,16 +38,17 @@ import {
 } from './eventReview';
 import * as eventReviewModule from './eventReview';
 import { ROLES } from './roles';
+import { canFindVenues, isCurrentCoordinator, isTerminal } from './eventReview';
 
 const event = (changes = {}) => ({ coordinator_id: 'c1', status: 'UNDER_REVIEW', ...changes });
 
 describe('C4 clarification workflow', () => {
-  test('TC-060 accepts a non-empty message and TC-061 trims/blocks an empty one', () => {
+  test('TC-0359 accepts a non-empty message and trims/blocks an empty one', () => {
     expect(cleanRequiredText(' Please confirm attendance. ')).toBe('Please confirm attendance.');
     expect(cleanRequiredText('   ')).toBe('');
   });
 
-  test('TC-062/063 only the current coordinator can ask, only in review, and only once', () => {
+  test('TC-0360 /063 only the current coordinator can ask, only in review, and only once', () => {
     expect(canRequestClarification(event(), 'c1')).toBe(true);
     expect(canRequestClarification(event({ open_clarification_id: 'CLR-1' }), 'c1')).toBe(false);
     expect(canRequestClarification(event(), 'c2')).toBe(false);
@@ -55,7 +56,7 @@ describe('C4 clarification workflow', () => {
     expect(canRejectEvent(event({ open_clarification_id: 'CLR-1' }), 'c1')).toBe(false);
   });
 
-  test('the retained exchange is presented oldest first', () => {
+  test('TC-0361 the retained exchange is presented oldest first', () => {
     const result = chronologicalClarifications(
       [{ id: 'q1', created_at: '2026-09-23T10:00:00Z' }],
       [{ id: 'a1', created_at: '2026-09-23T11:00:00Z' }]
@@ -65,26 +66,26 @@ describe('C4 clarification workflow', () => {
 });
 
 describe('C7 and C9 workflow boundaries', () => {
-  test('TC-072 rejection is unavailable while a clarification is open', () => {
+  test('TC-0412 rejection is unavailable while a clarification is open', () => {
     expect(canRejectEvent(event(), 'c1')).toBe(true);
     expect(canRejectEvent(event({ open_clarification_id: 'CLR-1' }), 'c1')).toBe(false);
   });
 
-  test('opening a submitted assignment starts review', () => {
+  test('TC-0413 opening a submitted assignment starts review', () => {
     expect(canOpenReview(event({ status: 'SUBMITTED' }), 'c1')).toBe(true);
     expect(canOpenReview(event({ status: 'SUBMITTED' }), 'c2')).toBe(false);
   });
 
   // K3 / SCRUM-184 replaces C9 criterion 5: the Lead, not the coordinator in charge,
-  // reassigns. The old coordinator-side guard (canReassignEvent, TC-077/080) is gone.
-  test('K3-TC11 (replaces C9 criterion 5) a coordinator, even the one in charge, has no reassign guard', () => {
+  // reassigns. The old coordinator-side guard (canReassignEvent) is gone.
+  test('TC-2302 K3 (replaces C9 criterion 5) a coordinator, even the one in charge, has no reassign guard', () => {
     expect(eventReviewModule.canReassignEvent).toBeUndefined();
     expect(canLeadReassign(event(), ROLES.COORDINATOR, { id: 'c2', active: true })).toBe(false);
   });
 });
 
 describe('D4 cancellation workflow', () => {
-  test('only the assigned coordinator can cancel a non-terminal event', () => {
+  test('TC-0517 only the assigned coordinator can cancel a non-terminal event', () => {
     ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PLANNING', 'SAFETY_REVIEW', 'CONFIRMED']
       .forEach((status) => expect(canCancelEvent(event({ status }), 'c1')).toBe(true));
     ['DRAFT', 'COMPLETED', 'CANCELLED', 'REJECTED']
@@ -104,7 +105,7 @@ describe('C5 / SCRUM-106 respond to a request for clarification', () => {
     ...changes
   });
 
-  test('TC-081 AC1 the organiser can amend a field and answer while the clarification is open', () => {
+  test('TC-0377 AC1 the organiser can amend a field and answer while the clarification is open', () => {
     const result = submitClarificationResponse({
       event: openEvent(), clarification: openClarification(), userId: 'u1',
       message: 'Confirmed, 150 people.', fieldEdits: { expected_attendance: 150 }
@@ -114,7 +115,7 @@ describe('C5 / SCRUM-106 respond to a request for clarification', () => {
     expect(result.responses[0].message).toBe('Confirmed, 150 people.');
   });
 
-  test('TC-082 AC1 an empty response cannot be submitted', () => {
+  test('TC-0378 AC1 an empty response cannot be submitted', () => {
     const result = submitClarificationResponse({
       event: openEvent(), clarification: openClarification(), userId: 'u1', message: '   '
     });
@@ -123,7 +124,7 @@ describe('C5 / SCRUM-106 respond to a request for clarification', () => {
     expect(result.clarification.status).toBe('OPEN');
   });
 
-  test('TC-083 AC2 submitting the response closes the clarification as ANSWERED', () => {
+  test('TC-0379 AC2 submitting the response closes the clarification as ANSWERED', () => {
     const result = submitClarificationResponse({
       event: openEvent(), clarification: openClarification(), userId: 'u1', message: 'Confirmed.'
     });
@@ -133,7 +134,7 @@ describe('C5 / SCRUM-106 respond to a request for clarification', () => {
     expect(result.event.status).toBe('UNDER_REVIEW');
   });
 
-  test('TC-084 the event stays Under Review across the exchange', () => {
+  test('TC-0380 the event stays Under Review across the exchange', () => {
     expect(openEvent().status).toBe('UNDER_REVIEW');
     const result = submitClarificationResponse({
       event: openEvent(), clarification: openClarification(), userId: 'u1', message: 'Confirmed.'
@@ -141,11 +142,11 @@ describe('C5 / SCRUM-106 respond to a request for clarification', () => {
     expect(result.event.status).toBe('UNDER_REVIEW');
   });
 
-  test('TC-085 a closed clarification cannot be answered twice', () => {
+  test('TC-0381 a closed clarification cannot be answered twice', () => {
     expect(canRespondToClarification(openEvent({ open_clarification_id: null }), openClarification({ status: 'ANSWERED' }), 'u1')).toBe(false);
   });
 
-  test('TC-086 only the organiser the question was asked of may answer it', () => {
+  test('TC-0382 only the organiser the question was asked of may answer it', () => {
     const result = submitClarificationResponse({
       event: openEvent(), clarification: openClarification(), userId: 'u2', message: 'Not mine.'
     });
@@ -153,7 +154,7 @@ describe('C5 / SCRUM-106 respond to a request for clarification', () => {
     expect(result.clarification.status).toBe('OPEN');
   });
 
-  test('TC-087 both parties see the exchange oldest first', () => {
+  test('TC-0383 both parties see the exchange oldest first', () => {
     const thread = chronologicalClarifications(
       [openClarification()],
       [{ clarification_id: 'CLR-001', message: 'Confirmed.', created_at: '2026-09-23T11:00:00' }]
@@ -161,7 +162,23 @@ describe('C5 / SCRUM-106 respond to a request for clarification', () => {
     expect(thread.map(({ kind }) => kind)).toEqual(['QUESTION', 'RESPONSE']);
   });
 
-  test('canAmendDuringClarification is true only while a clarification is open', () => {
+  // Migrated from the root test.js (C5), which tested its own copy of this helper.
+  test('TC-0384 AC3 a second round appends to the history, which keeps both questions and both answers in order', () => {
+    const first = submitClarificationResponse({
+      event: openEvent(), clarification: openClarification(), userId: 'u1', message: 'First answer', now: '2026-09-23T11:00:00'
+    });
+    const second = openClarification({ clarification_id: 'CLR-002', message: 'Also confirm the layout', created_at: '2026-09-23T12:00:00' });
+    const result = submitClarificationResponse({
+      event: { ...first.event, open_clarification_id: 'CLR-002' }, clarification: second, responses: first.responses,
+      userId: 'u1', message: 'Second answer', now: '2026-09-23T13:00:00'
+    });
+
+    expect(result.responses.map((item) => item.message)).toEqual(['First answer', 'Second answer']);
+    const thread = chronologicalClarifications([openClarification(), second], result.responses);
+    expect(thread.map(({ kind }) => kind)).toEqual(['QUESTION', 'RESPONSE', 'QUESTION', 'RESPONSE']);
+  });
+
+  test('TC-0385 canAmendDuringClarification is true only while a clarification is open', () => {
     expect(canAmendDuringClarification(openEvent())).toBe(true);
     expect(canAmendDuringClarification(openEvent({ open_clarification_id: null }))).toBe(false);
     expect(canAmendDuringClarification(openEvent({ status: 'SUBMITTED' }))).toBe(false);
@@ -169,25 +186,25 @@ describe('C5 / SCRUM-106 respond to a request for clarification', () => {
 });
 
 describe('C6 / SCRUM-107 approve a submitted request', () => {
-  test('C6-TC1/TC3 the assigned coordinator can approve an under-review event', () => {
+  test('TC-0396 C6/TC3 the assigned coordinator can approve an under-review event', () => {
     expect(canApproveEvent(event(), 'c1')).toBe(true);
   });
 
-  test('C6-TC2 AC1 approve is unavailable from any status other than Under Review', () => {
+  test('TC-0397 C6 AC1 approve is unavailable from any status other than Under Review', () => {
     expect(canApproveEvent(event({ status: 'SUBMITTED' }), 'c1')).toBe(false);
     expect(canApproveEvent(event({ status: 'APPROVED' }), 'c1')).toBe(false);
     expect(canApproveEvent(event({ status: 'REJECTED' }), 'c1')).toBe(false);
   });
 
-  test('C6-TC4 AC3 only the assigned coordinator can approve', () => {
+  test('TC-0398 C6 AC3 only the assigned coordinator can approve', () => {
     expect(canApproveEvent(event(), 'c2')).toBe(false);
   });
 
-  test('C6-TC5 AC4 approve is blocked while a clarification is open', () => {
+  test('TC-0399 C6 AC4 approve is blocked while a clarification is open', () => {
     expect(canApproveEvent(event({ open_clarification_id: 'CLR-1' }), 'c1')).toBe(false);
   });
 
-  test('C6-TC6 AC2/AC5 approving sets APPROVED and yields an EVENT_APPROVED history entry', () => {
+  test('TC-0400 C6 AC2/AC5 approving sets APPROVED and yields an EVENT_APPROVED history entry', () => {
     const result = approveEvent({ event: event(), userId: 'c1', now: 'T' });
     expect(result.ok).toBe(true);
     expect(result.event.status).toBe('APPROVED');
@@ -197,16 +214,16 @@ describe('C6 / SCRUM-107 approve a submitted request', () => {
     expect(result.history.createdAt).toBe('T');
   });
 
-  test('C6-TC7 re-approving an already-approved event is a no-op (idempotency)', () => {
+  test('TC-0401 C6 re-approving an already-approved event is a no-op (idempotency)', () => {
     const result = approveEvent({ event: event({ status: 'APPROVED' }), userId: 'c1' });
     expect(result.ok).toBe(false);
     expect(result.event.status).toBe('APPROVED');
   });
 });
 
-// The event detail page's two tabs. TC-269 – TC-270 in docs/test-cases.md.
+// The event detail page's two tabs.
 describe('event detail tabs', () => {
-  test('TC-269 the Clarifications tab counts the questions asked and knows when an answer is owed', () => {
+  test('TC-2338 the Clarifications tab counts the questions asked and knows when an answer is owed', () => {
     expect(clarificationSummary({ event: { open_clarification_id: 'q2' }, clarifications: [{ id: 'q1' }, { id: 'q2' }] }))
       .toEqual({ requests: 2, awaitingOrganiser: true });
     expect(clarificationSummary({ event: { open_clarification_id: null }, clarifications: [] }))
@@ -214,7 +231,7 @@ describe('event detail tabs', () => {
     expect(clarificationSummary(null)).toEqual({ requests: 0, awaitingOrganiser: false });
   });
 
-  test('TC-270 only an organiser who owes an answer starts on Clarifications', () => {
+  test('TC-2339 only an organiser who owes an answer starts on Clarifications', () => {
     const awaiting = { event: { open_clarification_id: 'q1' }, clarifications: [{ id: 'q1' }] };
     const answered = { event: { open_clarification_id: null }, clarifications: [{ id: 'q1' }] };
 
@@ -229,7 +246,7 @@ describe('event detail tabs', () => {
 // pure helpers shape the submitted request for the review detail view: organiser
 // contact with fallbacks (AC2), the registration gate/window and equipment lines
 // (AC1), and buildRequestView that assembles the whole model (AC1 + AC2). SCRUM id
-// to be confirmed. C3-TC1 – C3-TC4 in docs/test-cases.md.
+// to be confirmed.
 describe('C3 see everything the organiser submitted', () => {
   const fullDetail = () => ({
     event: {
@@ -250,7 +267,7 @@ describe('C3 see everything the organiser submitted', () => {
     organiser: { name: 'Nadia Organiser', email: 'nadia@smu.edu.sg', phone: '+65 9123 4567' }
   });
 
-  test('C3-TC1 AC2 contactDetails keeps full details and falls back gracefully', () => {
+  test('TC-0341 C3 AC2 contactDetails keeps full details and falls back gracefully', () => {
     expect(contactDetails({ name: 'Nadia Organiser', email: 'nadia@smu.edu.sg', phone: '+65 9123 4567' }))
       .toEqual({ name: 'Nadia Organiser', email: 'nadia@smu.edu.sg', phone: '+65 9123 4567' });
     // No name → the email stands in; a contact_number is accepted as the phone.
@@ -261,12 +278,12 @@ describe('C3 see everything the organiser submitted', () => {
     expect(contactDetails()).toEqual({ name: 'Unknown organiser', email: null, phone: null });
   });
 
-  test('C3-TC2 AC1 registrationSummary is null unless registration was asked for', () => {
+  test('TC-0342 C3 AC1 registrationSummary is null unless registration was asked for', () => {
     expect(registrationSummary({ registration_required: 'NO' })).toBeNull();
     expect(registrationSummary({})).toBeNull();
   });
 
-  test('C3-TC2 AC1 registrationSummary reports capacity and the open/close window', () => {
+  test('TC-0343 C3 AC1 registrationSummary reports capacity and the open/close window', () => {
     expect(registrationSummary(fullDetail().event)).toEqual({
       capacity: 120, opens: '2026-10-15 09:00', closes: '2026-10-30 17:00'
     });
@@ -275,7 +292,7 @@ describe('C3 see everything the organiser submitted', () => {
       .toEqual({ capacity: null, opens: '2026-10-15', closes: null });
   });
 
-  test('C3-TC3 AC1 equipmentList formats each line with a default quantity of one', () => {
+  test('TC-0344 C3 AC1 equipmentList formats each line with a default quantity of one', () => {
     expect(equipmentList(fullDetail().event)).toEqual([
       { label: 'AUDIO × 2', notes: 'Handheld mics' },
       { label: 'LIGHTING × 1', notes: null }
@@ -284,7 +301,7 @@ describe('C3 see everything the organiser submitted', () => {
     expect(equipmentList()).toEqual([]);
   });
 
-  test('C3-TC4 AC1/AC2 buildRequestView gathers every section the story asks for', () => {
+  test('TC-0345 C3 AC1/AC2 buildRequestView gathers every section the story asks for', () => {
     const view = buildRequestView(fullDetail());
     expect(view.reference).toBe('EVT-001');
     expect(view.submittedAt).toBe('2026-10-01T03:00:00Z');
@@ -300,7 +317,7 @@ describe('C3 see everything the organiser submitted', () => {
     expect(view.registration).toEqual({ capacity: 120, opens: '2026-10-15 09:00', closes: '2026-10-30 17:00' });
   });
 
-  test('C3-TC4 buildRequestView copes with a bare request and a missing organiser', () => {
+  test('TC-0346 C3 buildRequestView copes with a bare request and a missing organiser', () => {
     const view = buildRequestView({ event: { reference_no: 'EVT-009' } });
     expect(view.reference).toBe('EVT-009');
     expect(view.submittedAt).toBeNull();
@@ -316,14 +333,14 @@ describe('A6 Event Coordinator Lead oversight and assignment', () => {
   const LEAD = ROLES.COORDINATOR_LEAD;
   const target = { id: 'c2', name: 'Alex Coordinator', active: true };
 
-  test('A6-TC1 AC3 only the Lead supervises all events', () => {
+  test('TC-0081 A6 AC3 only the Lead supervises all events', () => {
     expect(supervisesAllEvents(LEAD)).toBe(true);
     expect(supervisesAllEvents(ROLES.COORDINATOR)).toBe(false);
     expect(supervisesAllEvents(ROLES.ORGANISER)).toBe(false);
     expect(supervisesAllEvents(undefined)).toBe(false);
   });
 
-  test('A6-TC2 AC2 the Lead assigns a coordinator to an unassigned event', () => {
+  test('TC-0082 A6 AC2 the Lead assigns a coordinator to an unassigned event', () => {
     const unassigned = event({ coordinator_id: null, status: 'SUBMITTED' });
     expect(canAssignCoordinator(unassigned, LEAD, target)).toBe(true);
     // Only the Lead may assign.
@@ -337,7 +354,7 @@ describe('A6 Event Coordinator Lead oversight and assignment', () => {
     expect(canAssignCoordinator(unassigned, LEAD, { name: 'no id' })).toBe(false);
   });
 
-  test('A6-TC3 AC2 the Lead reassigns any assigned event to a different active coordinator', () => {
+  test('TC-0083 A6 AC2 the Lead reassigns any assigned event to a different active coordinator', () => {
     const assigned = event({ coordinator_id: 'c1', status: 'UNDER_REVIEW' });
     expect(canLeadReassign(assigned, LEAD, target)).toBe(true);
     // A coordinator is not a Lead — the existing coordinator-only reassign still governs them.
@@ -352,7 +369,7 @@ describe('A6 Event Coordinator Lead oversight and assignment', () => {
     expect(canLeadReassign(assigned, LEAD, { id: 'c2', active: false })).toBe(false);
   });
 
-  test('A6-TC4 AC3 coordinatorWorkload counts active events per coordinator, least-loaded first', () => {
+  test('TC-0084 A6 AC3 coordinatorWorkload counts active events per coordinator, least-loaded first', () => {
     const coordinators = [
       { id: 'c1', name: 'Sam' },
       { id: 'c2', name: 'Alex' },
@@ -378,7 +395,7 @@ describe('A6 Event Coordinator Lead oversight and assignment', () => {
 describe('K1 SCRUM-182 the unassigned queue', () => {
   const waiting = (id, submitted_at, extra = {}) => ({ id, coordinator_id: null, status: 'SUBMITTED', submitted_at, ...extra });
 
-  test('K1-TC1 AC3 waiting events are listed oldest submission first', () => {
+  test('TC-2267 K1 AC3 waiting events are listed oldest submission first', () => {
     const events = [
       waiting('e-new', '2026-03-10T09:00:00Z'),
       waiting('e-old', '2026-03-01T09:00:00Z'),
@@ -387,7 +404,7 @@ describe('K1 SCRUM-182 the unassigned queue', () => {
     expect(unassignedQueue(events).map((e) => e.id)).toEqual(['e-old', 'e-mid', 'e-new']);
   });
 
-  test('K1-TC2 AC4 an event leaves the queue as soon as it has a coordinator', () => {
+  test('TC-2268 K1 AC4 an event leaves the queue as soon as it has a coordinator', () => {
     const events = [
       waiting('e1', '2026-03-01T09:00:00Z'),
       waiting('e2', '2026-03-02T09:00:00Z', { coordinator_id: 'c1' })
@@ -395,7 +412,7 @@ describe('K1 SCRUM-182 the unassigned queue', () => {
     expect(unassignedQueue(events).map((e) => e.id)).toEqual(['e1']);
   });
 
-  test('K1-TC3 AC3 a terminal event is not a waiting event', () => {
+  test('TC-2269 K1 AC3 a terminal event is not a waiting event', () => {
     const events = [
       waiting('e1', '2026-03-01T09:00:00Z'),
       waiting('e2', '2026-03-02T09:00:00Z', { status: 'CANCELLED' })
@@ -403,12 +420,12 @@ describe('K1 SCRUM-182 the unassigned queue', () => {
     expect(unassignedQueue(events).map((e) => e.id)).toEqual(['e1']);
   });
 
-  test('K1-TC4 no events means an empty queue', () => {
+  test('TC-2270 K1 no events means an empty queue', () => {
     expect(unassignedQueue()).toEqual([]);
     expect(unassignedQueue([])).toEqual([]);
   });
 
-  test('K1-TC5 AC a draft is not yet submitted, so it never reaches the Lead queue', () => {
+  test('TC-2271 K1 AC a draft is not yet submitted, so it never reaches the Lead queue', () => {
     const events = [
       waiting('e1', '2026-03-01T09:00:00Z'),
       { id: 'e2-draft', coordinator_id: null, status: 'DRAFT', submitted_at: null }
@@ -416,7 +433,7 @@ describe('K1 SCRUM-182 the unassigned queue', () => {
     expect(unassignedQueue(events).map((e) => e.id)).toEqual(['e1']);
   });
 
-  test('K1-TC6 AC the Lead board carries every submitted event but no draft, in either view', () => {
+  test('TC-2272 K1 AC the Lead board carries every submitted event but no draft, in either view', () => {
     const events = [
       { id: 'sub', status: 'SUBMITTED', coordinator_id: null },
       { id: 'rev', status: 'UNDER_REVIEW', coordinator_id: 'c1' },
@@ -437,7 +454,7 @@ describe('K2 SCRUM-183 assign an event to a coordinator', () => {
   const target = { id: 'c2', name: 'Alex', active: true };
   const LEAD = ROLES.COORDINATOR_LEAD;
 
-  test('K2-TC1 AC1 the read-only summary carries the event basics and the organiser', () => {
+  test('TC-2283 K2 AC1 the read-only summary carries the event basics and the organiser', () => {
     const summary = assignmentSummary(unassigned, organiser);
     expect(summary).toMatchObject({
       name: 'Gala', purpose: 'Fundraiser', eventDate: '2026-05-01',
@@ -446,12 +463,12 @@ describe('K2 SCRUM-183 assign an event to a coordinator', () => {
     expect(summary.organiser.name).toBe('Nadia Organiser');
   });
 
-  test('K2-TC2 AC2 each coordinator choice shows its number of active events', () => {
+  test('TC-2284 K2 AC2 each coordinator choice shows its number of active events', () => {
     expect(coordinatorChoiceLabel({ name: 'Alex', activeEvents: 3 })).toBe('Alex (3 active)');
     expect(coordinatorChoiceLabel({ name: 'Priya', activeEvents: 0 })).toBe('Priya (0 active)');
   });
 
-  test('K2-TC3 AC3 assignment sets exactly one coordinator and records coordinator, Lead and timestamp', () => {
+  test('TC-2285 K2 AC3 assignment sets exactly one coordinator and records coordinator, Lead and timestamp', () => {
     const result = assignEvent({ event: unassigned, role: LEAD, leadId: 'lead-1', target, now: 'T1' });
     expect(result.ok).toBe(true);
     expect(result.event.coordinator_id).toBe('c2');
@@ -461,33 +478,33 @@ describe('K2 SCRUM-183 assign an event to a coordinator', () => {
     });
   });
 
-  test('K2-TC4 AC4 both the assigned coordinator and the organiser are notified', () => {
+  test('TC-2286 K2 AC4 both the assigned coordinator and the organiser are notified', () => {
     const result = assignEvent({ event: unassigned, role: LEAD, leadId: 'lead-1', target, now: 'T1' });
     const recipients = result.notifications.map((item) => item.userId);
     expect(recipients).toContain('c2');
     expect(recipients).toContain('org-1');
   });
 
-  test('K2-TC5 AC5 an already-assigned event cannot be assigned again, and only the Lead may assign', () => {
+  test('TC-2287 K2 AC5 an already-assigned event cannot be assigned again, and only the Lead may assign', () => {
     const assigned = { ...unassigned, coordinator_id: 'c1', status: 'UNDER_REVIEW' };
     expect(assignEvent({ event: assigned, role: LEAD, leadId: 'lead-1', target, now: 'T1' }).ok).toBe(false);
     expect(assignEvent({ event: unassigned, role: ROLES.COORDINATOR, leadId: 'lead-1', target, now: 'T1' }).ok).toBe(false);
   });
 
-  test('K2-TC6 AC3 boundary no coordinator chosen is refused and sets nothing', () => {
+  test('TC-2288 K2 AC3 boundary no coordinator chosen is refused and sets nothing', () => {
     const result = assignEvent({ event: unassigned, role: LEAD, leadId: 'lead-1', target: null, now: 'T1' });
     expect(result.ok).toBe(false);
     expect(result.event).toBeUndefined();
   });
 
-  test('K2-TC7 AC5 boundary a terminal event cannot be assigned even with no coordinator yet', () => {
+  test('TC-2289 K2 AC5 boundary a terminal event cannot be assigned even with no coordinator yet', () => {
     const cancelled = { ...unassigned, status: 'CANCELLED' };
     const rejected = { ...unassigned, status: 'REJECTED' };
     expect(assignEvent({ event: cancelled, role: LEAD, leadId: 'lead-1', target, now: 'T1' }).ok).toBe(false);
     expect(assignEvent({ event: rejected, role: LEAD, leadId: 'lead-1', target, now: 'T1' }).ok).toBe(false);
   });
 
-  test('K2-TC8 AC2 boundary an inactive coordinator cannot be assigned', () => {
+  test('TC-2290 K2 AC2 boundary an inactive coordinator cannot be assigned', () => {
     const inactive = { id: 'c9', name: 'Bo', active: false };
     expect(assignEvent({ event: unassigned, role: LEAD, leadId: 'lead-1', target: inactive, now: 'T1' }).ok).toBe(false);
   });
@@ -508,7 +525,7 @@ describe('K3 SCRUM-184 reassign an event to another coordinator', () => {
   const reassign = (overrides = {}) =>
     reassignEvent({ event: assigned, role: LEAD, leadId: 'lead-1', target, now: 'T1', ...overrides });
 
-  test('K3-TC1 AC1 the Lead can reassign an event in any status except Completed, Cancelled or Rejected', () => {
+  test('TC-2303 K3 AC1 the Lead can reassign an event in any status except Completed, Cancelled or Rejected', () => {
     ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PLANNING'].forEach((status) => {
       expect(reassign({ event: { ...assigned, status } }).ok).toBe(true);
     });
@@ -517,25 +534,25 @@ describe('K3 SCRUM-184 reassign an event to another coordinator', () => {
     });
   });
 
-  test('K3-TC2 AC1 only the Lead may reassign, and only an event that already has a coordinator', () => {
+  test('TC-2304 K3 AC1 only the Lead may reassign, and only an event that already has a coordinator', () => {
     expect(reassign({ role: ROLES.COORDINATOR }).ok).toBe(false);
     expect(reassign({ role: ROLES.ORGANISER }).ok).toBe(false);
     // An event with no coordinator is an assignment (K2), not a reassignment.
     expect(reassign({ event: { ...assigned, coordinator_id: null } }).ok).toBe(false);
   });
 
-  test('K3-TC3 AC2 reassigning to the coordinator who already holds the event is refused', () => {
+  test('TC-2305 K3 AC2 reassigning to the coordinator who already holds the event is refused', () => {
     const result = reassign({ target: { id: 'c1', name: 'Joshua', active: true } });
     expect(result.ok).toBe(false);
     expect(result.event).toBeUndefined();
   });
 
-  test('K3-TC4 AC2 boundary no coordinator chosen, or an inactive one, is refused and changes nothing', () => {
+  test('TC-2306 K3 AC2 boundary no coordinator chosen, or an inactive one, is refused and changes nothing', () => {
     expect(reassign({ target: null }).ok).toBe(false);
     expect(reassign({ target: { id: 'c9', name: 'Bo', active: false } }).ok).toBe(false);
   });
 
-  test('K3-TC5 AC3 after reassignment exactly one coordinator is assigned, from the reassignment time', () => {
+  test('TC-2307 K3 AC3 after reassignment exactly one coordinator is assigned, from the reassignment time', () => {
     const result = reassign();
     expect(result.ok).toBe(true);
     expect(result.event.coordinator_id).toBe('c2');
@@ -544,13 +561,13 @@ describe('K3 SCRUM-184 reassign an event to another coordinator', () => {
     expect(assigned.coordinator_id).toBe('c1');
   });
 
-  test('K3-TC6 AC3 the previous assignment is kept with its original time, the reassignment time and the Lead', () => {
+  test('TC-2308 K3 AC3 the previous assignment is kept with its original time, the reassignment time and the Lead', () => {
     expect(reassign().previousAssignment).toEqual({
       coordinatorId: 'c1', assignedAt: 'T0', endedAt: 'T1', reassignedBy: 'lead-1'
     });
   });
 
-  test('K3-TC7 AC3 the history entry names the outgoing and incoming coordinator, the Lead and both times', () => {
+  test('TC-2309 K3 AC3 the history entry names the outgoing and incoming coordinator, the Lead and both times', () => {
     expect(reassign().history).toMatchObject({
       actionType: 'COORDINATOR_REASSIGNED', fieldName: 'coordinator_id',
       oldValue: 'c1', newValue: 'c2', actorId: 'lead-1',
@@ -558,14 +575,14 @@ describe('K3 SCRUM-184 reassign an event to another coordinator', () => {
     });
   });
 
-  test('K3-TC8 AC3 boundary an event with no recorded assignment time keeps null, not undefined', () => {
+  test('TC-2310 K3 AC3 boundary an event with no recorded assignment time keeps null, not undefined', () => {
     const { assigned_at, ...withoutTime } = assigned;
     const result = reassign({ event: withoutTime });
     expect(result.previousAssignment.assignedAt).toBeNull();
     expect(result.history.previousAssignedAt).toBeNull();
   });
 
-  test('K3-TC9 AC4 immediately after, the outgoing coordinator can take no coordinator action and the incoming one can', () => {
+  test('TC-2311 K3 AC4 immediately after, the outgoing coordinator can take no coordinator action and the incoming one can', () => {
     const underReview = reassign().event;
     expect(canRequestClarification(underReview, 'c1')).toBe(false);
     expect(canRejectEvent(underReview, 'c1')).toBe(false);
@@ -579,7 +596,7 @@ describe('K3 SCRUM-184 reassign an event to another coordinator', () => {
     expect(canOpenReview(submitted, 'c2')).toBe(true);
   });
 
-  test('K3-TC10 AC5 the outgoing coordinator, the incoming coordinator and the organiser are each notified once', () => {
+  test('TC-2312 K3 AC5 the outgoing coordinator, the incoming coordinator and the organiser are each notified once', () => {
     expect(reassign().notifications).toEqual([
       { userId: 'c1', type: 'COORDINATOR_REASSIGNED', audience: 'outgoing' },
       { userId: 'c2', type: 'COORDINATOR_REASSIGNED', audience: 'incoming' },
@@ -606,7 +623,7 @@ describe("K4 SCRUM-185 oversee all coordinators' assignments", () => {
   });
   const ids = (rows) => rows.map((row) => row.id).sort();
 
-  test('K4-TC1 AC1 an active event is any event not Completed, Cancelled or Rejected', () => {
+  test('TC-2340 K4 AC1 an active event is any event not Completed, Cancelled or Rejected', () => {
     const finished = ['COMPLETED', 'CANCELLED', 'REJECTED'];
     Object.values(EVENT_STATUS).forEach((status) => {
       expect(isActiveEvent({ status })).toBe(!finished.includes(status));
@@ -616,7 +633,7 @@ describe("K4 SCRUM-185 oversee all coordinators' assignments", () => {
     expect(isActiveEvent(undefined)).toBe(false);
   });
 
-  test('K4-TC2 AC1 the list holds every active event, assigned or not, and no finished one', () => {
+  test('TC-2341 K4 AC1 the list holds every active event, assigned or not, and no finished one', () => {
     const events = [
       ev('a'),
       ev('b', { status: 'APPROVED' }),
@@ -630,7 +647,7 @@ describe("K4 SCRUM-185 oversee all coordinators' assignments", () => {
     expect(ids(oversightRows(events, {}, NOW))).toEqual(['a', 'b', 'c', 'g', 'h']);
   });
 
-  test('K4-TC3 AC1 each row carries the coordinator, status, proposed date and time since last activity', () => {
+  test('TC-2342 K4 AC1 each row carries the coordinator, status, proposed date and time since last activity', () => {
     const [row] = oversightRows([ev('a')], {}, NOW);
     expect(row).toEqual({
       id: 'a', name: 'Event a', reference: 'REF-a',
@@ -640,13 +657,13 @@ describe("K4 SCRUM-185 oversee all coordinators' assignments", () => {
     });
   });
 
-  test('K4-TC4 AC1 an active event with no coordinator is listed with no coordinator, not dropped', () => {
+  test('TC-2343 K4 AC1 an active event with no coordinator is listed with no coordinator, not dropped', () => {
     const [row] = oversightRows([ev('c', { coordinator_id: null, coordinator_name: null, status: 'SUBMITTED' })], {}, NOW);
     expect(row.coordinatorId).toBeNull();
     expect(row.coordinatorName).toBeNull();
   });
 
-  test('K4-TC5 AC1 last activity is the last update, falling back to submission, then creation', () => {
+  test('TC-2344 K4 AC1 last activity is the last update, falling back to submission, then creation', () => {
     const all = { updated_at: 'U', submitted_at: 'S', created_at: 'C' };
     expect(lastActivityAt(all)).toBe('U');
     expect(lastActivityAt({ submitted_at: 'S', created_at: 'C' })).toBe('S');
@@ -657,23 +674,23 @@ describe("K4 SCRUM-185 oversee all coordinators' assignments", () => {
     expect(timeSinceLastActivity(ev('a', { updated_at: '2026-10-15T00:00:00.000Z' }), NOW)).toBe(DAY);
   });
 
-  test('K4-TC6 AC1 boundary a last activity after "now" (clock skew) is 0, never negative', () => {
+  test('TC-2345 K4 AC1 boundary a last activity after "now" (clock skew) is 0, never negative', () => {
     expect(timeSinceLastActivity(ev('a', { updated_at: '2026-10-17T00:00:00.000Z' }), NOW)).toBe(0);
   });
 
-  test('K4-TC7 AC2 filtering by coordinator keeps only that coordinator\'s events', () => {
+  test('TC-2346 K4 AC2 filtering by coordinator keeps only that coordinator\'s events', () => {
     const events = [ev('a'), ev('b', { coordinator_id: 'c2', coordinator_name: 'Alex' }), ev('c', { coordinator_id: null, status: 'SUBMITTED' })];
     expect(ids(oversightRows(events, { coordinatorId: 'c2' }, NOW))).toEqual(['b']);
     // An unassigned event belongs to no coordinator, so it only shows when not filtering by one.
     expect(ids(oversightRows(events, { coordinatorId: 'c1' }, NOW))).toEqual(['a']);
   });
 
-  test('K4-TC8 AC2 filtering by status keeps only events in that status', () => {
+  test('TC-2347 K4 AC2 filtering by status keeps only events in that status', () => {
     const events = [ev('a'), ev('b', { status: 'APPROVED' }), ev('c', { status: 'APPROVED' })];
     expect(ids(oversightRows(events, { status: 'APPROVED' }, NOW))).toEqual(['b', 'c']);
   });
 
-  test('K4-TC9 AC2 both filters together narrow the list, and empty filters mean no filter', () => {
+  test('TC-2348 K4 AC2 both filters together narrow the list, and empty filters mean no filter', () => {
     const events = [
       ev('a'),
       ev('b', { status: 'APPROVED' }),
@@ -684,7 +701,7 @@ describe("K4 SCRUM-185 oversee all coordinators' assignments", () => {
     expect(ids(oversightRows(events, undefined, NOW))).toEqual(['a', 'b', 'c']);
   });
 
-  test('K4-TC10 AC2 boundary a filter that matches nothing, or a finished status, gives an empty list not an error', () => {
+  test('TC-2349 K4 AC2 boundary a filter that matches nothing, or a finished status, gives an empty list not an error', () => {
     const events = [ev('a'), ev('d', { status: 'COMPLETED' })];
     expect(oversightRows(events, { coordinatorId: 'nobody' }, NOW)).toEqual([]);
     // Finished events are never on this view, so filtering for one finds nothing.
@@ -693,7 +710,7 @@ describe("K4 SCRUM-185 oversee all coordinators' assignments", () => {
     expect(oversightRows(undefined, {}, NOW)).toEqual([]);
   });
 
-  test('K4-TC11 AC3 the active-event count per coordinator equals the rows listed for them, zero included', () => {
+  test('TC-2350 K4 AC3 the active-event count per coordinator equals the rows listed for them, zero included', () => {
     const coordinators = [{ id: 'c1', name: 'Sam' }, { id: 'c2', name: 'Alex' }, { id: 'c3', name: 'Priya' }];
     const events = [
       ev('a'),
@@ -713,7 +730,7 @@ describe("K4 SCRUM-185 oversee all coordinators' assignments", () => {
     });
   });
 
-  test('K4-TC12 AC4 the oversight rows are read-only: input is never changed and a row cannot reach back into an event', () => {
+  test('TC-2351 K4 AC4 the oversight rows are read-only: input is never changed and a row cannot reach back into an event', () => {
     const events = Object.freeze([Object.freeze(ev('a')), Object.freeze(ev('b', { status: 'APPROVED' }))]);
     const rows = oversightRows(events, { status: 'APPROVED' }, NOW);
     // Frozen input would throw in strict mode if anything wrote to it.
@@ -725,7 +742,7 @@ describe("K4 SCRUM-185 oversee all coordinators' assignments", () => {
     ]);
   });
 
-  test('K4-TC13 AC3 a coordinator who is no longer active but still holds an active event is still counted and filterable', () => {
+  test('TC-2352 K4 AC3 a coordinator who is no longer active but still holds an active event is still counted and filterable', () => {
     const active = [{ id: 'c1', name: 'Sam', active: true }];
     const events = [ev('a'), ev('b', { coordinator_id: 'c5', coordinator_name: 'Dana', status: 'APPROVED' })];
 
@@ -736,7 +753,7 @@ describe("K4 SCRUM-185 oversee all coordinators' assignments", () => {
     expect(coordinatorWorkload(events, list).find((item) => item.id === 'c5').activeEvents).toBe(1);
   });
 
-  test('K4-TC14 AC3 boundary no duplicates, and finished-only holders, unassigned events or no data add nobody', () => {
+  test('TC-2353 K4 AC3 boundary no duplicates, and finished-only holders, unassigned events or no data add nobody', () => {
     const active = [{ id: 'c1', name: 'Sam', active: true }];
     const events = [
       ev('a'),
@@ -750,7 +767,7 @@ describe("K4 SCRUM-185 oversee all coordinators' assignments", () => {
     expect(oversightCoordinators([ev('x', { coordinator_id: 'c6', coordinator_name: undefined })], [])[0].name).toBe('c6');
   });
 
-  test('K4-TC15 AC1 time since last activity reads in minutes, hours or days, with just-now and no-activity edges', () => {
+  test('TC-2354 K4 AC1 time since last activity reads in minutes, hours or days, with just-now and no-activity edges', () => {
     const MIN = 60 * 1000;
     const HR = 60 * MIN;
     expect(formatSinceActivity(0)).toBe('just now');
@@ -765,7 +782,7 @@ describe("K4 SCRUM-185 oversee all coordinators' assignments", () => {
     expect(formatSinceActivity(undefined)).toBe('No activity yet');
   });
 
-  test('K4-TC16 AC1 the list puts the longest-untouched events first so stalled ones are easy to spot, and events with no recorded activity last', () => {
+  test('TC-2355 K4 AC1 the list puts the longest-untouched events first so stalled ones are easy to spot, and events with no recorded activity last', () => {
     const events = [
       ev('recent', { updated_at: '2026-10-15T00:00:00.000Z' }),
       ev('stalled', { updated_at: '2026-10-01T00:00:00.000Z' }),
@@ -775,7 +792,7 @@ describe("K4 SCRUM-185 oversee all coordinators' assignments", () => {
     expect(oversightRows(events, {}, NOW).map((row) => row.id)).toEqual(['stalled', 'middle', 'recent', 'none']);
   });
 
-  test('K4-TC17 AC3 the summary lists the busiest coordinator first, ties by name, while coordinatorWorkload keeps its least-loaded-first order', () => {
+  test('TC-2356 K4 AC3 the summary lists the busiest coordinator first, ties by name, while coordinatorWorkload keeps its least-loaded-first order', () => {
     const coordinators = [{ id: 'c1', name: 'Sam' }, { id: 'c2', name: 'Alex' }, { id: 'c3', name: 'Priya' }, { id: 'c4', name: 'Bea' }];
     const events = [
       ev('a'), ev('b'),
@@ -787,5 +804,145 @@ describe("K4 SCRUM-185 oversee all coordinators' assignments", () => {
     ]);
     // The shared helper A6 and K2 rely on is untouched: fewest first.
     expect(coordinatorWorkload(events, coordinators).map((item) => item.activeEvents)).toEqual([0, 1, 1, 2]);
+  });
+});
+
+// Edge, ownership and missing-data cases for the pure workflow rules above. The
+// adapter and screens hand these helpers whatever Firestore returned, so a missing
+// list, a missing field or an id stored under `id` instead of `*_id` must not throw.
+describe('event review rules: edges and missing data', () => {
+  const LEAD = ROLES.COORDINATOR_LEAD;
+  const NOW = new Date('2026-10-30T12:00:00Z').getTime();
+
+  describe('normal', () => {
+    test('TC-0873 F1 venues can be found once approved and during planning, whatever the status casing', () => {
+      expect(canFindVenues({ status: 'APPROVED' })).toBe(true);
+      expect(canFindVenues({ status: 'planning' })).toBe(true);
+      expect(isTerminal({ status: 'COMPLETED' })).toBe(true);
+      expect(isTerminal({ status: 'SAFETY_REVIEW' })).toBe(false);
+    });
+
+    test('TC-0386 C5 AC2 a clarification stored with only its document id can still be answered, and the response points at that id', () => {
+      const question = { id: 'CLR-9', status: 'OPEN' };
+      const owner = { organiser_id: 'u1', open_clarification_id: 'CLR-9', status: 'UNDER_REVIEW' };
+      expect(canRespondToClarification(owner, question, 'u1')).toBe(true);
+      const result = submitClarificationResponse({ event: owner, clarification: question, userId: 'u1', message: ' Yes ', now: 'T1' });
+      expect(result.responses).toEqual([{ clarification_id: 'CLR-9', responder_id: 'u1', message: 'Yes', created_at: 'T1' }]);
+    });
+  });
+
+  describe('boundary', () => {
+    test('TC-2357 every list helper treats a missing list as empty', () => {
+      expect(coordinatorWorkload()).toEqual([]);
+      expect(coordinatorWorkload(null, null)).toEqual([]);
+      expect(coordinatorWorkload(null, [{ id: 'c1', name: 'A' }])).toEqual([{ id: 'c1', name: 'A', activeEvents: 0 }]);
+      expect(leadVisibleEvents()).toEqual([]);
+      expect(leadVisibleEvents(null)).toEqual([]);
+      expect(unassignedQueue()).toEqual([]);
+      expect(unassignedQueue(null)).toEqual([]);
+      expect(oversightRows()).toEqual([]);
+      expect(oversightRows(null, null, NOW)).toEqual([]);
+      expect(oversightCoordinators()).toEqual([]);
+      expect(oversightCoordinators(null, null)).toEqual([]);
+      expect(chronologicalClarifications()).toEqual([]);
+      expect(oversightSummary()).toEqual([]);
+    });
+
+    test('TC-2273 K1 AC3 a submitted event with no submission time queues ahead of timed ones', () => {
+      const queue = unassignedQueue([
+        { id: 'late', status: 'SUBMITTED', submitted_at: '2026-10-02' },
+        null,
+        { id: 'untimed', status: 'SUBMITTED' },
+        { id: 'early', status: 'SUBMITTED', submitted_at: '2026-10-01' }
+      ]);
+      expect(queue.map((item) => item.id)).toEqual(['untimed', 'early', 'late']);
+      expect(leadVisibleEvents([null, { status: 'DRAFT' }]).length).toBe(1);
+    });
+
+    test('TC-2358 K4 AC1 an unreadable activity time counts as no activity; the default clock is now', () => {
+      expect(timeSinceLastActivity({ updated_at: 'not a date' }, NOW)).toBeNull();
+      expect(timeSinceLastActivity({ updated_at: '2026-10-30T11:00:00Z' }, 'not a date')).toBeNull();
+      expect(timeSinceLastActivity({ updated_at: new Date(Date.now() - 1000).toISOString() })).toBeGreaterThanOrEqual(0);
+    });
+
+    test('TC-2359 K4 AC1 rows with no reference, coordinator name or date read null; events with no activity sink together', () => {
+      const rows = oversightRows([
+        { id: 'a', status: 'PLANNING', coordinator_id: 'c9' },
+        { id: 'b', status: 'PLANNING' },
+        { id: 'c', status: 'PLANNING', updated_at: '2026-10-30T11:00:00Z' }
+      ], undefined, NOW);
+      expect(rows.map((row) => row.id)).toEqual(['c', 'a', 'b']);
+      expect(rows[1]).toMatchObject({ reference: null, coordinatorName: 'c9', proposedDate: null, sinceLastActivityMs: null });
+      expect(rows[2]).toMatchObject({ coordinatorId: null, coordinatorName: null });
+      // The default "now" is the real clock.
+      expect(oversightRows([{ id: 'x', status: 'PLANNING' }])).toHaveLength(1);
+    });
+
+    test('TC-2360 K4 AC3 a no-longer-active holder with no stored name is shown by id', () => {
+      expect(oversightCoordinators([{ status: 'PLANNING', coordinator_id: 'gone' }], [])).toEqual([{ id: 'gone', name: 'gone', active: false }]);
+    });
+
+    test('TC-0362 C4 AC3 exchange entries with no timestamp sort first and keep their kind', () => {
+      const thread = chronologicalClarifications([{ id: 'q1', created_at: 'T2' }], [{ id: 'r0' }]);
+      expect(thread.map((item) => [item.id, item.kind])).toEqual([['r0', 'RESPONSE'], ['q1', 'QUESTION']]);
+      const untimed = chronologicalClarifications([{ id: 'q1' }, { id: 'q2', created_at: 'T1' }], [{ id: 'r1' }]);
+      expect(untimed.map((item) => item.id)).toEqual(['q1', 'r1', 'q2']);
+    });
+
+    test('TC-2291 K2 AC1 the summary of a missing event is all blank, and a choice with no count reads 0 active', () => {
+      expect(assignmentSummary(undefined)).toEqual({
+        name: undefined, purpose: undefined, eventDate: undefined, startTime: undefined,
+        endTime: undefined, expectedAttendance: undefined, organiser: null
+      });
+      expect(coordinatorChoiceLabel({ name: 'Alex' })).toBe('Alex (0 active)');
+    });
+
+    test('TC-0347 C3 AC2 the request view of a missing detail still renders, with the fallback organiser', () => {
+      expect(cleanRequiredText(undefined)).toBe('');
+      expect(contactDetails(null, null)).toEqual({ name: 'Unknown organiser', email: null, phone: null });
+      expect(contactDetails()).toEqual({ name: 'Unknown organiser', email: null, phone: null });
+      expect(registrationSummary(null)).toBeNull();
+      expect(registrationSummary()).toBeNull();
+      expect(equipmentList(null)).toEqual([]);
+      expect(equipmentList()).toEqual([]);
+      expect(buildRequestView(null)).toMatchObject({ reference: null, registration: null, equipment: [] });
+      expect(buildRequestView()).toMatchObject({ reference: null, contact: { name: 'Unknown organiser' } });
+    });
+  });
+
+  describe('conflict', () => {
+    test('TC-2393 K5 a coordinator is current only for an event that carries their id, and a missing user is never current', () => {
+      expect(isCurrentCoordinator({ coordinator_id: 'c1' }, 'c1')).toBe(true);
+      expect(isCurrentCoordinator({ coordinator_id: 'c1' }, 'c2')).toBe(false);
+      expect(isCurrentCoordinator({ coordinator_id: 'c1' }, undefined)).toBe(false);
+      expect(isCurrentCoordinator(null, 'c1')).toBe(false);
+    });
+
+    test('TC-0387 C5 a response to a clarification other than the open one is refused', () => {
+      const owner = { organiser_id: 'u1', open_clarification_id: 'CLR-2' };
+      expect(canRespondToClarification(owner, { clarification_id: 'CLR-1', status: 'OPEN' }, 'u1')).toBe(false);
+    });
+
+    test('TC-2313 K3 AC1 the Lead cannot reassign an event that has no coordinator yet; that is an assignment', () => {
+      expect(canLeadReassign({ status: 'SUBMITTED' }, LEAD, { id: 'c2' })).toBe(false);
+      expect(canLeadReassign(null, LEAD, { id: 'c2' })).toBe(false);
+      expect(canAssignCoordinator(null, LEAD, { id: 'c2' })).toBe(false);
+    });
+  });
+
+  describe('failure', () => {
+    test('TC-0874 F1 no event, or an event with no status, cannot look for venues', () => {
+      expect(canFindVenues(null)).toBe(false);
+      expect(canFindVenues({})).toBe(false);
+      expect(isTerminal(undefined)).toBe(false);
+    });
+
+    test('TC-0388 C5 a response with no event, no clarification or no signed-in user is refused', () => {
+      const owner = { organiser_id: 'u1', open_clarification_id: 'CLR-1' };
+      const question = { clarification_id: 'CLR-1', status: 'OPEN' };
+      expect(canRespondToClarification(null, question, 'u1')).toBe(false);
+      expect(canRespondToClarification(owner, null, 'u1')).toBe(false);
+      expect(canRespondToClarification(owner, question, null)).toBe(false);
+    });
   });
 });

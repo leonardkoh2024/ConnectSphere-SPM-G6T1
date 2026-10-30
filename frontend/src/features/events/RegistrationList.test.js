@@ -17,7 +17,7 @@
 // registrationApi is mocked, as in RegistrationPanel.test.js; what the service sends is tested
 // in attendeeList.test.js and registrationApi.browser.test.js.
 
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import RegistrationList from './RegistrationList';
 import { registrationApi } from './registrationApi';
@@ -39,7 +39,7 @@ beforeEach(() => {
   registrationApi.loadAttendees.mockResolvedValue(loaded());
 });
 
-test('H8-FT1 AC1 the list is requested for this event and shows each registered attendee\'s name, email, mobile number and registration time', async () => {
+test('TC-1780 H8 AC1 the list is requested for this event and shows each registered attendee\'s name, email, mobile number and registration time', async () => {
   render(<RegistrationList eventId="e1" />);
 
   const table = await screen.findByRole('table', { name: 'Registered attendees' });
@@ -56,7 +56,7 @@ test('H8-FT1 AC1 the list is requested for this event and shows each registered 
   expect(within(rows[1]).getByText('3 Nov 2026, 14:30')).toBeVisible();
 });
 
-test('H8-FT2 AC2 the counts of registered, waitlisted and withdrawn attendees are shown', async () => {
+test('TC-1781 H8 AC2 the counts of registered, waitlisted and withdrawn attendees are shown', async () => {
   render(<RegistrationList eventId="e1" />);
 
   const counts = await screen.findByRole('list', { name: 'Registration counts' });
@@ -67,7 +67,7 @@ test('H8-FT2 AC2 the counts of registered, waitlisted and withdrawn attendees ar
   expect(items[2]).toHaveTextContent(/^Withdrawn\s*1$/);
 });
 
-test('H8-FT3 AC2 with no one registered the counts still show, as zeros, with a plain message instead of an empty table', async () => {
+test('TC-1782 H8 AC2 with no one registered the counts still show, as zeros, with a plain message instead of an empty table', async () => {
   registrationApi.loadAttendees.mockResolvedValue({ counts: { registered: 0, waitlisted: 0, withdrawn: 0 }, attendees: [] });
   render(<RegistrationList eventId="e1" />);
 
@@ -77,7 +77,7 @@ test('H8-FT3 AC2 with no one registered the counts still show, as zeros, with a 
   expect(items.map((item) => item.textContent.replace(/\s+/g, ' ').trim())).toEqual(['Registered 0', 'Waitlisted 0', 'Withdrawn 0']);
 });
 
-test('H8-FT4 AC2 people on the waiting list but no one registered still shows that count, not a blank page', async () => {
+test('TC-1783 H8 AC2 people on the waiting list but no one registered still shows that count, not a blank page', async () => {
   registrationApi.loadAttendees.mockResolvedValue({ counts: { registered: 0, waitlisted: 4, withdrawn: 2 }, attendees: [] });
   render(<RegistrationList eventId="e1" />);
 
@@ -86,7 +86,7 @@ test('H8-FT4 AC2 people on the waiting list but no one registered still shows th
   expect(screen.getByText('No one has registered yet.')).toBeVisible();
 });
 
-test('H8-FT5 AC1 an attendee whose details could not be read still has a row, marked as unavailable, not a blank or a crash', async () => {
+test('TC-1784 H8 AC1 an attendee whose details could not be read still has a row, marked as unavailable, not a blank or a crash', async () => {
   registrationApi.loadAttendees.mockResolvedValue(loaded({
     counts: { registered: 1, waitlisted: 0, withdrawn: 0 },
     attendees: [attendee({ name: null, email: null, mobileNumber: null })]
@@ -100,7 +100,7 @@ test('H8-FT5 AC1 an attendee whose details could not be read still has a row, ma
   expect(within(row).getByText('3 Nov 2026, 09:00')).toBeVisible();
 });
 
-test('H8-FT6 AC1 a registration with no recorded time says so', async () => {
+test('TC-1785 H8 AC1 a registration with no recorded time says so', async () => {
   registrationApi.loadAttendees.mockResolvedValue(loaded({ counts: { registered: 1, waitlisted: 0, withdrawn: 0 }, attendees: [attendee({ registeredAt: null })] }));
   render(<RegistrationList eventId="e1" />);
 
@@ -108,13 +108,13 @@ test('H8-FT6 AC1 a registration with no recorded time says so', async () => {
   expect(within(row).getByText('Time not recorded')).toBeVisible();
 });
 
-test('H8-FT7 AC3 the organiser is told the list is theirs alone', async () => {
+test('TC-1786 H8 AC3 the organiser is told the list is theirs alone', async () => {
   render(<RegistrationList eventId="e1" />);
 
   expect(await screen.findByText('Only you, as the organiser of this event, can see this list.')).toBeVisible();
 });
 
-test('H8-FT8 while the list loads the organiser sees that, and no table or counts', async () => {
+test('TC-1787 H8 while the list loads the organiser sees that, and no table or counts', async () => {
   let release;
   registrationApi.loadAttendees.mockReturnValue(new Promise((resolve) => { release = resolve; }));
   render(<RegistrationList eventId="e1" />);
@@ -126,7 +126,7 @@ test('H8-FT8 while the list loads the organiser sees that, and no table or count
   expect(await screen.findByRole('table', { name: 'Registered attendees' })).toBeVisible();
 });
 
-test('H8-FT9 AC3 a refusal from the service is an alert with its reason, and no list or counts are shown', async () => {
+test('TC-1788 H8 AC3 a refusal from the service is an alert with its reason, and no list or counts are shown', async () => {
   registrationApi.loadAttendees.mockRejectedValue(new Error('You can view the registration list for your own events only.'));
   render(<RegistrationList eventId="e2" />);
 
@@ -136,7 +136,7 @@ test('H8-FT9 AC3 a refusal from the service is an alert with its reason, and no 
   expect(screen.queryByText('No one has registered yet.')).not.toBeInTheDocument();
 });
 
-test('H8-FT10 a service that is down is an alert, not an empty list', async () => {
+test('TC-1789 H8 a service that is down is an alert, not an empty list', async () => {
   registrationApi.loadAttendees.mockRejectedValue(new Error('The registration service is not responding. Check that the backend is running (npm start), then try again.'));
   render(<RegistrationList eventId="e1" />);
 
@@ -144,7 +144,7 @@ test('H8-FT10 a service that is down is an alert, not an empty list', async () =
   expect(screen.queryByText('No one has registered yet.')).not.toBeInTheDocument();
 });
 
-test('H8-FT11 Refresh asks the service again and shows the new list', async () => {
+test('TC-1790 H8 Refresh asks the service again and shows the new list', async () => {
   registrationApi.loadAttendees.mockResolvedValueOnce(loaded());
   registrationApi.loadAttendees.mockResolvedValueOnce(loaded({
     counts: { registered: 3, waitlisted: 3, withdrawn: 1 },
@@ -161,7 +161,7 @@ test('H8-FT11 Refresh asks the service again and shows the new list', async () =
   expect(within(screen.getByRole('list', { name: 'Registration counts' })).getAllByRole('listitem')[0]).toHaveTextContent(/^Registered\s*3$/);
 });
 
-test('H8-FT12 a refresh that fails keeps the list the organiser already had and says why it could not update', async () => {
+test('TC-1791 H8 a refresh that fails keeps the list the organiser already had and says why it could not update', async () => {
   registrationApi.loadAttendees.mockResolvedValueOnce(loaded());
   registrationApi.loadAttendees.mockRejectedValueOnce(new Error('The registration service is not responding. Check that the backend is running (npm start), then try again.'));
   render(<RegistrationList eventId="e1" />);
@@ -173,7 +173,7 @@ test('H8-FT12 a refresh that fails keeps the list the organiser already had and 
   expect(screen.getByText('Alicia Tan')).toBeVisible();
 });
 
-test('H8-FT13 AC1 opening another event asks for that event\'s list and never shows the previous event\'s people', async () => {
+test('TC-1792 H8 AC1 opening another event asks for that event\'s list and never shows the previous event\'s people', async () => {
   registrationApi.loadAttendees.mockResolvedValueOnce(loaded());
   registrationApi.loadAttendees.mockResolvedValueOnce({
     counts: { registered: 1, waitlisted: 0, withdrawn: 0 },
@@ -189,7 +189,7 @@ test('H8-FT13 AC1 opening another event asks for that event\'s list and never sh
   expect(screen.queryByText('Alicia Tan')).not.toBeInTheDocument();
 });
 
-test('H8-FT14 a slow answer for the previous event cannot overwrite the event now on screen', async () => {
+test('TC-1793 H8 a slow answer for the previous event cannot overwrite the event now on screen', async () => {
   let releaseFirst;
   registrationApi.loadAttendees.mockReturnValueOnce(new Promise((resolve) => { releaseFirst = resolve; }));
   registrationApi.loadAttendees.mockResolvedValueOnce({
@@ -205,4 +205,18 @@ test('H8-FT14 a slow answer for the previous event cannot overwrite the event no
   await waitFor(() => expect(registrationApi.loadAttendees).toHaveBeenCalledTimes(2));
   expect(screen.getByText('Zed Ong')).toBeVisible();
   expect(screen.queryByText('Alicia Tan')).not.toBeInTheDocument();
+});
+
+test('TC-1794 [conflict] a slow failure for the previous event cannot put its error on the event now on screen', async () => {
+  let failFirst;
+  registrationApi.loadAttendees.mockReturnValueOnce(new Promise((_resolve, reject) => { failFirst = reject; }));
+  registrationApi.loadAttendees.mockResolvedValueOnce(loaded());
+  const { rerender } = render(<RegistrationList eventId="e1" />);
+  rerender(<RegistrationList eventId="e2" />);
+  await screen.findByText('Alicia Tan');
+
+  await act(async () => { failFirst(new Error('You can view the registration list for your own events only.')); });
+
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(screen.getByText('Alicia Tan')).toBeVisible();
 });

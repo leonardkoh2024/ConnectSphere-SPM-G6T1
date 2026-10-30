@@ -70,7 +70,11 @@ beforeEach(() => {
   markEquipmentLineUnableToFulfill.mockResolvedValue({ status: "PENDING" });
 });
 
-test("G1 coordinator can amend the prefilled organiser lines and submit them", async () => {
+// Saving re-enables the submit button only after onSubmitted resolves; waiting for
+// that keeps the editor's last state update inside the test (no act() warning).
+const editorSettled = () => waitFor(() => expect(screen.getByRole("button", { name: /^submit/i })).toBeEnabled());
+
+test("TC-1175 G1 coordinator can amend the prefilled organiser lines and submit them", async () => {
   const onSubmitted = jest.fn();
   await act(async () => {
     render(<EquipmentRequestEditor eventId="event-1" onCancel={jest.fn()} onSubmitted={onSubmitted} />);
@@ -97,10 +101,11 @@ test("G1 coordinator can amend the prefilled organiser lines and submit them", a
     onSiteSupport: false,
     onSiteSupportDetails: ""
   }));
+  await editorSettled();
   expect(onSubmitted).toHaveBeenCalledTimes(1);
 });
 
-test("G1 submission is blocked until at least one valid line is present", async () => {
+test("TC-1176 G1 submission is blocked until at least one valid line is present", async () => {
   loadCoordinatorEquipmentEditor.mockResolvedValue({ event, request: null, lines: [] });
   await act(async () => {
     render(<EquipmentRequestEditor eventId="event-1" onCancel={jest.fn()} onSubmitted={jest.fn()} />);
@@ -125,9 +130,10 @@ test("G1 submission is blocked until at least one valid line is present", async 
   await userEvent.type(screen.getByLabelText("Quantity 1"), "3");
   await userEvent.click(screen.getByRole("button", { name: /submit equipment request/i }));
   await waitFor(() => expect(submitEquipmentRequest).toHaveBeenCalled());
+  await editorSettled();
 });
 
-test("G1 coordinator page lists active assigned events and opens equipment management", async () => {
+test("TC-1177 G1 coordinator page lists active assigned events and opens equipment management", async () => {
   let resolveEditor;
   loadCoordinatorEquipmentEditor.mockImplementation(() => new Promise((resolve) => { resolveEditor = resolve; }));
   render(<EquipmentRequestsScreen />);
@@ -141,7 +147,7 @@ test("G1 coordinator page lists active assigned events and opens equipment manag
   expect(loadCoordinatorEquipmentEditor).toHaveBeenCalledWith("event-1");
 });
 
-test("G1 submitted Pending requests appear in the Technical Support queue", async () => {
+test("TC-1178 G1 submitted Pending requests appear in the Technical Support queue", async () => {
   render(<EquipmentQueueScreen />);
 
   expect(await screen.findByRole("heading", { name: "Partner Summit" })).toBeInTheDocument();
@@ -156,7 +162,7 @@ test("G1 submitted Pending requests appear in the Technical Support queue", asyn
   expect(listPendingEquipmentRequests).toHaveBeenCalledTimes(1);
 });
 
-test("TC-295 Technical Support checks each requested equipment line for the event window", async () => {
+test("TC-1235 Technical Support checks each requested equipment line for the event window", async () => {
   render(<EquipmentAvailabilityScreen />);
 
   await screen.findByRole("heading", { name: "Partner Summit" });
@@ -180,7 +186,7 @@ test("TC-295 Technical Support checks each requested equipment line for the even
   });
 });
 
-test("TC-296 the Technical Support availability check reports missing event windows", async () => {
+test("TC-1236 the Technical Support availability check reports missing event windows", async () => {
   listPendingEquipmentRequests.mockResolvedValue([{
     id: "event-2", event_id: "event-2", event_name: "Window missing",
     status: "PENDING",
@@ -193,7 +199,7 @@ test("TC-296 the Technical Support availability check reports missing event wind
   expect(checkEquipmentAvailability).not.toHaveBeenCalled();
 });
 
-test("TC-298 Technical Support can enter a quantity and receives confirmation when equipment is reserved", async () => {
+test("TC-1260 Technical Support can enter a quantity and receives confirmation when equipment is reserved", async () => {
   render(<EquipmentAvailabilityScreen />);
   await screen.findByRole("heading", { name: "Partner Summit" });
 
@@ -218,7 +224,7 @@ test("TC-298 Technical Support can enter a quantity and receives confirmation wh
   });
 });
 
-test("TC-300 quantity below one is rejected before reservation", async () => {
+test("TC-1261 quantity below one is rejected before reservation", async () => {
   render(<EquipmentAvailabilityScreen />);
   const quantity = await screen.findByLabelText("AUDIO quantity");
   await userEvent.clear(quantity);
@@ -229,7 +235,7 @@ test("TC-300 quantity below one is rejected before reservation", async () => {
   expect(reserveEquipmentForEvent).not.toHaveBeenCalled();
 });
 
-test("TC-301 an unavailable quantity reports why reservation failed", async () => {
+test("TC-1262 an unavailable quantity reports why reservation failed", async () => {
   reserveEquipmentForEvent.mockRejectedValue(new Error(
     "Requested quantity unavailable for the required time period: 1 free, 1 more needed."
   ));
@@ -239,7 +245,7 @@ test("TC-301 an unavailable quantity reports why reservation failed", async () =
   expect(await screen.findByRole("alert")).toHaveTextContent(/1 free, 1 more needed/i);
 });
 
-test("TC-305 a reservation remains associated with its event until Technical Support releases it", async () => {
+test("TC-1263 a reservation remains associated with its event until Technical Support releases it", async () => {
   listPendingEquipmentRequests.mockResolvedValue([{
     id: "event-1",
     event_id: "event-1",
@@ -265,7 +271,7 @@ test("TC-305 a reservation remains associated with its event until Technical Sup
   expect(releaseEquipmentReservation).toHaveBeenCalledWith({ reservationId: "reservation-1" });
 });
 
-test("TC-307 Technical Support can amend a type and quantity with a note", async () => {
+test("TC-1293 Technical Support can amend a type and quantity with a note", async () => {
   render(<EquipmentAvailabilityScreen />);
   await screen.findByRole("heading", { name: "Partner Summit" });
   await userEvent.selectOptions(screen.getByLabelText("Substitute equipment type 1"), "VISUAL");
@@ -285,7 +291,7 @@ test("TC-307 Technical Support can amend a type and quantity with a note", async
   });
 });
 
-test("TC-309 Technical Support cannot resolve a line without a reason", async () => {
+test("TC-1294 Technical Support cannot resolve a line without a reason", async () => {
   render(<EquipmentAvailabilityScreen />);
   await screen.findByRole("heading", { name: "Partner Summit" });
   await userEvent.click(screen.getByRole("button", { name: /mark unable to fulfil/i }));
@@ -294,7 +300,7 @@ test("TC-309 Technical Support cannot resolve a line without a reason", async ()
   expect(markEquipmentLineUnableToFulfill).not.toHaveBeenCalled();
 });
 
-test("TC-311 coordinator can see support amendment and decision history", async () => {
+test("TC-1295 coordinator can see support amendment and decision history", async () => {
   listCoordinatorEquipmentEvents.mockResolvedValue([{
     ...event,
     equipment_request: {
@@ -350,7 +356,7 @@ test("TC-311 coordinator can see support amendment and decision history", async 
   expect(screen.getAllByText(/^Technical Support · /)).toHaveLength(2);
 });
 
-test("TC-489 G4 a request Technical Support has finished offers View details, which opens the event", async () => {
+test("TC-1296 G4 a request Technical Support has finished offers View details, which opens the event", async () => {
   const onViewEvent = jest.fn();
   listCoordinatorEquipmentEvents.mockResolvedValue([{ ...event, equipment_request: arrangedRequest }]);
   render(<EquipmentRequestsScreen onViewEvent={onViewEvent} />);
@@ -362,15 +368,15 @@ test("TC-489 G4 a request Technical Support has finished offers View details, wh
   expect(onViewEvent).toHaveBeenCalledWith("event-1");
 });
 
-test("TC-490 G4 a request Technical Support is still working on stays locked", async () => {
+test("TC-1297 G4 a request Technical Support is still working on stays locked", async () => {
   listCoordinatorEquipmentEvents.mockResolvedValue([{ ...event, equipment_request: { ...arrangedRequest, status: "PENDING" } }]);
   render(<EquipmentRequestsScreen onViewEvent={jest.fn()} />);
   expect(await screen.findByRole("button", { name: /technical support is handling this request/i })).toBeDisabled();
   expect(screen.queryByRole("button", { name: "View details" })).not.toBeInTheDocument();
 });
 
-// J6 / SCRUM-155 AC4 — TC-323, TC-341, TC-342, TC-345 in docs/test-cases.md.
-test("TC-323 arriving from an outcome notification opens that event's request and updates", async () => {
+// J6 / SCRUM-155 AC4.
+test("TC-2223 arriving from an outcome notification opens that event's request and updates", async () => {
   listCoordinatorEquipmentEvents.mockResolvedValue([{
     ...event,
     equipment_request: {
@@ -412,7 +418,7 @@ const spyOnScroll = () => {
   };
 };
 
-test("TC-341 only the named event's request opens; the others stay closed", async () => {
+test("TC-2224 only the named event's request opens; the others stay closed", async () => {
   listCoordinatorEquipmentEvents.mockResolvedValue([
     { ...event, equipment_request: arrangedRequest },
     { ...event, id: "event-2", name: "Board Offsite", equipment_request: arrangedRequest }
@@ -425,7 +431,7 @@ test("TC-341 only the named event's request opens; the others stay closed", asyn
   expect(openState("event-2")).toEqual([true]);
 });
 
-test("TC-342 without a named event nothing opens or scrolls, and an event with no times shows its date alone", async () => {
+test("TC-2225 without a named event nothing opens or scrolls, and an event with no times shows its date alone", async () => {
   const spy = spyOnScroll();
   try {
     listCoordinatorEquipmentEvents.mockResolvedValue([
@@ -440,7 +446,7 @@ test("TC-342 without a named event nothing opens or scrolls, and an event with n
   }
 });
 
-test("TC-345 the named event is scrolled into view once the list has loaded", async () => {
+test("TC-2226 the named event is scrolled into view once the list has loaded", async () => {
   const spy = spyOnScroll();
   try {
     listCoordinatorEquipmentEvents.mockResolvedValue([{ ...event, equipment_request: arrangedRequest }]);
@@ -453,14 +459,13 @@ test("TC-345 the named event is scrolled into view once the list has loaded", as
 });
 
 // Technical Support see who coordinates each event, on both their screens.
-// TC-390, TC-391 in docs/test-cases.md.
-test("TC-390 the Equipment queue names each event's coordinator", async () => {
+test("TC-1298 the Equipment queue names each event's coordinator", async () => {
   render(<EquipmentQueueScreen />);
   const card = (await screen.findByRole("heading", { name: "Partner Summit" })).closest("article");
   expect(card).toHaveTextContent("Coordinator: Sam Tan");
 });
 
-test("TC-391 the Availability check names each event's coordinator, or says it is not recorded", async () => {
+test("TC-1299 the Availability check names each event's coordinator, or says it is not recorded", async () => {
   listPendingEquipmentRequests.mockResolvedValue([{
     id: "event-1", event_id: "event-1", event_name: "Partner Summit", reference_no: "EVT-001",
     event_date: "2026-11-04", start_time: "09:00", end_time: "17:00", status: "PENDING", coordinator_name: null,
@@ -488,10 +493,12 @@ describe("J5 SCRUM-154 on-site support on the equipment request editor", () => {
     await screen.findByLabelText("Technical requirements 1");
     return onSubmitted;
   };
+  // The editor loads as soon as it opens; the click is wrapped so that load lands inside act().
+  const openFromList = (button) => act(async () => { await userEvent.click(button); });
   const tick = () => screen.getByRole("checkbox", { name: /on-site support needed/i });
   const submit = async () => userEvent.click(await screen.findByRole("button", { name: /submit (amended )?(equipment )?request/i }));
 
-  test("J5-FT1 AC2 the editor offers an unticked On-site support needed box, and asks for details only once it is ticked", async () => {
+  test("TC-2196 J5 AC2 the editor offers an unticked On-site support needed box, and asks for details only once it is ticked", async () => {
     await openEditor();
     expect(tick()).not.toBeChecked();
     expect(screen.queryByLabelText(/on-site support details/i)).not.toBeInTheDocument();
@@ -504,7 +511,7 @@ describe("J5 SCRUM-154 on-site support on the equipment request editor", () => {
     expect(screen.queryByLabelText(/on-site support details/i)).not.toBeInTheDocument();
   });
 
-  test("J5-FT2 AC2 on-site support cannot be submitted without saying what is needed", async () => {
+  test("TC-2197 J5 AC2 on-site support cannot be submitted without saying what is needed", async () => {
     await openEditor();
     await userEvent.click(tick());
     await submit();
@@ -519,9 +526,10 @@ describe("J5 SCRUM-154 on-site support on the equipment request editor", () => {
       onSiteSupport: true,
       onSiteSupportDetails: "Two technicians for setup"
     }));
+    await editorSettled();
   });
 
-  test("J5-FT3 AC4 an amended request opens with its on-site support as last saved, and unticking it sends none", async () => {
+  test("TC-2198 J5 AC4 an amended request opens with its on-site support as last saved, and unticking it sends none", async () => {
     await openEditor({ request: { status: "PENDING", on_site_support: true, on_site_support_details: "Two technicians for setup" } });
     expect(tick()).toBeChecked();
     expect(screen.getByLabelText(/on-site support details/i)).toHaveValue("Two technicians for setup");
@@ -531,34 +539,35 @@ describe("J5 SCRUM-154 on-site support on the equipment request editor", () => {
     await waitFor(() => expect(submitEquipmentRequest).toHaveBeenCalledWith(
       expect.objectContaining({ onSiteSupport: false, onSiteSupportDetails: "" })
     ));
+    await editorSettled();
   });
 
-  test("J5-FT4 AC1 the coordinator is told when Technical Support could not be notified, and when they were", async () => {
+  test("TC-2199 J5 AC1 the coordinator is told when Technical Support could not be notified, and when they were", async () => {
     const onNotice = jest.fn();
     render(<EquipmentRequestsScreen onNotice={onNotice} />);
 
     submitEquipmentRequest.mockResolvedValue({ ok: true, status: "PENDING", notified: false });
     await screen.findByRole("heading", { name: "Partner Summit" });
-    await userEvent.click(screen.getByRole("button", { name: /create equipment request/i }));
+    await openFromList(screen.getByRole("button", { name: /create equipment request/i }));
     await submit();
     await waitFor(() => expect(onNotice).toHaveBeenCalledTimes(1));
     expect(onNotice.mock.calls[0][0]).toMatch(/saved/i);
     expect(onNotice.mock.calls[0][0]).toMatch(/could not be notified/i);
 
     submitEquipmentRequest.mockResolvedValue({ ok: true, status: "PENDING", notified: true });
-    await userEvent.click(await screen.findByRole("button", { name: /create equipment request/i }));
+    await openFromList(await screen.findByRole("button", { name: /create equipment request/i }));
     await submit();
     await waitFor(() => expect(onNotice).toHaveBeenCalledTimes(2));
     expect(onNotice.mock.calls[1][0]).toBe("Equipment request submitted to Technical Support.");
   });
 
-  test("I3-FT1 AC1 the coordinator is told when the arrangements could not be marked for re-request, and the usual notice stays when they could", async () => {
+  test("TC-2019 I3 AC1 the coordinator is told when the arrangements could not be marked for re-request, and the usual notice stays when they could", async () => {
     const onNotice = jest.fn();
     render(<EquipmentRequestsScreen onNotice={onNotice} />);
 
     submitEquipmentRequest.mockResolvedValue({ ok: true, status: "PENDING", notified: true, rerequested: false });
     await screen.findByRole("heading", { name: "Partner Summit" });
-    await userEvent.click(screen.getByRole("button", { name: /create equipment request/i }));
+    await openFromList(screen.getByRole("button", { name: /create equipment request/i }));
     await submit();
     await waitFor(() => expect(onNotice).toHaveBeenCalledTimes(1));
     expect(onNotice.mock.calls[0][0]).toMatch(/saved/i);
@@ -566,7 +575,7 @@ describe("J5 SCRUM-154 on-site support on the equipment request editor", () => {
     expect(onNotice.mock.calls[0][0]).toMatch(/submit again to retry/i);
 
     submitEquipmentRequest.mockResolvedValue({ ok: true, status: "PENDING", notified: true, rerequested: true });
-    await userEvent.click(await screen.findByRole("button", { name: /create equipment request/i }));
+    await openFromList(await screen.findByRole("button", { name: /create equipment request/i }));
     await submit();
     await waitFor(() => expect(onNotice).toHaveBeenCalledTimes(2));
     expect(onNotice.mock.calls[1][0]).toBe("Equipment request submitted to Technical Support.");

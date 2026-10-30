@@ -1,4 +1,4 @@
-// J6 / SCRUM-155 AC2 — TC-324, TC-339, TC-340 in docs/test-cases.md. Arriving from a booking's
+// J6 / SCRUM-155 AC2. Arriving from a booking's
 // outcome notification opens that booking, with its date, time and status.
 
 import { render, screen, waitFor } from '@testing-library/react';
@@ -29,7 +29,7 @@ beforeEach(() => {
   loadVenueBookings.mockResolvedValue([booking('VB-1'), booking('VB-2', { status: 'PENDING' })]);
 });
 
-test('TC-324 the booking named by the notification opens on arrival, and only that one', async () => {
+test('TC-2228 the booking named by the notification opens on arrival, and only that one', async () => {
   render(<VenueBookings user={{ uid: 'coord-1' }} focusBookingId="VB-1" />);
 
   const toggles = await screen.findAllByRole('button', { name: /details/ });
@@ -39,7 +39,7 @@ test('TC-324 the booking named by the notification opens on arrival, and only th
   expect(screen.getByText('Status').nextSibling).toHaveTextContent('APPROVED');
 });
 
-test('TC-339 with no booking named, or one that is not in the list, nothing opens by itself', async () => {
+test('TC-2229 with no booking named, or one that is not in the list, nothing opens by itself', async () => {
   const { unmount } = render(<VenueBookings user={{ uid: 'coord-1' }} />);
   let toggles = await screen.findAllByRole('button', { name: /details/ });
   expect(toggles.map((item) => item.getAttribute('aria-expanded'))).toEqual(['false', 'false']);
@@ -64,7 +64,7 @@ const spyOnScroll = () => {
   };
 };
 
-test('TC-340 the named booking is scrolled into view once the list has loaded', async () => {
+test('TC-2230 the named booking is scrolled into view once the list has loaded', async () => {
   const spy = spyOnScroll();
   try {
     render(<VenueBookings user={{ uid: 'coord-1' }} focusBookingId="VB-2" />);
@@ -89,16 +89,18 @@ describe('K5 SCRUM-186 withdrawing a booking is a coordinator action on an assig
     loadVenueBookings.mockResolvedValue([booking('VB-2', { status: 'PENDING' })]);
   });
 
-  test('K5-FT4 AC2 withdrawing sends the signed-in coordinator along with the booking', async () => {
+  test('TC-2407 K5 AC2 withdrawing sends the signed-in coordinator along with the booking', async () => {
     withdrawVenueBooking.mockResolvedValue({ booking_id: 'VB-2', status: 'WITHDRAWN' });
 
     await openWithdraw();
     await userEvent.click(screen.getByRole('button', { name: /yes, withdraw/i }));
 
     expect(withdrawVenueBooking).toHaveBeenCalledWith({ user: { uid: 'coord-1' }, bookingId: 'VB-2' });
+    // Let the reload and the dialog closing settle inside act.
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
-  test('K5-FT5 AC2 a refused withdrawal is shown to the coordinator and the booking stays as it was', async () => {
+  test('TC-2408 K5 AC2 a refused withdrawal is shown to the coordinator and the booking stays as it was', async () => {
     withdrawVenueBooking.mockRejectedValue(new Error('Only the current event coordinator may withdraw this booking.'));
 
     await openWithdraw();
@@ -111,9 +113,9 @@ describe('K5 SCRUM-186 withdrawing a booking is a coordinator action on an assig
   });
 });
 
-// E8 — TC-395. The details name the Venue Staff member who manages the venue,
+// E8. The details name the Venue Staff member who manages the venue,
 // or say it is not recorded.
-test('TC-395 the booking details name the venue\'s Venue Staff member, or say it is not recorded', async () => {
+test('TC-0821 the booking details name the venue\'s Venue Staff member, or say it is not recorded', async () => {
   loadVenueBookings.mockResolvedValue([
     booking('VB-1', { venue_staff_name: 'Priya Nair' }),
     booking('VB-2', { status: 'PENDING', venue_staff_name: null })
@@ -127,7 +129,7 @@ test('TC-395 the booking details name the venue\'s Venue Staff member, or say it
   expect(screen.getByText('Venue Staff').nextSibling).toHaveTextContent('Not recorded');
 });
 
-test('F10 clash gives the current coordinator a pre-filled alternative-venue path', async () => {
+test('TC-1018 F10 clash gives the current coordinator a pre-filled alternative-venue path', async () => {
   const clash = {
     conflict_id: 'VEN-1--VB-1--VB-OTHER', booking_a_id: 'VB-1', booking_b_id: 'VB-OTHER',
     event_a_name: 'Q4 Partner Summit', event_b_name: 'Partner Briefing',
@@ -158,7 +160,7 @@ test('F10 clash gives the current coordinator a pre-filled alternative-venue pat
     })));
 });
 
-test('F11 keeps the original booking link after the replacement event is reloaded', async () => {
+test('TC-1044 F11 keeps the original booking link after the replacement event is reloaded', async () => {
   reviewApi.detail.mockResolvedValue({ event: {
     id: 'e1', name: 'Regional Partnership Forum', status: 'PLANNING', expected_attendance: 80,
     event_date: '2027-01-12', start_time: '10:00', end_time: '12:00'

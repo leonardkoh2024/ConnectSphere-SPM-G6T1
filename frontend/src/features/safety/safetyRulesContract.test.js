@@ -1,6 +1,5 @@
 // A7 / SCRUM-170 — every Firestore read the Safety Officer's code makes, checked
-// against what firestore.rules will actually let it do. TC-388 in
-// docs/test-cases.md.
+// against what firestore.rules will actually let it do.
 //
 // The other tests mock Firestore, so they pass whether or not a real read would
 // be allowed. Three failures on the shared project got through that way: a
@@ -135,7 +134,7 @@ test.each([
   ['the queue', () => listSafetyQueue()],
   ['a review', () => safetyReviewDetail('e1')],
   ['an approval', () => recordSafetyOutcome({ eventId: 'e1', outcome: 'APPROVE' })]
-])('TC-388 every read %s makes is one firestore.rules lets the Safety Officer make', async (_name, run) => {
+])('TC-0162 every read %s makes is one firestore.rules lets the Safety Officer make', async (_name, run) => {
   await run();
   expect(mockReads.length).toBeGreaterThan(0);
   const refused = mockReads.filter((read) => !allowed(read)).map(describeRead);
@@ -143,7 +142,7 @@ test.each([
 });
 
 // The check itself, against the three shapes that failed on the shared project.
-test('TC-388 the check refuses an unfiltered query, a direct read of a guarded document, and a collection with no clause', () => {
+test('TC-0163 the check refuses an unfiltered query, a direct read of a guarded document, and a collection with no clause', () => {
   expect(allowed({ kind: 'query', collection: 'venue_bookings', constraints: [] })).toBe(false);
   expect(allowed({ kind: 'query', collection: 'venue_bookings', constraints: [['event_id', '==', 'e1']] })).toBe(true);
   expect(allowed({ kind: 'get', path: 'event_venue_requirements/e1' })).toBe(false);

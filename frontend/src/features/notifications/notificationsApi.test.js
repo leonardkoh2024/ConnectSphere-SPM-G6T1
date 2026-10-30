@@ -1,6 +1,6 @@
 // J1 / SCRUM-150 — what the inbox asks Firestore for and what it writes.
 // AC2: only the signed-in user's notifications are requested. AC3: opening one
-// writes the read marker and nothing else. TC-279 – TC-281 in docs/test-cases.md.
+// writes the read marker and nothing else.
 
 import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { eventsFor, markNotificationRead, watchNotifications } from './notificationsApi';
@@ -23,7 +23,7 @@ beforeEach(() => {
   serverTimestamp.mockReturnValue('SERVER_TIME');
 });
 
-test('TC-279 the inbox asks only for the signed-in user\'s notifications, newest first', () => {
+test('TC-2099 the inbox asks only for the signed-in user\'s notifications, newest first', () => {
   const onChange = jest.fn();
   watchNotifications('u1', onChange, jest.fn());
 
@@ -39,14 +39,14 @@ test('TC-279 the inbox asks only for the signed-in user\'s notifications, newest
   expect(list[0].created_at).toBe('2026-10-07T09:00:00.000Z');
 });
 
-test('TC-280 marking a notification read writes only the read marker', async () => {
+test('TC-2100 marking a notification read writes only the read marker', async () => {
   updateDoc.mockResolvedValue();
   await markNotificationRead('n1');
 
   expect(updateDoc).toHaveBeenCalledWith('notifications/n1', { is_read: true, read_at: 'SERVER_TIME' });
 });
 
-test('TC-281 an event the user can no longer read comes back empty, not as an error', async () => {
+test('TC-2101 an event the user can no longer read comes back empty, not as an error', async () => {
   getDoc.mockImplementation(async (ref) => {
     if (ref === 'events/denied') throw new Error('Missing or insufficient permissions.');
     if (ref === 'events/gone') return { exists: () => false };
@@ -59,9 +59,9 @@ test('TC-281 an event the user can no longer read comes back empty, not as an er
   expect(getDoc).toHaveBeenCalledTimes(3);
 });
 
-// J4 / SCRUM-153 — TC-537 in docs/test-cases.md. Venue Staff are told about
+// J4 / SCRUM-153. Venue Staff are told about
 // events they may not read; a refused read is not the same as a deleted event.
-test('TC-537 an event the rules refuse comes back as not shared (false), a missing one as gone (null)', async () => {
+test('TC-2159 an event the rules refuse comes back as not shared (false), a missing one as gone (null)', async () => {
   getDoc.mockImplementation(async (ref) => {
     if (ref === 'events/refused') throw Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' });
     if (ref === 'events/gone') return { exists: () => false };

@@ -1,10 +1,10 @@
 // Epic B — creating and submitting an event request.
 //
-//   B1 / SCRUM-92  "Create an event request with the core details"  → TC-017 … TC-029
-//   B9 / SCRUM-100 "Submit an event request"                        → TC-030 … TC-046,
-//                                                                      TC-064 … TC-066
-//   B1 drafts are checked on what they hold                           → TC-067, TC-068
-//   B4 / SCRUM-95  "State the equipment my event needs"             → TC-047
+// B1 / SCRUM-92 "Create an event request with the core details" → …
+// B9 / SCRUM-100 "Submit an event request" → …,
+// …
+// B1 drafts are checked on what they hold →
+// B4 / SCRUM-95 "State the equipment my event needs" →
 //
 // Every case below is written up in docs/test-cases.md with its pre-condition,
 // steps and expected result.
@@ -12,7 +12,7 @@
 // Why fireEvent.change rather than userEvent.type for most fields: these tests
 // are about the validation rules, and typing a value such as "1.5" or "-5" one
 // keystroke at a time leaves the field in intermediate states that say nothing
-// about the rule under test. TC-047 still types, so the form is proven to work
+// about the rule under test. still types, so the form is proven to work
 // under real keystrokes too.
 
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
@@ -153,8 +153,8 @@ const expectAccepted = async () => {
 // B1 / SCRUM-92 — create an event request with the core details
 // ---------------------------------------------------------------------------
 
-describe('B1 core details are captured (TC-017, TC-018)', () => {
-  test('TC-017 a request carries all seven core details, its creator and its creation time', async () => {
+describe('B1 core details are captured ()', () => {
+  test('TC-0175 a request carries all seven core details, its creator and its creation time', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest();
@@ -183,7 +183,7 @@ describe('B1 core details are captured (TC-017, TC-018)', () => {
     ['Start time', { start: '' }],
     ['End time', { end: '' }],
     ['Expected attendance', { attendance: '' }]
-  ])('TC-018 a request with no %s cannot be submitted, and that field is the one named', async (label, missing) => {
+  ])('TC-0176 a request with no %s cannot be submitted, and that field is the one named', async (label, missing) => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest(missing);
@@ -194,8 +194,8 @@ describe('B1 core details are captured (TC-017, TC-018)', () => {
   });
 });
 
-describe('B1 the event must end after it starts (TC-019, TC-020, TC-021)', () => {
-  test('TC-019 an end time one minute after the start is accepted', async () => {
+describe('B1 the event must end after it starts ()', () => {
+  test('TC-0177 an end time one minute after the start is accepted', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest({ start: '09:00', end: '09:01' });
@@ -205,7 +205,7 @@ describe('B1 the event must end after it starts (TC-019, TC-020, TC-021)', () =>
     expect(eventWrite()).toMatchObject({ start_time: '09:00', end_time: '09:01' });
   });
 
-  test('TC-020 an end time earlier than the start is refused', async () => {
+  test('TC-0178 an end time earlier than the start is refused', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest({ start: '09:00', end: '08:00' });
@@ -214,7 +214,7 @@ describe('B1 the event must end after it starts (TC-019, TC-020, TC-021)', () =>
     expectBlocked('End time must be later than start time.');
   });
 
-  test('TC-021 an end time equal to the start is refused', async () => {
+  test('TC-0179 an end time equal to the start is refused', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest({ start: '09:00', end: '09:00' });
@@ -224,8 +224,8 @@ describe('B1 the event must end after it starts (TC-019, TC-020, TC-021)', () =>
   });
 });
 
-describe('B1 the proposed date may not be in the past (TC-022, TC-023)', () => {
-  test('TC-022 today is the earliest date accepted', async () => {
+describe('B1 the proposed date may not be in the past ()', () => {
+  test('TC-0180 today is the earliest date accepted', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest({ date: TODAY });
@@ -235,7 +235,7 @@ describe('B1 the proposed date may not be in the past (TC-022, TC-023)', () => {
     expect(eventWrite()).toMatchObject({ event_date: TODAY });
   });
 
-  test('TC-023 yesterday is refused', async () => {
+  test('TC-0181 yesterday is refused', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest({ date: YESTERDAY });
@@ -245,8 +245,8 @@ describe('B1 the proposed date may not be in the past (TC-022, TC-023)', () => {
   });
 });
 
-describe('B1 expected attendance is a whole number greater than zero (TC-024 … TC-029)', () => {
-  test('TC-024 an attendance of 1 is accepted and stored as a number', async () => {
+describe('B1 expected attendance is a whole number greater than zero ( … )', () => {
+  test('TC-0182 an attendance of 1 is accepted and stored as a number', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest({ attendance: '1' });
@@ -257,10 +257,10 @@ describe('B1 expected attendance is a whole number greater than zero (TC-024 …
   });
 
   test.each([
-    ['TC-025', 'zero', '0'],
-    ['TC-026', 'a negative number', '-5'],
-    ['TC-027', 'a fraction', '1.5']
-  ])('%s an attendance of %s is refused', async (_id, _label, attendance) => {
+    ['zero', '0'],
+    ['a negative number', '-5'],
+    ['a fraction', '1.5']
+  ])('TC-0183 an attendance of %s is refused', async (_label, attendance) => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest({ attendance });
@@ -273,7 +273,7 @@ describe('B1 expected attendance is a whole number greater than zero (TC-024 …
   // number, so the field arrives at validation empty and is refused as missing.
   // Worth pinning down, because it is why the organiser sees the missing-detail
   // message rather than the whole-number one after typing "many".
-  test('TC-028 text cannot be entered as an attendance, and the request is refused as incomplete', async () => {
+  test('TC-0184 text cannot be entered as an attendance, and the request is refused as incomplete', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest({ attendance: 'many' });
@@ -284,7 +284,7 @@ describe('B1 expected attendance is a whole number greater than zero (TC-024 …
     expectBlocked('Expected attendance is required.');
   });
 
-  test('TC-029 the date and attendance controls carry their own guards', () => {
+  test('TC-0185 the date and attendance controls carry their own guards', () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     expect(screen.getByLabelText(/proposed date/i)).toHaveAttribute('min', TODAY);
@@ -298,8 +298,8 @@ describe('B1 expected attendance is a whole number greater than zero (TC-024 …
 // B9 / SCRUM-100 — submit an event request
 // ---------------------------------------------------------------------------
 
-describe('B9 a complete request is submitted (TC-030, TC-031)', () => {
-  test('TC-030 submission records the request as Submitted, with a reference number and a submission time', async () => {
+describe('B9 a complete request is submitted ()', () => {
+  test('TC-0255 submission records the request as Submitted, with a reference number and a submission time', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest();
@@ -311,7 +311,7 @@ describe('B9 a complete request is submitted (TC-030, TC-031)', () => {
     await waitFor(() => expect(historyWrite()).toMatchObject({ action_type: 'EVENT_SUBMITTED', actor_id: 'u1' }));
   });
 
-  test('TC-031 the confirmation names the reference number the request was given', async () => {
+  test('TC-0256 the confirmation names the reference number the request was given', async () => {
     const onSaved = jest.fn();
     render(<EventRequestForm user={USER} onSaved={onSaved} />);
 
@@ -325,7 +325,7 @@ describe('B9 a complete request is submitted (TC-030, TC-031)', () => {
     );
   });
 
-  test('K1-TC7 SCRUM-182 AC1 a submitted event is not auto-assigned a coordinator', async () => {
+  test('TC-2274 K1 SCRUM-182 AC1 a submitted event is not auto-assigned a coordinator', async () => {
     const fetchSpy = jest.spyOn(global, 'fetch');
     const onSaved = jest.fn();
     render(<EventRequestForm user={USER} onSaved={onSaved} />);
@@ -342,8 +342,8 @@ describe('B9 a complete request is submitted (TC-030, TC-031)', () => {
   });
 });
 
-describe('B9 an incomplete request is not submitted (TC-032, TC-033)', () => {
-  test('TC-032 an empty form writes nothing at all, and every unanswered field is named', async () => {
+describe('B9 an incomplete request is not submitted ()', () => {
+  test('TC-0257 an empty form writes nothing at all, and every unanswered field is named', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     await submit();
@@ -367,7 +367,7 @@ describe('B9 an incomplete request is not submitted (TC-032, TC-033)', () => {
     expect(updateDoc).not.toHaveBeenCalled();
   });
 
-  test('TC-033 the values already entered stay on screen so they can be corrected', async () => {
+  test('TC-0258 the values already entered stay on screen so they can be corrected', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest({ attendance: '0' });
@@ -381,8 +381,8 @@ describe('B9 an incomplete request is not submitted (TC-032, TC-033)', () => {
   });
 });
 
-describe('B9 equipment must be answered before submission (TC-034, TC-035, TC-036)', () => {
-  test('TC-034 answering Yes and then adding no equipment line is refused', async () => {
+describe('B9 equipment must be answered before submission ()', () => {
+  test('TC-0259 answering Yes and then adding no equipment line is refused', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillCoreDetails();
@@ -395,7 +395,7 @@ describe('B9 equipment must be answered before submission (TC-034, TC-035, TC-03
     expectBlocked('Add at least one equipment line, or answer No above.');
   });
 
-  test('TC-069 answering No puts the equipment fields away and stores the decision', async () => {
+  test('TC-0260 answering No puts the equipment fields away and stores the decision', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillCoreDetails();
@@ -415,7 +415,7 @@ describe('B9 equipment must be answered before submission (TC-034, TC-035, TC-03
     expect(setDoc).not.toHaveBeenCalledWith(expect.stringContaining('event_equipment/'), expect.anything());
   });
 
-  test('TC-035 an equipment quantity of zero is refused', async () => {
+  test('TC-0261 an equipment quantity of zero is refused', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest({ equipment: { quantity: '0' } });
@@ -424,7 +424,7 @@ describe('B9 equipment must be answered before submission (TC-034, TC-035, TC-03
     expectBlocked('Equipment quantity 1 must be a whole number greater than zero.');
   });
 
-  test('TC-036 an equipment quantity of one is accepted', async () => {
+  test('TC-0262 an equipment quantity of one is accepted', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest({ equipment: { quantity: '1' } });
@@ -438,7 +438,7 @@ describe('B9 equipment must be answered before submission (TC-034, TC-035, TC-03
   });
 });
 
-describe('B9 registration details are consistent with the event (TC-037 … TC-040)', () => {
+describe('B9 registration details are consistent with the event ( … )', () => {
   const enableRegistration = ({ capacity, openDate = TODAY, openTime = '09:00', closeDate = DAY_BEFORE_EVENT, closeTime = '17:00' }) => {
     answer(QUESTIONS.registration, 'Yes');
     setField(/registration capacity/i, capacity);
@@ -448,7 +448,7 @@ describe('B9 registration details are consistent with the event (TC-037 … TC-0
     setField(/registration close time/i, closeTime);
   };
 
-  test('TC-037 a capacity equal to the expected attendance is accepted', async () => {
+  test('TC-0263 a capacity equal to the expected attendance is accepted', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest({ attendance: '180' });
@@ -459,7 +459,7 @@ describe('B9 registration details are consistent with the event (TC-037 … TC-0
     expect(eventWrite()).toMatchObject({ registration_required: true, registration_capacity: 180 });
   });
 
-  test('TC-038 a capacity above the expected attendance is refused', async () => {
+  test('TC-0264 a capacity above the expected attendance is refused', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest({ attendance: '180' });
@@ -469,7 +469,7 @@ describe('B9 registration details are consistent with the event (TC-037 … TC-0
     expectBlocked('Registration capacity cannot exceed the expected attendance.');
   });
 
-  test('TC-039 registration with no open and close date/time is refused', async () => {
+  test('TC-0265 registration with no open and close date/time is refused', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest();
@@ -479,7 +479,7 @@ describe('B9 registration details are consistent with the event (TC-037 … TC-0
     expectBlocked('Registration open and close date/time are required when registration is enabled.');
   });
 
-  test('TC-040 registration closing after the event has started is refused', async () => {
+  test('TC-0266 registration closing after the event has started is refused', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest({ date: EVENT_DAY, start: '09:00' });
@@ -490,8 +490,8 @@ describe('B9 registration details are consistent with the event (TC-037 … TC-0
   });
 });
 
-describe('B9 a request cannot be submitted twice (TC-041, TC-042)', () => {
-  test('TC-041 the form is cleared once the request has gone', async () => {
+describe('B9 a request cannot be submitted twice ()', () => {
+  test('TC-0267 the form is cleared once the request has gone', async () => {
     const onSaved = jest.fn();
     render(<EventRequestForm user={USER} onSaved={onSaved} />);
 
@@ -503,7 +503,7 @@ describe('B9 a request cannot be submitted twice (TC-041, TC-042)', () => {
     expect(screen.getByLabelText(/expected attendance/i)).toHaveValue(null);
   });
 
-  test('TC-042 a request that has already been submitted opens read-only, with no Submit action', async () => {
+  test('TC-0268 a request that has already been submitted opens read-only, with no Submit action', async () => {
     const draft = { id: 'event-123', status: 'SUBMITTED', reference_no: 'EVT-100234', name: 'Q4 Partner Summit' };
     render(<EventRequestForm user={USER} draft={draft} onSaved={jest.fn()} />);
 
@@ -513,7 +513,7 @@ describe('B9 a request cannot be submitted twice (TC-041, TC-042)', () => {
     expect(screen.getByLabelText(/event name/i)).toHaveAttribute('readonly');
   });
 
-  test('TC-081 a request with an open clarification is editable, and submit is replaced by save changes', async () => {
+  test('TC-0269 a request with an open clarification is editable, and submit is replaced by save changes', async () => {
     const draft = {
       id: 'event-123',
       status: 'UNDER_REVIEW',
@@ -530,8 +530,8 @@ describe('B9 a request cannot be submitted twice (TC-041, TC-042)', () => {
   });
 });
 
-describe('B9 the block names exactly the fields that are wrong (TC-043)', () => {
-  test('TC-043 three broken fields produce three messages, and nothing else is reported', async () => {
+describe('B9 the block names exactly the fields that are wrong ()', () => {
+  test('TC-0270 three broken fields produce three messages, and nothing else is reported', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest({ name: '', start: '', attendance: '0' });
@@ -546,8 +546,8 @@ describe('B9 the block names exactly the fields that are wrong (TC-043)', () => 
   });
 });
 
-describe('B9 venue requirements and accessibility must be answered (TC-044 … TC-046)', () => {
-  test('preferred location is a Singapore area selector and saves its canonical value', async () => {
+describe('B9 venue requirements and accessibility must be answered ( … )', () => {
+  test('TC-0271 preferred location is a Singapore area selector and saves its canonical value', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     const location = screen.getByLabelText(/preferred location or area/i);
@@ -565,7 +565,7 @@ describe('B9 venue requirements and accessibility must be answered (TC-044 … T
     );
   });
 
-  test('TC-044 a request with no venue requirements is refused, naming both of them', async () => {
+  test('TC-0272 a request with no venue requirements is refused, naming both of them', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest({ location: '', layout: '' });
@@ -578,7 +578,7 @@ describe('B9 venue requirements and accessibility must be answered (TC-044 … T
     expect(addDoc).not.toHaveBeenCalled();
   });
 
-  test('TC-045 answering Yes to facilities and choosing none is refused; answering No is accepted', async () => {
+  test('TC-0273 answering Yes to facilities and choosing none is refused; answering No is accepted', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillCoreDetails();
@@ -600,7 +600,7 @@ describe('B9 venue requirements and accessibility must be answered (TC-044 … T
     );
   });
 
-  test('TC-046 answering Yes to accessibility and choosing none is refused; answering No is accepted', async () => {
+  test('TC-0274 answering Yes to accessibility and choosing none is refused; answering No is accepted', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillCoreDetails();
@@ -622,7 +622,7 @@ describe('B9 venue requirements and accessibility must be answered (TC-044 … T
     );
   });
 
-  test('TC-064 a Yes keeps what was chosen; changing to No clears it rather than submitting it', async () => {
+  test('TC-0275 a Yes keeps what was chosen; changing to No clears it rather than submitting it', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillCoreDetails();
@@ -641,8 +641,8 @@ describe('B9 venue requirements and accessibility must be answered (TC-044 … T
   });
 });
 
-describe('B9 the reference number (TC-065, TC-066)', () => {
-  test('TC-065 a draft keeps the reference number it was first given when it is submitted', async () => {
+describe('B9 the reference number ()', () => {
+  test('TC-0276 a draft keeps the reference number it was first given when it is submitted', async () => {
     const draft = { id: 'event-123', status: 'DRAFT', reference_no: 'EVT-ABC123-9Z8Y' };
     render(<EventRequestForm user={USER} draft={draft} onSaved={jest.fn()} />);
 
@@ -659,7 +659,7 @@ describe('B9 the reference number (TC-065, TC-066)', () => {
 
   // Deterministic, not probabilistic: the counter behind the timestamp is what
   // makes this hold, so the test cannot pass or fail on the luck of the draw.
-  test('TC-066 references generated in the same millisecond never repeat', () => {
+  test('TC-0277 references generated in the same millisecond never repeat', () => {
     const references = Array.from({ length: 2000 }, () => createReferenceNo());
 
     expect(new Set(references).size).toBe(2000);
@@ -667,8 +667,8 @@ describe('B9 the reference number (TC-065, TC-066)', () => {
   });
 });
 
-describe('B1 a draft is checked on what it holds, not on what it is missing (TC-067, TC-068)', () => {
-  test('TC-067 an incomplete draft saves without complaint', async () => {
+describe('B1 a draft is checked on what it holds, not on what it is missing ()', () => {
+  test('TC-0186 an incomplete draft saves without complaint', async () => {
     const onSaved = jest.fn();
     render(<EventRequestForm user={USER} onSaved={onSaved} />);
 
@@ -680,7 +680,7 @@ describe('B1 a draft is checked on what it holds, not on what it is missing (TC-
     expect(eventWrite()).toMatchObject({ status: 'DRAFT', name: 'Ideas for the summit' });
   });
 
-  test('TC-068 a draft holding an impossible value is refused, because B1 AC2 is a rule about the value', async () => {
+  test('TC-0187 a draft holding an impossible value is refused, because B1 AC2 is a rule about the value', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     setField(/event name/i, 'Ideas for the summit');
@@ -696,8 +696,8 @@ describe('B1 a draft is checked on what it holds, not on what it is missing (TC-
 // B4 / SCRUM-95 — state the equipment my event needs
 // ---------------------------------------------------------------------------
 
-describe('B4 equipment lines (TC-047)', () => {
-  test('TC-047 an organiser can add a second equipment line and submit both', async () => {
+describe('B4 equipment lines ()', () => {
+  test('TC-0199 an organiser can add a second equipment line and submit both', async () => {
     const onSaved = jest.fn();
     render(<EventRequestForm user={USER} onSaved={onSaved} />);
 
@@ -731,10 +731,10 @@ describe('B4 equipment lines (TC-047)', () => {
 // The form tells the organiser which answers are compulsory before they submit
 // ---------------------------------------------------------------------------
 
-describe('compulsory questions are marked (TC-070)', () => {
+describe('compulsory questions are marked ()', () => {
   const marked = (label) => screen.getByText(label).closest('label, fieldset').querySelector('.cs-required') !== null;
 
-  test('TC-070 every compulsory question carries the red marker, and the optional notes do not', () => {
+  test('TC-0278 every compulsory question carries the red marker, and the optional notes do not', () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     ['Event name', 'Purpose', 'Description', 'Proposed date', 'Start time', 'End time', 'Expected attendance',
@@ -745,7 +745,7 @@ describe('compulsory questions are marked (TC-070)', () => {
     expect(marked('Additional accessibility notes')).toBe(false);
   });
 
-  test('TC-070 the form says what the marker means, and the browser is not left to enforce it', () => {
+  test('TC-0279 the form says what the marker means, and the browser is not left to enforce it', () => {
     const { container } = render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     expect(screen.getByText(/compulsory/i)).toBeInTheDocument();
@@ -769,7 +769,7 @@ describe('J2 SCRUM-151 the organiser is told the request was received', () => {
     doc.mockImplementation((first, name, id) => (name ? `${name}/${id}` : { id: 'auto-id', path: `${first}/auto-id` }));
   });
 
-  test('J2-FT9 AC1 AC2 submitting writes one notice to the organiser, naming the event and the change', async () => {
+  test('TC-2133 J2 AC1 AC2 submitting writes one notice to the organiser, naming the event and the change', async () => {
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
 
     fillValidRequest();
@@ -785,7 +785,7 @@ describe('J2 SCRUM-151 the organiser is told the request was received', () => {
     });
   });
 
-  test('J2-FT10 AC1 the notice is written only after the event itself has been saved', async () => {
+  test('TC-2134 J2 AC1 the notice is written only after the event itself has been saved', async () => {
     addDoc.mockRejectedValue(new Error('network down'));
     jest.spyOn(console, 'error').mockImplementation(() => {});
     render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
@@ -798,7 +798,7 @@ describe('J2 SCRUM-151 the organiser is told the request was received', () => {
     console.error.mockRestore();
   });
 
-  test('J2-FT11 AC1 saving a draft is not a submission, so nothing is sent', async () => {
+  test('TC-2135 J2 AC1 saving a draft is not a submission, so nothing is sent', async () => {
     const onSaved = jest.fn();
     render(<EventRequestForm user={USER} onSaved={onSaved} />);
 
@@ -810,7 +810,7 @@ describe('J2 SCRUM-151 the organiser is told the request was received', () => {
     expect(received()).toHaveLength(0);
   });
 
-  test('J2-FT12 AC1 answering a clarification is not a new submission, so nothing is sent', async () => {
+  test('TC-2136 J2 AC1 answering a clarification is not a new submission, so nothing is sent', async () => {
     const onSaved = jest.fn();
     const draft = { id: 'event-123', status: 'UNDER_REVIEW', reference_no: 'EVT-100234', name: 'Q4 Partner Summit', open_clarification_id: 'CLR-001' };
     render(<EventRequestForm user={USER} draft={draft} onSaved={onSaved} />);
@@ -821,7 +821,7 @@ describe('J2 SCRUM-151 the organiser is told the request was received', () => {
     expect(received()).toHaveLength(0);
   });
 
-  test('J2-FT13 AC1 if the notice cannot be written the request is still reported as submitted, not failed', async () => {
+  test('TC-2137 J2 AC1 if the notice cannot be written the request is still reported as submitted, not failed', async () => {
     setDoc.mockImplementation(async (ref) => { if (ref?.path?.startsWith('notifications/')) throw new Error('permission-denied'); });
     jest.spyOn(console, 'error').mockImplementation(() => {});
     const onSaved = jest.fn();
@@ -836,7 +836,7 @@ describe('J2 SCRUM-151 the organiser is told the request was received', () => {
     console.error.mockRestore();
   });
 
-  test('J8 SCRUM-191 submitting tells every active Event Coordinator Lead the request is unassigned', async () => {
+  test('TC-2252 J8 SCRUM-191 submitting tells every active Event Coordinator Lead the request is unassigned', async () => {
     firestore.query.mockImplementation((source) => source);
     getDocs.mockImplementation(async (name) => (name === 'users'
       ? { docs: [
@@ -856,5 +856,172 @@ describe('J2 SCRUM-151 the organiser is told the request was received', () => {
     expect(data.message).toContain('Nadia Organiser');
     expect(data.message).toContain(EVENT_DAY);
     expect(data.link_screen).toBe('Unassigned queue');
+  });
+});
+
+// B2 / B3 / B4 / B5 / B6 / J8 — a saved draft coming back with every section, the
+// sections being put away again, and the reads and writes that can fail.
+describe('drafts reloaded, sections cleared and failures on the request form', () => {
+  const row = (id, data) => ({ id, ref: `ref/${id}`, data: () => data });
+  const savedDraft = {
+    id: 'd1', status: 'DRAFT', reference_no: 'EVT-D1', name: 'Saved summit', purpose: 'Partners', description: 'Kept',
+    event_date: EVENT_DAY, start_time: '09:00', end_time: '17:00', expected_attendance: 120,
+    equipment_required: true, registration_required: true, registration_capacity: 100,
+    registration_open_date: TODAY, registration_open_time: '09:00', registration_close_date: DAY_BEFORE_EVENT, registration_close_time: '18:00'
+  };
+  const givenSavedRows = () => {
+    firestore.query.mockImplementation((source) => source);
+    getDoc.mockResolvedValue({ exists: () => true, data: () => ({
+      preferred_location: 'Old campus', required_layout: 'THEATRE', facilities_required: true, accessibility_needed: true, accessibility_notes: 'Ramp'
+    }) });
+    getDocs.mockImplementation(async (name) => ({
+      event_facilities: { docs: [row('f1', { facility_id: 'WIFI' })] },
+      event_equipment: { docs: [row('q1', { equipment_type: 'AUDIO', quantity: 2, technical_note: 'Wireless' }), row('q2', { quantity: null })] },
+      event_accessibility: { docs: [row('a1', { accessibility_id: 'WHEELCHAIR_ACCESS' })] }
+    }[name] || { docs: [] }));
+  };
+
+  test('TC-0216 [normal] B6 a saved draft reloads every section, and saving it again replaces the old rows with the current ones', async () => {
+    givenSavedRows();
+    doc.mockImplementation((_db, name, id) => (name === 'events' ? { id, path: `events/${id}` } : `${name}/${id}`));
+    const onSaved = jest.fn();
+    render(<EventRequestForm user={USER} draft={savedDraft} onSaved={onSaved} />);
+
+    expect(await screen.findByDisplayValue('Saved summit')).toBeInTheDocument();
+    expect(screen.getByLabelText(/expected attendance/i)).toHaveValue(120);
+    // A location no longer in the list is still shown, not silently dropped.
+    expect(screen.getByLabelText(/preferred location or area/i)).toHaveValue('Old campus');
+    expect(screen.getByLabelText('WIFI')).toBeChecked();
+    expect(screen.getByLabelText('WHEELCHAIR ACCESS')).toBeChecked();
+    expect(screen.getByLabelText('Equipment type 1')).toHaveValue('AUDIO');
+    expect(screen.getByLabelText('Equipment type 2')).toHaveValue('');
+    expect(screen.getByLabelText('Quantity 2')).toHaveValue(null);
+    expect(screen.getByLabelText(/registration capacity/i)).toHaveValue(100);
+
+    fireEvent.click(screen.getByLabelText('WIFI'));
+    expect(screen.getByLabelText('WIFI')).not.toBeChecked();
+    fireEvent.click(screen.getByLabelText('WIFI'));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove line' })[1]);
+    expect(screen.queryByLabelText('Equipment type 2')).not.toBeInTheDocument();
+    setField(/additional accessibility notes/i, 'Ramp at the side door');
+    fireEvent.click(screen.getByRole('button', { name: /save draft/i }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(deleteDoc.mock.calls.map(([ref]) => ref)).toEqual(['ref/f1', 'ref/q1', 'ref/q2', 'ref/a1']);
+    const written = setDoc.mock.calls.map(([ref]) => ref);
+    expect(written).toEqual(expect.arrayContaining(['event_facilities/d1_WIFI', 'event_equipment/d1_0', 'event_accessibility/d1_WHEELCHAIR_ACCESS']));
+    expect(written).not.toContain('event_equipment/d1_1');
+    expect(setDoc).toHaveBeenCalledWith('event_venue_requirements/d1', expect.objectContaining({ accessibility_notes: 'Ramp at the side door' }));
+    expect(updateDoc).toHaveBeenCalledWith({ id: 'd1', path: 'events/d1' }, expect.objectContaining({ registration_capacity: 100, status: 'DRAFT' }));
+  });
+
+  test('TC-0207 [boundary] B5 answering No clears what was typed, and Yes with nothing filled saves empty values on a draft', async () => {
+    const onSaved = jest.fn();
+    render(<EventRequestForm user={USER} onSaved={onSaved} />);
+    setField(/event name/i, 'Half done');
+    answer(QUESTIONS.registration, 'Yes');
+    setField(/registration capacity/i, '40');
+    answer(QUESTIONS.registration, 'No');
+    answer(QUESTIONS.registration, 'Yes');
+    expect(screen.getByLabelText(/registration capacity/i)).toHaveValue(null);
+    fireEvent.click(screen.getByRole('button', { name: /save draft/i }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(eventWrite()).toMatchObject({
+      registration_required: true, registration_capacity: null,
+      registration_open_date: null, registration_open_time: null, registration_close_date: null, registration_close_time: null
+    });
+  });
+
+  test('TC-0217 [failure] B6 a draft whose requirements cannot be read says so, and a form closed before its read answers changes nothing', async () => {
+    // A question saved as No comes back answered No, not unanswered.
+    getDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ facilities_required: false }) });
+    const answeredNo = render(<EventRequestForm user={USER} draft={{ ...savedDraft, equipment_required: false }} onSaved={jest.fn()} />);
+    await waitFor(() => expect(within(screen.getByRole('group', { name: QUESTIONS.facilities })).getByRole('radio', { name: 'No' })).toBeChecked());
+    expect(within(screen.getByRole('group', { name: QUESTIONS.equipment })).getByRole('radio', { name: 'No' })).toBeChecked();
+    answeredNo.unmount();
+
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    getDoc.mockRejectedValueOnce(new Error('unavailable'));
+    const { unmount } = render(<EventRequestForm user={USER} draft={savedDraft} onSaved={jest.fn()} />);
+    expect(await screen.findByText('We could not load this draft. Please try again.')).toBeInTheDocument();
+    unmount();
+
+    let answerRead;
+    let refuseRead;
+    getDoc.mockReturnValueOnce(new Promise((resolve) => { answerRead = resolve; }));
+    const late = render(<EventRequestForm user={USER} draft={savedDraft} onSaved={jest.fn()} />);
+    late.unmount();
+    answerRead({ exists: () => false, data: () => ({}) });
+
+    getDoc.mockReturnValueOnce(new Promise((resolve, reject) => { refuseRead = reject; }));
+    const lateFailure = render(<EventRequestForm user={USER} draft={savedDraft} onSaved={jest.fn()} />);
+    lateFailure.unmount();
+    refuseRead(new Error('unavailable'));
+    await waitFor(() => expect(console.error).toHaveBeenCalledTimes(2));
+    console.error.mockRestore();
+  });
+
+  test('TC-2253 [boundary] J8 the Leads are told the organiser\'s email when the profile has no name or cannot be found', async () => {
+    firestore.query.mockImplementation((source) => source);
+    getDocs.mockImplementation(async (name) => (name === 'users'
+      ? { docs: [{ id: 'lead-1', data: () => ({ role: 'EVENT_COORDINATOR_LEAD', is_active: true }) }] }
+      : { docs: [] }));
+    const leadNotice = () => setDoc.mock.calls.filter(([, data]) => data?.type === 'UNASSIGNED_EVENT').map(([, data]) => data.message);
+
+    getDoc.mockResolvedValue({ exists: () => true, data: () => ({}) });
+    const first = render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
+    fillValidRequest();
+    await submit();
+    await waitFor(() => expect(leadNotice()).toHaveLength(1));
+    expect(leadNotice()[0]).toContain(USER.email);
+    first.unmount();
+
+    getDoc.mockResolvedValue({ exists: () => false, data: () => ({}) });
+    render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
+    fillValidRequest();
+    await submit();
+    await waitFor(() => expect(leadNotice()).toHaveLength(2));
+    expect(leadNotice()[1]).toContain(USER.email);
+  });
+
+  // Migrated from the root test.js B2 / B3, which tested a helper of its own.
+  test('TC-0193 [normal] B2 AC1 / B3 AC1 AC2 several facilities and several accessibility needs, plus a note, are all stored on submission', async () => {
+    render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
+    fillCoreDetails();
+    fillVenueRequirements();
+    answer(QUESTIONS.facilities, 'Yes');
+    ['AIR CONDITIONING', 'TABLES AND CHAIRS', 'WIFI'].forEach((label) => fireEvent.click(screen.getByLabelText(label)));
+    answer(QUESTIONS.equipment, 'No');
+    answer(QUESTIONS.accessibility, 'Yes');
+    ['WHEELCHAIR ACCESS', 'HEARING LOOP'].forEach((label) => fireEvent.click(screen.getByLabelText(label)));
+    setField(/additional accessibility notes/i, 'Accessible seating needed');
+    await submit();
+    await expectAccepted();
+
+    const rows = (prefix) => setDoc.mock.calls.filter(([ref]) => String(ref).startsWith(prefix)).map(([, data]) => data);
+    expect(rows('event_facilities/').map((item) => item.facility_id)).toEqual(['AIR_CONDITIONING', 'TABLES_AND_CHAIRS', 'WIFI']);
+    expect(rows('event_accessibility/').map((item) => item.accessibility_id)).toEqual(['WHEELCHAIR_ACCESS', 'HEARING_LOOP']);
+    expect(rows('event_venue_requirements/')[0]).toMatchObject({
+      preferred_location: 'CENTRAL', required_layout: 'THEATRE', facilities_required: true,
+      accessibility_needed: true, accessibility_notes: 'Accessible seating needed'
+    });
+  });
+
+  test('TC-2254 [failure] J8 when the Leads cannot be told, the request is still reported as submitted', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    firestore.query.mockImplementation((source) => source);
+    getDocs.mockImplementation(async (name) => {
+      if (name === 'users') throw new Error('permission-denied');
+      return { docs: [] };
+    });
+    const onSaved = jest.fn();
+    render(<EventRequestForm user={USER} onSaved={onSaved} />);
+    fillValidRequest();
+    await submit();
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(onSaved.mock.calls[0][0]).toMatch(/submitted for coordinator review/);
+    expect(console.error).toHaveBeenCalledWith('Could not tell the Event Coordinator Leads:', expect.any(Error));
+    console.error.mockRestore();
   });
 });
