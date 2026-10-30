@@ -35,7 +35,7 @@ they can be read next to the acceptance criteria and move into the service layer
 | B9 | SCRUM-100 | Submit an event request | TC-030 – TC-046, TC-064 – TC-066, TC-069 |
 | — | — | The form marks what is compulsory | TC-070 |
 | — | — | Confirmations appear as toasts | TC-071 |
-| C1 | SCRUM-102 | Have submitted events assigned to a coordinator automatically | TC-072 – TC-080 |
+| C1 | SCRUM-102 | Have submitted events assigned to a coordinator automatically | TC-080 (TC-072 – TC-079 retired: K1 replaced automatic assignment) |
 | E8 | SCRUM-124 | Be stopped before booking an unsuitable venue | TC-112 – TC-174, TC-395 – TC-396 |
 | J4 | SCRUM-153 | Be told when work arrives for me (a booking request reaches its Venue Staff) | TC-392 – TC-394 |
 | F12 | SCRUM-177 | Book more than one venue for an event | TC-491 – TC-511 |
@@ -64,8 +64,6 @@ Suites: `frontend/src/features/events/EventRequestForm.test.js` (TC-017 – TC-0
 `frontend/src/features/events/EventList.test.js` (TC-016, TC-058 – TC-063),
 `frontend/src/app/Workspace.test.js` (TC-014, TC-015, TC-071), `frontend/src/app/App.test.js` (TC-048 – TC-057),
 `frontend/src/security/firestoreRules.test.js` (TC-015, TC-016, TC-080),
-`frontend/src/domain/coordinatorAssignment.test.js` (TC-073, TC-074, TC-075),
-`backend/src/services/coordinatorAssignment/assignCoordinator.test.js` (TC-072, TC-076, TC-077, TC-078, TC-079),
 `frontend/src/features/venues/VenueBookingRequest.test.js` (TC-112 – TC-174 — E8 in one file: the unit
 tests over `domain/venueSuitability.js`, the functional tests over the screen, and the `firestore.rules`
 assertions),
@@ -326,6 +324,8 @@ whether the organiser has finished.
 
 
 ## C1 / SCRUM-102 / Have submitted events assigned to a coordinator automatically
+
+> **Retired by Week 7 change 5 (K1).** Coordinators are no longer assigned automatically: a submitted event waits in the Event Coordinator Lead's unassigned queue and the Lead assigns one (K2). The rotation service and its tests (TC-072 – TC-079) have been removed and are kept below only as a record. TC-080 — the client can never write the coordinator — still applies.
 
 **Legend:** `C1`, `C2`, `C3` = Coordinator 1/2/3 (by `coordinator_seq` 1, 2, 3) · `E1`, `E2`, … = Event 1/2/… submitted by the Organiser. Test-data labels, not C4 diagram levels.
 

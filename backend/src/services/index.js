@@ -14,7 +14,6 @@
 //
 //   auth                   /api/auth                     users                               epic A
 //   event                  /api/events                   events, event_history, …            epics B–D
-//   coordinatorAssignment  /api/coordinator-assignment   coordinators, assignment_cursor      epic C (C1 only — see backend/README.md)
 //   venue                  /api/venues                   venue catalogue, bookings            epics E–F
 //   equipment              /api/equipment                equipment counts, reservations       epic G
 //   registration           /api/registrations            attendee registrations, waiting list
@@ -22,14 +21,12 @@
 //   notification           /api/notifications             inbox items
 
 import arrangementsService from "./arrangements/index.js";
-import coordinatorAssignmentService from "./coordinatorAssignment/index.js";
 import equipmentService from "./equipment/index.js";
 import eventService from "./event/index.js";
 import registrationService from "./registration/index.js";
 import venueService from "./venue/index.js";
 
 const SERVICES = [
-  { name: "coordinatorAssignment", prefix: "/api/coordinator-assignment", router: coordinatorAssignmentService },
   { name: "event", prefix: "/api/events", router: eventService },
   { name: "venue", prefix: "/api/venues", router: venueService },
   { name: "equipment", prefix: "/api/equipment", router: equipmentService },

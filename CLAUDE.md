@@ -52,8 +52,8 @@ needed* and *Clash – review required* belong to a venue booking, not to the ev
 - Coordinator assignment is **not** automatic (Week 7 change 5, K1). A submitted event enters an unassigned
   queue that only the Event Coordinator Lead can see; the Lead assigns exactly one coordinator (K2) and is the
   one who reassigns (K3). No limit on how many events a coordinator holds. A coordinator may act only on
-  events currently assigned to them, refused server-side otherwise (K5). ADR 0001 and the
-  `coordinatorAssignment` service implement the old automatic rotation and are superseded.
+  events currently assigned to them, refused server-side otherwise (K5). The old automatic
+  rotation (ADR 0001, superseded) and its `coordinatorAssignment` service have been removed.
 - A coordinator cannot Confirm directly any more. Once **every** active venue booking is approved and all
   requested technical arrangements are confirmed, they *send the event for its safety check* (L1, status →
   Safety Review). The Safety Officer approves (→ Confirmed), rejects, or requests changes; the last two return
@@ -198,9 +198,6 @@ on real problems.
   days on (`domain/venueHolds.js`, repeated in `firestore.rules` as `holdExpiryIsThreeWorkingDays`). A hold
   that would not end before the booking's occupied window is refused. Still open for Session 3: whether
   public holidays count as working days — they currently do.
-- ADR 0001 / `coordinatorAssignment` (automatic rotation) are superseded by K1. Decide whether to retire the
-  service and its `coordinators` / `assignment_cursor` collections or repurpose them for the Lead's queue,
-  and mark the ADR superseded.
 - Equipment data model: pooled quantity vs individually tracked units.
 - Who may edit an event after submission (Q9 and the Week 1 briefing disagree).
 - The Session 2 security question was left blank. Current assumption: role-correct access plus password

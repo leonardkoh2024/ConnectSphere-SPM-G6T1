@@ -4,8 +4,8 @@
 // IMPORTANT: name it "<yourService>.integration.js" — do NOT end it in ".test.js", or the
 // default `node --test` unit run will auto-discover it and fail (it needs the emulator).
 //
-// Run it (from the repo root):
-//   npx firebase emulators:exec --only firestore --project demo-connectsphere "node --test backend/src/services/<yourService>/<yourService>.integration.js"
+// Run every integration test (from the repo root) — starts the emulator, runs, shuts it down:
+//   npm run test:integration
 //
 // The import path below (../../../testing/...) assumes the file sits at
 // backend/src/services/<yourService>/. Adjust the ../ count if you place it elsewhere.
@@ -13,24 +13,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { emulatorFirestore, serverTimestamp, wipe, seed } from "../../../testing/firestoreEmulator.js";
+import { emulatorFirestore, serverTimestamp, seed, useFreshBaseline } from "../../../testing/firestoreEmulator.js";
+import { baseline } from "../../../testing/fixtures.js";
 
 // TODO 1 — import the REAL service factory you want to test (not a fake/mock).
 // import { createYourService } from "./yourService.js";
 
 const db = emulatorFirestore();
 
-// TODO 2 — every collection this test reads or writes, so it starts clean.
-const COLLECTIONS = ["events", "coordinators", "assignment_cursor"];
+// TODO 2 — data EVERY test needs goes in baseline() (backend/testing/fixtures.js). Before each
+// test the whole database is cleared and baseline() re-seeded; after the file it is cleared again.
+useFreshBaseline(db, baseline);
 
 test("SCRUM-XXX / TC-XXX — <plain description of the behaviour being proven>", async () => {
-  await wipe(db, COLLECTIONS);
-
-  // TODO 3a — seed the fixture your service reads.
+  // TODO 3a — seed anything only THIS test needs, on top of the baseline.
   await seed(db, [
-    { path: "coordinators/c1", data: { coordinator_seq: 1 } },
-    { path: "coordinators/c2", data: { coordinator_seq: 2 } },
-    // ...add events, cursor docs, whatever this service needs...
+    { path: "events/e1", data: { status: "SUBMITTED", coordinator_id: null } },
   ]);
 
   // TODO 3b — build the real service, wired to the emulator db.
@@ -47,5 +45,3 @@ test("SCRUM-XXX / TC-XXX — <plain description of the behaviour being proven>",
 
   assert.ok(true, "replace me with real assertions");
 });
-
-test.after(async () => { await wipe(db, COLLECTIONS); });

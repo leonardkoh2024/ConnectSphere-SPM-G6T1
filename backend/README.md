@@ -2,8 +2,8 @@
 
 Express service layer, on **:4000**. Started together with the frontend by `npm start` at the repo root.
 
-Five services are mounted: `coordinatorAssignment` (C1 / SCRUM-102), `event` (D5), `venue` (E3), `equipment` (G3) and `registration`
-(H2 / SCRUM-140). Catalogue reads remain
+These services are mounted: `event` (D5), `venue` (E3), `equipment` (G3), `registration`
+(H2 / SCRUM-140) and `arrangements` (I3). Catalogue reads remain
 in the browser through `frontend/src/lib/firebase.js`; the venue service authenticates staff and transactionally
 records unavailability after checking approved bookings.
 
@@ -14,13 +14,16 @@ npm run test:backend   # from the repo root — node's built-in test runner, no 
 curl localhost:4000/api/health
 ```
 
-The `coordinatorAssignment`, `event` and `venue` services use the Firebase **Admin** SDK (`firebase-admin`), not the client SDK
+The `event` and `venue` services use the Firebase **Admin** SDK (`firebase-admin`), not the client SDK
 the frontend uses — see `src/lib/firebaseAdmin.js`. Their tests run against mocked Firestore, so no credentials
 are needed to run them. To exercise these services against a live project, point `GOOGLE_APPLICATION_CREDENTIALS`
 at a service-account key from Firebase console > Project settings > Service accounts — see `.env.example`.
-`backend/scripts/seedCoordinators.js` seeds
-the `coordinators` and `assignment_cursor` documents it needs; read that file before running it, since it
-writes to whatever project your credentials point at.
+
+To exercise them against a real Firestore without touching the shared project, use the emulator:
+`npm run test:integration` from the repo root starts it, runs every `*.integration.js`, and shuts it down.
+Each test starts from the same data — `useFreshBaseline` in `testing/firestoreEmulator.js` clears the
+emulator and re-seeds `testing/fixtures.js` before every test. Copy `docs/service.integration.TEMPLATE.js`
+to write one. Needs Java 11+.
 
 ## Adding a service
 
@@ -35,7 +38,6 @@ services write to the same collection. The epics in Jira are the natural boundar
 | ----------------------- | --------------------------------------------------------- | ---- |
 | `auth`                  | `users`                                                    | A    |
 | `event`                 | `events`, `event_history`, `event_venue_requirements`      | B–D  |
-| `coordinatorAssignment` | `coordinators`, `assignment_cursor`                        | C (C1 only) — superseded by K |
 | `venue`                 | venue catalogue, availability, bookings                    | E–F  |
 | `equipment`             | equipment counts, reservations                             | G    |
 | `registration`          | attendee registrations, waiting list                       | H    |
@@ -44,11 +46,6 @@ services write to the same collection. The epics in Jira are the natural boundar
 They share one process for now, which is what lets `npm start` bring the whole system up. Because no service
 touches another's routes or collections, splitting them into separate processes later is a deployment change
 rather than a rewrite — so keep that separation even when it would be quicker not to.
-
-**Scoped exception — `coordinatorAssignment` also writes two fields on `events`.** Epic C has no service of
-its own in the table above. The `event` service now handles D5 completion;
-`coordinatorAssignment` continues to write exactly `coordinator_id` and `assigned_at` on an `events`
-document, and no other event fields. Move that write when the C1 rotation is retired.
 
 **Scoped exception — `equipment` reads `events` and creates `notifications`.** J6 (SCRUM-155) tells the
 coordinator when an equipment request is arranged or a line cannot be fulfilled, and the notification is
@@ -155,7 +152,7 @@ asking twice sends once. See `src/services/equipment/supportNotifications.js`. L
 it creates `notifications` documents and reads `users` and `events`; revisit once `notification` exists.
 
 **Week 7 changes affect the mounted services.** K1 replaces C1's automatic assignment with an unassigned
-queue that the Event Coordinator Lead assigns from, so `coordinatorAssignment`'s rotation (ADR 0001) is no
-longer the release 1 behaviour. E11 replaces E3 criterion 3, so the venue service's refusal of unavailability
+queue that the Event Coordinator Lead assigns from; the `coordinatorAssignment` rotation service (ADR 0001)
+has been removed. E11 replaces E3 criterion 3, so the venue service's refusal of unavailability
 that overlaps an approved booking must become "list the affected bookings, confirm, and flag them". See
 `docs/README.md` for every story the Week 7 changes override.

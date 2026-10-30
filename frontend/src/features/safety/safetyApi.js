@@ -217,11 +217,13 @@ export const recordSafetyOutcome = async ({ eventId, outcome, comment, marked })
   return { ok: true, reviewId: reviewRef.id, status };
 };
 
+// The equipment service records each line's progress in `fulfillment_status`. Only a reserved
+// line is arranged; one Technical Support could not fulfil (RESOLVED) or released is not.
 const technicalArrangementsFrom = (request) => (request?.lines || []).map((line, index) => ({
   arrangement_id: line.line_id || line.equipment_type || `line-${index}`,
   label: line.label || line.equipment_type || `Technical arrangement ${index + 1}`,
   requested: true,
-  status: ["RESERVED", "CONFIRMED"].includes(String(line.status || "").toUpperCase()) ? "CONFIRMED" : "PENDING",
+  status: line.fulfillment_status === "RESERVED" ? "CONFIRMED" : "PENDING",
   review_status: line.review_status,
   assigned_staff_id: line.assigned_staff_id || request.assigned_staff_id || null
 }));
