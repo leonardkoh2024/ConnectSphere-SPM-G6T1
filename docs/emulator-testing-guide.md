@@ -80,7 +80,7 @@ docs/
 ```
 
 The rule that makes this reusable: **write services that take `firestore` (and
-`serverTimestamp`) as arguments** — e.g. `createAssignCoordinator({ firestore, serverTimestamp })`.
+`serverTimestamp`) as arguments** — e.g. `createYourService({ firestore, serverTimestamp })`.
 Then the unit test passes a fake and the integration test passes the real emulator db, no change
 to the service.
 
@@ -92,15 +92,15 @@ to the service.
 **macOS / Linux:**
 ```bash
 npx firebase emulators:exec --only firestore --project demo-connectsphere \
-  "node --test backend/src/services/coordinatorAssignment/assignCoordinator.integration.js"
+  "node --test backend/src/services/<yourService>/<yourService>.integration.js"
 ```
 
 **Windows (one line — `\` doesn't continue lines in PowerShell/cmd):**
 ```powershell
-npx firebase emulators:exec --only firestore --project demo-connectsphere "node --test backend/src/services/coordinatorAssignment/assignCoordinator.integration.js"
+npx firebase emulators:exec --only firestore --project demo-connectsphere "node --test backend/src/services/<yourService>/<yourService>.integration.js"
 ```
 
-Run all integration tests at once: point `node --test` at `backend/src/services/**/*.integration.js`.
+Run all integration tests at once, each starting from the same baseline (`backend/testing/fixtures.js`): `npm run test:integration`.
 
 ### Watch the data (optional)
 `npx firebase emulators:start --only firestore --project demo-connectsphere`, then open the

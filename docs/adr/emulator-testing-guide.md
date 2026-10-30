@@ -54,7 +54,7 @@ docs/
   service.integration.TEMPLATE.js         <- copy this to start a new integration test
   emulator-testing-guide.md               <- this file
 
-The rule that makes this reusable: write services that take firestore (and serverTimestamp) as arguments — e.g. createAssignCoordinator({ firestore, serverTimestamp }). Then the unit test passes a fake and the integration test passes the real emulator db, no change to the service.
+The rule that makes this reusable: write services that take firestore (and serverTimestamp) as arguments — e.g. createYourService({ firestore, serverTimestamp }). Then the unit test passes a fake and the integration test passes the real emulator db, no change to the service.
 
 6. Running an integration test (from the repo root)
 
@@ -64,14 +64,14 @@ macOS / Linux:
 
 bash
 npx firebase emulators:exec --only firestore --project demo-connectsphere \
-  "node --test backend/src/services/coordinatorAssignment/assignCoordinator.integration.js"
+  "node --test backend/src/services/<yourService>/<yourService>.integration.js"
 
 Windows (one line — \ doesn't continue lines in PowerShell/cmd):
 
 powershell
-npx firebase emulators:exec --only firestore --project demo-connectsphere "node --test backend/src/services/coordinatorAssignment/assignCoordinator.integration.js"
+npx firebase emulators:exec --only firestore --project demo-connectsphere "node --test backend/src/services/<yourService>/<yourService>.integration.js"
 
-Run all integration tests at once: point node --test at backend/src/services/**/*.integration.js.
+Run all integration tests at once, each starting from the same baseline (backend/testing/fixtures.js): npm run test:integration.
 
 Watch the data (optional)
 
