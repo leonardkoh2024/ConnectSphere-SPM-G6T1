@@ -1,5 +1,4 @@
-// J6 / SCRUM-155 AC3 — what the coordinator is told, and to whom. TC-325 – TC-328
-// in docs/test-cases.md.
+// J6 / SCRUM-155 AC3 — what the coordinator is told, and to whom.
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -22,7 +21,7 @@ const recorder = () => {
   return { firestore, transaction };
 };
 
-test("TC-325 the arranged message lists what was reserved and counts what was not", () => {
+test("TC-2203 the arranged message lists what was reserved and counts what was not", () => {
   assert.equal(
     arrangedMessage({
       eventName: "Q4 Partner Summit",
@@ -51,7 +50,7 @@ test("TC-325 the arranged message lists what was reserved and counts what was no
   );
 });
 
-test("TC-326 the unable-to-fulfil message names the quantity, type and trimmed reason", () => {
+test("TC-2204 the unable-to-fulfil message names the quantity, type and trimmed reason", () => {
   assert.equal(
     unableMessage({
       eventName: "Q4 Partner Summit",
@@ -63,7 +62,7 @@ test("TC-326 the unable-to-fulfil message names the quantity, type and trimmed r
   assert.match(unableMessage({ line: { equipment_type: "AUDIO", quantity: 1 }, reason: "None left" }), /^Your event: /);
 });
 
-test("TC-327 the notification goes to the event's current coordinator, in the inbox's shape", () => {
+test("TC-2205 the notification goes to the event's current coordinator, in the inbox's shape", () => {
   const { firestore, transaction } = recorder();
   const record = notifyCoordinator({
     firestore,
@@ -92,7 +91,7 @@ test("TC-327 the notification goes to the event's current coordinator, in the in
   assert.deepEqual(record, transaction.created[0].data);
 });
 
-test("TC-328 with no event or no coordinator there is nobody to tell, and nothing is written", () => {
+test("TC-2206 with no event or no coordinator there is nobody to tell, and nothing is written", () => {
   for (const snapshot of [missingEvent, eventSnapshot({ organiser_id: "org-1" }), eventSnapshot({ coordinator_id: "" }), undefined]) {
     const { firestore, transaction } = recorder();
     const record = notifyCoordinator({

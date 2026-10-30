@@ -119,7 +119,7 @@ const call = async ({ firestore, eventId = "e1", uid = "organiser-1", authorizat
   }
 };
 
-test("H8-TC1 AC1 the organiser of the event is given the names, contact details and registration times of those registered", async () => {
+test("TC-1754 H8 AC1 the organiser of the event is given the names, contact details and registration times of those registered", async () => {
   const { status, body } = await call({ firestore: fakeFirestore(data()) });
   assert.equal(status, 200);
   const byAttendee = Object.fromEntries(body.attendees.map((entry) => [entry.attendee_id, entry]));
@@ -141,19 +141,19 @@ test("H8-TC1 AC1 the organiser of the event is given the names, contact details 
   });
 });
 
-test("H8-TC2 AC1 the list is the registered attendees only, earliest registration first", async () => {
+test("TC-1755 H8 AC1 the list is the registered attendees only, earliest registration first", async () => {
   const { body } = await call({ firestore: fakeFirestore(data()) });
   assert.deepEqual(body.attendees.map((entry) => entry.registration_id), ["r2", "r1", "r3", "r8"]);
 });
 
-test("H8-TC3 AC1 only this event's registrations are listed: another organiser's event never leaks in", async () => {
+test("TC-1756 H8 AC1 only this event's registrations are listed: another organiser's event never leaks in", async () => {
   const { body } = await call({ firestore: fakeFirestore(data()) });
   assert.ok(!body.attendees.some((entry) => entry.registration_id === "r7"));
   const other = await call({ firestore: fakeFirestore(data()), eventId: "e2", uid: "organiser-2" });
   assert.deepEqual(other.body.attendees.map((entry) => entry.registration_id), ["r7"]);
 });
 
-test("H8-TC4 AC1 a registration that names its attendee as user_id (not attendee_id) is still listed with that person's details", async () => {
+test("TC-1757 H8 AC1 a registration that names its attendee as user_id (not attendee_id) is still listed with that person's details", async () => {
   const { body } = await call({ firestore: fakeFirestore(data()) });
   const chen = body.attendees.find((entry) => entry.registration_id === "r3");
   assert.equal(chen.attendee_id, "a3");
@@ -161,7 +161,7 @@ test("H8-TC4 AC1 a registration that names its attendee as user_id (not attendee
   assert.equal(chen.email, "chen@example.com");
 });
 
-test("H8-TC5 AC1 an attendee whose profile cannot be found is still listed, with no name or contact details, instead of failing the whole list", async () => {
+test("TC-1758 H8 AC1 an attendee whose profile cannot be found is still listed, with no name or contact details, instead of failing the whole list", async () => {
   const { status, body } = await call({ firestore: fakeFirestore(data()) });
   assert.equal(status, 200);
   const ghost = body.attendees.find((entry) => entry.registration_id === "r8");
@@ -175,33 +175,33 @@ test("H8-TC5 AC1 an attendee whose profile cannot be found is still listed, with
   });
 });
 
-test("H8-TC6 AC1 each entry carries only name, email, mobile number, id and time: no role, preference or other profile field is sent", async () => {
+test("TC-1759 H8 AC1 each entry carries only name, email, mobile number, id and time: no role, preference or other profile field is sent", async () => {
   const { body } = await call({ firestore: fakeFirestore(data()) });
   for (const entry of body.attendees) {
     assert.deepEqual(Object.keys(entry).sort(), ["attendee_id", "email", "mobile_number", "name", "registered_at", "registration_id"]);
   }
 });
 
-test("H8-TC7 AC1 a registration time already stored as text is passed through as it is", async () => {
+test("TC-1760 H8 AC1 a registration time already stored as text is passed through as it is", async () => {
   const collections = data();
   collections.registrations.r2.registered_at = "2026-11-03T01:00:00.000Z";
   const { body } = await call({ firestore: fakeFirestore(collections) });
   assert.equal(body.attendees.find((entry) => entry.registration_id === "r2").registered_at, "2026-11-03T01:00:00.000Z");
 });
 
-test("H8-TC8 AC2 the counts are registered, waitlisted and withdrawn for this event", async () => {
+test("TC-1761 H8 AC2 the counts are registered, waitlisted and withdrawn for this event", async () => {
   const { body } = await call({ firestore: fakeFirestore(data()) });
   assert.deepEqual(body.counts, { registered: 4, waitlisted: 2, withdrawn: 1 });
   assert.equal(body.attendees.length, body.counts.registered);
 });
 
-test("H8-TC9 AC2 an event nobody has registered for returns an empty list and zero counts, not an error", async () => {
+test("TC-1762 H8 AC2 an event nobody has registered for returns an empty list and zero counts, not an error", async () => {
   const { status, body } = await call({ firestore: fakeFirestore(data()), eventId: "empty" });
   assert.equal(status, 200);
   assert.deepEqual(body, { event_id: "empty", counts: { registered: 0, waitlisted: 0, withdrawn: 0 }, attendees: [] });
 });
 
-test("H8-TC10 AC1 waitlisted and withdrawn people appear only as counts: their profiles are never read", async () => {
+test("TC-1763 H8 AC1 waitlisted and withdrawn people appear only as counts: their profiles are never read", async () => {
   const firestore = fakeFirestore(data());
   const { status, body } = await call({ firestore });
   assert.equal(status, 200);
@@ -212,7 +212,7 @@ test("H8-TC10 AC1 waitlisted and withdrawn people appear only as counts: their p
   for (const id of ["a4", "a5", "a6"]) assert.ok(!firestore.touched.includes(`users/${id}`), `users/${id} was read`);
 });
 
-test("H8-TC11 AC3 an Event Organiser who does not own the event is refused, and no registration or profile is read", async () => {
+test("TC-1764 H8 AC3 an Event Organiser who does not own the event is refused, and no registration or profile is read", async () => {
   const firestore = fakeFirestore(data());
   const { status, body } = await call({ firestore, uid: "organiser-2" });
   assert.equal(status, 403);
@@ -222,7 +222,7 @@ test("H8-TC11 AC3 an Event Organiser who does not own the event is refused, and 
   assert.ok(!JSON.stringify(body).includes("Alicia"));
 });
 
-test("H8-TC12 AC3 an event that does not exist is refused with the same answer as someone else's event, so ids cannot be probed", async () => {
+test("TC-1765 H8 AC3 an event that does not exist is refused with the same answer as someone else's event, so ids cannot be probed", async () => {
   const someoneElses = await call({ firestore: fakeFirestore(data()), uid: "organiser-2" });
   const missing = await call({ firestore: fakeFirestore(data()), eventId: "nope" });
   assert.equal(someoneElses.status, 403);
@@ -231,7 +231,7 @@ test("H8-TC12 AC3 an event that does not exist is refused with the same answer a
 });
 
 for (const uid of ["coordinator-1", "lead-1", "venue-1", "tech-1", "safety-1", "attendee-1"]) {
-  test(`H8-TC13 AC3 a caller who is not an Event Organiser (${uid}) is refused before the event or any registration is read`, async () => {
+  test(`TC-1766 H8 AC3 a caller who is not an Event Organiser (${uid}) is refused before the event or any registration is read`, async () => {
     const firestore = fakeFirestore(data());
     const { status, body } = await call({ firestore, uid });
     assert.equal(status, 403);
@@ -241,14 +241,14 @@ for (const uid of ["coordinator-1", "lead-1", "venue-1", "tech-1", "safety-1", "
   });
 }
 
-test("H8-TC14 AC3 a caller with no profile is refused", async () => {
+test("TC-1767 H8 AC3 a caller with no profile is refused", async () => {
   const firestore = fakeFirestore(data());
   const { status } = await call({ firestore, uid: "nobody" });
   assert.equal(status, 403);
   assert.ok(!firestore.touched.includes("registrations"));
 });
 
-test("H8-TC15 AC3 a request with no sign-in is refused before anything is read", async () => {
+test("TC-1768 H8 AC3 a request with no sign-in is refused before anything is read", async () => {
   const firestore = fakeFirestore(data());
   const { status, body } = await call({ firestore, authorization: null });
   assert.equal(status, 401);
@@ -256,14 +256,14 @@ test("H8-TC15 AC3 a request with no sign-in is refused before anything is read",
   assert.deepEqual(firestore.touched, []);
 });
 
-test("H8-TC16 AC3 a token that does not verify is refused", async () => {
+test("TC-1769 H8 AC3 a token that does not verify is refused", async () => {
   const firestore = fakeFirestore(data());
   const { status } = await call({ firestore, verifyIdToken: async () => { throw new Error("expired"); } });
   assert.equal(status, 401);
   assert.deepEqual(firestore.touched, []);
 });
 
-test("H8-TC17 the list is read-only: nothing can be added to or removed from it through this route", async () => {
+test("TC-1770 H8 the list is read-only: nothing can be added to or removed from it through this route", async () => {
   assert.equal((await call({ firestore: fakeFirestore(data()) })).status, 200);
   for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
     const { status } = await call({ firestore: fakeFirestore(data()), method });
@@ -271,7 +271,7 @@ test("H8-TC17 the list is read-only: nothing can be added to or removed from it 
   }
 });
 
-test("H8-TC18 a failed read is reported as a server error, never as an empty list or zero counts", async () => {
+test("TC-1771 H8 a failed read is reported as a server error, never as an empty list or zero counts", async () => {
   const { status, body } = await call({ firestore: fakeFirestore(data(), { failOn: "registrations" }) });
   assert.equal(status, 500);
   assert.equal(body.attendees, undefined);

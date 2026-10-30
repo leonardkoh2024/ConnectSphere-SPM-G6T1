@@ -15,7 +15,7 @@ useFreshBaseline(db, baseline);
 const { users: U, events: E, venues: V } = IDS;
 const registration = (attendeeId) => db.doc(`registrations/${E.confirmed}_${attendeeId}`);
 
-test("every baseline document is in the emulator, exactly as written", async () => {
+test("TC-1711 every baseline document is in the emulator, exactly as written", async () => {
   const expected = baseline();
   const snapshots = await db.getAll(...expected.map(({ path }) => db.doc(path)));
   expected.forEach(({ path, data }, i) => {
@@ -24,7 +24,7 @@ test("every baseline document is in the emulator, exactly as written", async () 
   });
 });
 
-test("real service code works on the baseline: withdrawing frees a place for the waiting list (H7)", async () => {
+test("TC-1712 real service code works on the baseline: withdrawing frees a place for the waiting list (H7)", async () => {
   const registrations = createAttendeeRegistration({ firestore: db, serverTimestamp, now: () => sgt("2027-02-01", "10:00").toDate() });
 
   await registrations.withdraw({ eventId: E.confirmed, attendeeId: U.attendee });
@@ -37,25 +37,25 @@ test("real service code works on the baseline: withdrawing frees a place for the
   assert.equal(offers.size, 1);
 });
 
-test("…and the next test starts from the untouched baseline again", async () => {
+test("TC-1713 …and the next test starts from the untouched baseline again", async () => {
   assert.equal((await registration(U.attendee).get()).data().status, "REGISTERED");
   assert.equal((await registration(U.attendee3).get()).data().invited_at, undefined);
   const offers = await db.collection("notifications").where("type", "==", "WAITLIST_PLACE_OFFERED").get();
   assert.equal(offers.size, 0);
 });
 
-test("the organiser's attendee list reads the baseline registrations", async () => {
+test("TC-1714 the organiser's attendee list reads the baseline registrations", async () => {
   const list = await createRegistrationList({ firestore: db }).load({ eventId: E.confirmed, userId: U.organiser });
   assert.deepEqual(list.counts, { registered: 2, waitlisted: 1, withdrawn: 0 });
 });
 
-test("a test may delete and update baseline data freely", async () => {
+test("TC-1715 a test may delete and update baseline data freely", async () => {
   await db.doc(`events/${E.draft}`).delete();
   await db.doc(`venues/${V.hallA}`).update({ setup_minutes: 90 });
   assert.equal((await db.doc(`events/${E.draft}`).get()).exists, false);
 });
 
-test("…and both changes are undone for the next test", async () => {
+test("TC-1716 …and both changes are undone for the next test", async () => {
   assert.ok((await db.doc(`events/${E.draft}`).get()).exists);
   assert.equal((await db.doc(`venues/${V.hallA}`).get()).data().setup_minutes, 30);
 });

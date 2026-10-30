@@ -104,7 +104,7 @@ const fixture = ({
   return { service, transaction };
 };
 
-test("TC-303 creates an event-linked reservation for its buffered approved venue window", async () => {
+test("TC-1247 creates an event-linked reservation for its buffered approved venue window", async () => {
   const { service, transaction } = fixture();
   const result = await service.reserve({
     eventId: "event-1",
@@ -120,7 +120,7 @@ test("TC-303 creates an event-linked reservation for its buffered approved venue
   assert.equal(result.start_datetime.toISOString(), "2026-11-04T00:30:00.000Z");
   assert.equal(result.end_datetime.toISOString(), "2026-11-04T09:30:00.000Z");
   assert.equal(result.reserved_by, "tech-1");
-  // Reservation, history, and (J6, TC-346) the coordinator's notification.
+  // Reservation, history, and (J6, the coordinator's notification.
   assert.equal(transaction.created.length, 3);
   assert.equal(transaction.created[1].data.action, "LINE_RESERVED");
   assert.equal(transaction.created[1].data.actor_id, "tech-1");
@@ -132,7 +132,7 @@ test("TC-303 creates an event-linked reservation for its buffered approved venue
   assert.equal(transaction.updated[0].data.status, "ARRANGED");
 });
 
-test("TC-300 rejects quantities below one without writing a reservation", async () => {
+test("TC-1248 rejects quantities below one without writing a reservation", async () => {
   const { service, transaction } = fixture();
   await assert.rejects(
     service.reserve({ eventId: "event-1", equipmentType: "AUDIO", quantity: 0, userId: "tech-1" }),
@@ -141,7 +141,7 @@ test("TC-300 rejects quantities below one without writing a reservation", async 
   assert.equal(transaction.created.length, 0);
 });
 
-test("TC-301 refuses and explains a reservation that exceeds free stock for its full window", async () => {
+test("TC-1249 refuses and explains a reservation that exceeds free stock for its full window", async () => {
   const { service, transaction } = fixture({
     reservations: [reservationRecord({ quantity: 7 })]
   });
@@ -153,7 +153,7 @@ test("TC-301 refuses and explains a reservation that exceeds free stock for its 
   assert.equal(transaction.updated.length, 0);
 });
 
-test("TC-305 release retains the reservation and advances the inventory revision", async () => {
+test("TC-1250 release retains the reservation and advances the inventory revision", async () => {
   const { service, transaction } = fixture({ withReservationRequest: true });
   const result = await service.release({
     reservationId: "reservation-1",
@@ -175,7 +175,7 @@ test("TC-305 release retains the reservation and advances the inventory revision
   assert.equal(transaction.updated[2].data.availability_revision, 1);
 });
 
-test("D4 cancellation releases every active reservation and advances inventory availability", async () => {
+test("TC-0512 D4 cancellation releases every active reservation and advances inventory availability", async () => {
   const { service, transaction } = fixture({
     withReservationRequest: true,
     event: { coordinator_id: "coord-1", status: "CANCELLED", name: "Q4 Partner Summit" },
@@ -210,7 +210,7 @@ test("D4 cancellation releases every active reservation and advances inventory a
   assert.equal(transaction.created[0].data.reason, "Speaker unavailable");
 });
 
-test("D4 equipment release rejects a non-cancelled event", async () => {
+test("TC-0513 D4 equipment release rejects a non-cancelled event", async () => {
   const { service, transaction } = fixture({
     withReservationRequest: true,
     event: { coordinator_id: "coord-1", status: "PLANNING" }
@@ -240,7 +240,7 @@ const g5Reservations = () => [
 const reservationUpdates = (transaction) =>
   transaction.updated.filter((item) => item.reference.path.startsWith("equipment_reservations/"));
 
-test("G5-TC1 AC1 cancelling releases every active reservation of the event, whatever the type, and no other", async () => {
+test("TC-1312 G5 AC1 cancelling releases every active reservation of the event, whatever the type, and no other", async () => {
   const { service, transaction } = fixture({ withReservationRequest: true, event: cancelledEvent, reservations: g5Reservations() });
 
   assert.deepEqual(
@@ -259,7 +259,7 @@ test("G5-TC1 AC1 cancelling releases every active reservation of the event, what
   inventory.forEach((item) => assert.equal(item.data.availability_revision, 1));
 });
 
-test("G5-TC2 AC3 each released reservation is kept in the event's history with the reason, the time and who released it", async () => {
+test("TC-1313 G5 AC3 each released reservation is kept in the event's history with the reason, the time and who released it", async () => {
   const { service, transaction } = fixture({ withReservationRequest: true, event: cancelledEvent, reservations: g5Reservations() });
   await service.releaseCancelledEventReservations({ eventId: "event-1", reason: "Venue lost", userId: "coord-1" });
 
@@ -281,7 +281,7 @@ test("G5-TC2 AC3 each released reservation is kept in the event's history with t
   });
 });
 
-test("G5-TC3 AC1 only the event's current coordinator can release its equipment, and nothing is written when refused", async () => {
+test("TC-1314 G5 AC1 only the event's current coordinator can release its equipment, and nothing is written when refused", async () => {
   const { service, transaction } = fixture({
     withReservationRequest: true,
     event: { ...cancelledEvent, coordinator_id: "coord-2" },
@@ -295,8 +295,8 @@ test("G5-TC3 AC1 only the event's current coordinator can release its equipment,
   assert.equal(transaction.created.length, 0);
 });
 
-// J6 / SCRUM-155 AC3 — TC-329, TC-330, TC-334, TC-346 in docs/test-cases.md.
-test("TC-346 reserving the only open line arranges the request and tells the coordinator once", async () => {
+// J6 / SCRUM-155 AC3.
+test("TC-2213 reserving the only open line arranges the request and tells the coordinator once", async () => {
   const { service, transaction } = fixture();
   await service.reserve({ eventId: "event-1", equipmentType: "AUDIO", quantity: 2, userId: "tech-1" });
 
@@ -319,7 +319,7 @@ const notices = (transaction) => transaction.created
   .filter((item) => item.reference.collectionName === "notifications")
   .map((item) => item.data);
 
-test("TC-329 reserving one of several open lines leaves the request Pending and tells nobody", async () => {
+test("TC-2214 reserving one of several open lines leaves the request Pending and tells nobody", async () => {
   const { service, transaction } = fixture({
     lines: [{ equipment_type: "AUDIO", quantity: 2 }, { equipment_type: "VISUAL", quantity: 1 }]
   });
@@ -329,7 +329,7 @@ test("TC-329 reserving one of several open lines leaves the request Pending and 
   assert.equal(notices(transaction).length, 0);
 });
 
-test("TC-330 the last line reserved after another was refused: arranged, told once, to the current coordinator", async () => {
+test("TC-2215 the last line reserved after another was refused: arranged, told once, to the current coordinator", async () => {
   const { service, transaction } = fixture({
     lines: [
       { equipment_type: "VISUAL", quantity: 1, fulfillment_status: "RESOLVED", resolution: "UNABLE_TO_FULFILL" },
@@ -348,7 +348,7 @@ test("TC-330 the last line reserved after another was refused: arranged, told on
   }]);
 });
 
-test("TC-334 an event with no coordinator still has its equipment reserved, with nobody notified", async () => {
+test("TC-2216 an event with no coordinator still has its equipment reserved, with nobody notified", async () => {
   const { service, transaction } = fixture({ event: null });
   const result = await service.reserve({ eventId: "event-1", equipmentType: "AUDIO", quantity: 2, userId: "tech-1" });
 

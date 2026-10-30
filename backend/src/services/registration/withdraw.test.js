@@ -71,7 +71,7 @@ const refusedWith = async (promise, statusCode, reason, message) => {
 
 // ---- AC2, AC4: the place is given back ---------------------------------------------
 
-test("TC-648 H5 AC2 a Registered attendee withdraws: their record becomes Withdrawn, with the time", async () => {
+test("TC-1575 H5 AC2 a Registered attendee withdraws: their record becomes Withdrawn, with the time", async () => {
   const { firestore, withdraw } = setup();
   await withdraw();
   assert.deepEqual(firestore.store.registrations["e1_attendee-1"], {
@@ -85,7 +85,7 @@ test("TC-648 H5 AC2 a Registered attendee withdraws: their record becomes Withdr
   assert.equal(firestore.store.registrations.e1_other.status, "REGISTERED");
 });
 
-test("TC-649 H5 AC4 the withdrawn place is free again for the next attendee", async () => {
+test("TC-1576 H5 AC4 the withdrawn place is free again for the next attendee", async () => {
   const { register, withdraw } = setup();
   await refusedWith(register("newcomer"), 409, "full");
   const result = await withdraw();
@@ -93,7 +93,7 @@ test("TC-649 H5 AC4 the withdrawn place is free again for the next attendee", as
   assert.equal((await register("newcomer")).registration.status, "REGISTERED");
 });
 
-test("TC-650 H5 AC3 the reply describes the registration as the attendee now sees it", async () => {
+test("TC-1577 H5 AC3 the reply describes the registration as the attendee now sees it", async () => {
   const { withdraw } = setup();
   const result = await withdraw();
   assert.equal(result.registration.registration_id, "e1_attendee-1");
@@ -107,14 +107,14 @@ test("TC-650 H5 AC3 the reply describes the registration as the attendee now see
   }
 });
 
-test("TC-651 H5 a registration under an older record id is withdrawn in that record", async () => {
+test("TC-1578 H5 a registration under an older record id is withdrawn in that record", async () => {
   const { firestore, withdraw } = setup({ registrations: { "e1-attendee-1-MOCKDATA": record("e1", "attendee-1") } });
   await withdraw();
   assert.equal(firestore.store.registrations["e1-attendee-1-MOCKDATA"].status, "WITHDRAWN");
   assert.deepEqual(firestore.log.writes, ["registrations/e1-attendee-1-MOCKDATA"]);
 });
 
-test("TC-652 H5 the check and the write are one transaction", async () => {
+test("TC-1579 H5 the check and the write are one transaction", async () => {
   const { firestore, withdraw } = setup();
   await withdraw();
   assert.equal(firestore.log.transactions, 1);
@@ -124,53 +124,53 @@ test("TC-652 H5 the check and the write are one transaction", async () => {
 
 // ---- AC6 and the event's own state: refused, nothing written -----------------------
 
-test("TC-653 H5 AC6 an attendee with no registration for the event is refused", async () => {
+test("TC-1580 H5 AC6 an attendee with no registration for the event is refused", async () => {
   const { firestore, withdraw } = setup();
   await refusedWith(withdraw("stranger"), 409, "not_registered", /not registered for this event/i);
   assert.deepEqual(firestore.log.writes, []);
 });
 
 for (const status of ["WITHDRAWN", "CANCELLED"]) {
-  test(`TC-654 H5 AC6 a ${status} attendee holds no place, so is refused`, async () => {
+  test(`TC-1581 H5 AC6 a ${status} attendee holds no place, so is refused`, async () => {
     const { firestore, withdraw } = setup({ registrations: { "e1_attendee-1": record("e1", "attendee-1", status) } });
     await refusedWith(withdraw(), 409, "not_registered");
     assert.deepEqual(firestore.log.writes, []);
   });
 }
 
-test("TC-655 H5 AC6 withdrawing twice is refused the second time", async () => {
+test("TC-1582 H5 AC6 withdrawing twice is refused the second time", async () => {
   const { firestore, withdraw } = setup();
   await withdraw();
   await refusedWith(withdraw(), 409, "not_registered");
   assert.deepEqual(firestore.log.writes, ["registrations/e1_attendee-1"]);
 });
 
-test("TC-656 H5 one attendee cannot withdraw another's place", async () => {
+test("TC-1583 H5 one attendee cannot withdraw another's place", async () => {
   const { firestore, withdraw } = setup({ registrations: { e1_other: record("e1", "other") } });
   await refusedWith(withdraw("attendee-1"), 409, "not_registered");
   assert.equal(firestore.store.registrations.e1_other.status, "REGISTERED");
 });
 
-test("TC-657 H5 once the event has started there is nothing to withdraw from", async () => {
+test("TC-1584 H5 once the event has started there is nothing to withdraw from", async () => {
   const { firestore, withdraw } = setup({ now: new Date("2026-11-12T09:00:00+08:00") });
   await refusedWith(withdraw(), 409, "event_started", /already started/i);
   assert.deepEqual(firestore.log.writes, []);
 });
 
 for (const status of ["CANCELLED", "COMPLETED", "REJECTED"]) {
-  test(`TC-658 H5 a ${status} event cannot be withdrawn from`, async () => {
+  test(`TC-1585 H5 a ${status} event cannot be withdrawn from`, async () => {
     const { firestore, withdraw } = setup({ eventChanges: { status } });
     await refusedWith(withdraw(), 409, "event_closed");
     assert.deepEqual(firestore.log.writes, []);
   });
 }
 
-test("TC-659 H5 withdrawal is allowed after registration has closed, until the event starts", async () => {
+test("TC-1586 H5 withdrawal is allowed after registration has closed, until the event starts", async () => {
   const { withdraw } = setup({ now: new Date("2026-11-11T20:00:00+08:00") });
   assert.equal((await withdraw()).registration.status, "WITHDRAWN");
 });
 
-test("TC-660 H5 an event that does not exist is refused as not found", async () => {
+test("TC-1587 H5 an event that does not exist is refused as not found", async () => {
   const { firestore, withdraw } = setup();
   await refusedWith(withdraw("attendee-1", "missing"), 404, "not_found");
   assert.deepEqual(firestore.log.writes, []);
@@ -209,7 +209,7 @@ const routeStore = (registrations = { "e1_attendee-1": record("e1", "attendee-1"
   registrations
 });
 
-test("TC-661 H5 AC2 AC3 POST withdraw answers 200 with the updated registration, venues included", async () => {
+test("TC-1588 H5 AC2 AC3 POST withdraw answers 200 with the updated registration, venues included", async () => {
   const { status, body } = await call({ firestore: routeStore() });
   assert.equal(status, 200);
   assert.equal(body.registration.status, "WITHDRAWN");
@@ -217,14 +217,14 @@ test("TC-661 H5 AC2 AC3 POST withdraw answers 200 with the updated registration,
   assert.equal(body.remaining_places, 2);
 });
 
-test("TC-662 H5 AC6 a refusal is answered with its reason and message", async () => {
+test("TC-1589 H5 AC6 a refusal is answered with its reason and message", async () => {
   const { status, body } = await call({ firestore: routeStore({}) });
   assert.equal(status, 409);
   assert.equal(body.reason, "not_registered");
   assert.match(body.error, /not registered/i);
 });
 
-test("TC-663 H5 only a signed-in Attendee may withdraw; nothing is written otherwise", async () => {
+test("TC-1590 H5 only a signed-in Attendee may withdraw; nothing is written otherwise", async () => {
   const firestore = routeStore();
   assert.equal((await call({ firestore, authorization: null })).status, 401);
   assert.equal((await call({ firestore, authorization: "Bearer junk" })).status, 401);
@@ -245,7 +245,7 @@ const queue = () => ({
   e1_last: record("e1", "last", "WAITLISTED", { waitlisted_at: "2026-11-04T03:00:00.000Z", registered_at: null })
 });
 
-test("TC-711 H6 a waitlisted attendee withdraws: their record becomes Withdrawn and no place is freed", async () => {
+test("TC-1650 H6 a waitlisted attendee withdraws: their record becomes Withdrawn and no place is freed", async () => {
   const { firestore, withdraw } = setup({ registrations: queue() });
   const result = await withdraw();
   assert.equal(firestore.store.registrations["e1_attendee-1"].status, "WITHDRAWN");
@@ -255,7 +255,7 @@ test("TC-711 H6 a waitlisted attendee withdraws: their record becomes Withdrawn 
   assert.equal(result.remaining_places, 0);
 });
 
-test("TC-712 H6 AC2 everyone behind the one who left moves up the waiting list", async () => {
+test("TC-1651 H6 AC2 everyone behind the one who left moves up the waiting list", async () => {
   const firestore = fakeFirestore({
     users: { last: { role: "ATTENDEE" }, "attendee-1": { role: "ATTENDEE" } },
     events: { e1: event() },
@@ -285,7 +285,7 @@ test("TC-712 H6 AC2 everyone behind the one who left moves up the waiting list",
   }
 });
 
-test("TC-713 H6 an attendee who left the waiting list may join it again, at the back", async () => {
+test("TC-1652 H6 an attendee who left the waiting list may join it again, at the back", async () => {
   const actions = setup({ registrations: queue() });
   await actions.withdraw();
   const { joinWaitlist } = createAttendeeRegistration({ firestore: actions.firestore, serverTimestamp: () => STAMP, now: () => NOW });
@@ -295,7 +295,7 @@ test("TC-713 H6 an attendee who left the waiting list may join it again, at the 
 
 // J7 AC2 ("notified when a place opens and they are invited to apply") is delivered by H7: the
 // person a freed place is offered to is told, with when the offer ends. Nobody else is.
-test("J7 SCRUM-156 a freed place invites the person waiting, and does not invite the person who left", async () => {
+test("TC-2237 J7 SCRUM-156 a freed place invites the person waiting, and does not invite the person who left", async () => {
   const { firestore, withdraw } = setup({
     registrations: {
       "e1_attendee-1": record("e1", "attendee-1"),

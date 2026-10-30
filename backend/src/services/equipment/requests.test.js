@@ -60,7 +60,7 @@ const fixture = ({
   return { actions, request, transaction };
 };
 
-test("TC-307 line amendment stores changed type and quantity with a mandatory auditable note", async () => {
+test("TC-1276 line amendment stores changed type and quantity with a mandatory auditable note", async () => {
   const { actions, request, transaction } = fixture();
   const result = await actions.amendLine({
     eventId: "event-1",
@@ -82,7 +82,7 @@ test("TC-307 line amendment stores changed type and quantity with a mandatory au
   assert.deepEqual(transaction.created[0].data.new_values, { equipment_type: "VISUAL", quantity: 3 });
 });
 
-test("TC-308 an amendment without an explanatory note is rejected before writes", async () => {
+test("TC-1277 an amendment without an explanatory note is rejected before writes", async () => {
   const { actions, transaction } = fixture();
   await assert.rejects(actions.amendLine({
     eventId: "event-1",
@@ -96,7 +96,7 @@ test("TC-308 an amendment without an explanatory note is rejected before writes"
   assert.equal(transaction.updates.length, 0);
 });
 
-test("TC-312 an active reservation prevents the Support amendment from invalidating that line", async () => {
+test("TC-1278 an active reservation prevents the Support amendment from invalidating that line", async () => {
   const { actions, transaction } = fixture({
     reservations: [{
       event_id: "event-1",
@@ -117,7 +117,7 @@ test("TC-312 an active reservation prevents the Support amendment from invalidat
   assert.equal(transaction.updates.length, 0);
 });
 
-test("TC-309 line unable-to-fulfil decision requires a reason and records the actor and time", async () => {
+test("TC-1279 line unable-to-fulfil decision requires a reason and records the actor and time", async () => {
   const { actions, request, transaction } = fixture();
   await assert.rejects(actions.resolveLine({
     eventId: "event-1",
@@ -142,7 +142,7 @@ test("TC-309 line unable-to-fulfil decision requires a reason and records the ac
   assert.equal(transaction.created[0].data.actor_id, "tech-1");
 });
 
-test("TC-310 request stays Pending until every line is reserved or resolved", async () => {
+test("TC-1280 request stays Pending until every line is reserved or resolved", async () => {
   const { actions, request } = fixture({
     lines: [
       { equipment_type: "AUDIO", quantity: 2, fulfillment_status: "RESERVED" },
@@ -168,12 +168,12 @@ test("TC-310 request stays Pending until every line is reserved or resolved", as
   assert.equal(request.status, "ARRANGED");
 });
 
-// J6 / SCRUM-155 AC3 — TC-314 – TC-316 in docs/test-cases.md.
+// J6 / SCRUM-155 AC3.
 const notices = (transaction) => transaction.created
   .filter((item) => item.reference.collectionName === "notifications")
   .map((item) => item.data);
 
-test("TC-314 a line marked unable to be fulfilled tells the event's coordinator why", async () => {
+test("TC-2207 a line marked unable to be fulfilled tells the event's coordinator why", async () => {
   const { actions, transaction } = fixture({
     lines: [{ equipment_type: "AUDIO", quantity: 2 }, { equipment_type: "VISUAL", quantity: 1 }]
   });
@@ -191,7 +191,7 @@ test("TC-314 a line marked unable to be fulfilled tells the event's coordinator 
   assert.match(notice.message, /Q4 Partner Summit: Technical Support cannot fulfil 1 × visual\. Reason: Projector under repair\./);
 });
 
-test("TC-315 resolving the last open line also tells the coordinator the request is arranged", async () => {
+test("TC-2208 resolving the last open line also tells the coordinator the request is arranged", async () => {
   const { actions, transaction } = fixture({
     lines: [
       { equipment_type: "AUDIO", quantity: 2, fulfillment_status: "RESERVED" },
@@ -205,7 +205,7 @@ test("TC-315 resolving the last open line also tells the coordinator the request
     "Q4 Partner Summit: some of your equipment is reserved. Reserved: 2 × audio. 1 line was unable to be fulfilled.");
 });
 
-test("TC-316 with no coordinator on the event the decision still lands and nobody is notified", async () => {
+test("TC-2209 with no coordinator on the event the decision still lands and nobody is notified", async () => {
   const { actions, request, transaction } = fixture({ event: { name: "Unassigned" } });
   await actions.resolveLine({ eventId: "event-1", lineIndex: 0, reason: "No compatible unit.", userId: "tech-1" });
 
@@ -213,8 +213,8 @@ test("TC-316 with no coordinator on the event the decision still lands and nobod
   assert.equal(notices(transaction).length, 0);
 });
 
-// J6 / SCRUM-155 AC3 — TC-331 – TC-333 in docs/test-cases.md.
-test("TC-331 an amendment is not an outcome, so the coordinator is not notified", async () => {
+// J6 / SCRUM-155 AC3.
+test("TC-2210 an amendment is not an outcome, so the coordinator is not notified", async () => {
   const { actions, transaction } = fixture();
   await actions.amendLine({
     eventId: "event-1", lineIndex: 0, equipmentType: "VISUAL", quantity: 1,
@@ -224,7 +224,7 @@ test("TC-331 an amendment is not an outcome, so the coordinator is not notified"
   assert.equal(notices(transaction).length, 0);
 });
 
-test("TC-332 a refused resolution writes no notification", async () => {
+test("TC-2211 a refused resolution writes no notification", async () => {
   const refusals = [
     [{ }, { reason: " " }, /reason is required/i],
     [{ status: "ARRANGED" }, {}, /Only Pending/],
@@ -242,7 +242,7 @@ test("TC-332 a refused resolution writes no notification", async () => {
   }
 });
 
-test("TC-333 several refused lines are counted in the plural when the request is arranged", async () => {
+test("TC-2212 several refused lines are counted in the plural when the request is arranged", async () => {
   const { actions, transaction } = fixture({
     lines: [
       { equipment_type: "VISUAL", quantity: 1, fulfillment_status: "RESOLVED" },

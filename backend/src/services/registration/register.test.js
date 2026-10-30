@@ -58,7 +58,7 @@ const refusedWith = async (promise, statusCode, reason, message) => {
 
 // ---- AC2, AC7: a place is taken and the count goes down ---------------------------
 
-test("TC-573 H3 AC2 an attendee registers for an open event with a place free", async () => {
+test("TC-1494 H3 AC2 an attendee registers for an open event with a place free", async () => {
   const { firestore, register } = setup();
   const result = await register();
 
@@ -83,19 +83,19 @@ test("TC-573 H3 AC2 an attendee registers for an open event with a place free", 
   assert.equal(result.registration.status, "REGISTERED");
 });
 
-test("TC-574 H3 the record id is one per attendee and event", () => {
+test("TC-1495 H3 the record id is one per attendee and event", () => {
   assert.equal(registrationIdFor("e1", "attendee-1"), "e1_attendee-1");
   assert.notEqual(registrationIdFor("e1", "attendee-1"), registrationIdFor("e2", "attendee-1"));
 });
 
-test("TC-575 H3 AC7 each registration reduces the places left by one", async () => {
+test("TC-1496 H3 AC7 each registration reduces the places left by one", async () => {
   const { register } = setup();
   assert.equal((await register("a1")).event.remaining_places, 2);
   assert.equal((await register("a2")).event.remaining_places, 1);
   assert.equal((await register("a3")).event.remaining_places, 0);
 });
 
-test("TC-576 H3 AC7 only Registered places count; withdrawn, waitlisted and cancelled do not", async () => {
+test("TC-1497 H3 AC7 only Registered places count; withdrawn, waitlisted and cancelled do not", async () => {
   const { register } = setup({
     registrations: {
       r1: registered("e1", "x1"),
@@ -110,7 +110,7 @@ test("TC-576 H3 AC7 only Registered places count; withdrawn, waitlisted and canc
   assert.equal(result.event.remaining_places, 1);
 });
 
-test("TC-577 H3 the count, the duplicate check and the write are one transaction", async () => {
+test("TC-1498 H3 the count, the duplicate check and the write are one transaction", async () => {
   const { firestore, register } = setup();
   await register();
   assert.equal(firestore.log.transactions, 1);
@@ -122,7 +122,7 @@ test("TC-577 H3 the count, the duplicate check and the write are one transaction
 
 // ---- AC3, AC4: confirmation and the event's details -------------------------------
 
-test("TC-578 H3 AC3 AC4 the reply confirms the registration and carries the event's public details", async () => {
+test("TC-1499 H3 AC3 AC4 the reply confirms the registration and carries the event's public details", async () => {
   const { register } = setup();
   const result = await register();
   assert.deepEqual(result.event, {
@@ -145,7 +145,7 @@ test("TC-578 H3 AC3 AC4 the reply confirms the registration and carries the even
 
 // ---- AC5: full ------------------------------------------------------------------
 
-test("TC-579 H3 AC5 a full event is refused as full, and nothing is written", async () => {
+test("TC-1500 H3 AC5 a full event is refused as full, and nothing is written", async () => {
   const { firestore, register } = setup({
     registrations: { r1: registered("e1", "x1"), r2: registered("e1", "x2"), r3: registered("e1", "x3") }
   });
@@ -153,7 +153,7 @@ test("TC-579 H3 AC5 a full event is refused as full, and nothing is written", as
   assert.deepEqual(firestore.log.writes, []);
 });
 
-test("TC-579 H3 AC5 the last place goes to the first; the next attendee is told it is full", async () => {
+test("TC-1501 H3 AC5 the last place goes to the first; the next attendee is told it is full", async () => {
   const { register } = setup({ registrations: { r1: registered("e1", "x1"), r2: registered("e1", "x2") } });
   await register("a1");
   await refusedWith(register("a2"), 409, "full");
@@ -161,7 +161,7 @@ test("TC-579 H3 AC5 the last place goes to the first; the next attendee is told 
 
 // ---- AC8: no duplicate ----------------------------------------------------------
 
-test("TC-580 H3 AC8 an attendee already registered is refused, and nothing is written", async () => {
+test("TC-1502 H3 AC8 an attendee already registered is refused, and nothing is written", async () => {
   const { firestore, register } = setup();
   await register();
   await refusedWith(register(), 409, "already_registered", /already registered/i);
@@ -171,20 +171,20 @@ test("TC-580 H3 AC8 an attendee already registered is refused, and nothing is wr
   ]);
 });
 
-test("TC-580 H3 AC8 a registration under an older record id still counts as a duplicate", async () => {
+test("TC-1503 H3 AC8 a registration under an older record id still counts as a duplicate", async () => {
   const { firestore, register } = setup({ registrations: { "e1-attendee-1-MOCKDATA": registered("e1", "attendee-1") } });
   await refusedWith(register(), 409, "already_registered");
   assert.deepEqual(firestore.log.writes, []);
 });
 
-test("TC-581 H3 AC8 a duplicate is refused even when the event is also full", async () => {
+test("TC-1504 H3 AC8 a duplicate is refused even when the event is also full", async () => {
   const { register } = setup({
     registrations: { "e1_attendee-1": registered("e1", "attendee-1"), r2: registered("e1", "x2"), r3: registered("e1", "x3") }
   });
   await refusedWith(register(), 409, "already_registered");
 });
 
-test("TC-582 H3 an attendee who withdrew may register again, into the same record", async () => {
+test("TC-1505 H3 an attendee who withdrew may register again, into the same record", async () => {
   const { firestore, register } = setup({
     registrations: { "e1_attendee-1": { ...registered("e1", "attendee-1", "WITHDRAWN"), withdrawn_at: "earlier" } }
   });
@@ -195,19 +195,19 @@ test("TC-582 H3 an attendee who withdrew may register again, into the same recor
 
 // ---- AC6 and H1 AC4: outside the window, or not registrable at all ---------------
 
-test("TC-583 H3 AC6 H1 AC4 registration after the window has closed is refused, and nothing is written", async () => {
+test("TC-1506 H3 AC6 H1 AC4 registration after the window has closed is refused, and nothing is written", async () => {
   const { firestore, register } = setup({ eventChanges: { registration_close_date: "2026-11-04" } });
   await refusedWith(register(), 409, "closed", /registration has closed/i);
   assert.deepEqual(firestore.log.writes, []);
 });
 
-test("TC-584 H1 AC4 registration before the window opens is refused, and nothing is written", async () => {
+test("TC-1321 H1 AC4 registration before the window opens is refused, and nothing is written", async () => {
   const { firestore, register } = setup({ eventChanges: { registration_open_date: "2026-11-06" } });
   await refusedWith(register(), 409, "not_open_yet", /not open yet/i);
   assert.deepEqual(firestore.log.writes, []);
 });
 
-test("TC-585 H1 AC4 the window opens at its opening minute and closes at its closing minute, by the server clock", async () => {
+test("TC-1322 H1 AC4 the window opens at its opening minute and closes at its closing minute, by the server clock", async () => {
   const at = (iso) => createAttendeeRegistration({
     firestore: fakeFirestore({ events: { e1: event() }, registrations: {} }),
     serverTimestamp: () => STAMP,
@@ -219,14 +219,14 @@ test("TC-585 H1 AC4 the window opens at its opening minute and closes at its clo
   await refusedWith(at("2026-11-10T17:00:00+08:00"), 409, "closed");
 });
 
-test("TC-586 H1 AC4 an event with no window set is refused as not open", async () => {
+test("TC-1323 H1 AC4 an event with no window set is refused as not open", async () => {
   const { firestore, register } = setup({ eventChanges: { registration_open_date: null, registration_close_date: null } });
   await refusedWith(register(), 409, "not_open_yet");
   assert.deepEqual(firestore.log.writes, []);
 });
 
 for (const status of ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "COMPLETED", "CANCELLED", "REJECTED"]) {
-  test(`TC-587 H1 AC4 an event in ${status} takes no registration, even inside its window`, async () => {
+  test(`TC-1324 H1 AC4 an event in ${status} takes no registration, even inside its window`, async () => {
     const { firestore, register } = setup({ eventChanges: { status } });
     await refusedWith(register(), 409, "status");
     assert.deepEqual(firestore.log.writes, []);
@@ -234,25 +234,25 @@ for (const status of ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "COMPLETED", "CANCEL
 }
 
 for (const status of ["APPROVED", "PLANNING", "SAFETY_REVIEW", "CONFIRMED"]) {
-  test(`TC-587 H1 AC4 an event in ${status} takes registrations inside its window`, async () => {
+  test(`TC-1325 H1 AC4 an event in ${status} takes registrations inside its window`, async () => {
     const { register } = setup({ eventChanges: { status } });
     assert.equal((await register()).registration.status, "REGISTERED");
   });
 }
 
-test("TC-588 H1 AC4 an event that does not use registration is refused", async () => {
+test("TC-1326 H1 AC4 an event that does not use registration is refused", async () => {
   const { firestore, register } = setup({ eventChanges: { registration_required: false } });
   await refusedWith(register(), 409, "not_enabled", /does not use attendee registration/i);
   assert.deepEqual(firestore.log.writes, []);
 });
 
-test("TC-589 H3 an event without a usable capacity is refused, since no place can be counted", async () => {
+test("TC-1507 H3 an event without a usable capacity is refused, since no place can be counted", async () => {
   const { firestore, register } = setup({ eventChanges: { registration_capacity: null } });
   await refusedWith(register(), 409, "no_capacity");
   assert.deepEqual(firestore.log.writes, []);
 });
 
-test("TC-590 H3 an event that does not exist is refused as not found", async () => {
+test("TC-1508 H3 an event that does not exist is refused as not found", async () => {
   const { firestore, register } = setup();
   await refusedWith(register("attendee-1", "missing"), 404, "not_found");
   assert.deepEqual(firestore.log.writes, []);
@@ -291,7 +291,7 @@ const routeStore = (registrations = {}) => fakeFirestore({
   registrations
 });
 
-test("TC-591 H3 AC2 AC3 AC4 POST register answers 201 with the registration and the event's details, venues included", async () => {
+test("TC-1509 H3 AC2 AC3 AC4 POST register answers 201 with the registration and the event's details, venues included", async () => {
   const firestore = routeStore();
   const { status, body } = await call({ firestore });
   assert.equal(status, 201);
@@ -300,7 +300,7 @@ test("TC-591 H3 AC2 AC3 AC4 POST register answers 201 with the registration and 
   assert.equal(body.event.remaining_places, 2);
 });
 
-test("TC-592 H3 AC5 AC8 a refusal is answered with its reason and message", async () => {
+test("TC-1510 H3 AC5 AC8 a refusal is answered with its reason and message", async () => {
   const firestore = routeStore({ "e1_attendee-1": registered("e1", "attendee-1") });
   const { status, body } = await call({ firestore });
   assert.equal(status, 409);
@@ -308,7 +308,7 @@ test("TC-592 H3 AC5 AC8 a refusal is answered with its reason and message", asyn
   assert.match(body.error, /already registered/i);
 });
 
-test("TC-593 H3 only a signed-in Attendee may register; nothing is written otherwise", async () => {
+test("TC-1511 H3 only a signed-in Attendee may register; nothing is written otherwise", async () => {
   const firestore = routeStore();
   assert.equal((await call({ firestore, authorization: null })).status, 401);
   assert.equal((await call({ firestore, authorization: "Bearer junk" })).status, 401);
@@ -319,7 +319,7 @@ test("TC-593 H3 only a signed-in Attendee may register; nothing is written other
   assert.deepEqual(firestore.log.writes, []);
 });
 
-test("TC-594 H3 AC8 the open-events list tells the attendee which events they are already registered for", async () => {
+test("TC-1512 H3 AC8 the open-events list tells the attendee which events they are already registered for", async () => {
   const firestore = fakeFirestore({
     users: { "attendee-1": { role: "ATTENDEE" } },
     events: { e1: event(), e2: event({ name: "Second", event_date: "2026-11-13" }) },
