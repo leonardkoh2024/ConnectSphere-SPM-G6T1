@@ -1627,6 +1627,31 @@ The request is written to `change_requests` as **Pending** (AC4). The same commi
 | TC-782 | The header offers Request a change only on the organiser's own event | Another organiser's event in Planning | Open the event | No Request a change (statuses covered by TC-765) | As expected | Pass | AC1 |
 | TC-783 | The change request notice has its own inbox label | — | notificationTypeLabel('CHANGE_REQUESTED') | "Change requested" | As expected | Pass | AC4 |
 
+## I2 / SCRUM-148 — Decide on a requested change
+
+**Scope:** the event's current coordinator opens **Change requests**, picks a Pending request and presses **Review change**. The review sets each field's current value beside the proposed one, flags values that moved since the request, and lists every arrangement affected: venue bookings, equipment reservations and registration records (AC1). **Decline change** needs a reason (AC2). **Accept change** goes through the D1/D2 edit (`reviewApi.saveEventEdit`) so the new values, the old values (`applied_changes`), the deciding coordinator and the time are written in one transaction, and the affected arrangements are re-requested, never auto-revoked (AC3). The organiser's Change requests list and notifications show the decision and its reason (AC4). Accept is available only while the event is Approved, Planning or Confirmed, the statuses in which `firestore.rules` lets a coordinator edit an event; Decline always works. **Session 3 question:** should a request on a Submitted, Under Review or Safety Review event be acceptable? `firestore.rules` is not run against an emulator; TC-801 – TC-804 read its text.
+
+**AC coverage:** AC1 — TC-805, TC-806, TC-810. AC2 — TC-802, TC-807, TC-811. AC3 — TC-803, TC-808, TC-812, TC-813. AC4 — TC-809, TC-814. Guard — TC-801, TC-804.
+
+**Test cases — `changeRequests.test.js`, `ChangeRequestDecisionsScreen.test.js`, `firestoreRules.test.js`, `Workspace.test.js`**
+
+| Test Case ID | Test Scenario | Pre-Condition | Test Steps | Expected Result | Actual Result | Pass / Fail / Not Executed / Block | Remarks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| TC-801 | Only the event's current coordinator decides, once, in their own name | — | Read the change_requests update rule | Coordinator role; Pending; currentCoordinator; decided_by == uid; decided_at == request.time | As expected | Pass | Rules · guard |
+| TC-802 | A decline needs a non-empty reason and a history row | — | Read the update rule | DECLINED; trimmed reason; CHANGE_REQUEST_DECLINED row | As expected | Pass | Rules · AC2 |
+| TC-803 | An acceptance records the old values and commits with the event update | — | Read the update rule | ACCEPTED; applied_changes map; history row; event updated_at == request.time | As expected | Pass | Rules · AC3 |
+| TC-804 | Only the decision fields change | — | Read the update rule | hasOnly the decision keys | As expected | Pass | Rules · guard |
+| TC-805 | Attendance reaches venue, equipment and registrations | Impact with one booking, one reservation, 3 registrations | affectedArrangements | Three sections, each listing what is held | As expected | Pass | AC1 |
+| TC-806 | A field reaches only the arrangements it touches | — | affectedArrangements for layout, location, name | Venue; venue + registrations; none | As expected | Pass | AC1 |
+| TC-807 | Declining needs a reason; applying needs an editable status | — | declineReasonProblem; canApplyChange | Blank refused; Approved, Planning, Confirmed only | As expected | Pass | AC2 |
+| TC-808 | New values go over the form values | — | valuesWithChanges | Changed fields replaced; switches follow lists; input untouched | As expected | Pass | AC3 |
+| TC-809 | The organiser's notice carries decision and reason | — | changeDecisionMessage | Declined with reason; accepted and applied | As expected | Pass | AC4 |
+| TC-810 | Current beside proposed, with every affected arrangement | Pending request, event in Planning | Review change | 120 / 150 row; booking, no-equipment note, registrations | As expected | Pass | AC1 |
+| TC-811 | Declining without a reason is refused | Review open | Decline empty; then with a reason | Alert, no call; then declineChangeRequest called | As expected | Pass | AC2 |
+| TC-812 | Accepting applies the values and tells the coordinator | Review open | Accept change | acceptChangeRequest called; toast | As expected | Pass | AC3 |
+| TC-813 | An event that cannot take edits yet can only be declined | Event Submitted | Review change | Accept disabled with a note; Decline enabled | As expected | Pass | AC3 |
+| TC-814 | The organiser sees the decision, when and why | Declined request | Render the record | Declined pill; Decided; Decision reason | As expected | Pass | AC4 |
+
 ## B10 — Filter My events, and see the venues secured
 
 **Scope:** My events gains a **Status** filter (All events, or any one of the ten statuses in workflow order) and a **Search** on the event name or reference, case-insensitive, as My registrations has for attendees. A filter that matches nothing says so. The list is still loaded once; filtering happens in the browser.

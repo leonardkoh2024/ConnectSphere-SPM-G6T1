@@ -2081,9 +2081,23 @@ a.cs-btn-ghost:hover {
   padding-top: 16px;
   border-top: 1px solid var(--cs-line);
 }
+.cs-change-record > :nth-child(n+4) { grid-column: 1 / -1; }
 .cs-attention { margin: 24px 0 0; padding: 16px; border-radius: var(--cs-radius-l); background: var(--cs-danger-faded); color: var(--cs-danger); }
 .cs-review-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
 .cs-action-box { margin-top: 20px; }
+
+/* ---------- deciding a change request (I2) ---------- */
+
+/* Detail, current value and proposed value side by side. */
+.cs-compare { width: 100%; border-collapse: collapse; text-align: left; }
+.cs-compare th, .cs-compare td { padding: 10px 12px; border-top: 1px solid var(--cs-line); vertical-align: top; }
+.cs-compare thead th { border-top: 0; color: var(--cs-muted); font-size: 13px; font-weight: 600; }
+.cs-compare tbody th { font-weight: 600; }
+.cs-compare td.cs-compare-new { font-weight: 700; }
+.cs-compare-drift { display: block; margin-top: 4px; color: var(--cs-muted); font-size: 13px; font-weight: 400; }
+.cs-affected { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.cs-affected h4 { margin: 0 0 4px; font-size: 14px; }
+.cs-affected ul { margin: 4px 0 0; padding-left: 20px; }
 
 .cs-filter-chips {
   display: flex;

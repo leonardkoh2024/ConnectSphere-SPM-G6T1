@@ -19,6 +19,7 @@ import VenueCatalogue from "../features/venues/VenueCatalogue";
 import VenueAvailabilityCalendar from "../features/venues/VenueAvailability";
 import VenueBookings from "../features/venues/VenueBookings";
 import ChangeRequestsScreen from "../features/changeRequests/ChangeRequestsScreen";
+import ChangeRequestDecisionsScreen from "../features/changeRequests/ChangeRequestDecisionsScreen";
 import { canRequestChange } from "../domain/changeRequests";
 import VenueBookingQueue from "../features/venues/VenueBookingQueue";
 import VenueSearch from "../features/venues/VenueSearch";
@@ -168,7 +169,7 @@ export default function Workspace({ user, role }) {
   const viewEvent = (event, notification) => {
     const target = notificationViewScreen(role, notification);
     if (target === "New event request") setSelectedDraft(event);
-    goTo(target, { eventId: event.id, bookingId: notification?.booking_id });
+    goTo(target, target === "Change requests" ? {} : { eventId: event.id, bookingId: notification?.booking_id });
   };
 
   // Navigation from inside a page remembers where it started, so the next screen
@@ -193,6 +194,7 @@ export default function Workspace({ user, role }) {
   else if (role === ROLES.ORGANISER && screen.name === "New event request") contents = <>{head(selectedDraft ? "Event request" : screen.name, "Save a draft any time, or submit when ready.", requestChange)}<OrganiserEventDetail user={user} event={selectedDraft} onNotice={showToast} onSaved={(message, savedDraft) => { showToast(message); setSelectedDraft(savedDraft); if (!savedDraft) chooseScreen("My events"); }} /></>;
   else if (role === ROLES.ORGANISER && screen.name === "My events") contents = <>{head("My events", "Your requests and drafts.", newEventRequest)}<EventList user={user} role={role} headerHosted onCreate={() => { setSelectedDraft(null); goTo("New event request"); }} onEdit={(draft) => { setSelectedDraft(draft); goTo("New event request"); }} onView={(event) => { setSelectedDraft(event); goTo("New event request"); }} onDeleted={(message) => showToast(message)} /></>;
   else if (role === ROLES.ORGANISER && screen.name === "Change requests") contents = <>{head(changeFormOpen ? "New change request" : screen.name, changeFormOpen ? "Propose new values for a submitted event, and say why." : screen.blurb, newChangeRequest)}<ChangeRequestsScreen user={user} creating={changeFormOpen} onCreatingChange={setChangeFormOpen} initialEventId={changeEventId} onNotice={showToast} /></>;
+  else if (role === ROLES.COORDINATOR && screen.name === "Change requests") contents = <>{head(screen.name, screen.blurb)}<ChangeRequestDecisionsScreen user={user} onNotice={showToast} /></>;
   else if (role === ROLES.COORDINATOR && screen.name === "Review queue") contents = <>{head(screen.name, screen.blurb)}<EventReviewScreen queueOnly onNotice={showToast} onBackChange={reportBack} onFindVenues={(event) => goTo("Venue catalogue", { event })} /></>;
   else if (role === ROLES.COORDINATOR && screen.name === "Assigned events") contents = <>{head(screen.name, screen.blurb)}<EventReviewScreen onNotice={showToast} initialEventId={reviewEventId} initialTab={reviewTab} onBackChange={reportBack} onFindVenues={(event) => goTo("Venue catalogue", { event })} /></>;
   else if (role === ROLES.COORDINATOR && screen.name === "Venue catalogue") contents = <>{head(screen.name, searchEvent ? `Shortlist for ${searchEvent.name || searchEvent.reference_no}.` : screen.blurb, viewCalendar)}<VenueSearch event={searchEvent} onBookVenue={(event, venue) => goTo("Venue bookings", { event, venue })} showCalendar={venueCalendarOpen} /></>;

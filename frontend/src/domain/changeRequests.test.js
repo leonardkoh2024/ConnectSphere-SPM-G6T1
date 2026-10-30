@@ -1,8 +1,9 @@
 // I1 / SCRUM-147 — the rules of a change request. TC-765 – TC-771 in docs/test-cases.md.
 
 import {
-  CHANGEABLE_FIELD_NAMES, CHANGE_REQUEST_EVENT_STATUSES, canRequestChange, changeRequestProblems,
-  changeRequestedMessage, changeValueText, currentChangeValues, proposedChanges
+  CHANGEABLE_FIELD_NAMES, CHANGE_REQUEST_EVENT_STATUSES, affectedArrangements, canApplyChange, canRequestChange,
+  changeDecisionMessage, changeRequestProblems, changeRequestedMessage, changeValueText, currentChangeValues,
+  declineReasonProblem, proposedChanges, valuesWithChanges
 } from './changeRequests';
 
 const current = currentChangeValues({
@@ -69,5 +70,51 @@ describe('I1 how a request reads', () => {
   test('TC-771 AC4 the coordinator\'s notice names the event and what is to change', () => {
     expect(changeRequestedMessage({ eventName: 'Harbour Tech Forum', fields: ['expected_attendance', 'event_date'] }))
       .toBe('Harbour Tech Forum has a change request waiting for your decision: expected attendance, date.');
+  });
+});
+
+describe('I2 SCRUM-148 deciding a request', () => {
+  const impact = { venueBookings: [{ id: 'b1', label: 'Grand Hall', status: 'APPROVED' }], equipmentReservations: [{ id: 'r1', label: 'Projector', status: 'RESERVED' }], registrationsCount: 3 };
+
+  test('TC-805 AC1 attendance reaches venue, equipment and registrations, each listing what is held', () => {
+    const sections = affectedArrangements(['expected_attendance'], impact);
+    expect(sections.map((section) => section.key)).toEqual(['venue', 'equipment', 'registrations']);
+    expect(sections[0].items).toEqual(['Grand Hall — APPROVED']);
+    expect(sections[1].items).toEqual(['Projector — RESERVED']);
+    expect(sections[2].items).toEqual(['3 registration records on this event']);
+    expect(sections[0].fields).toEqual(['Expected attendance']);
+  });
+
+  test('TC-806 AC1 a field reaches only the arrangements it touches; a name touches none', () => {
+    expect(affectedArrangements(['required_layout'], impact).map((section) => section.key)).toEqual(['venue']);
+    expect(affectedArrangements(['preferred_location'], impact).map((section) => section.key)).toEqual(['venue', 'registrations']);
+    expect(affectedArrangements(['name', 'purpose'], impact)).toEqual([]);
+    expect(affectedArrangements(['event_date'], {})[0].items).toEqual([]);
+  });
+
+  test('TC-807 AC2 declining needs a reason; applying needs an event that can be edited', () => {
+    expect(declineReasonProblem('')).toBe('Give a reason for declining the change.');
+    expect(declineReasonProblem('   ')).toBe('Give a reason for declining the change.');
+    expect(declineReasonProblem('Venue is full.')).toBeNull();
+    ['APPROVED', 'PLANNING', 'CONFIRMED'].forEach((status) => expect(canApplyChange(status)).toBe(true));
+    ['SUBMITTED', 'UNDER_REVIEW', 'SAFETY_REVIEW', 'CANCELLED'].forEach((status) => expect(canApplyChange(status)).toBe(false));
+  });
+
+  test('TC-808 AC3 the new values go over the form values, and the two switches follow the lists', () => {
+    const base = { name: 'A', expected_attendance: 120, facilities: ['WIFI'], facilities_required: true, accessibility: [], accessibility_notes: '', accessibility_needed: false };
+    const values = valuesWithChanges(base, {
+      expected_attendance: { old_value: 120, new_value: 150 },
+      facilities: { old_value: ['WIFI'], new_value: [] },
+      accessibility_notes: { old_value: '', new_value: 'Step-free access' }
+    });
+    expect(values).toMatchObject({ name: 'A', expected_attendance: 150, facilities: [], facilities_required: false, accessibility_needed: true });
+    expect(base.expected_attendance).toBe(120);
+  });
+
+  test('TC-809 AC4 the organiser\'s notice carries the decision and the reason', () => {
+    expect(changeDecisionMessage({ eventName: 'Harbour Tech Forum', accepted: false, reason: 'Venue is full.' }))
+      .toBe('Harbour Tech Forum: your change request was declined — Venue is full.');
+    expect(changeDecisionMessage({ eventName: 'Harbour Tech Forum', accepted: true, reason: '' }))
+      .toBe('Harbour Tech Forum: your change request was accepted and applied.');
   });
 });

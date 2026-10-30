@@ -1161,9 +1161,40 @@ describe('I1 an organiser raises a change request on their own submitted event',
     expect(create()).toContain("request.resource.data.coordinator_id == changedEvent().get('coordinator_id', null)");
   });
 
-  test('TC-764 it is read by its organiser and the event\'s current coordinator, and nobody may change or delete it yet', () => {
+  test('TC-764 it is read by its organiser and the event\'s current coordinator, and nobody may delete it', () => {
     expect(block().match(/allow get, list: if (.*?);/)[1])
       .toBe('signedIn() && (resource.data.organiser_id == request.auth.uid || canReadEvent(resource.data.event_id))');
-    expect(block()).not.toMatch(/allow[^:]*\b(update|delete|write)\b/);
+    expect(block()).not.toMatch(/allow[^:]*\b(delete|write)\b/);
+  });
+});
+
+describe('I2 SCRUM-148 the coordinator decides a Pending request once, and only as the rules allow', () => {
+  const block = () => matchBlock('change_requests');
+  const update = () => block().match(/allow update: if (.*?); allow /)[1];
+
+  test('TC-801 only the event\'s current coordinator updates it, and only while it is Pending', () => {
+    expect(update()).toContain("hasRole('EVENT_COORDINATOR')");
+    expect(update()).toContain("resource.data.status == 'PENDING'");
+    expect(update()).toContain('currentCoordinator(resource.data.event_id)');
+    expect(update()).toContain('request.resource.data.decided_by == request.auth.uid');
+    expect(update()).toContain('request.resource.data.decided_at == request.time');
+  });
+
+  test('TC-802 a decline needs a non-empty reason and its own history row', () => {
+    expect(update()).toContain("request.resource.data.status == 'DECLINED'");
+    expect(update()).toContain('request.resource.data.decision_reason.trim().size() > 0');
+    expect(update()).toContain("decisionRecorded('CHANGE_REQUEST_DECLINED')");
+  });
+
+  test('TC-803 an acceptance records the old values and commits only with the event update at the same time', () => {
+    expect(update()).toContain("request.resource.data.status == 'ACCEPTED'");
+    expect(update()).toContain('request.resource.data.applied_changes is map');
+    expect(update()).toContain("decisionRecorded('CHANGE_REQUEST_ACCEPTED')");
+    expect(update()).toContain('.data.updated_at == request.time');
+  });
+
+  test('TC-804 nothing but the decision fields may change', () => {
+    expect(update()).toContain("hasOnly(['status', 'decided_by', 'decided_at', 'decision_reason', 'decision_history_id'])");
+    expect(update()).toContain("hasOnly(['status', 'decided_by', 'decided_at', 'decision_reason', 'applied_changes', 'decision_history_id'])");
   });
 });

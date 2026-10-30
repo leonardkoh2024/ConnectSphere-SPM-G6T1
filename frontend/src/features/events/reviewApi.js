@@ -23,6 +23,7 @@ import {
   validateOrdinaryEventValues
 } from "../../domain/ordinaryEventChanges";
 import { equipmentActivity, equipmentArrangements } from "../../domain/eventEquipment";
+import { ACCEPTED, CHANGE_ACCEPTED, CHANGE_REQUEST_COLLECTION, PENDING, changeDecisionMessage } from "../../domain/changeRequests";
 import { REGISTERED_STATUS, capacityReductionNeedsAcknowledgement } from "../../domain/registrationWindow";
 import { attendeeChangeNotices, cancelSafetyReview, cancelUnassignedEvent } from "../../domain/safetyAndNotices";
 
@@ -258,18 +259,9 @@ const detail = async (eventId) => {
   };
 };
 
-const significantChangeImpact = async (eventId) => {
-  const user = requireUser();
-  const [eventSnapshot, profile] = await Promise.all([
-    getDoc(doc(db, "events", eventId)),
-    profileFor(user.uid)
-  ]);
-  if (!eventSnapshot.exists()
-    || profile.role !== ROLES.COORDINATOR
-    || eventSnapshot.data().coordinator_id !== user.uid
-    || !editableEventStatuses.includes(eventSnapshot.data().status)) {
-    throw new Error("Only the current coordinator may review the impact of a significant change to this event.");
-  }
+// The arrangements an event holds now, for the impact warning (D2) and for the coordinator
+// weighing a change request (I2), who may be looking at an event that is not yet editable.
+const arrangementImpact = async (eventId) => {
   const [bookings, reservations, registrations] = await Promise.all([
     getDocs(query(collection(db, "venue_bookings"), where("event_id", "==", eventId))),
     getDocs(query(collection(db, "equipment_reservations"), where("event_id", "==", eventId))),
@@ -299,6 +291,21 @@ const significantChangeImpact = async (eventId) => {
     }),
     registrationsCount: registrations.size
   };
+};
+
+const significantChangeImpact = async (eventId) => {
+  const user = requireUser();
+  const [eventSnapshot, profile] = await Promise.all([
+    getDoc(doc(db, "events", eventId)),
+    profileFor(user.uid)
+  ]);
+  if (!eventSnapshot.exists()
+    || profile.role !== ROLES.COORDINATOR
+    || eventSnapshot.data().coordinator_id !== user.uid
+    || !editableEventStatuses.includes(eventSnapshot.data().status)) {
+    throw new Error("Only the current coordinator may review the impact of a significant change to this event.");
+  }
+  return arrangementImpact(eventId);
 };
 
 // D1 / SCRUM-111 and D2 / SCRUM-112 — one Edit event form, one save. `values` is
@@ -390,7 +397,7 @@ const newCapacityOf = (values, before) => {
 
 const saveEventEdit = async ({
   eventId, before, values, organiser = null, impact = null, acknowledged = false,
-  registeredCount: registered = 0, capacityAcknowledged = false
+  registeredCount: registered = 0, capacityAcknowledged = false, changeRequest = null
 }) => {
   const user = requireUser();
   const ordinaryBefore = ordinaryEventValues(before, organiser);
@@ -461,6 +468,15 @@ const saveEventEdit = async ({
   let saved = 0;
   let significantChangeId = null;
   if (hasOrdinary || hasSignificant) await runTransaction(db, async (tx) => {
+    // I2 AC3 — an accepted change request is closed in this same commit as the values it
+    // applies, so the event can never change without the request recording it, or the reverse.
+    const requestRef = changeRequest ? doc(db, CHANGE_REQUEST_COLLECTION, changeRequest.id) : null;
+    const requestSnapshot = requestRef ? await tx.get(requestRef) : null;
+    if (requestSnapshot && (!requestSnapshot.exists()
+      || requestSnapshot.data().status !== PENDING
+      || requestSnapshot.data().event_id !== eventId)) {
+      throw new Error("This change request has already been decided.");
+    }
     const snapshots = await Promise.all([
       tx.get(eventRef),
       ...(hasSignificant ? [
@@ -605,6 +621,38 @@ const saveEventEdit = async ({
         });
     });
     saved = ordinaryChanges.length + Object.keys(significantChanges).length;
+    if (requestSnapshot) {
+      const requested = requestSnapshot.data().changes || {};
+      const nowValues = { ...significantEventValues(before), ...ordinaryEventValues(event, organiser), ...(hasSignificant ? significantEventValues({
+        ...event, ...requirementSnapshot.data(),
+        facilities: facilityRows.map((item) => item.data().facility_id).filter(Boolean),
+        accessibility: accessibilityRows.map((item) => item.data().accessibility_id).filter(Boolean)
+      }) : {}) };
+      const applied = Object.fromEntries(Object.entries(requested).map(([field, change]) => [field, { old_value: nowValues[field] ?? null, new_value: change.new_value }]));
+      const decisionRef = doc(collection(db, "event_history"));
+      const noticeRef = doc(collection(db, "notifications"));
+      const note = String(changeRequest.reason || "").trim();
+      tx.update(requestRef, {
+        status: ACCEPTED, decided_by: user.uid, decided_at: changedAt,
+        decision_reason: note, applied_changes: applied, decision_history_id: decisionRef.id
+      });
+      tx.set(decisionRef, {
+        ...eventHistoryRecord({
+          historyId: decisionRef.id, eventId, actorId: user.uid, actionType: CHANGE_ACCEPTED, fieldName: "change_request",
+          oldValue: Object.fromEntries(Object.entries(applied).map(([field, change]) => [field, change.old_value])),
+          newValue: Object.fromEntries(Object.entries(applied).map(([field, change]) => [field, change.new_value])),
+          description: note || "Coordinator accepted the change request.", createdAt: changedAt
+        }),
+        change_request_id: changeRequest.id
+      });
+      tx.set(noticeRef, {
+        ...notificationRecord({
+          notificationId: noticeRef.id, userId: event.organiser_id, eventId, type: CHANGE_ACCEPTED,
+          message: changeDecisionMessage({ eventName: event.name || event.reference_no, accepted: true, reason: note }), createdAt: changedAt
+        }),
+        change_request_id: changeRequest.id
+      });
+    }
   });
   const result = { ok: true, changed: saved + (capacityChanged ? 1 : 0) };
   // I3 AC1 AC2 — only after the change is committed, never before: the service reads it.
@@ -1002,5 +1050,5 @@ const leadReassign = async (eventId, coordinatorId) => {
 export const reviewApi = {
   list, detail, openReview, clarify, reject, respond, approve, cancel, cancelUnassigned, complete, notifyCancelledAttendees,
   leadBoard, assign, leadReassign,
-  significantChangeImpact, saveEventEdit, registeredCount, retryRerequest
+  significantChangeImpact, arrangementImpact, saveEventEdit, registeredCount, retryRerequest
 };

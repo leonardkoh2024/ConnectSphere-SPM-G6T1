@@ -6,15 +6,16 @@
 import React, { useEffect, useState } from "react";
 import RecordLead from "../../components/RecordLead";
 import {
-  CHANGE_REQUEST_STATUS_LABELS, changeRequestStatusTone, changeValueText, changeableField
+  ACCEPTED, CHANGE_REQUEST_STATUS_LABELS, DECLINED, changeRequestStatusTone, changeValueText, changeableField
 } from "../../domain/changeRequests";
 import ChangeRequestForm from "./components/ChangeRequestForm";
 import { loadChangeableEvents, loadMyChangeRequests } from "./changeRequestsApi";
 
 const shownTime = (value) => (value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Just now");
 
-function ChangeRequestRecord({ request }) {
+export function ChangeRequestRecord({ request, children = null }) {
   const changes = Object.entries(request.changes || {});
+  const decided = request.status === ACCEPTED || request.status === DECLINED;
   return (
     <article className="cs-record cs-change-record">
       <div className="cs-record-title">
@@ -35,7 +36,10 @@ function ChangeRequestRecord({ request }) {
           </div>
         ))}
         <div className="cs-detail-wide"><dt>Reason</dt><dd>{request.reason}</dd></div>
+        {decided && <div className="cs-detail-wide"><dt>Decided</dt><dd>{shownTime(request.decided_at)}</dd></div>}
+        {decided && request.decision_reason && <div className="cs-detail-wide"><dt>Decision reason</dt><dd>{request.decision_reason}</dd></div>}
       </dl>
+      {children}
     </article>
   );
 }
