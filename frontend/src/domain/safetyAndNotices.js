@@ -9,7 +9,6 @@ const CONFIRMED = "CONFIRMED";
 const CANCELLED = "CANCELLED";
 const SUBMITTED = "SUBMITTED";
 const REVIEW_REQUIRED = "Review required";
-const NOT_RECORDED = "Not recorded";
 const SERVER_TIMESTAMP = "SERVER_TIMESTAMP";
 
 const SAFETY_OFFICER = "SAFETY_OFFICER";
@@ -20,11 +19,6 @@ const TECH_SUPPORT = "TECHNICAL_SUPPORT_STAFF";
 const OUTCOMES = ["APPROVE", "REJECT", "REQUEST_CHANGES"];
 const INACTIVE_BOOKING = new Set(["RELEASED", "REPLACED", "CANCELLED", "EXPIRED", "WITHDRAWN"]);
 const SENDABLE = new Set([PLANNING, APPROVED]);
-
-const text = (value) => {
-  const trimmed = String(value ?? "").trim();
-  return trimmed || NOT_RECORDED;
-};
 
 const activePeople = (people, role) =>
   people.filter((person) => person.role === role && person.active !== false && person.user_id);
@@ -107,21 +101,6 @@ function sendForSafetyCheck({
   };
 }
 
-function passedSafetyCheckAfterPlanning(event, reviews = []) {
-  const since = event?.returned_to_planning_at || "";
-  return reviews.some((review) => review.event_id === event?.event_id
-    && review.outcome === "APPROVE"
-    && String(review.decided_at || "") > String(since));
-}
-
-function confirmEvent({ event, reviews = [] } = {}) {
-  if (!event) return { ok: false, reason: "required" };
-  if (!passedSafetyCheckAfterPlanning(event, reviews)) {
-    return { ok: false, reason: "safety_check_required", event };
-  }
-  return { ok: true, event: { ...event, status: CONFIRMED } };
-}
-
 const waitingSince = (event) => String(event.safety_review_requested_at || event.updated_at || "");
 
 function safetyReviewQueue(events = []) {
@@ -135,34 +114,6 @@ function safetyReviewQueue(events = []) {
       venues: event.venues || [],
       expected_attendance: event.expected_attendance ?? null
     }));
-}
-
-function safetyReviewFacts({ event, bookings = [], venues = [], equipment = [], reviews = [] } = {}) {
-  const venueById = new Map(venues.map((venue) => [venue.venue_id, venue]));
-  return {
-    bookings: activeBookings(bookings).filter((booking) => booking.event_id === event.event_id).map((booking) => {
-      const venue = venueById.get(booking.venue_id) || {};
-      const attendance = Number(event.expected_attendance) > 0 ? Number(event.expected_attendance) : null;
-      const capacity = Number(venue.max_capacity) > 0 ? Number(venue.max_capacity) : null;
-      return {
-        booking_id: booking.booking_id,
-        attendance,
-        capacity,
-        required_layout: text(booking.required_layout),
-        emergency_access: text(venue.emergency_access),
-        restrictions: text(venue.restrictions)
-      };
-    }),
-    accessibility: text(event.accessibility_requirements),
-    reserved_equipment: equipment
-      .filter((item) => item.event_id === event.event_id && String(item.status || "").toUpperCase() === "RESERVED")
-      .map((item) => ({ equipment_id: item.equipment_id, label: item.label || item.equipment_id })),
-    equipment_placement: text(event.equipment_placement),
-    crowd_movement: text(event.crowd_movement),
-    previous_outcomes: reviews
-      .filter((review) => review.event_id === event.event_id)
-      .map((review) => ({ outcome: review.outcome, comment: review.comment || "", decided_at: review.decided_at || null }))
-  };
 }
 
 function flaggedScope(outcome, marked) {
@@ -301,16 +252,6 @@ function attendeeChangeNotices({ event, attendees = [], change } = {}) {
     }));
 }
 
-const unreadCount = (notifications = []) => notifications.filter((item) => item.is_read !== true).length;
-
-function markNotificationRead(notifications = [], notificationId) {
-  const next = notifications.map((item) => (
-    item.notification_id === notificationId ? { ...item, is_read: true } : item
-  ));
-  const unread = unreadCount(next);
-  return { notifications: next, unread, badge: unread > 0 ? String(unread) : null };
-}
-
 function unassignedQueue(events = []) {
   return events.filter((event) => event.status === SUBMITTED && !event.coordinator_id);
 }
@@ -401,17 +342,11 @@ function openSafetyReviewNotice({ event } = {}) {
 
 module.exports = {
   REVIEW_REQUIRED,
-  NOT_RECORDED,
   outstandingForSafetyCheck,
   sendForSafetyCheck,
-  passedSafetyCheckAfterPlanning,
-  confirmEvent,
   safetyReviewQueue,
-  safetyReviewFacts,
   recordSafetyOutcome,
   attendeeChangeNotices,
-  unreadCount,
-  markNotificationRead,
   unassignedQueue,
   eventEnteredUnassignedQueue,
   openLeadAssignmentNotice,
