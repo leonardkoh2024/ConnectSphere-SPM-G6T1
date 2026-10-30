@@ -346,6 +346,38 @@ test('L1 SCRUM-187 sending a ready event moves it to Safety Review and notifies 
   expect(written('notifications')[0].data.type).toBe('SAFETY_REVIEW_WAITING');
 });
 
+// Equipment lines carry the equipment service's `fulfillment_status`, not `status`.
+const sendWithEquipmentLines = (lines) => {
+  mockAuth.currentUser = { uid: 'COORD-1' };
+  mockGetDoc.mockImplementation((reference) => {
+    if (reference.path === 'events/e1') return Promise.resolve(snapshot('e1', { ...EVENT, status: 'PLANNING', coordinator_id: 'COORD-1' }));
+    if (reference.path === 'equipment_requests/e1') return Promise.resolve(snapshot('e1', { event_id: 'e1', status: 'ARRANGED', lines }));
+    return Promise.resolve(snapshot(reference.id, undefined));
+  });
+  mockGetDocs.mockImplementation((reference) => {
+    if (reference.path === 'venue_bookings') return Promise.resolve(rows([['VB-1', { event_id: 'e1', venue_name: 'Harbour Hall', status: 'APPROVED' }]]));
+    if (reference.path === 'users') return Promise.resolve(rows([['SO-1', { role: 'SAFETY_OFFICER', is_active: true }]]));
+    return Promise.resolve(rows([]));
+  });
+  mockTransactionDocuments.set('events/e1', snapshot('e1', { ...EVENT, status: 'PLANNING', coordinator_id: 'COORD-1' }));
+  return sendEventForSafetyCheck('e1');
+};
+
+test('L1 SCRUM-187 an event whose equipment lines are all reserved can be sent', async () => {
+  await expect(sendWithEquipmentLines([
+    { equipment_type: 'AUDIO', quantity: 2, fulfillment_status: 'RESERVED' },
+    { equipment_type: 'VISUAL', quantity: 1, fulfillment_status: 'RESERVED' }
+  ])).resolves.toEqual({ ok: true, status: 'SAFETY_REVIEW' });
+});
+
+test.each(['PENDING', 'RESOLVED', 'RELEASED'])('L1 SCRUM-187 an equipment line that is %s is outstanding and nothing is written', async (fulfillmentStatus) => {
+  await expect(sendWithEquipmentLines([
+    { equipment_type: 'AUDIO', quantity: 2, fulfillment_status: 'RESERVED' },
+    { equipment_type: 'VISUAL', quantity: 1, fulfillment_status: fulfillmentStatus }
+  ])).rejects.toThrow(/Outstanding: VISUAL/);
+  expect(mockTransactionUpdate).not.toHaveBeenCalled();
+});
+
 test('L1 SCRUM-187 a pending booking is named and nothing is written', async () => {
   mockAuth.currentUser = { uid: 'COORD-1' };
   mockGetDoc.mockImplementation((reference) => Promise.resolve(snapshot(reference.id, reference.path === 'events/e1'
