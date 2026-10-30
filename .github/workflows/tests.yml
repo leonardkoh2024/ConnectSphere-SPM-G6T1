@@ -24,17 +24,17 @@ jobs:
       - name: Provide env file
         run: cp .env.example .env
 
+      # Unit and functional tests, failing below 100% coverage. Bootstrap files (index.js,
+      # lib/firebase.js, sandbox/) are excluded in frontend/package.json's jest config.
       - name: Frontend tests
-        run: npm test --workspace frontend -- --watchAll=false
+        run: npm run test:coverage --workspace frontend
         env:
           CI: true
 
       # Unit tests only. Emulator tests are named *.integration.js, so `node --test` skips them.
+      # The coverage thresholds need Node 22.8 or later.
       - name: Backend tests
-        run: npm test --workspace backend
-
-      - name: Functional tests
-        run: node --test test.js
+        run: npm run test:coverage --workspace backend
 
       # The Firestore emulator runs on Java.
       - uses: actions/setup-java@v4
