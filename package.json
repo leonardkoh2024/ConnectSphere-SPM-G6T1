@@ -13,6 +13,7 @@
     "start:backend": "dotenv -e .env -- npm start --workspace backend",
     "build": "dotenv -e .env -- npm run build --workspace frontend",
     "test": "dotenv -e .env -- npm test --workspace frontend",
+    "lint": "npm run lint --workspace frontend",
     "test:backend": "dotenv -e .env -- npm test --workspace backend",
     "test:integration": "firebase emulators:exec --only firestore --project demo-connectsphere \"npm run test:integration --workspace backend\""
   },

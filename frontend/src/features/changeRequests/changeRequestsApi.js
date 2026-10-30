@@ -10,8 +10,8 @@ import {
   changeRequestedMessage, currentChangeValues, proposedChanges
 } from "../../domain/changeRequests";
 import { notificationRecord } from "../../domain/eventReviewRecords";
+import { asIso } from "../../lib/apiSupport";
 
-const asIso = (value) => value?.toDate?.().toISOString?.() || value || null;
 
 const byNewest = (a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""));
 

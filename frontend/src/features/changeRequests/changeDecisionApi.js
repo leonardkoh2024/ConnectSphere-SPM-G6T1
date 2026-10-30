@@ -5,7 +5,7 @@
 // event's current coordinator decide, once, and only with a matching history row.
 
 import { collection, doc, getDocs, query, serverTimestamp, where, writeBatch } from "firebase/firestore";
-import { auth, db } from "../../lib/firebase";
+import { db } from "../../lib/firebase";
 import {
   CHANGE_DECLINED, CHANGE_REQUEST_COLLECTION, CHANGE_REQUEST_EVENT_STATUSES, DECLINED, PENDING,
   changeDecisionMessage, currentChangeValues, declineReasonProblem, valuesWithChanges
@@ -14,13 +14,8 @@ import { eventHistoryRecord, notificationRecord } from "../../domain/eventReview
 import { ordinaryEventValues } from "../../domain/ordinaryEventChanges";
 import { significantEventValues } from "../../domain/significantEventChanges";
 import { reviewApi } from "../events/reviewApi";
+import { asIso, requireUser } from "../../lib/apiSupport";
 
-const asIso = (value) => value?.toDate?.().toISOString?.() || value || null;
-
-const requireUser = () => {
-  if (!auth.currentUser) throw new Error("Please sign in again.");
-  return auth.currentUser;
-};
 
 // Pending first, then the decided ones, each newest first.
 const pendingFirst = (a, b) => (Number(b.status === PENDING) - Number(a.status === PENDING))

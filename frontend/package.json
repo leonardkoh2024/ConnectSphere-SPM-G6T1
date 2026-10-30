@@ -20,6 +20,7 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "test:coverage": "react-scripts test --watchAll=false --coverage",
+    "lint": "eslint --max-warnings 0 src",
     "eject": "react-scripts eject"
   },
   "jest": {
@@ -47,6 +48,42 @@
     "overrides": [
       {
         "files": [
+          "src/**/*.js"
+        ],
+        "excludedFiles": [
+          "**/*Api.js",
+          "**/*ApiSupport.js",
+          "**/*.test.js",
+          "src/lib/firebase.js",
+          "src/app/App.js",
+          "src/app/Workspace.js",
+          "src/sandbox/**"
+        ],
+        "rules": {
+          "no-restricted-imports": [
+            "error",
+            {
+              "patterns": [
+                {
+                  "group": [
+                    "firebase/*"
+                  ],
+                  "message": "Screens reach data through their feature's *Api.js module (docs/adr/0002-frontend-data-access.md)."
+                }
+              ]
+            }
+          ],
+          "no-restricted-globals": [
+            "error",
+            {
+              "name": "fetch",
+              "message": "Screens reach data through their feature's *Api.js module (docs/adr/0002-frontend-data-access.md)."
+            }
+          ]
+        }
+      },
+      {
+        "files": [
           "**/*.test.js",
           "**/*.test.jsx",
           "**/*.spec.js",
@@ -54,6 +91,9 @@
         ],
         "env": {
           "jest": true
+        },
+        "rules": {
+          "import/first": "off"
         }
       }
     ]

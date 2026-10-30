@@ -451,9 +451,6 @@ describe('notifications are only ever addressed to people related to the event',
   // J6 split the rule in two: a venue booking outcome takes the decider's clause
   // and nothing else; every other notification takes the clauses below.
   const VENUE_OUTCOMES = "['VENUE_BOOKING_APPROVED', 'VENUE_BOOKING_REJECTED']";
-  // F15 — a hold's notice (VENUE_BOOKING_HELD) has its own clause too, so the
-  // ordinary clauses are closed to it as well.
-  const VENUE_NOTICES = "['VENUE_BOOKING_APPROVED', 'VENUE_BOOKING_REJECTED', 'VENUE_BOOKING_HELD']";
   const ORDINARY = "request.resource.data.get('type', '') != 'EVENT_CANCELLED' && (";
   const DECIDED = `(request.resource.data.get('type', '') in ${VENUE_OUTCOMES}`;
   const ordinary = () => {
