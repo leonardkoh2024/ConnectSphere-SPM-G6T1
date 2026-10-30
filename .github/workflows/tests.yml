@@ -20,8 +20,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # The same react-app rules the build applies, but any warning fails it too, so a
-      # lint problem stops the PR instead of waiting for someone to run `npm run build`.
+      # Both workspaces, and any warning fails it. The frontend uses the react-app rules the
+      # build applies, so a lint problem stops the PR instead of waiting for `npm run build`;
+      # the backend uses eslint:recommended for Node.
       - name: Lint
         run: npm run lint
 
