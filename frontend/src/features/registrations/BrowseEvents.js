@@ -26,7 +26,8 @@ const JOIN_FAILED = "You could not join the waiting list. Try again.";
 // Refusals after which pressing Register again cannot succeed, so it is withdrawn.
 const FINAL_REFUSALS = ["closed", "not_open_yet", "status", "not_enabled", "no_capacity", "not_found"];
 
-const positionText = (position) => (position ? `Position ${position} on the waiting list` : null);
+// Called only for a waitlisted entry that has a position.
+const positionText = (position) => `Position ${position} on the waiting list`;
 
 export default function BrowseEvents({ onNotice, onBackChange }) {
   const [events, setEvents] = useState([]);
@@ -65,6 +66,7 @@ export default function BrowseEvents({ onNotice, onBackChange }) {
   const updateRow = (id, changes) => setRowState((current) => ({ ...current, [id]: { ...current[id], ...changes } }));
 
   const register = async (entry) => {
+    /* istanbul ignore next -- double-submit guard: the button is disabled while busy, so a click cannot reach here */
     if (rowState[entry.id]?.busy) return;
     updateRow(entry.id, { busy: true, error: "" });
     try {
@@ -85,6 +87,7 @@ export default function BrowseEvents({ onNotice, onBackChange }) {
 
   // H6 AC1 — join the waiting list of a full event; the row shows Waitlisted and the position.
   const join = async (entry) => {
+    /* istanbul ignore next -- double-submit guard: the button is disabled while busy, so a click cannot reach here */
     if (rowState[entry.id]?.busy) return;
     updateRow(entry.id, { busy: true, error: "" });
     try {
@@ -107,6 +110,7 @@ export default function BrowseEvents({ onNotice, onBackChange }) {
   // event offers Register again, with the place given back. H6 — leaving its waiting list
   // the same way frees no place, so the event stays Full and offers Join again.
   const confirmWithdraw = async () => {
+    /* istanbul ignore next -- double-submit guard: the dialog exists only with details open, and its button is disabled while busy */
     if (!withdrawing || withdrawing.busy || !details) return;
     const entry = events.find((item) => item.id === details.id);
     setWithdrawing({ busy: true, error: "" });

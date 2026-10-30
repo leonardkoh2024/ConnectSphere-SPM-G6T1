@@ -63,7 +63,7 @@ const eventDateTime = (date, time) => {
   const clock = String(time || "");
   return asDate(`${date}T${clock}${/^\d{2}:\d{2}$/.test(clock) ? ":00" : ""}+08:00`);
 };
-const occupiedWindow = (start, end, venue = {}) => ({
+const occupiedWindow = (start, end, venue) => ({
   start: new Date(start.getTime() - (Number(venue.setup_minutes) || 0) * 60000),
   end: new Date(end.getTime() + (Number(venue.turnaround_minutes) || 0) * 60000)
 });
@@ -229,7 +229,7 @@ export const saveVenuePlanningDetails = async ({ user, venueId, changes = {} }) 
     });
     const relatedEvents = [...new Set(
       bookingSnapshot.docs
-        .filter((item) => item.data().status && ["PENDING", "APPROVED"].includes(String(item.data().status || "").toUpperCase()))
+        .filter((item) => item.data().status && ["PENDING", "APPROVED"].includes(String(item.data().status).toUpperCase()))
         .map((item) => item.data().event_id)
         .filter(Boolean)
     )];
@@ -515,7 +515,7 @@ export const requestVenueBooking = async ({
 };
 
 // Who manages each venue, by name. A coordinator may get venue_staff/{venueId}
-// but not read Venue Staff profiles (TC-347), so the name is the staff_name
+// but not read Venue Staff profiles, so the name is the staff_name
 // copied onto the assignment. An assignment that is missing or cannot be read
 // leaves the name blank rather than failing the list.
 const venueStaffNames = async (venueIds) => new Map(await Promise.all(venueIds.map((venueId) =>
@@ -650,7 +650,7 @@ export const prepareClashReplacement = async ({ user, bookingId, clash }) => {
       safety_review_required: true,
       updated_at: stamp
     };
-    if (String(event.status || "").toUpperCase() === "CONFIRMED") {
+    if (String(event.status).toUpperCase() === "CONFIRMED") {
       Object.assign(eventUpdate, {
         status: "PLANNING",
         approved_venue_booking_id: null,
@@ -1141,7 +1141,7 @@ export const releaseVenueBooking = async ({ user, bookingId, reason }) => {
       last_venue_release_id: historyRef.id,
       updated_at: stamp
     };
-    if (["CONFIRMED", "SAFETY_REVIEW"].includes(String(event.status || "").toUpperCase())) {
+    if (["CONFIRMED", "SAFETY_REVIEW"].includes(String(event.status).toUpperCase())) {
       Object.assign(eventUpdate, {
         status: "PLANNING",
         last_safety_review_id: null,

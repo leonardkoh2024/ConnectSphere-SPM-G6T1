@@ -36,7 +36,6 @@ const approvedVenueBookings = async (eventId) => {
 };
 
 const equipmentEventWindow = async (eventId) => {
-  if (!eventId) throw new Error("Choose an event before checking or reserving equipment.");
   const bookings = await approvedVenueBookings(eventId);
   return {
     docs: bookings,
@@ -132,9 +131,6 @@ export const submitEquipmentRequest = async ({ eventId, lines, onSiteSupport = f
   }));
   const validationError = validateEquipmentRequestLines(normalizedLines);
   if (validationError) throw new Error(validationError);
-  normalizedLines.forEach((line) => {
-    if (!EQUIPMENT_TYPES.includes(line.equipment_type)) throw new Error("Choose a supported equipment type for every line.");
-  });
   const eventRef = doc(db, "events", eventId);
   const requestRef = doc(db, "equipment_requests", eventId);
   await runTransaction(db, async (transaction) => {

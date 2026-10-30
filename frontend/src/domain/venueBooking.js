@@ -23,13 +23,13 @@ function windowsOverlap(left, right) {
   return left.start < right.end && right.start < left.end;
 }
 
-function activeVenueStaff(staff = []) {
+function activeVenueStaff(staff) {
   return staff
     .filter((person) => person.active !== false && person.role === VENUE_STAFF)
     .sort((left, right) => String(left.staff_id).localeCompare(String(right.staff_id)));
 }
 
-function nextVenueStaff(staff, priorAssignments = []) {
+function nextVenueStaff(staff, priorAssignments) {
   const active = activeVenueStaff(staff);
   if (!active.length) return null;
   const last = [...priorAssignments].reverse().find((staffId) => active.some((person) => person.staff_id === staffId));

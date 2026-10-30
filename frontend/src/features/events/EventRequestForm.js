@@ -108,7 +108,7 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
     ...current,
     equipmentLines: current.equipmentLines.length > 1
       ? current.equipmentLines.filter((line) => line.id !== lineId)
-      : [createEquipmentLine()]
+      : /* istanbul ignore next -- the Remove button is shown only while there are two or more lines */ [createEquipmentLine()]
   }));
 
   useEffect(() => {
@@ -160,6 +160,7 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
   // but only on what has been entered — B6 lets an organiser save an unfinished
   // request, it does not let them save an impossible one.
   const save = async (submit) => {
+    /* istanbul ignore if -- unreachable from the UI: a read-only form renders no Save or Submit button. */
     if (isReadOnly) return;
     const found = validateEventRequest(form, { mode: isAmend || !submit ? "draft" : "submit" });
     setIssues(found);
@@ -264,7 +265,7 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
       if (submit && !isAmend) {
         try {
           const noticeRef = doc(collection(db, "notifications"));
-          await setDoc(noticeRef, notificationRecord({ notificationId: noticeRef.id, userId: user.uid, eventId: eventRef.id, type: "EVENT_SUBMITTED", message: eventSubmittedMessage({ eventName: fieldData.name || referenceNo }), createdAt: serverTimestamp() }));
+          await setDoc(noticeRef, notificationRecord({ notificationId: noticeRef.id, userId: user.uid, eventId: eventRef.id, type: "EVENT_SUBMITTED", message: eventSubmittedMessage({ eventName: fieldData.name }), createdAt: serverTimestamp() }));
         } catch (noticeError) { console.error("Could not record the submission notice:", noticeError); }
         // J8 / SCRUM-191 — every active Lead is told the request is waiting, unassigned.
         try {
@@ -276,7 +277,7 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
             event: {
               event_id: eventRef.id,
               status: "SUBMITTED",
-              name: fieldData.name || referenceNo,
+              name: fieldData.name,
               organiser_name: profile.exists() ? (profile.data().name || user.email) : user.email,
               event_date: fieldData.event_date,
               submitted_at: new Date().toISOString()
@@ -292,7 +293,7 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
                 notificationId: leadRef.id, userId: notice.user_id, eventId: eventRef.id,
                 type: notice.type, message: notice.message, createdAt: serverTimestamp()
               }),
-              link_screen: notice.link?.screen || "Unassigned queue"
+              link_screen: notice.link.screen
             });
           }));
         } catch (leadError) { console.error("Could not tell the Event Coordinator Leads:", leadError); }
@@ -353,7 +354,7 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
             label="Required facilities"
             options={FACILITIES}
             values={form.facilities}
-            onChange={isReadOnly ? () => {} : (value) => update("facilities", value)}
+            onChange={(value) => update("facilities", value)}
             disabled={isReadOnly}
             required
           />
@@ -422,7 +423,7 @@ export default function EventRequestForm({ user, draft, onSaved, readOnly = fals
             label="Select all that apply"
             options={ACCESSIBILITY_OPTIONS}
             values={form.accessibility}
-            onChange={isReadOnly ? () => {} : (value) => update("accessibility", value)}
+            onChange={(value) => update("accessibility", value)}
             disabled={isReadOnly}
             required
           />

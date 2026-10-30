@@ -26,9 +26,8 @@ const chipLabel = (item) => {
     if (min != null) return `${min}+ pax`;
     return `Up to ${max} pax`;
   }
-  if (item.key === "facilities") return item.value.map((value) => value.replaceAll("_", " ")).join(", ");
-  if (item.key === "accessibility") return item.value.map((value) => value.replaceAll("_", " ")).join(", ");
-  return String(item.value);
+  // activeFilters yields only these keys, so what is left is facilities or accessibility.
+  return item.value.map((value) => value.replaceAll("_", " ")).join(", ");
 };
 
 export default function VenueSearch({ event, onBookVenue, role = ROLES.COORDINATOR, showCalendar = false, onCloseCalendar }) {
@@ -78,7 +77,8 @@ export default function VenueSearch({ event, onBookVenue, role = ROLES.COORDINAT
   const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
   const parts = hasDate ? assessWindow.event_date.split("-").map(Number) : [];
   const weekday = parts.length === 3 ? WEEKDAYS[new Date(parts[0], parts[1] - 1, parts[2]).getDay()] : null;
-  const opensOnDay = (venue) => (venue.operating_hours || [])
+  // Only asked of a venue that states hours (see unstated below).
+  const opensOnDay = (venue) => venue.operating_hours
     .some((row) => String(row.weekday).toUpperCase() === weekday);
 
   const windowPrefill = event ? prefillSearch(event) : null;
@@ -243,7 +243,7 @@ export default function VenueSearch({ event, onBookVenue, role = ROLES.COORDINAT
           ? (venue) => <button type="button" className="cs-btn cs-btn-primary cs-record-btn" onClick={() => {
             const raised = existingBookingFor(bookings, { eventId: event.id || event.event_id, venueId: venue.venue_id });
             if (raised) {
-              setBookingNotice(`${venue.name} already has a ${String(raised.status || "").toLowerCase()} request for this event. Withdraw or wait for that one rather than raising a second.`);
+              setBookingNotice(`${venue.name} already has a ${String(raised.status).toLowerCase()} request for this event. Withdraw or wait for that one rather than raising a second.`);
               return;
             }
             setBookingNotice("");

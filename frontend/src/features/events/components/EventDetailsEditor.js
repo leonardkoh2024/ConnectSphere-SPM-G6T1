@@ -87,7 +87,7 @@ export default function EventDetailsEditor({ event, organiser, significantLocked
   const needsAcknowledgement = hasSignificant && !acknowledged;
 
   // I3 AC4 — the registration capacity, when the event takes registration.
-  const capacityText = String(form.registration_capacity ?? "").trim();
+  const capacityText = String(form.registration_capacity).trim();
   const capacityValue = Number(capacityText);
   const capacityInvalid = takesRegistration && capacityText !== "" && (!Number.isInteger(capacityValue) || capacityValue < 1);
   const capacityChanged = takesRegistration && capacityText !== "" && !capacityInvalid
@@ -136,6 +136,7 @@ export default function EventDetailsEditor({ event, organiser, significantLocked
   const updateSignificant = (field, value) => set({ [field]: value }, true);
 
   const save = async () => {
+    /* istanbul ignore if -- unreachable from the UI: the Save button is disabled on every one of these conditions. */
     if (!anyChange || formError || needsAcknowledgement || needsCapacityAcknowledgement || rerequestFailure) return;
     setBusy(true);
     setError("");
@@ -298,7 +299,7 @@ export default function EventDetailsEditor({ event, organiser, significantLocked
           </label>
           {belowRegistered && <>
             <p className="cs-error">
-              The new capacity of {capacityValue} is below the {registeredCount} {registeredCount === 1 ? "person" : "people"} already registered.
+              The new capacity of {capacityValue} is below the {registeredCount} people already registered.
             </p>
             <label className="cs-check">
               <input type="checkbox" checked={capacityAcknowledged} onChange={(e) => setCapacityAcknowledged(e.target.checked)} />

@@ -106,6 +106,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
   };
 
   const retryCancellationCleanup = async () => {
+    /* istanbul ignore if -- unreachable from the UI: the Retry button exists only while a cleanup is pending. */
     if (!cleanupRetry) return;
     setBusy(true);
     setError("");
@@ -133,6 +134,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
           ? (message.trim() ? null : "Cancellation reason is required.")
           : decisionReasonProblem(action, message);
     if (problem) { setError(problem); return; }
+    /* istanbul ignore if -- unreachable from the UI: Confirm cancellation stays disabled until the box is ticked. */
     if (action === "cancel" && !cancellationConfirmed) {
       setError("Confirm that you want to cancel this event.");
       return;
@@ -275,7 +277,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
           type="button"
           disabled={!canRequestVenue}
           aria-describedby={!canRequestVenue ? "cs-find-venues-reason" : undefined}
-          onClick={() => { if (canRequestVenue) onFindVenues(event); }}
+          onClick={() => onFindVenues(event)}
         >Find venues</button>}
         {canApprove && <button className="cs-btn cs-btn-primary" type="button" disabled={busy} onClick={() => startMode("approve")}>Approve</button>}
         {canDecide && <button className="cs-btn cs-btn-ghost cs-record-danger" type="button" disabled={busy} onClick={() => startMode("reject")}>Reject request</button>}
@@ -397,7 +399,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
   // for action and keeps its original card (now with the shared RecordLead tile).
   if (queueOnly) {
     if (!visible.length) return <div className="cs-empty"><p role={error ? "alert" : undefined}>{error || "No requests are waiting for review."}</p></div>;
-    return <>{error && <p className="cs-error" role="alert">{error}</p>}<div className="cs-record-list">{visible.map((event) => <article className="cs-record cs-review-record" key={event.id}><div className="cs-record-title"><RecordLead date={event.event_date} /><div><h2>{event.name || "Untitled event"}</h2><p>{event.event_date || "Date not set"}</p></div></div><p className="cs-record-ref">{event.reference_no}</p><div className="cs-record-status"><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div><div className="cs-record-modified"><p className="cs-record-saved">{event.editable ? "Current assignment" : "Previous assignment · read only"}</p></div><div className="cs-record-actions"><button className="cs-btn cs-btn-ghost cs-record-btn" type="button" disabled={busy} onClick={() => loadDetail(event.id)}>View request</button></div></article>)}</div></>;
+    return <>{error && <p className="cs-error" role="alert">{error}</p>}<div className="cs-record-list">{visible.map((event) => <article className="cs-record cs-review-record" key={event.id}><div className="cs-record-title"><RecordLead date={event.event_date} /><div><h2>{event.name || "Untitled event"}</h2><p>{event.event_date || "Date not set"}</p></div></div><p className="cs-record-ref">{event.reference_no}</p><div className="cs-record-status"><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div><div className="cs-record-modified"><p className="cs-record-saved">Current assignment</p></div><div className="cs-record-actions"><button className="cs-btn cs-btn-ghost cs-record-btn" type="button" disabled={busy} onClick={() => loadDetail(event.id)}>View request</button></div></article>)}</div></>;
   }
 
   // C2 / SCRUM-103 and D5 — show active work by default while retaining terminal

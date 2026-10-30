@@ -26,10 +26,10 @@ const text = (value) => {
   return trimmed || NOT_RECORDED;
 };
 
-const activePeople = (people = [], role) =>
+const activePeople = (people, role) =>
   people.filter((person) => person.role === role && person.active !== false && person.user_id);
 
-const activeBookings = (bookings = []) =>
+const activeBookings = (bookings) =>
   bookings.filter((booking) => {
     const status = String(booking.status || "").toUpperCase();
     if (status === "REJECTED") {
@@ -38,7 +38,7 @@ const activeBookings = (bookings = []) =>
     return !INACTIVE_BOOKING.has(status);
   });
 
-const requestedTechnical = (arrangements = []) =>
+const requestedTechnical = (arrangements) =>
   arrangements.filter((item) => item.requested !== false);
 
 const arrangementLabel = (item, fallback) => item.label || item.booking_label || item.venue_name
@@ -62,7 +62,7 @@ function outstandingForSafetyCheck({ bookings = [], technicalArrangements = [] }
   return outstanding;
 }
 
-function safetyOfficerNotices({ event, officers = [], previousReviews = [], type, message, link }) {
+function safetyOfficerNotices({ event, officers, previousReviews = [], type, message, link }) {
   const checkedBefore = Boolean(event.returned_to_planning_at) || previousReviews.length > 0;
   const body = checkedBefore && type === "SAFETY_REVIEW_WAITING"
     ? `${message} It has been checked before.`
@@ -165,14 +165,14 @@ function safetyReviewFacts({ event, bookings = [], venues = [], equipment = [], 
   };
 }
 
-function flaggedScope(outcome, marked = []) {
+function flaggedScope(outcome, marked) {
   if (outcome === "REJECT") return new Set(["venue", "technical"]);
   const chosen = new Set(marked);
   if (chosen.has("both")) return new Set(["venue", "technical"]);
   return new Set([...chosen].filter((item) => item === "venue" || item === "technical"));
 }
 
-function flagArrangements({ bookings = [], technicalArrangements = [], scope }) {
+function flagArrangements({ bookings, technicalArrangements, scope }) {
   const bookingsNext = bookings.map((booking) => (
     scope.has("venue") && !INACTIVE_BOOKING.has(String(booking.status || "").toUpperCase())
       ? { ...booking, review_status: REVIEW_REQUIRED }
@@ -315,7 +315,7 @@ function unassignedQueue(events = []) {
   return events.filter((event) => event.status === SUBMITTED && !event.coordinator_id);
 }
 
-function leadQueueNotices({ event, leads = [], type, message }) {
+function leadQueueNotices({ event, leads, type, message }) {
   return activePeople(leads, COORDINATOR_LEAD).map((lead) => ({
     user_id: lead.user_id,
     event_id: event.event_id,

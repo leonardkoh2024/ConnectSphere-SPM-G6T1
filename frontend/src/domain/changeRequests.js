@@ -153,7 +153,8 @@ const REGISTRATION_FIELDS = ["expected_attendance", "event_date", "start_time", 
 // give an empty list: nothing already arranged is affected.
 export const affectedArrangements = (fields = [], impact = {}) => {
   const reaching = (list) => fields.filter((field) => list.includes(field));
-  const labelsOf = (list) => list.map((field) => changeableField(field)?.label || field);
+  // Every field in the three lists above is a CHANGEABLE_FIELDS entry, so each has a label.
+  const labelsOf = (list) => list.map((field) => changeableField(field).label);
   const bookings = impact.venueBookings || [];
   const reservations = impact.equipmentReservations || [];
   const registrations = impact.registrationsCount || 0;

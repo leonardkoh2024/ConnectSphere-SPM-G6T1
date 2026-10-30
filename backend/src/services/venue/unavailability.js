@@ -23,14 +23,6 @@ export class VenueAssignmentError extends Error {
   }
 }
 
-export class ApprovedBookingConflictError extends Error {
-  constructor(bookingName) {
-    super(`This period overlaps approved booking ${bookingName}.`);
-    this.name = "ApprovedBookingConflictError";
-    this.bookingName = bookingName;
-  }
-}
-
 export class ConfirmationRequiredError extends Error {
   constructor(affected) {
     super("Confirm the affected bookings before taking this venue out of use.");
@@ -142,7 +134,8 @@ export function createSaveVenueUnavailability({ firestore, serverTimestamp }) {
       for (const bookingDoc of affectedDocs) {
         const booking = bookingDoc.data();
         const changedAt = serverTimestamp();
-        const addition = preparedAdditions.find((item) => overlaps(item.start, item.end, booking)) || preparedAdditions[0];
+        // Every affected booking was added because it overlaps one of these additions.
+        const addition = preparedAdditions.find((item) => overlaps(item.start, item.end, booking));
         transaction.update(bookingDoc.ref, {
           replacement_needed: true,
           replacement_status: REPLACEMENT_NEEDED,

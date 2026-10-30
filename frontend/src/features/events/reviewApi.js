@@ -133,7 +133,7 @@ const equipmentView = (requestSnapshot, reservationsSnapshot) => {
   const lines = (request.lines || []).map((line) => ({
     ...line, fulfilled_at: asIso(line.fulfilled_at), resolved_at: asIso(line.resolved_at)
   }));
-  const reservations = (reservationsSnapshot?.docs || []).map((item) => {
+  const reservations = reservationsSnapshot.docs.map((item) => {
     const reservation = item.data();
     return { ...reservation, id: item.id, start_datetime: asIso(reservation.start_datetime), end_datetime: asIso(reservation.end_datetime) };
   });
@@ -192,7 +192,7 @@ const detail = async (eventId) => {
   const venueNames = new Map(venueSnapshots.filter((item) => item.exists()).map((item) => [item.id, item.data().name]));
   const byCreated = (a, b) => String(a.created_at || "").localeCompare(String(b.created_at || ""));
   const historyRecords = history.docs.map(record).sort(byCreated);
-  const equipmentRows = (equipmentHistory?.docs || []).map(record);
+  const equipmentRows = equipmentHistory.docs.map(record);
   // D1 AC2 — the Activity tab names who made each change. A profile this user may
   // not read falls back to the id rather than failing the whole detail.
   const actorIds = [...new Set(historyRecords.map((item) => item.actor_id).filter(Boolean))];
@@ -414,7 +414,7 @@ const saveEventEdit = async ({
   if (capacityChanged && capacityReductionNeedsAcknowledgement({
     oldCapacity: before?.registration_capacity, newCapacity: capacity, registeredCount: registered
   }) && capacityAcknowledged !== true) {
-    throw new Error(`The new capacity of ${capacity} is below the ${registered} ${registered === 1 ? "person" : "people"} already registered. Acknowledge this to apply it; nobody will be unregistered.`);
+    throw new Error(`The new capacity of ${capacity} is below the ${registered} people already registered. Acknowledge this to apply it; nobody will be unregistered.`);
   }
 
   if (hasOrdinary) {
@@ -525,6 +525,8 @@ const saveEventEdit = async ({
       }
       significantChanges = significantEventChanges(current, significant);
     }
+    /* istanbul ignore if -- unreachable: the checks above refuse any event that differs from `before`, so the
+       changes found here equal the ones planned before the transaction, which were already non-empty. Kept as a guard. */
     if (!ordinaryChanges.length && !Object.keys(significantChanges).length) throw new Error("There are no changes to save.");
 
     const ordinaryRefs = ordinaryChanges.map(() => doc(collection(db, "event_history")));

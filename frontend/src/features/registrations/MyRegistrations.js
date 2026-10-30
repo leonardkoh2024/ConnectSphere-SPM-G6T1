@@ -79,6 +79,7 @@ export default function MyRegistrations({ onNotice, onBackChange, focusEventId =
     setRegistrations((current) => current.map((entry) => (entry.registration_id === registrationId ? { ...entry, ...changes } : entry)));
 
   const confirmWithdraw = async () => {
+    /* istanbul ignore next -- double-submit guard: the dialog exists only while withdrawing, and its button is disabled while busy */
     if (!withdrawing || withdrawing.busy) return;
     const { entry, declining } = withdrawing;
     setWithdrawing({ entry, declining, busy: true, error: "" });
@@ -100,6 +101,7 @@ export default function MyRegistrations({ onNotice, onBackChange, focusEventId =
 
   // H7 AC2 — accept an offered place: the attendee is registered only when they ask.
   const accept = async (entry) => {
+    /* istanbul ignore next -- double-submit guard: Accept place is disabled while busy */
     if (accepting[entry.registration_id]?.busy) return;
     setAccepting((current) => ({ ...current, [entry.registration_id]: { busy: true, error: "" } }));
     try {

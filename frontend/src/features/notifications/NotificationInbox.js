@@ -52,7 +52,7 @@ export default function NotificationInbox({ notifications, loading, error, onOpe
     if (!notification.event_id) return "No related event";
     if (!(notification.event_id in events)) return "Loading event…";
     const record = events[notification.event_id];
-    if (record) return eventLabel(record) || notification.event_name || "Untitled event";
+    if (record) return eventLabel(record);
     // J4 — a notice may carry its event's name for a role that cannot read it.
     if (notification.event_name) return notification.event_name;
     return record === false ? "Event details not shared with your role" : "Event no longer available";

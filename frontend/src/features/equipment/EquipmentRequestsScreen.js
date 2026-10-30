@@ -42,7 +42,7 @@ export default function EquipmentRequestsScreen({ onNotice, focusEventId = null,
   // service could not be asked to tell Technical Support; saving again retries.
   // I3 / SCRUM-149 — `rerequested: false` means it is saved but the arrangements service
   // could not be asked to put the affected arrangements back into re-request; saving again retries.
-  const submitted = async ({ notified = true, rerequested = true } = {}) => {
+  const submitted = async ({ notified, rerequested }) => {
     await loadEvents();
     setSelectedEventId(null);
     if (notified && rerequested) {
