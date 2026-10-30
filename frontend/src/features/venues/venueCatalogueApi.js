@@ -100,11 +100,15 @@ export const saveVenueCatalogue = (venue) => updateDoc(doc(db, "venues", venue.v
     operating_hours: venue.operating_hours
   });
 
-export const saveVenuePlanningDetails = async ({ user, venueId, changes = {} }) => {
-  const userId = requiredUser(user);
-  if (!venueId) throw new Error("That venue could not be identified.");
+const PLANNING_MINUTES = ["setup_minutes", "turnaround_minutes"];
+const PLANNING_NOTES = ["emergency_access_notes", "known_restrictions"];
+const isMinutes = (field) => field.endsWith("_minutes");
+
+// The fields of `changes` Venue Staff may edit, checked and cleaned. A time must be
+// a whole number of minutes, zero or more; notes are stored trimmed.
+const planningUpdateFrom = (changes) => {
   const update = {};
-  for (const field of ["setup_minutes", "turnaround_minutes"]) {
+  for (const field of PLANNING_MINUTES) {
     if (!(field in changes)) continue;
     const value = Number(changes[field]);
     if (!Number.isInteger(value) || value < 0) {
@@ -112,9 +116,105 @@ export const saveVenuePlanningDetails = async ({ user, venueId, changes = {} }) 
     }
     update[field] = value;
   }
-  for (const field of ["emergency_access_notes", "known_restrictions"]) {
+  for (const field of PLANNING_NOTES) {
     if (field in changes) update[field] = String(changes[field] || "").trim();
   }
+  return update;
+};
+
+// A field as stored now; a venue that never set a time has zero minutes.
+const storedPlanningValue = (venue, field) => venue[field] ?? (isMinutes(field) ? 0 : "");
+
+// F9 — an approved booking occupies its venue from start − setup to end + turnaround,
+// so a new setup or turnaround time moves every approved booking's occupied window.
+const moveOccupiedWindows = (transaction, bookings, revisedVenue) => {
+  bookings.filter((item) => item.exists() && item.data().status === "APPROVED").forEach((item) => {
+    const start = asDate(item.data().start_datetime);
+    const end = asDate(item.data().end_datetime);
+    if (!start || !end) return;
+    const occupied = occupiedWindow(start, end, revisedVenue);
+    transaction.update(item.ref, { occupied_start: occupied.start, occupied_end: occupied.end });
+  });
+};
+
+// One venue_change_history row per changed field, with its old and new value.
+const writeVenueChangeHistory = (transaction, { changed, current, venueId, userId }) => {
+  changed.forEach(([field, value]) => {
+    const historyRef = doc(collection(db, "venue_change_history"));
+    transaction.set(historyRef, {
+      history_id: historyRef.id,
+      venue_id: venueId,
+      actor_id: userId,
+      field_name: field,
+      old_value: storedPlanningValue(current, field),
+      new_value: value,
+      created_at: serverTimestamp()
+    });
+  });
+};
+
+// One notice for each event with a pending or approved booking at the venue. The
+// venue's one owner is the caller — listing venue_staff by venue is refused to
+// Venue Staff, so it is not queried.
+const notifyRelatedEvents = (transaction, { bookingSnapshot, current, venueId, userId }) => {
+  const relatedEvents = [...new Set(
+    bookingSnapshot.docs
+      .filter((item) => item.data().status && ["PENDING", "APPROVED"].includes(String(item.data().status || "").toUpperCase()))
+      .map((item) => item.data().event_id)
+      .filter(Boolean)
+  )];
+  const venueStaffUsers = [userId];
+  const changedAt = serverTimestamp();
+  relatedEvents.forEach((eventId) => {
+    venueStaffUsers.forEach((recipient) => {
+      const notificationRef = doc(collection(db, "notifications"));
+      transaction.set(notificationRef, {
+        ...notificationRecord({
+          notificationId: notificationRef.id,
+          userId: recipient,
+          eventId,
+          type: "VENUE_DETAILS_UPDATED",
+          message: `${current.name || venueId}: venue details changed for a related event.`,
+          createdAt: changedAt
+        }),
+        venue_id: venueId
+      });
+    });
+  });
+};
+
+// F10 AC1/AC4: notification recipients must be the current coordinators, and
+// the recheck must remain available without granting Venue Staff broad event
+// reads. This is one of the deliberately trusted server operations.
+//
+// Never throws. The saved occupied windows are enough for the browser queue to
+// derive live clashes. Only cross-user notifications/audit wait for the trusted
+// service, so an unavailable backend must not report that the venue save itself
+// failed.
+const requestClashRecheck = async (user, venueId) => {
+  try {
+    const token = await user.getIdToken();
+    const response = await fetch(`/api/venues/${encodeURIComponent(venueId)}/recheck-conflicts`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      throw new Error(result.error || "Venue clash notifications could not be refreshed.");
+    }
+  } catch (error) {
+    console.warn("Venue details were saved, but server-side clash notifications were not refreshed.", error);
+  }
+};
+
+// E9 / SCRUM-171 — Venue Staff edit their own venue's setup and turnaround time,
+// emergency access notes and known restrictions. Only the fields that actually
+// change are written, each with a history row; the venue's bookings follow (F9),
+// and any clashes the new times create are flagged by the venue service (F10).
+export const saveVenuePlanningDetails = async ({ user, venueId, changes = {} }) => {
+  const userId = requiredUser(user);
+  if (!venueId) throw new Error("That venue could not be identified.");
+  const update = planningUpdateFrom(changes);
 
   const venueRef = doc(db, "venues", venueId);
   const [assignmentSnapshot, bookingSnapshot] = await Promise.all([
@@ -135,83 +235,16 @@ export const saveVenuePlanningDetails = async ({ user, venueId, changes = {} }) 
       throw new Error("You are not assigned to manage this venue.");
     }
     const current = venueSnapshot.data();
-    const changed = Object.entries(update).filter(([field, value]) =>
-      (current[field] ?? (field.endsWith("_minutes") ? 0 : "")) !== value);
+    const changed = Object.entries(update).filter(([field, value]) => storedPlanningValue(current, field) !== value);
     if (!changed.length) return { venue_id: venueId, ...current, ...update };
 
     transaction.update(venueRef, update);
-    if (changed.some(([field]) => field.endsWith("_minutes"))) {
-      const revisedVenue = { ...current, ...update };
-      bookings.filter((item) => item.exists() && item.data().status === "APPROVED").forEach((item) => {
-        const start = asDate(item.data().start_datetime);
-        const end = asDate(item.data().end_datetime);
-        if (!start || !end) return;
-        const occupied = occupiedWindow(start, end, revisedVenue);
-        transaction.update(item.ref, { occupied_start: occupied.start, occupied_end: occupied.end });
-      });
-    }
-    changed.forEach(([field, value]) => {
-      const historyRef = doc(collection(db, "venue_change_history"));
-      transaction.set(historyRef, {
-        history_id: historyRef.id,
-        venue_id: venueId,
-        actor_id: userId,
-        field_name: field,
-        old_value: current[field] ?? (field.endsWith("_minutes") ? 0 : ""),
-        new_value: value,
-        created_at: serverTimestamp()
-      });
-    });
-    const relatedEvents = [...new Set(
-      bookingSnapshot.docs
-        .filter((item) => item.data().status && ["PENDING", "APPROVED"].includes(String(item.data().status || "").toUpperCase()))
-        .map((item) => item.data().event_id)
-        .filter(Boolean)
-    )];
-    // The venue's one owner is the caller — listing venue_staff by venue is
-    // refused to Venue Staff, so it is not queried.
-    const venueStaffUsers = [userId];
-    const changedAt = serverTimestamp();
-    relatedEvents.forEach((eventId) => {
-      venueStaffUsers.forEach((recipient) => {
-        const notificationRef = doc(collection(db, "notifications"));
-        transaction.set(notificationRef, {
-          ...notificationRecord({
-            notificationId: notificationRef.id,
-            userId: recipient,
-            eventId,
-            type: "VENUE_DETAILS_UPDATED",
-            message: `${current.name || venueId}: venue details changed for a related event.`,
-            createdAt: changedAt
-          }),
-          venue_id: venueId
-        });
-      });
-    });
+    if (changed.some(([field]) => isMinutes(field))) moveOccupiedWindows(transaction, bookings, { ...current, ...update });
+    writeVenueChangeHistory(transaction, { changed, current, venueId, userId });
+    notifyRelatedEvents(transaction, { bookingSnapshot, current, venueId, userId });
     return { venue_id: venueId, ...current, ...update };
   });
-  // F10 AC1/AC4: notification recipients must be the current coordinators, and
-  // the recheck must remain available without granting Venue Staff broad event
-  // reads. This is one of the deliberately trusted server operations.
-  if (("setup_minutes" in update || "turnaround_minutes" in update) && user?.getIdToken) {
-    try {
-      const token = await user.getIdToken();
-      const response = await fetch(`/api/venues/${encodeURIComponent(venueId)}/recheck-conflicts`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!response.ok) {
-        const result = await response.json().catch(() => ({}));
-        throw new Error(result.error || "Venue clash notifications could not be refreshed.");
-      }
-    } catch (error) {
-      // The saved occupied windows are enough for the browser queue to derive
-      // live clashes. Only cross-user notifications/audit wait for the trusted
-      // service, so an unavailable backend must not report that the venue save
-      // itself failed.
-      console.warn("Venue details were saved, but server-side clash notifications were not refreshed.", error);
-    }
-  }
+  if (PLANNING_MINUTES.some((field) => field in update) && user?.getIdToken) await requestClashRecheck(user, venueId);
   return saved;
 };
 
