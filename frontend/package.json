@@ -19,13 +19,69 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
+    "test:coverage": "react-scripts test --watchAll=false --coverage",
+    "lint": "eslint --max-warnings 0 src",
     "eject": "react-scripts eject"
+  },
+  "jest": {
+    "collectCoverageFrom": [
+      "src/**/*.{js,jsx}",
+      "!src/index.js",
+      "!src/reportWebVitals.js",
+      "!src/setupTests.js",
+      "!src/lib/firebase.js",
+      "!src/sandbox/**"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "statements": 100,
+        "branches": 100,
+        "functions": 100,
+        "lines": 100
+      }
+    }
   },
   "eslintConfig": {
     "extends": [
       "react-app"
     ],
     "overrides": [
+      {
+        "files": [
+          "src/**/*.js"
+        ],
+        "excludedFiles": [
+          "**/*Api.js",
+          "**/*ApiSupport.js",
+          "**/*.test.js",
+          "src/lib/firebase.js",
+          "src/app/App.js",
+          "src/app/Workspace.js",
+          "src/sandbox/**"
+        ],
+        "rules": {
+          "no-restricted-imports": [
+            "error",
+            {
+              "patterns": [
+                {
+                  "group": [
+                    "firebase/*"
+                  ],
+                  "message": "Screens reach data through their feature's *Api.js module (docs/adr/0002-frontend-data-access.md)."
+                }
+              ]
+            }
+          ],
+          "no-restricted-globals": [
+            "error",
+            {
+              "name": "fetch",
+              "message": "Screens reach data through their feature's *Api.js module (docs/adr/0002-frontend-data-access.md)."
+            }
+          ]
+        }
+      },
       {
         "files": [
           "**/*.test.js",
@@ -35,6 +91,9 @@
         ],
         "env": {
           "jest": true
+        },
+        "rules": {
+          "import/first": "off"
         }
       }
     ]

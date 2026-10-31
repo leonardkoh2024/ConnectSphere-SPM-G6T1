@@ -1,7 +1,7 @@
 // Copies each Venue Staff member's name onto their venue's assignment, as
 // venue_staff/{venueId}.staff_name. A coordinator's booking details name who
 // manages the venue; coordinators may get one venue_staff document but may not
-// read Venue Staff profiles (TC-347), so the name has to live on the assignment.
+// read Venue Staff profiles, so the name has to live on the assignment.
 //
 // One Firebase project backs the whole team, so this prints what it would write
 // and stops. Nothing is written without --write. Re-run it after reassigning a

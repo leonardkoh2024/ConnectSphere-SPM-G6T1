@@ -2,11 +2,11 @@
 //
 // Every test case for the story lives here, in three parts:
 //
-//   UNIT        TC-112 – TC-131  the rules themselves (domain/venueSuitability.js),
+// UNIT the rules themselves (domain/venueSuitability.js),
 //                                called directly, no React and no Firebase.
-//   FUNCTIONAL  TC-132 – TC-143  the coordinator's screen and the Venue Staff
+// FUNCTIONAL the coordinator's screen and the Venue Staff
 //                                notice, driven the way a user drives them.
-//   RULES       TC-144 – TC-147  the server boundary, where a crafted request
+// RULES the server boundary, where a crafted request
 //                                that ignores the screen still has to be refused.
 //
 // The split the story asks for: capacity is a hard stop, while facility,
@@ -74,7 +74,7 @@ const needs = (fields) => ({
 const criteriaOf = (entries) => entries.map((entry) => entry.criterion);
 
 describe('E8 / SCRUM-124 unit — capacity is a hard stop', () => {
-  test('TC-112 expected attendance above the venue capacity blocks the request', () => {
+  test('TC-0758 expected attendance above the venue capacity blocks the request', () => {
     const assessment = assessVenue(hallA, needs({ expected_attendance: 201 }));
 
     expect(criteriaOf(assessment.blocking)).toEqual([CRITERIA.CAPACITY]);
@@ -82,14 +82,14 @@ describe('E8 / SCRUM-124 unit — capacity is a hard stop', () => {
     expect(assessment.suitable).toBe(false);
   });
 
-  test('TC-113 attendance exactly at capacity is not a failure', () => {
+  test('TC-0759 attendance exactly at capacity is not a failure', () => {
     const assessment = assessVenue(hallA, needs({ expected_attendance: 200 }));
 
     expect(assessment.blocking).toEqual([]);
     expect(assessment.suitable).toBe(true);
   });
 
-  test('TC-114 the capacity failure names the number asked for and the number available', () => {
+  test('TC-0760 the capacity failure names the number asked for and the number available', () => {
     const [failure] = assessVenue(hallA, needs({ expected_attendance: 350 })).blocking;
 
     expect(failure.criterion).toBe(CRITERIA.CAPACITY);
@@ -97,7 +97,7 @@ describe('E8 / SCRUM-124 unit — capacity is a hard stop', () => {
     expect(failure.available).toBe(200);
   });
 
-  test('TC-115 a capacity block cannot be acknowledged away', () => {
+  test('TC-0761 a capacity block cannot be acknowledged away', () => {
     const assessment = assessVenue(hallA, needs({ expected_attendance: 201 }));
 
     expect(ACKNOWLEDGEABLE_CRITERIA).not.toContain(CRITERIA.CAPACITY);
@@ -108,7 +108,7 @@ describe('E8 / SCRUM-124 unit — capacity is a hard stop', () => {
 });
 
 describe('E8 / SCRUM-124 unit — facility, accessibility and layout shortfalls warn', () => {
-  test('TC-116 a required facility the venue lacks is a warning, not a block', () => {
+  test('TC-0762 a required facility the venue lacks is a warning, not a block', () => {
     const assessment = assessVenue(hallA, needs({ facilities: ['WIFI', 'KITCHEN_PANTRY'] }));
 
     expect(assessment.blocking).toEqual([]);
@@ -116,21 +116,21 @@ describe('E8 / SCRUM-124 unit — facility, accessibility and layout shortfalls 
     expect(assessment.warnings[0].missing).toEqual(['KITCHEN_PANTRY']);
   });
 
-  test('TC-117 a required accessibility feature the venue lacks is a warning', () => {
+  test('TC-0763 a required accessibility feature the venue lacks is a warning', () => {
     const assessment = assessVenue(hallA, needs({ accessibility: ['HEARING_LOOP'] }));
 
     expect(criteriaOf(assessment.warnings)).toEqual([CRITERIA.ACCESSIBILITY]);
     expect(assessment.warnings[0].missing).toEqual(['HEARING_LOOP']);
   });
 
-  test('TC-118 a layout the venue does not support is a warning', () => {
+  test('TC-0764 a layout the venue does not support is a warning', () => {
     const assessment = assessVenue(hallA, needs({ layout: 'BANQUET' }));
 
     expect(criteriaOf(assessment.warnings)).toEqual([CRITERIA.LAYOUT]);
     expect(assessment.warnings[0].missing).toEqual(['BANQUET']);
   });
 
-  test('TC-119 every failing criterion is named, one warning per criterion', () => {
+  test('TC-0765 every failing criterion is named, one warning per criterion', () => {
     const assessment = assessVenue(hallA, needs({
       facilities: ['KITCHEN_PANTRY', 'PARKING'],
       accessibility: ['HEARING_LOOP'],
@@ -142,7 +142,7 @@ describe('E8 / SCRUM-124 unit — facility, accessibility and layout shortfalls 
     expect(assessment.warnings[0].missing).toEqual(['KITCHEN_PANTRY', 'PARKING']);
   });
 
-  test('TC-120 a blocking failure and warnings are reported together', () => {
+  test('TC-0766 a blocking failure and warnings are reported together', () => {
     const assessment = assessVenue(hallA, needs({
       expected_attendance: 500,
       facilities: ['KITCHEN_PANTRY']
@@ -152,14 +152,14 @@ describe('E8 / SCRUM-124 unit — facility, accessibility and layout shortfalls 
     expect(criteriaOf(assessment.warnings)).toEqual([CRITERIA.FACILITY]);
   });
 
-  test('TC-121 the criteria evaluated are reported whether or not they passed', () => {
+  test('TC-0767 the criteria evaluated are reported whether or not they passed', () => {
     const assessment = assessVenue(hallA, needs({ facilities: ['WIFI'], layout: 'THEATRE' }));
 
     expect(assessment.suitable).toBe(true);
     expect(assessment.evaluated).toEqual([CRITERIA.CAPACITY, CRITERIA.FACILITY, CRITERIA.LAYOUT]);
   });
 
-  test('TC-122 a criterion the event does not ask for is not evaluated', () => {
+  test('TC-0768 a criterion the event does not ask for is not evaluated', () => {
     const assessment = assessVenue(hallA, needs({}));
 
     expect(assessment.evaluated).toEqual([CRITERIA.CAPACITY]);
@@ -172,14 +172,14 @@ describe('E7 AC4 / SCRUM-123 unit — a venue shut for the requested time is a h
   const fridayOnly = { ...hallA, operating_hours: [{ weekday: 'FRIDAY', opens_at: '10:00', closes_at: '20:00' }] };
   const window = (fields) => needs({ event_date: '2026-11-20', start_time: '10:00', end_time: '17:00', ...fields });
 
-  test('TC-175 a window inside the venue opening hours for that day passes', () => {
+  test('TC-0725 a window inside the venue opening hours for that day passes', () => {
     const assessment = assessVenue(fridayOnly, window());
     expect(assessment.blocking).toEqual([]);
     expect(assessment.evaluated).toContain(CRITERIA.OPERATING_HOURS);
     expect(assessment.suitable).toBe(true);
   });
 
-  test('TC-176 a window starting before the venue opens blocks the request', () => {
+  test('TC-0726 a window starting before the venue opens blocks the request', () => {
     const assessment = assessVenue(fridayOnly, window({ start_time: '09:00' }));
     expect(assessment.blocking.map((item) => item.criterion)).toEqual([CRITERIA.OPERATING_HOURS]);
     expect(submissionBlockReason({ assessment, acknowledged: [] }))
@@ -187,18 +187,18 @@ describe('E7 AC4 / SCRUM-123 unit — a venue shut for the requested time is a h
     expect(canSubmitBooking({ assessment, acknowledged: [CRITERIA.OPERATING_HOURS] })).toBe(false);
   });
 
-  test('TC-177 a venue that does not open that day at all blocks the request', () => {
+  test('TC-0727 a venue that does not open that day at all blocks the request', () => {
     const mondayOnly = { ...hallA, operating_hours: [{ weekday: 'MONDAY', opens_at: '10:00', closes_at: '20:00' }] };
     const assessment = assessVenue(mondayOnly, window());
     expect(assessment.blocking.map((item) => item.criterion)).toEqual([CRITERIA.OPERATING_HOURS]);
     expect(submissionBlockReason({ assessment, acknowledged: [] })).toMatch(/does not open on FRIDAY/i);
   });
 
-  test('TC-178 a venue stating no hours at all is treated as open, not shut', () => {
+  test('TC-0728 a venue stating no hours at all is treated as open, not shut', () => {
     expect(assessVenue(hallA, window()).blocking).toEqual([]);
   });
 
-  test('TC-179 a date with no times asks only that the venue opens that day', () => {
+  test('TC-0729 a date with no times asks only that the venue opens that day', () => {
     const dayOnly = window({ start_time: '', end_time: '' });
     expect(assessVenue(fridayOnly, dayOnly).blocking).toEqual([]);
     const mondayOnly = { ...hallA, operating_hours: [{ weekday: 'MONDAY', opens_at: '10:00', closes_at: '20:00' }] };
@@ -206,7 +206,7 @@ describe('E7 AC4 / SCRUM-123 unit — a venue shut for the requested time is a h
       .toEqual([CRITERIA.OPERATING_HOURS]);
   });
 
-  test('TC-180 no date stated means the criterion is not evaluated at all', () => {
+  test('TC-0730 no date stated means the criterion is not evaluated at all', () => {
     expect(assessVenue(fridayOnly, needs({})).evaluated).not.toContain(CRITERIA.OPERATING_HOURS);
   });
 });
@@ -217,7 +217,7 @@ describe('E8 / SCRUM-124 unit — the coordinator must acknowledge before submit
     layout: 'BANQUET'
   }));
 
-  test('TC-123 submission is refused while a warning is unacknowledged', () => {
+  test('TC-0769 submission is refused while a warning is unacknowledged', () => {
     const assessment = withShortfalls();
 
     expect(canSubmitBooking({ assessment, acknowledged: [] })).toBe(false);
@@ -225,7 +225,7 @@ describe('E8 / SCRUM-124 unit — the coordinator must acknowledge before submit
       .toEqual([CRITERIA.FACILITY, CRITERIA.LAYOUT]);
   });
 
-  test('TC-124 acknowledging only some of the warnings still refuses submission', () => {
+  test('TC-0770 acknowledging only some of the warnings still refuses submission', () => {
     const assessment = withShortfalls();
 
     expect(canSubmitBooking({ assessment, acknowledged: [CRITERIA.FACILITY] })).toBe(false);
@@ -233,7 +233,7 @@ describe('E8 / SCRUM-124 unit — the coordinator must acknowledge before submit
       .toEqual([CRITERIA.LAYOUT]);
   });
 
-  test('TC-125 submission is allowed once every warning is acknowledged', () => {
+  test('TC-0771 submission is allowed once every warning is acknowledged', () => {
     const assessment = withShortfalls();
     const acknowledged = [CRITERIA.FACILITY, CRITERIA.LAYOUT];
 
@@ -242,7 +242,7 @@ describe('E8 / SCRUM-124 unit — the coordinator must acknowledge before submit
     expect(submissionBlockReason({ assessment, acknowledged })).toBeNull();
   });
 
-  test('TC-126 a venue with no failures submits with nothing to acknowledge', () => {
+  test('TC-0772 a venue with no failures submits with nothing to acknowledge', () => {
     const assessment = assessVenue(hallA, needs({ facilities: ['WIFI'] }));
 
     expect(assessment.suitable).toBe(true);
@@ -252,7 +252,7 @@ describe('E8 / SCRUM-124 unit — the coordinator must acknowledge before submit
 });
 
 describe('E8 / SCRUM-124 unit — the acknowledgement is recorded on the booking request', () => {
-  test('TC-127 the record names each criterion, what was missing, who acknowledged and when', () => {
+  test('TC-0773 the record names each criterion, what was missing, who acknowledged and when', () => {
     const assessment = assessVenue(hallA, needs({
       facilities: ['KITCHEN_PANTRY'],
       accessibility: ['HEARING_LOOP']
@@ -277,14 +277,14 @@ describe('E8 / SCRUM-124 unit — the acknowledgement is recorded on the booking
     });
   });
 
-  test('TC-128 a request with nothing to acknowledge records that plainly', () => {
+  test('TC-0774 a request with nothing to acknowledge records that plainly', () => {
     const assessment = assessVenue(hallA, needs({ facilities: ['WIFI'] }));
 
     expect(acknowledgementRecord({ assessment, acknowledged: [], userId: 'coordinator-7', at: 'now' }))
       .toEqual({ acknowledged: false, criteria: [], missing: {}, acknowledged_by: null, acknowledged_at: null });
   });
 
-  test('TC-129 an unacknowledged warning cannot be written away as acknowledged', () => {
+  test('TC-0775 an unacknowledged warning cannot be written away as acknowledged', () => {
     const assessment = assessVenue(hallA, needs({ facilities: ['KITCHEN_PANTRY'], layout: 'BANQUET' }));
 
     expect(() => acknowledgementRecord({
@@ -297,7 +297,7 @@ describe('E8 / SCRUM-124 unit — the acknowledgement is recorded on the booking
 });
 
 describe('E8 / SCRUM-124 unit — the event record supplies what is required', () => {
-  test('TC-130 a stored event maps onto the criteria the gate evaluates', () => {
+  test('TC-0776 a stored event maps onto the criteria the gate evaluates', () => {
     expect(bookingRequirements({
       event_id: 'EVT-1',
       expected_attendance: 180,
@@ -315,7 +315,7 @@ describe('E8 / SCRUM-124 unit — the event record supplies what is required', (
     });
   });
 
-  test('TC-131 an event that answered No to a section asks for nothing on it', () => {
+  test('TC-0777 an event that answered No to a section asks for nothing on it', () => {
     expect(bookingRequirements({ expected_attendance: 40, required_layout: null }))
       .toEqual({
         expected_attendance: 40,
@@ -330,7 +330,7 @@ describe('E8 / SCRUM-124 unit — the event record supplies what is required', (
 });
 
 describe('E8 / SCRUM-124 unit — the shortlist starts from the event\'s requirements', () => {
-  test('TC-148 Find venues carries the event\'s requirements into the filters', () => {
+  test('TC-0778 Find venues carries the event\'s requirements into the filters', () => {
     expect(prefillFilters({
       expected_attendance: 180,
       preferred_location: 'CENTRAL',
@@ -347,12 +347,12 @@ describe('E8 / SCRUM-124 unit — the shortlist starts from the event\'s require
     });
   });
 
-  test('TC-149 an event that asked for nothing leaves the filters clear', () => {
+  test('TC-0779 an event that asked for nothing leaves the filters clear', () => {
     expect(prefillFilters({})).toEqual(emptyFilters());
     expect(prefillFilters(null)).toEqual(emptyFilters());
   });
 
-  test('TC-150 the pre-filled filters are the ones the screen can clear', () => {
+  test('TC-0780 the pre-filled filters are the ones the screen can clear', () => {
     // AC2 stays reachable: clearing a criterion widens the shortlist to venues
     // that fall short on it, which is what the acknowledge gate exists for.
     const filters = prefillFilters({ expected_attendance: 180, facilities: ['WIFI'], required_layout: 'THEATRE' });
@@ -382,6 +382,13 @@ const event = (fields) => ({
 
 const submitButton = () => screen.getByRole('button', { name: /request this venue/i });
 
+// Choosing an event re-reads it. Not awaiting the (synchronous) select keeps that read
+// from settling in a bare microtask outside act; the findAll below waits for it instead.
+const chooseEvent = async (id) => {
+  userEvent.selectOptions(await screen.findByLabelText('Event'), id);
+  await screen.findAllByText('Required facilities');
+};
+
 const chooseVenue = async (name) => {
   await userEvent.click(await screen.findByRole('radio', { name }));
 };
@@ -402,7 +409,7 @@ beforeEach(() => {
 });
 
 describe('E8 / SCRUM-124 functional — a venue that cannot hold the event is refused outright', () => {
-  test('TC-132 a capacity failure disables the request and says why', () => {
+  test('TC-0781 a capacity failure disables the request and says why', () => {
     render(<VenueBookingRequest venue={hallA} event={event({ expected_attendance: 400 })} user={user} />);
 
     expect(submitButton()).toBeDisabled();
@@ -412,13 +419,13 @@ describe('E8 / SCRUM-124 functional — a venue that cannot hold the event is re
     expect(screen.getByText('400 pax')).toBeInTheDocument();
   });
 
-  test('TC-133 a capacity failure offers no way to acknowledge past it', () => {
+  test('TC-0782 a capacity failure offers no way to acknowledge past it', () => {
     render(<VenueBookingRequest venue={hallA} event={event({ expected_attendance: 400 })} user={user} />);
 
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 
-  test('TC-134 nothing is submitted while the venue is blocked', async () => {
+  test('TC-0783 nothing is submitted while the venue is blocked', async () => {
     render(<VenueBookingRequest venue={hallA} event={event({ expected_attendance: 400 })} user={user} />);
 
     await userEvent.click(submitButton());
@@ -429,7 +436,7 @@ describe('E8 / SCRUM-124 functional — a venue that cannot hold the event is re
 describe('E8 / SCRUM-124 functional — a shortfall warns and waits to be acknowledged', () => {
   const shortfall = () => event({ facilities: ['WIFI', 'KITCHEN_PANTRY'], required_layout: 'BANQUET' });
 
-  test('TC-135 each failing criterion is listed with what the venue lacks', () => {
+  test('TC-0784 each failing criterion is listed with what the venue lacks', () => {
     render(<VenueBookingRequest venue={hallA} event={shortfall()} user={user} />);
 
     // Every requirement is its own line with its own verdict: WIFI passes while
@@ -447,7 +454,7 @@ describe('E8 / SCRUM-124 functional — a shortfall warns and waits to be acknow
     expect(screen.getByRole('checkbox', { name: /banquet/i })).toBeInTheDocument();
   });
 
-  test('TC-136 the request stays disabled until every warning is acknowledged', async () => {
+  test('TC-0785 the request stays disabled until every warning is acknowledged', async () => {
     render(<VenueBookingRequest venue={hallA} event={shortfall()} user={user} />);
     const boxes = screen.getAllByRole('checkbox');
     expect(boxes).toHaveLength(2);
@@ -460,7 +467,7 @@ describe('E8 / SCRUM-124 functional — a shortfall warns and waits to be acknow
     expect(submitButton()).toBeEnabled();
   });
 
-  test('TC-137 the acknowledgement travels with the submitted request', async () => {
+  test('TC-0786 the acknowledgement travels with the submitted request', async () => {
     render(<VenueBookingRequest venue={hallA} event={shortfall()} user={user} />);
     for (const box of screen.getAllByRole('checkbox')) await userEvent.click(box);
     await userEvent.click(submitButton());
@@ -478,7 +485,7 @@ describe('E8 / SCRUM-124 functional — a shortfall warns and waits to be acknow
     expect(payload.acknowledgement.acknowledged_at).toEqual(expect.any(String));
   });
 
-  test('TC-138 unticking a warning disables the request again', async () => {
+  test('TC-0787 unticking a warning disables the request again', async () => {
     render(<VenueBookingRequest venue={hallA} event={shortfall()} user={user} />);
     const boxes = screen.getAllByRole('checkbox');
     for (const box of boxes) await userEvent.click(box);
@@ -490,7 +497,7 @@ describe('E8 / SCRUM-124 functional — a shortfall warns and waits to be acknow
 });
 
 describe('E8 / SCRUM-124 functional — a suitable venue goes straight through', () => {
-  test('TC-139 no warnings are shown and the request submits unacknowledged', async () => {
+  test('TC-0788 no warnings are shown and the request submits unacknowledged', async () => {
     render(<VenueBookingRequest venue={hallA} event={event()} user={user} />);
 
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
@@ -501,7 +508,7 @@ describe('E8 / SCRUM-124 functional — a suitable venue goes straight through',
     expect(requestVenueBooking.mock.calls[0][0].acknowledgement).toMatchObject({ acknowledged: false });
   });
 
-  test('TC-140 the criteria evaluated are shown even when all of them pass', () => {
+  test('TC-0789 the criteria evaluated are shown even when all of them pass', () => {
     render(<VenueBookingRequest venue={hallA} event={event()} user={user} />);
 
     // F12 — the form's own "Layout for this venue" field is not a criterion.
@@ -509,7 +516,7 @@ describe('E8 / SCRUM-124 functional — a suitable venue goes straight through',
     expect(screen.getByText(/layout/i, { selector: 'dt' })).toBeInTheDocument();
   });
 
-  test('TC-141 a failed save is surfaced and does not claim success', async () => {
+  test('TC-0790 a failed save is surfaced and does not claim success', async () => {
     requestVenueBooking.mockRejectedValue(new Error('Venue booking could not be saved.'));
     render(<VenueBookingRequest venue={hallA} event={event()} user={user} />);
 
@@ -527,15 +534,15 @@ describe('E8 / SCRUM-124 functional — Venue Staff see the acknowledgement on t
     acknowledged_at: '2026-10-04T09:30:00.000Z'
   };
 
-  test('TC-142 the notice names every criterion the coordinator accepted', () => {
+  test('TC-0791 the notice names every criterion the coordinator accepted', () => {
     render(<BookingAcknowledgementNotice acknowledgement={acknowledgement} />);
 
     expect(screen.getByText(/kitchen pantry/i)).toBeInTheDocument();
     expect(screen.getByText(/banquet/i)).toBeInTheDocument();
   });
 
-  test('TC-165 the acknowledgement reaches the Venue Staff availability calendar', async () => {
-    // TC-142 proves the notice renders; this proves it is actually on the screen
+  test('TC-0792 the acknowledgement reaches the Venue Staff availability calendar', async () => {
+    // proves the notice renders; this proves it is actually on the screen
     // Venue Staff use, which is what "shown to Venue Staff" means.
     loadVenueSearchContext.mockResolvedValue({
       venues: [hallA],
@@ -554,7 +561,7 @@ describe('E8 / SCRUM-124 functional — Venue Staff see the acknowledgement on t
     expect(screen.getByText(/BANQUET/i)).toBeInTheDocument();
   });
 
-  test('TC-143 a booking with nothing acknowledged shows no notice', () => {
+  test('TC-0793 a booking with nothing acknowledged shows no notice', () => {
     const { container } = render(
       <BookingAcknowledgementNotice acknowledgement={{ acknowledged: false, criteria: [], missing: {} }} />
     );
@@ -577,7 +584,7 @@ describe('E8 / SCRUM-124 functional — the booking screen is where an unsuitabl
     reviewApi.detail.mockResolvedValue({ event: event() });
   });
 
-  test('TC-160 the tab opens on the requests this coordinator has raised', async () => {
+  test('TC-0794 the tab opens on the requests this coordinator has raised', async () => {
     loadVenueBookings.mockResolvedValue([{
       booking_id: 'BK-1', venue_id: 'VEN-001', event_id: 'EVT-1', event_name: 'Annual Conference',
       event_date: '2026-11-20', start_time: '09:00', end_time: '17:00', expected_attendance: 150,
@@ -593,7 +600,7 @@ describe('E8 / SCRUM-124 functional — the booking screen is where an unsuitabl
     expect(screen.queryByRole('radio', { name: 'Hall A' })).not.toBeInTheDocument();
   });
 
-  test('TC-163 a booking expands to its details and offers the event request', async () => {
+  test('TC-0795 a booking expands to its details and offers the event request', async () => {
     const onViewEvent = jest.fn();
     loadVenueBookings.mockResolvedValue([{
       booking_id: 'BK-1', venue_id: 'VEN-001', event_id: 'EVT-1', event_name: 'Annual Conference',
@@ -617,16 +624,16 @@ describe('E8 / SCRUM-124 functional — the booking screen is where an unsuitabl
     expect(screen.queryByText('Expected attendance')).not.toBeInTheDocument();
   });
 
-  test('TC-161 a coordinator with no requests is told so, and can still start one', async () => {
+  test('TC-0796 a coordinator with no requests is told so, and can still start one', async () => {
     render(<VenueBookings user={user} />);
 
     expect(await screen.findByText(/No booking requests raised yet/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /new booking request/i })).toBeInTheDocument();
   });
 
-  test('TC-162 the request action is gone once the booking has been sent', async () => {
+  test('TC-0797 the request action is gone once the booking has been sent', async () => {
     await openBookingForm();
-    await userEvent.selectOptions(await screen.findByLabelText('Event'), 'EVT-1');
+    await chooseEvent('EVT-1');
     await chooseVenue('Hall A');
     await userEvent.click(submitButton());
 
@@ -635,7 +642,7 @@ describe('E8 / SCRUM-124 functional — the booking screen is where an unsuitabl
     expect(screen.queryByRole('button', { name: /request this venue/i })).not.toBeInTheDocument();
   });
 
-  test('TC-169 a venue already requested for this event is refused with a reason', async () => {
+  test('TC-0798 a venue already requested for this event is refused with a reason', async () => {
     loadVenueBookings.mockResolvedValue([{
       booking_id: 'BK-1', venue_id: 'VEN-001', event_id: 'EVT-1', event_name: 'Annual Conference',
       status: 'PENDING', requested_at: '2026-10-05T09:00:00.000Z', suitability_acknowledgement: null
@@ -649,7 +656,7 @@ describe('E8 / SCRUM-124 functional — the booking screen is where an unsuitabl
     expect(requestVenueBooking).not.toHaveBeenCalled();
   });
 
-  test('TC-170 arriving straight into the form reports its back handler without crashing', async () => {
+  test('TC-0799 arriving straight into the form reports its back handler without crashing', async () => {
     // Regression: the effect that hands the back handler up runs on the first
     // render, which returns early while loading. A handler declared after that
     // early return is still in its temporal dead zone when the effect fires.
@@ -660,7 +667,7 @@ describe('E8 / SCRUM-124 functional — the booking screen is where an unsuitabl
     expect(onBackChange).toHaveBeenCalledWith(expect.any(Function));
   });
 
-  test('TC-171 a pending request can be withdrawn, and asks before it does', async () => {
+  test('TC-0800 a pending request can be withdrawn, and asks before it does', async () => {
     const raised = {
       booking_id: 'BK-1', venue_id: 'VEN-001', event_id: 'EVT-1', event_name: 'Annual Conference',
       event_date: '2026-11-20', status: 'PENDING', requested_at: '2026-10-05T09:00:00.000Z',
@@ -689,7 +696,7 @@ describe('E8 / SCRUM-124 functional — the booking screen is where an unsuitabl
     await waitFor(() => expect(withdrawVenueBooking).toHaveBeenCalledWith({ user, bookingId: 'BK-1' }));
   });
 
-  test('TC-172 a request that is not pending offers no withdraw', async () => {
+  test('TC-0801 a request that is not pending offers no withdraw', async () => {
     loadVenueBookings.mockResolvedValue([{
       booking_id: 'BK-2', venue_id: 'VEN-001', event_id: 'EVT-1', event_name: 'Annual Conference',
       status: 'APPROVED', requested_at: '2026-10-05T09:00:00.000Z', suitability_acknowledgement: null
@@ -700,7 +707,7 @@ describe('E8 / SCRUM-124 functional — the booking screen is where an unsuitabl
     expect(screen.queryByRole('button', { name: /withdraw request/i })).not.toBeInTheDocument();
   });
 
-  test('TC-173 a withdraw that fails is reported and does not claim success', async () => {
+  test('TC-0802 a withdraw that fails is reported and does not claim success', async () => {
     withdrawVenueBooking.mockRejectedValue(new Error('That request could not be withdrawn.'));
     loadVenueBookings.mockResolvedValue([{
       booking_id: 'BK-1', venue_id: 'VEN-001', event_id: 'EVT-1', event_name: 'Annual Conference',
@@ -715,17 +722,17 @@ describe('E8 / SCRUM-124 functional — the booking screen is where an unsuitabl
     expect(await screen.findByText('That request could not be withdrawn.')).toBeInTheDocument();
   });
 
-  test('TC-152 the venue list offers the whole catalogue, not only venues that fit', async () => {
+  test('TC-0803 the venue list offers the whole catalogue, not only venues that fit', async () => {
     await openBookingForm();
 
     expect(await screen.findByRole('radio', { name: 'Seminar Room' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Hall A' })).toBeInTheDocument();
   });
 
-  test('TC-153 naming a venue that cannot hold the event blocks the request', async () => {
+  test('TC-0804 naming a venue that cannot hold the event blocks the request', async () => {
     await openBookingForm();
 
-    await userEvent.selectOptions(await screen.findByLabelText('Event'), 'EVT-1');
+    await chooseEvent('EVT-1');
     await chooseVenue('Seminar Room');
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/capacity/i);
@@ -733,7 +740,7 @@ describe('E8 / SCRUM-124 functional — the booking screen is where an unsuitabl
     expect(requestVenueBooking).not.toHaveBeenCalled();
   });
 
-  test('TC-164 an event titled the way the events collection stores it is named, not "Untitled"', async () => {
+  test('TC-0805 an event titled the way the events collection stores it is named, not "Untitled"', async () => {
     // Events keep their title in `name`; a booking carries `event_name`. The gate
     // reads either, so a real event does not come through blank.
     reviewApi.detail.mockResolvedValue({ event: { ...event(), event_name: undefined, name: 'Happy path check' } });
@@ -743,14 +750,14 @@ describe('E8 / SCRUM-124 functional — the booking screen is where an unsuitabl
     expect(screen.queryByText(/Untitled event/i)).not.toBeInTheDocument();
   });
 
-  test('TC-154 arriving from Find venues carries both choices in already', async () => {
+  test('TC-0806 arriving from Find venues carries both choices in already', async () => {
     render(<VenueBookings user={user} event={{ id: 'EVT-1' }} venue={hallA} />);
 
     expect(await screen.findByRole('heading', { name: /Suitability for Annual Conference/i })).toBeInTheDocument();
     expect(submitButton()).toBeEnabled();
   });
 
-  test('TC-155 nothing is judged until both an event and a venue are chosen', async () => {
+  test('TC-0807 nothing is judged until both an event and a venue are chosen', async () => {
     await openBookingForm();
 
     expect(await screen.findByRole('radio', { name: 'Hall A' })).toBeInTheDocument();
@@ -760,9 +767,9 @@ describe('E8 / SCRUM-124 functional — the booking screen is where an unsuitabl
     expect(screen.queryByText('Expected attendance')).not.toBeInTheDocument();
   });
 
-  test('TC-157 the venue list says which venues fit, before one is chosen', async () => {
+  test('TC-0808 the venue list says which venues fit, before one is chosen', async () => {
     await openBookingForm();
-    await userEvent.selectOptions(await screen.findByLabelText('Event'), 'EVT-1');
+    await chooseEvent('EVT-1');
 
     const hallA = await venueCard('Hall A');
     await waitFor(() => expect(within(hallA).getByText('Meets all requirements')).toBeInTheDocument());
@@ -779,10 +786,10 @@ describe('E8 / SCRUM-124 functional — the booking screen is where an unsuitabl
     expect(within(small).getByText('20 pax')).toBeInTheDocument();
   });
 
-  test('TC-156 choosing an event shows what that event needs, before any venue is picked', async () => {
+  test('TC-0809 choosing an event shows what that event needs, before any venue is picked', async () => {
     await openBookingForm();
 
-    await userEvent.selectOptions(await screen.findByLabelText('Event'), 'EVT-1');
+    await chooseEvent('EVT-1');
 
     // The details fill in inside the same card that holds the event question.
     const panel = await screen.findByRole('region', { name: /event details/i });
@@ -802,7 +809,7 @@ describe('E8 / SCRUM-124 functional — the booking screen is where an unsuitabl
 // needs a test there too. Proving the *behaviour* means running the Firestore
 // emulator, which needs packages and a Java runtime we have deliberately not
 // added; what these do instead is assert the policy the rules state, so that
-// loosening a rule breaks the build. Same approach as TC-015 / TC-016.
+// loosening a rule breaks the build. Same approach as security/firestoreRules.test.js.
 // ---------------------------------------------------------------------------
 
 const RULES = fs.readFileSync(path.resolve(__dirname, '../../../../firestore.rules'), 'utf8');
@@ -822,19 +829,19 @@ const createRule = () => {
 };
 
 describe('E8 / SCRUM-124 rules — booking requests carry their suitability acknowledgement', () => {
-  test('TC-144 only a coordinator may raise a booking request, and only as themselves', () => {
+  test('TC-0810 only a coordinator may raise a booking request, and only as themselves', () => {
     expect(createRule()).toContain("hasRole('EVENT_COORDINATOR')");
     expect(createRule()).toContain('request.resource.data.requested_by == request.auth.uid');
     expect(createRule()).not.toContain("hasRole('EVENT_ORGANISER')");
     expect(createRule()).not.toContain("hasRole('ATTENDEE')");
   });
 
-  test('TC-145 a booking cannot be written without its acknowledgement record', () => {
+  test('TC-0811 a booking cannot be written without its acknowledgement record', () => {
     expect(createRule()).toContain('suitability_acknowledgement');
     expect(createRule()).toContain('acknowledged');
   });
 
-  test('TC-146 a venue over its capacity cannot be booked even by a crafted request', () => {
+  test('TC-0812 a venue over its capacity cannot be booked even by a crafted request', () => {
     expect(createRule()).toContain('expected_attendance');
     expect(createRule()).toMatch(/max_capacity/);
   });
@@ -843,7 +850,7 @@ describe('E8 / SCRUM-124 rules — booking requests carry their suitability ackn
   // These three collections were organiser-only, so an assigned coordinator could
   // not see the layout, facilities or accessibility they are matching against.
   test.each(['event_venue_requirements', 'event_facilities', 'event_accessibility'])(
-    'TC-151 a coordinator on the event may read %s, but still may not edit it',
+    'TC-0813 a coordinator on the event may read %s, but still may not edit it',
     (collection) => {
       const block = rulesBlock(collection);
       const readRule = block.match(/allow get, list:\s*if([^;]*);/);
@@ -856,7 +863,7 @@ describe('E8 / SCRUM-124 rules — booking requests carry their suitability ackn
     }
   );
 
-  test('TC-174 withdrawing is the only update and only the current coordinator may do it', () => {
+  test('TC-0814 withdrawing is the only update and only the current coordinator may do it', () => {
     const rule = bookingRules().match(/allow update:\s*if([^;]*);/);
     expect(rule).not.toBeNull();
 
@@ -869,7 +876,7 @@ describe('E8 / SCRUM-124 rules — booking requests carry their suitability ackn
     expect(rule[1]).toContain("hasOnly(['status', 'withdrawn_at'])");
   });
 
-  test('TC-147 the acknowledgement cannot be rewritten after the booking is raised', () => {
+  test('TC-0815 the acknowledgement cannot be rewritten after the booking is raised', () => {
     const block = bookingRules();
     const updateRule = block.match(/allow update:\s*if([^;]*);/);
     if (!updateRule) {
@@ -885,28 +892,28 @@ describe('E8 / SCRUM-124 rules — booking requests carry their suitability ackn
 describe('E8 / SCRUM-124 unit — the same venue is not requested twice for one event', () => {
   const raised = (fields) => ({ booking_id: 'BK-1', event_id: 'EVT-1', venue_id: 'VEN-001', status: 'PENDING', ...fields });
 
-  test('TC-166 a live request for the same event and venue is found', () => {
+  test('TC-0816 a live request for the same event and venue is found', () => {
     expect(existingBookingFor([raised()], { eventId: 'EVT-1', venueId: 'VEN-001' })).toMatchObject({ booking_id: 'BK-1' });
     expect(existingBookingFor([raised({ status: 'APPROVED' })], { eventId: 'EVT-1', venueId: 'VEN-001' })).not.toBeNull();
   });
 
-  test('TC-167 a different event or a different venue is not a duplicate', () => {
+  test('TC-0817 a different event or a different venue is not a duplicate', () => {
     expect(existingBookingFor([raised()], { eventId: 'EVT-2', venueId: 'VEN-001' })).toBeNull();
     expect(existingBookingFor([raised()], { eventId: 'EVT-1', venueId: 'VEN-009' })).toBeNull();
   });
 
-  test('TC-168 a request that is no longer live leaves the pairing free again', () => {
+  test('TC-0818 a request that is no longer live leaves the pairing free again', () => {
     expect(existingBookingFor([raised({ status: 'REJECTED' })], { eventId: 'EVT-1', venueId: 'VEN-001' })).toBeNull();
     expect(existingBookingFor([raised({ status: 'CANCELLED' })], { eventId: 'EVT-1', venueId: 'VEN-001' })).toBeNull();
   });
 });
 
 describe('E8 / SCRUM-124 unit — a finished event has nothing left to book', () => {
-  test.each(['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'REJECTED', 'SAFETY_REVIEW'])('%s events offer no venue search', (status) => {
+  test.each(['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'REJECTED', 'SAFETY_REVIEW'])('TC-0819 %s events offer no venue search', (status) => {
     expect(canFindVenues({ status })).toBe(false);
   });
 
-  test.each(['APPROVED', 'PLANNING'])('%s events can request a venue', (status) => {
+  test.each(['APPROVED', 'PLANNING'])('TC-0820 %s events can request a venue', (status) => {
     expect(canFindVenues({ status })).toBe(true);
   });
 });

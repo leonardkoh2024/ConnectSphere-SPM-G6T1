@@ -27,7 +27,7 @@ beforeEach(() => {
     .mockResolvedValueOnce(empty);
 });
 
-test('TC-095 search opened from an event arrives pre-filled', async () => {
+test('TC-2105 search opened from an event arrives pre-filled', async () => {
   render(<VenueSearch event={{ name: 'Summit', event_date: '2026-10-23', start_time: '09:00', end_time: '17:00', expected_attendance: 180 }} />);
   expect(await screen.findByText(/pre-filled from the event/i)).toBeInTheDocument();
   expect(screen.getByText(/2026-10-23/)).toBeInTheDocument();
@@ -36,7 +36,7 @@ test('TC-095 search opened from an event arrives pre-filled', async () => {
   expect([...document.querySelectorAll('.cs-record-title h2')].map((heading) => heading.textContent)).toEqual(['Clear Hall']);
 });
 
-test('TC-109 one action clears the active filters', async () => {
+test('TC-2106 one action clears the active filters', async () => {
   render(<VenueSearch />);
   await screen.findAllByRole('button', { name: /view venue/i });
   await userEvent.selectOptions(screen.getByLabelText(/^location$/i), 'EAST');
@@ -45,7 +45,7 @@ test('TC-109 one action clears the active filters', async () => {
   expect(screen.queryByRole('button', { name: /clear filters/i })).not.toBeInTheDocument();
 });
 
-test('the requirements section can close and reopen without losing its filters', async () => {
+test('TC-2107 the requirements section can close and reopen without losing its filters', async () => {
   render(<VenueSearch />);
   await screen.findAllByRole('button', { name: /view venue/i });
   await userEvent.selectOptions(screen.getByLabelText(/^location$/i), 'EAST');
@@ -63,7 +63,7 @@ test('the requirements section can close and reopen without losing its filters',
 
 // E4 / SCRUM-120 — the coordinator's catalogue opens the calendar too, and
 // keeps its filters when the coordinator comes back.
-test('TC-230 the coordinator returns from the shared calendar to the same filters', async () => {
+test('TC-0681 the coordinator returns from the shared calendar to the same filters', async () => {
   const { rerender } = render(<VenueSearch role="EVENT_COORDINATOR" />);
   await screen.findAllByRole('button', { name: /view venue/i });
   expect(screen.queryByRole('button', { name: /view calendar/i })).not.toBeInTheDocument();
@@ -79,7 +79,7 @@ test('TC-230 the coordinator returns from the shared calendar to the same filter
   expect(screen.getAllByText('Clear Hall').length).toBeGreaterThan(0);
 });
 
-test('TC-110 viewing a venue displays its details in that venue result', async () => {
+test('TC-2108 viewing a venue displays its details in that venue result', async () => {
   render(<VenueSearch />);
   const [viewButton] = await screen.findAllByRole('button', { name: /view venue/i });
 
@@ -93,7 +93,7 @@ test('TC-110 viewing a venue displays its details in that venue result', async (
   expect(details.closest('.cs-record')).toBe(venue);
 });
 
-test('an open venue can be closed to minimise its details', async () => {
+test('TC-2109 an open venue can be closed to minimise its details', async () => {
   render(<VenueSearch />);
   const [viewButton] = await screen.findAllByRole('button', { name: /view venue/i });
   const venue = viewButton.closest('.cs-record');
@@ -106,7 +106,7 @@ test('an open venue can be closed to minimise its details', async () => {
   expect(within(venue).getByRole('button', { name: /view venue/i })).toHaveAttribute('aria-pressed', 'false');
 });
 
-test('long venue list values use bounded text containers while retaining their full text', async () => {
+test('TC-2110 long venue list values use bounded text containers while retaining their full text', async () => {
   const longName = 'International Convention and Multidisciplinary Collaboration Auditorium';
   getDocs.mockReset();
   getDocs
@@ -136,7 +136,7 @@ test('long venue list values use bounded text containers while retaining their f
 
 // E7 as a filter — a blank requirement is no constraint, not a failure, and a
 // venue that states no operating hours is open at all hours rather than closed.
-test('TC-250 a stated window alone rules nothing out', async () => {
+test('TC-2111 a stated window alone rules nothing out', async () => {
   render(<VenueSearch />);
   await screen.findAllByRole('button', { name: /view venue/i });
 
@@ -149,7 +149,7 @@ test('TC-250 a stated window alone rules nothing out', async () => {
     .toEqual(['Clear Hall', 'Tiny Room']);
 });
 
-test('TC-251 a stated minimum capacity does rule a venue out, with the reason', async () => {
+test('TC-2112 a stated minimum capacity does rule a venue out, with the reason', async () => {
   render(<VenueSearch />);
   await screen.findAllByRole('button', { name: /view venue/i });
 
@@ -164,7 +164,7 @@ test('TC-251 a stated minimum capacity does rule a venue out, with the reason', 
 
 // "Stated but not covering that day" is not the same as "not stated at all":
 // a venue that lists hours and is shut on the requested weekday is unavailable.
-test('TC-252 a venue open other days but not that one is filtered out, with the reason', async () => {
+test('TC-2113 a venue open other days but not that one is filtered out, with the reason', async () => {
   getDocs.mockReset();
   getDocs
     .mockResolvedValueOnce(snap([
@@ -195,7 +195,7 @@ test('TC-252 a venue open other days but not that one is filtered out, with the 
 
 // A date on its own filters: the venue has to open that day. The times, when
 // given, narrow it to a window inside those hours.
-test('TC-253 a date alone filters on the opening day, before any times are given', async () => {
+test('TC-2114 a date alone filters on the opening day, before any times are given', async () => {
   getDocs.mockReset();
   getDocs
     .mockResolvedValueOnce(snap([
@@ -222,7 +222,7 @@ test('TC-253 a date alone filters on the opening day, before any times are given
     .toEqual(['Friday Hall']);
 });
 
-test('TC-254 adding times narrows it to a window inside the opening hours', async () => {
+test('TC-2115 adding times narrows it to a window inside the opening hours', async () => {
   getDocs.mockReset();
   getDocs
     .mockResolvedValueOnce(snap([
@@ -250,7 +250,7 @@ test('TC-254 adding times narrows it to a window inside the opening hours', asyn
 });
 
 // The window narrows the list as much as any filter does, so one action clears it.
-test('TC-255 clear filters also clears the date and time window', async () => {
+test('TC-2116 clear filters also clears the date and time window', async () => {
   render(<VenueSearch />);
   await screen.findAllByRole('button', { name: /view venue/i });
 

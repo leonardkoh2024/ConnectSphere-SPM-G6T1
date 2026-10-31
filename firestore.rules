@@ -306,11 +306,12 @@ service cloud.firestore {
           && review.decided_at == request.time
           && ((review.outcome == 'APPROVE'
               && request.resource.data.status == 'CONFIRMED'
+              && request.resource.data.confirmed_at == request.time
               && approvedBookingId is string
               && approvedBookingId.size() > 0
               && approvedVenueBookingFor(approvedBookingId))
             || (review.outcome in ['REJECT', 'REQUEST_CHANGES'] && request.resource.data.status == 'PLANNING'))
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'last_safety_review_id', 'updated_at', 'returned_to_planning_at', 'technical_review_status']);
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'last_safety_review_id', 'updated_at', 'returned_to_planning_at', 'technical_review_status', 'confirmed_at']);
       }
 
       // Called only on Approve, after the id is known to be present, so a Reject
@@ -566,12 +567,49 @@ service cloud.firestore {
     // up to Confirmed (AC1), naming at least one field and giving a reason (AC2). It is
     // written Pending (AC4), stamped now, and carries the event's coordinator as it stands,
     // so the request cannot claim a coordinator the event does not have. The field names
-    // repeat CHANGEABLE_FIELD_NAMES in domain/changeRequests.js. No update or delete yet:
-    // the coordinator's decision is I2's to add.
+    // repeat CHANGEABLE_FIELD_NAMES in domain/changeRequests.js.
+    //
+    // I2 / SCRUM-148 — the event's current coordinator decides a Pending request once. A
+    // decline (AC2) needs a non-empty reason; an acceptance (AC3) only commits with the
+    // event's own update in the same batch (updated_at is this request's time) and records
+    // the actor, the time and the old values it replaced. Both name a history row written
+    // in the same commit. Nothing else on the request may change, and it is never deleted.
     match /change_requests/{requestId} {
       function changedEvent() { return get(/databases/$(database)/documents/events/$(request.resource.data.event_id)).data; }
+      function decisionHistory() { return getAfter(/databases/$(database)/documents/event_history/$(request.resource.data.decision_history_id)).data; }
+      function decisionRecorded(actionType) {
+        return request.resource.data.decision_history_id is string
+          && decisionHistory().change_request_id == requestId
+          && decisionHistory().event_id == resource.data.event_id
+          && decisionHistory().actor_id == request.auth.uid
+          && decisionHistory().action_type == actionType
+          && decisionHistory().created_at == request.time;
+      }
+      allow update: if hasRole('EVENT_COORDINATOR')
+        && resource.data.status == 'PENDING'
+        && currentCoordinator(resource.data.event_id)
+        && request.resource.data.decided_by == request.auth.uid
+        && request.resource.data.decided_at == request.time
+        && request.resource.data.decision_reason is string
+        && ((request.resource.data.status == 'DECLINED'
+            && request.resource.data.decision_reason.trim().size() > 0
+            && decisionRecorded('CHANGE_REQUEST_DECLINED')
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decided_by', 'decided_at', 'decision_reason', 'decision_history_id']))
+          || (request.resource.data.status == 'ACCEPTED'
+            && request.resource.data.applied_changes is map
+            && decisionRecorded('CHANGE_REQUEST_ACCEPTED')
+            && getAfter(/databases/$(database)/documents/events/$(resource.data.event_id)).data.updated_at == request.time
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decided_by', 'decided_at', 'decision_reason', 'applied_changes', 'decision_history_id'])));
       allow get, list: if signedIn()
         && (resource.data.organiser_id == request.auth.uid || canReadEvent(resource.data.event_id));
+      // K2 / K3 — when the Lead assigns or reassigns, the event's Pending requests follow
+      // the new coordinator in the same commit; nothing else on them may change.
+      allow get, list: if hasRole('EVENT_COORDINATOR_LEAD');
+      allow update: if hasRole('EVENT_COORDINATOR_LEAD')
+        && resource.data.status == 'PENDING'
+        && request.resource.data.coordinator_id is string
+        && request.resource.data.coordinator_id == getAfter(/databases/$(database)/documents/events/$(resource.data.event_id)).data.coordinator_id
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coordinator_id']);
       allow create: if hasRole('EVENT_ORGANISER')
         && request.resource.data.change_request_id == requestId
         && request.resource.data.organiser_id == request.auth.uid
@@ -792,7 +830,7 @@ service cloud.firestore {
     }
 
     // E2 / E5 — catalogue and search reads are Coordinator and Venue Staff only.
-    // Hiding the screen is not the boundary (A4 / TC-015). A7 AC3 / E10 AC3 add
+    // Hiding the screen is not the boundary (A4). A7 AC3 / E10 AC3 add
     // the Safety Officer, read-only, to venues, layouts and accessibility for
     // capacity, layout, emergency access and known restrictions.
     match /venue_staff/{venueId} {

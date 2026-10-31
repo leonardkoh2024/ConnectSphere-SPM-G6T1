@@ -120,6 +120,11 @@ export const ROLE_META = {
           "Request equipment for your events."
       },
       {
+        name: "Change requests",
+        icon: "change",
+        blurb: "Weigh and decide changes requested on your events."
+      },
+      {
         name: "Registrations",
         icon: "people",
         blurb: "Registrations for your events."

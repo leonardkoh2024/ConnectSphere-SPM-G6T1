@@ -1,0 +1,101 @@
+// ConnectSphere - Registration & Waitlist
+
+Enum registration_status {
+  REGISTERED
+  WAITLISTED
+  WITHDRAWN
+  CANCELLED
+}
+
+Enum invitation_status {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+Table users {
+  user_id varchar [pk, note: 'Firebase Authentication UID and Firestore document ID']
+  name varchar [not null]
+  email varchar [not null, unique]
+  role user_role [not null]
+  organisation_name varchar
+  mobile_number varchar
+  preferred_contact_method varchar
+  is_active boolean [not null, default: true]
+  created_at timestamp
+  updated_at timestamp
+
+  Note: 'Password hashes are owned by Firebase Authentication and are not stored here.'
+}
+
+Table events {
+  event_id varchar [pk, note: 'Firestore document ID']
+  reference_no varchar [not null, unique]
+  organiser_id varchar [not null, ref: > users.user_id]
+  coordinator_id varchar [ref: > users.user_id]
+  created_by varchar [ref: > users.user_id]
+  name varchar [not null]
+  purpose varchar
+  description text
+  event_date date
+  start_time time
+  end_time time
+  expected_attendance int
+  status event_status [not null]
+  registration_required boolean
+  equipment_required boolean
+  open_clarification_id varchar
+  approved_venue_booking_id varchar
+  assigned_at timestamp
+  created_at timestamp
+  submitted_at timestamp
+  updated_at timestamp
+  last_activity_at timestamp
+  returned_to_planning_at timestamp
+  safety_review_requested_at timestamp
+  last_safety_review_id varchar
+  equipment_placement text [note: 'Current application stores this safety-planning note directly on the event.']
+  crowd_movement text [note: 'Current application stores this safety-planning note directly on the event.']
+  registration_capacity int [note: 'Current event form also persists registration settings inline.']
+  registration_open_date date
+  registration_open_time time
+  registration_close_date date
+  registration_close_time time
+  last_cancellation_id varchar
+  last_detail_change_id varchar
+  last_venue_release_id varchar
+}
+
+Table registrations {
+  registration_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  attendee_id varchar [not null, ref: > users.user_id]
+  status registration_status [not null]
+  registered_at timestamp
+  withdrawn_at timestamp
+  waitlist_position int
+
+  indexes {
+    (event_id, attendee_id) [unique]
+  }
+}
+
+Table registration_settings {
+  event_id varchar [pk, ref: - events.event_id]
+  capacity int [not null]
+  registered_count int [not null, default: 0]
+  open_datetime timestamp
+  close_datetime timestamp
+
+  Note: 'The active event form also stores split registration date/time fields directly on events.'
+}
+
+Table waitlist_invitations {
+  invitation_id varchar [pk]
+  registration_id varchar [not null, ref: > registrations.registration_id]
+  invited_at timestamp [not null]
+  expires_at timestamp [not null]
+  responded_at timestamp
+  status invitation_status [not null]
+}

@@ -1,5 +1,5 @@
 // A7 / SCRUM-170 AC3 — the coordinator records where equipment goes and how the
-// crowd moves, for the Safety Officer to read. TC-368, TC-369 in docs/test-cases.md.
+// crowd moves, for the Safety Officer to read.
 
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -12,7 +12,7 @@ const EVENT = { id: 'e1', status: 'PLANNING', editable: true, equipment_placemen
 
 beforeEach(() => savePlanningNotes.mockReset().mockResolvedValue({ ok: true }));
 
-test('TC-368 the current coordinator edits both notes in Approved or Planning and saves them', async () => {
+test('TC-0147 the current coordinator edits both notes in Approved or Planning and saves them', async () => {
   const onSaved = jest.fn();
   render(<SafetyPlanningNotes event={EVENT} onSaved={onSaved} />);
   const notes = screen.getByRole('region', { name: 'Safety planning notes' });
@@ -30,7 +30,7 @@ test('TC-368 the current coordinator edits both notes in Approved or Planning an
   await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
 });
 
-test('TC-368 a refused save is shown and the typed notes are kept', async () => {
+test('TC-0148 a refused save is shown and the typed notes are kept', async () => {
   savePlanningNotes.mockRejectedValueOnce(new Error('There are no changes to save.'));
   const onSaved = jest.fn();
   render(<SafetyPlanningNotes event={{ ...EVENT, status: 'APPROVED' }} onSaved={onSaved} />);
@@ -45,11 +45,27 @@ test.each([
   ['an event in Safety Review', { status: 'SAFETY_REVIEW' }],
   ['a Confirmed event', { status: 'CONFIRMED' }],
   ['an event still Under Review', { status: 'UNDER_REVIEW' }]
-])('TC-369 for %s the notes are read only', (_name, changes) => {
+])('TC-0149 for %s the notes are read only', (_name, changes) => {
   render(<SafetyPlanningNotes event={{ ...EVENT, ...changes }} />);
   const notes = screen.getByRole('region', { name: 'Safety planning notes' });
   expect(within(notes).queryByRole('textbox')).not.toBeInTheDocument();
   expect(within(notes).queryByRole('button')).not.toBeInTheDocument();
   expect(notes).toHaveTextContent('Equipment placementSpeakers by the stage');
   expect(notes).toHaveTextContent('Crowd movementNot recorded');
+});
+
+test('TC-0150 [failure] a failure without a reason gets a plain message, which clears once the coordinator types again', async () => {
+  savePlanningNotes.mockRejectedValueOnce(new Error(''));
+  render(<SafetyPlanningNotes event={EVENT} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Save safety notes' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('The safety planning notes could not be saved.');
+  await userEvent.type(screen.getByLabelText('Crowd movement'), 'A');
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+test('TC-0151 [boundary] a save with nobody listening for it still completes', async () => {
+  render(<SafetyPlanningNotes event={EVENT} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Save safety notes' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Save safety notes' })).toBeEnabled());
+  expect(savePlanningNotes).toHaveBeenCalledTimes(1);
 });

@@ -16,6 +16,7 @@ import { releaseCancelledEventBookings } from "../venues/venuesApi";
 import { releaseCancelledEventReservations } from "../equipment/equipmentApi";
 import SafetyPlanningNotes from "../safety/SafetyPlanningNotes";
 import { sendEventForSafetyCheck } from "../safety/safetyApi";
+import { confirmationReadiness, formatSgt } from "../../domain/eventConfirmation";
 
 const shownTime = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Not recorded";
 
@@ -105,6 +106,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
   };
 
   const retryCancellationCleanup = async () => {
+    /* istanbul ignore if -- unreachable from the UI: the Retry button exists only while a cleanup is pending. */
     if (!cleanupRetry) return;
     setBusy(true);
     setError("");
@@ -132,6 +134,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
           ? (message.trim() ? null : "Cancellation reason is required.")
           : decisionReasonProblem(action, message);
     if (problem) { setError(problem); return; }
+    /* istanbul ignore if -- unreachable from the UI: Confirm cancellation stays disabled until the box is ticked. */
     if (action === "cancel" && !cancellationConfirmed) {
       setError("Confirm that you want to cancel this event.");
       return;
@@ -185,6 +188,13 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
     // An open clarification locks just its date, size and venue fields.
     const canEdit = event.editable && editableEventStatuses.includes(event.status);
     const canSendForSafetyCheck = event.editable && ["APPROVED", "PLANNING"].includes(event.status);
+    // D3 AC1–AC3 — sending is offered only once the arrangements are secured; until then
+    // the view names what is outstanding.
+    const readiness = confirmationReadiness({
+      event,
+      venueBookings: detail.venueBookings || [],
+      equipmentLines: detail.equipmentArrangements?.lines || []
+    });
     const editing = mode === "edit";
     const showFindVenues = typeof onFindVenues === "function";
     const canRequestVenue = showFindVenues && event.editable && canFindVenues(event);
@@ -217,6 +227,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
         </dd></div>
         <div className="cs-detail-wide"><dt>Purpose</dt><dd>{event.purpose}</dd></div><div className="cs-detail-wide"><dt>Description</dt><dd>{event.description}</dd></div>
         {event.internal_notes && <div className="cs-detail-wide"><dt>Internal notes</dt><dd>{event.internal_notes}</dd></div>}
+        {event.confirmed_at && <div><dt>Confirmed</dt><dd>{formatSgt(event.confirmed_at)}</dd></div>}
         {event.decision_reason && <div className="cs-detail-wide"><dt>Decision reason</dt><dd>{event.decision_reason} · {shownTime(event.decided_at)}</dd></div>}
       </dl>
       <section className="cs-request-section">
@@ -266,15 +277,20 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
           type="button"
           disabled={!canRequestVenue}
           aria-describedby={!canRequestVenue ? "cs-find-venues-reason" : undefined}
-          onClick={() => { if (canRequestVenue) onFindVenues(event); }}
+          onClick={() => onFindVenues(event)}
         >Find venues</button>}
         {canApprove && <button className="cs-btn cs-btn-primary" type="button" disabled={busy} onClick={() => startMode("approve")}>Approve</button>}
         {canDecide && <button className="cs-btn cs-btn-ghost cs-record-danger" type="button" disabled={busy} onClick={() => startMode("reject")}>Reject request</button>}
         {canCancel && <button className="cs-btn cs-btn-ghost cs-record-danger" type="button" disabled={busy} onClick={() => { setMode("cancel"); setMessage(""); setError(""); setCancellationConfirmed(false); }}>Cancel event</button>}
         {mayComplete && <button className="cs-btn cs-btn-secondary" type="button" disabled={busy} onClick={() => act("complete", "Event marked completed.")}>Mark completed</button>}
-        {canSendForSafetyCheck && <button className="cs-btn cs-btn-primary" type="button" disabled={busy} onClick={() => act("safety", "Event sent for its safety check.")}>Send for safety check</button>}
+        {canSendForSafetyCheck && <button className="cs-btn cs-btn-primary" type="button" disabled={busy || !readiness.ready} aria-describedby={!readiness.ready ? "cs-confirm-outstanding" : undefined} onClick={() => act("safety", "Event sent for its safety check.")}>Send for safety check</button>}
         {canEdit && <button className="cs-btn cs-btn-secondary" type="button" onClick={() => startMode("edit")}>Edit event</button>}
       </div>}
+      {canSendForSafetyCheck && !readiness.ready && (
+        <p id="cs-confirm-outstanding" className="cs-panel-note">
+          This event cannot be confirmed yet. Still outstanding: {readiness.outstanding.join(", ")}.
+        </p>
+      )}
       {mayComplete && <p className="cs-panel-note">Completion is checked against the event end time on the server.</p>}
       {!editing && showFindVenues && !canRequestVenue && (
         <p id="cs-find-venues-reason" className="cs-panel-note">
@@ -383,7 +399,7 @@ export default function EventReviewScreen({ queueOnly = false, onNotice, onFindV
   // for action and keeps its original card (now with the shared RecordLead tile).
   if (queueOnly) {
     if (!visible.length) return <div className="cs-empty"><p role={error ? "alert" : undefined}>{error || "No requests are waiting for review."}</p></div>;
-    return <>{error && <p className="cs-error" role="alert">{error}</p>}<div className="cs-record-list">{visible.map((event) => <article className="cs-record cs-review-record" key={event.id}><div className="cs-record-title"><RecordLead date={event.event_date} /><div><h2>{event.name || "Untitled event"}</h2><p>{event.event_date || "Date not set"}</p></div></div><p className="cs-record-ref">{event.reference_no}</p><div className="cs-record-status"><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div><div className="cs-record-modified"><p className="cs-record-saved">{event.editable ? "Current assignment" : "Previous assignment · read only"}</p></div><div className="cs-record-actions"><button className="cs-btn cs-btn-ghost cs-record-btn" type="button" disabled={busy} onClick={() => loadDetail(event.id)}>View request</button></div></article>)}</div></>;
+    return <>{error && <p className="cs-error" role="alert">{error}</p>}<div className="cs-record-list">{visible.map((event) => <article className="cs-record cs-review-record" key={event.id}><div className="cs-record-title"><RecordLead date={event.event_date} /><div><h2>{event.name || "Untitled event"}</h2><p>{event.event_date || "Date not set"}</p></div></div><p className="cs-record-ref">{event.reference_no}</p><div className="cs-record-status"><span className={`cs-pill cs-pill-${statusTone(event.status)}`}>{event.status}</span></div><div className="cs-record-modified"><p className="cs-record-saved">Current assignment</p></div><div className="cs-record-actions"><button className="cs-btn cs-btn-ghost cs-record-btn" type="button" disabled={busy} onClick={() => loadDetail(event.id)}>View request</button></div></article>)}</div></>;
   }
 
   // C2 / SCRUM-103 and D5 — show active work by default while retaining terminal

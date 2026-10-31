@@ -51,7 +51,7 @@ describe('venue booking browser SDK persistence', () => {
     mockVenueStaff.mockReset().mockReturnValue(assignedTo('staff-1'));
   });
 
-  test('creates a pending request in a Firestore transaction without requesting an Admin token', async () => {
+  test('TC-0889 creates a pending request in a Firestore transaction without requesting an Admin token', async () => {
     const user = { uid: 'coordinator-1', getIdToken: jest.fn() };
 
     await expect(requestVenueBooking({
@@ -82,7 +82,7 @@ describe('venue booking browser SDK persistence', () => {
       user_id: 'staff-1',
       venue_id: 'venue-1',
       message: expect.stringContaining('venue booking request'),
-      // J4 / SCRUM-153 TC-540 — Venue Staff cannot read the event, so the notice names it.
+      // J4 / SCRUM-153 — Venue Staff cannot read the event, so the notice names it.
       event_name: 'Community Innovation Forum'
     });
     expect(mockTransactionSet.mock.calls[0][1].occupied_start.toISOString()).toBe('2026-11-10T01:30:00.000Z');
@@ -90,8 +90,8 @@ describe('venue booking browser SDK persistence', () => {
   });
 
   // A coordinator may get venue_staff/{venueId} but not list the collection, so
-  // the assignment must be read as that one document. TC-392, TC-393.
-  test('TC-392 reads the venue assignment as one document, never a list query on venue_staff', async () => {
+  // the assignment must be read as that one document.
+  test('TC-2160 reads the venue assignment as one document, never a list query on venue_staff', async () => {
     await requestVenueBooking({
       user: { uid: 'coordinator-1' },
       event_id: 'event-1',
@@ -105,7 +105,7 @@ describe('venue booking browser SDK persistence', () => {
     expect(mockGetDocs.mock.calls.map(([reference]) => reference.path)).not.toContain('venue_staff');
   });
 
-  test('TC-393 still raises the request when no Venue Staff member manages the venue, notifying nobody', async () => {
+  test('TC-2161 still raises the request when no Venue Staff member manages the venue, notifying nobody', async () => {
     mockVenueStaff.mockReturnValue({ exists: () => false, data: () => undefined });
 
     await expect(requestVenueBooking({
@@ -124,7 +124,7 @@ describe('venue booking browser SDK persistence', () => {
   test.each([
     ['layout', { required_layout: '', required_facilities: [] }, /required layout/i],
     ['facility declaration', { required_layout: 'THEATRE', required_facilities: undefined }, /facility requirements/i]
-  ])('refuses a request with no %s before starting a transaction', async (_label, fields, error) => {
+  ])('TC-0890 refuses a request with no %s before starting a transaction', async (_label, fields, error) => {
     await expect(requestVenueBooking({
       user: { uid: 'coordinator-1' },
       event_id: 'event-1',

@@ -1,5 +1,4 @@
 // J1 / SCRUM-150 — the inbox's ordering, counting and labelling rules.
-// TC-250 – TC-254 and TC-263 in docs/test-cases.md.
 
 import fs from 'fs';
 import path from 'path';
@@ -10,7 +9,7 @@ import {
 import { ROLES } from './roles';
 
 describe('J1 inbox rules', () => {
-  test('TC-250 notifications list newest first, undated last', () => {
+  test('TC-2079 notifications list newest first, undated last', () => {
     const list = [
       { id: 'old', created_at: '2026-10-01T09:00:00.000Z' },
       { id: 'pending', created_at: null },
@@ -21,19 +20,19 @@ describe('J1 inbox rules', () => {
     expect(list.map((item) => item.id)).toEqual(['old', 'pending', 'new']);
   });
 
-  test('TC-251 only notifications not yet read are counted as unread', () => {
+  test('TC-2080 only notifications not yet read are counted as unread', () => {
     expect(unreadCount([{ is_read: false }, { is_read: true }, {}])).toBe(2);
     expect(unreadCount([])).toBe(0);
   });
 
-  test('TC-252 the badge is absent at zero and capped at 99+', () => {
+  test('TC-2081 the badge is absent at zero and capped at 99+', () => {
     expect(badgeText(0)).toBeNull();
     expect(badgeText(3)).toBe('3');
     expect(badgeText(99)).toBe('99');
     expect(badgeText(100)).toBe('99+');
   });
 
-  test('TC-253 the related event reads as name and reference, with fallbacks', () => {
+  test('TC-2082 the related event reads as name and reference, with fallbacks', () => {
     expect(eventLabel({ name: 'Q4 Partner Summit', reference_no: 'EVT-100234' })).toBe('Q4 Partner Summit (EVT-100234)');
     expect(eventLabel({ name: 'Q4 Partner Summit' })).toBe('Q4 Partner Summit');
     expect(eventLabel({ reference_no: 'EVT-100234' })).toBe('EVT-100234');
@@ -41,7 +40,7 @@ describe('J1 inbox rules', () => {
     expect(eventLabel(null)).toBeNull();
   });
 
-  test('TC-254 each stored type has words, and an unknown one still reads as an update', () => {
+  test('TC-2083 each stored type has words, and an unknown one still reads as an update', () => {
     expect(notificationTypeLabel('EVENT_REJECTED')).toBe('Request rejected');
     expect(notificationTypeLabel('CLARIFICATION_REQUESTED')).toBe('Clarification requested');
     expect(notificationTypeLabel('VENUE_BOOKING_REQUESTED')).toBe('Booking request raised');
@@ -51,7 +50,7 @@ describe('J1 inbox rules', () => {
 });
 
 describe('J1 where View on a notification goes', () => {
-  test('TC-263 each role with an event screen gets that screen; the rest get none', () => {
+  test('TC-2084 each role with an event screen gets that screen; the rest get none', () => {
     expect(eventViewScreen(ROLES.ORGANISER)).toBe('New event request');
     expect(eventViewScreen(ROLES.COORDINATOR)).toBe('Assigned events');
     expect(eventViewScreen(ROLES.VENUE_STAFF)).toBeNull();
@@ -61,9 +60,9 @@ describe('J1 where View on a notification goes', () => {
   });
 });
 
-// J6 / SCRUM-155 — TC-318 – TC-320 in docs/test-cases.md.
+// J6 / SCRUM-155.
 describe('J6 outcome notifications', () => {
-  test('TC-318 a booking outcome says approved, or rejected with its reason', () => {
+  test('TC-2220 a booking outcome says approved, or rejected with its reason', () => {
     expect(venueBookingOutcomeMessage({ eventName: 'Q4 Partner Summit', venueName: 'Harbour Hall', approved: true }))
       .toBe('Q4 Partner Summit: the booking for Harbour Hall was approved.');
     expect(venueBookingOutcomeMessage({ eventName: 'Q4 Partner Summit', venueName: 'Harbour Hall', approved: false, reason: ' Closed for repairs ' }))
@@ -71,14 +70,14 @@ describe('J6 outcome notifications', () => {
     expect(venueBookingOutcomeMessage({ approved: false })).toBe('Your event: the booking for the venue was rejected.');
   });
 
-  test('TC-319 each outcome type has words', () => {
+  test('TC-2221 each outcome type has words', () => {
     expect(notificationTypeLabel('VENUE_BOOKING_APPROVED')).toBe('Venue booking approved');
     expect(notificationTypeLabel('VENUE_BOOKING_REJECTED')).toBe('Venue booking rejected');
     expect(notificationTypeLabel('EQUIPMENT_ARRANGED')).toBe('Equipment reserved');
     expect(notificationTypeLabel('EQUIPMENT_UNABLE_TO_FULFIL')).toBe('Equipment unavailable');
   });
 
-  test("TC-320 a coordinator's outcome opens the booking or equipment request, anything else the event", () => {
+  test("TC-2222 a coordinator's outcome opens the booking or equipment request, anything else the event", () => {
     expect(notificationViewScreen(ROLES.COORDINATOR, { type: 'VENUE_BOOKING_APPROVED', booking_id: 'VB-1' })).toBe('Venue bookings');
     expect(notificationViewScreen(ROLES.COORDINATOR, { type: 'VENUE_BOOKING_REJECTED', booking_id: 'VB-1' })).toBe('Venue bookings');
     expect(notificationViewScreen(ROLES.COORDINATOR, { type: 'VENUE_BOOKING_APPROVED' })).toBe('Assigned events');
@@ -94,29 +93,29 @@ describe('J6 outcome notifications', () => {
 // J2 / SCRUM-151 — the organiser is told when their request moves. Each notice names
 // the event and the change (AC2), and an approval or rejection carries its reason (AC3).
 describe('J2 SCRUM-151 what the organiser is told', () => {
-  test('J2-TC1 AC1 AC2 a received submission names the event and says it is waiting for a coordinator', () => {
+  test('TC-2122 J2 AC1 AC2 a received submission names the event and says it is waiting for a coordinator', () => {
     expect(eventSubmittedMessage({ eventName: 'Partner Summit' }))
       .toBe('Partner Summit was submitted and is waiting for a coordinator.');
     expect(eventSubmittedMessage({})).toBe('Your event was submitted and is waiting for a coordinator.');
   });
 
-  test('J2-TC2 AC1 AC3 an approval names the event and carries the coordinator\'s reason', () => {
+  test('TC-2123 J2 AC1 AC3 an approval names the event and carries the coordinator\'s reason', () => {
     expect(eventDecisionMessage({ eventName: 'Partner Summit', approved: true, reason: ' Venue and equipment are confirmed. ' }))
       .toBe('Partner Summit was approved — Venue and equipment are confirmed.');
   });
 
-  test('J2-TC3 AC1 AC3 a rejection keeps the wording it already had, with its reason', () => {
+  test('TC-2124 J2 AC1 AC3 a rejection keeps the wording it already had, with its reason', () => {
     expect(eventDecisionMessage({ eventName: 'Partner Summit', approved: false, reason: 'No suitable venue can be secured.' }))
       .toBe('Partner Summit was rejected — No suitable venue can be secured.');
   });
 
-  test('J2-TC4 AC1 AC2 a cancellation names the event and the reason, and reads sensibly with none', () => {
+  test('TC-2125 J2 AC1 AC2 a cancellation names the event and the reason, and reads sensibly with none', () => {
     expect(eventCancelledMessage({ eventName: 'Partner Summit', reason: ' Speaker withdrew ' }))
       .toBe('Partner Summit was cancelled — Speaker withdrew');
     expect(eventCancelledMessage({ eventName: 'Partner Summit' })).toBe('Partner Summit was cancelled.');
   });
 
-  test('J2-TC5 AC3 an approval or a rejection cannot be sent without a reason, and each says which is missing', () => {
+  test('TC-2126 J2 AC3 an approval or a rejection cannot be sent without a reason, and each says which is missing', () => {
     expect(decisionReasonProblem('approve', '')).toBe('Approval reason is required.');
     expect(decisionReasonProblem('approve', '   ')).toBe('Approval reason is required.');
     expect(decisionReasonProblem('approve', undefined)).toBe('Approval reason is required.');
@@ -125,7 +124,7 @@ describe('J2 SCRUM-151 what the organiser is told', () => {
     expect(decisionReasonProblem('reject', 'No venue.')).toBeNull();
   });
 
-  test('J2-TC6 AC2 each of the seven moves has its own words in the inbox, not the generic Update', () => {
+  test('TC-2127 J2 AC2 each of the seven moves has its own words in the inbox, not the generic Update', () => {
     expect(ORGANISER_PROGRESS_TYPES).toEqual([
       'EVENT_SUBMITTED', 'COORDINATOR_ASSIGNED', 'CLARIFICATION_REQUESTED', 'EVENT_APPROVED',
       'EVENT_REJECTED', 'SAFETY_CHECK_APPROVED', 'EVENT_CANCELLED'
@@ -138,7 +137,7 @@ describe('J2 SCRUM-151 what the organiser is told', () => {
     expect(new Set(labels).size).toBe(labels.length);
   });
 
-  test('J2-TC7 AC2 the organiser can open the event from each of the seven notices', () => {
+  test('TC-2128 J2 AC2 the organiser can open the event from each of the seven notices', () => {
     ORGANISER_PROGRESS_TYPES.forEach((type) => expect(notificationViewScreen(ROLES.ORGANISER, { type })).toBe('New event request'));
   });
 });
@@ -155,14 +154,14 @@ describe('J2 SCRUM-151 hand-off to D4: cancelling an event tells the organiser',
     return /\.js$/.test(entry.name) && !/\.test\.js$/.test(entry.name) ? [full] : [];
   });
 
-  test('J2-TC8 the guard recognises a write that cancels an event, and ignores a comparison', () => {
+  test('TC-2129 J2 the guard recognises a write that cancels an event, and ignores a comparison', () => {
     expect(WRITES_CANCELLED.test('tx.update(eventRef, { status: EVENT_STATUS.CANCELLED, updated_at: at });')).toBe(true);
     expect(WRITES_CANCELLED.test('eventHistoryRecord({ newValue: "CANCELLED" })')).toBe(true);
     expect(WRITES_CANCELLED.test('if (event.status === EVENT_STATUS.CANCELLED) return;')).toBe(false);
     expect(WRITES_CANCELLED.test('const TERMINAL = new Set([EVENT_STATUS.COMPLETED, EVENT_STATUS.CANCELLED]);')).toBe(false);
   });
 
-  test('J2-TC9 AC1 every source file that sets an event to Cancelled also sends the organiser eventCancelledMessage as EVENT_CANCELLED', () => {
+  test('TC-2130 J2 AC1 every source file that sets an event to Cancelled also sends the organiser eventCancelledMessage as EVENT_CANCELLED', () => {
     const offenders = sources()
       .filter((file) => WRITES_CANCELLED.test(fs.readFileSync(file, 'utf8')))
       .filter((file) => {
@@ -178,7 +177,7 @@ describe('J2 SCRUM-151 hand-off to D4: cancelling an event tells the organiser',
 });
 
 describe('J5 SCRUM-154 Technical Support notices read in words, not constants', () => {
-  test('J5-TC21 AC1 AC2 AC3 AC4 each notice type the equipment service writes has its own label', () => {
+  test('TC-2185 J5 AC1 AC2 AC3 AC4 each notice type the equipment service writes has its own label', () => {
     expect(notificationTypeLabel('EQUIPMENT_REQUEST_RAISED')).toBe('Equipment request raised');
     expect(notificationTypeLabel('EQUIPMENT_REQUEST_AMENDED')).toBe('Equipment request amended');
     expect(notificationTypeLabel('ON_SITE_SUPPORT_REQUIRED')).toBe('On-site support needed');
@@ -187,7 +186,7 @@ describe('J5 SCRUM-154 Technical Support notices read in words, not constants', 
 });
 
 describe('H7 SCRUM-145 the attendee is told a place is offered', () => {
-  test('TC-755 an offered place has its own label in the inbox', () => {
+  test('TC-1724 an offered place has its own label in the inbox', () => {
     const { notificationTypeLabel } = require('./notifications');
     expect(notificationTypeLabel('WAITLIST_PLACE_OFFERED')).toBe('Place offered');
   });
@@ -195,7 +194,7 @@ describe('H7 SCRUM-145 the attendee is told a place is offered', () => {
 
 // J7 / SCRUM-156 — each notice an attendee is sent reads under its own heading, not "Update".
 describe('J7 SCRUM-156 what the attendee is told reads in words', () => {
-  test('TC-760 every kind of attendee notice has its own label in the inbox', () => {
+  test('TC-2238 every kind of attendee notice has its own label in the inbox', () => {
     const { attendeeChangeNotices } = require('./safetyAndNotices');
     const labels = {
       REGISTRATION_CONFIRMED: 'Registration confirmed',
@@ -213,7 +212,37 @@ describe('J7 SCRUM-156 what the attendee is told reads in words', () => {
   });
 });
 
-// I1 / SCRUM-147 AC4 — TC-783 in docs/test-cases.md.
-test("TC-783 the coordinator's change request notice has its own inbox label", () => {
+// I1 / SCRUM-147 AC4.
+test("TC-1818 the coordinator's change request notice has its own inbox label", () => {
   expect(notificationTypeLabel('CHANGE_REQUESTED')).toBe('Change requested');
+});
+
+describe('notification wording and routing at the edges', () => {
+  const { venueHoldPlacedMessage } = require('./notifications');
+
+  test('TC-2131 [boundary] J2 each organiser notice reads sensibly with nothing passed', () => {
+    expect(eventSubmittedMessage()).toBe('Your event was submitted and is waiting for a coordinator.');
+    expect(eventDecisionMessage()).toMatch(/^Your event was rejected/);
+    expect(eventCancelledMessage()).toBe('Your event was cancelled.');
+  });
+
+  test('TC-1097 [normal] F15 AC6 a hold notice names the event, the venue and the expiry in Singapore time', () => {
+    expect(venueHoldPlacedMessage({ eventName: 'Q4 Partner Summit', venueName: 'Harbour Hall', expiresAt: '2026-11-04T02:00:00.000Z' }))
+      .toBe('Q4 Partner Summit: Harbour Hall is held for this event until Wed 4 Nov 2026, 10:00.');
+    expect(venueHoldPlacedMessage({ expiresAt: '2026-11-04T15:59:00.000Z' }))
+      .toBe('Your event: the venue is held for this event until Wed 4 Nov 2026, 23:59.');
+  });
+
+  test('TC-1880 [normal] I2 AC4 a change decision opens the organiser\'s Change requests; a change request opens the coordinator\'s', () => {
+    ['CHANGE_REQUEST_ACCEPTED', 'CHANGE_REQUEST_DECLINED'].forEach((type) => expect(notificationViewScreen(ROLES.ORGANISER, { type })).toBe('Change requests'));
+    expect(notificationViewScreen(ROLES.COORDINATOR, { type: 'CHANGE_REQUESTED' })).toBe('Change requests');
+    expect(notificationViewScreen(ROLES.ORGANISER, { type: 'CHANGE_REQUESTED' })).toBe('New event request');
+  });
+
+  test('TC-2132 [conflict] a booking outcome with no booking id, or one sent to another role, opens the event instead', () => {
+    expect(notificationViewScreen(ROLES.COORDINATOR, { type: 'VENUE_BOOKING_APPROVED' })).toBe('Assigned events');
+    expect(notificationViewScreen(ROLES.ORGANISER, { type: 'VENUE_BOOKING_APPROVED', booking_id: 'VB-1' })).toBe('New event request');
+    expect(notificationViewScreen(ROLES.COORDINATOR)).toBe('Assigned events');
+    expect(notificationViewScreen(ROLES.VENUE_STAFF, { type: 'CHANGE_REQUESTED' })).toBeNull();
+  });
 });

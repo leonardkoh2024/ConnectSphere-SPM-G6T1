@@ -80,7 +80,7 @@ const createHarness = ({ role = "VENUE_STAFF", uid = "staff-1", assignedStaff = 
   };
 };
 
-test("F5 rejection requires Venue Staff and a non-empty reason", async () => {
+test("TC-0934 F5 rejection requires Venue Staff and a non-empty reason", async () => {
   const harness = createHarness();
   try {
     const emptyReason = await harness.request({ reason: "  " });
@@ -99,7 +99,7 @@ test("F5 rejection requires Venue Staff and a non-empty reason", async () => {
   }
 });
 
-test("F5 records rejection, reason, timestamp, history and notice without changing occupancy", async () => {
+test("TC-0935 F5 records rejection, reason, timestamp, history and notice without changing occupancy", async () => {
   const harness = createHarness({ status: "HELD" });
   try {
     const { response, store } = await harness.request();
@@ -121,7 +121,8 @@ test("F5 records rejection, reason, timestamp, history and notice without changi
       decision_reason: "The requested layout is unavailable.",
       assigned_staff_id: "staff-1",
       decided_by: "staff-1",
-      decided_at: "SERVER_TIME"
+      decided_at: "SERVER_TIME",
+      requires_re_request: true
     });
     assert.deepEqual(Object.values(store).find((item) => item.action_type === "VENUE_BOOKING_REJECTED"), {
       history_id: "generated-1",
@@ -155,7 +156,7 @@ test("F5 records rejection, reason, timestamp, history and notice without changi
   }
 });
 
-test("F5 rejects only an assigned staff member and cannot overwrite a terminal rejection", async () => {
+test("TC-0936 F5 rejects only an assigned staff member and cannot overwrite a terminal rejection", async () => {
   const wrongStaff = createHarness({ assignedStaff: "staff-2" });
   try {
     const result = await wrongStaff.request();

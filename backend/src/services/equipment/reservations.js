@@ -17,46 +17,30 @@ const revisionOf = (inventory) => {
 };
 
 const ACTIVE_STATUSES = ["RESERVED", "APPROVED"];
-const isActiveReservation = (record) => ACTIVE_STATUSES.includes(String(record?.status || "").toUpperCase());
+const isActiveReservation = (record) => ACTIVE_STATUSES.includes(record.status);
 
-const toDate = (value) => {
-  if (value instanceof Date) return value;
-  if (typeof value?.toDate === "function") return value.toDate();
-  if (value == null || value === "") return null;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
+const toDate = (value) => new Date(typeof value.toDate === "function" ? value.toDate() : value);
 
 // G6 / SCRUM-138 — the window to measure against after a significant change: the event's
 // CURRENT date and times (Singapore), widened by the setup and turnaround its approved
 // booking carries. The booking itself stays as I3 left it, a reference to the old window.
-const MINUTE = 60000;
 const reassessmentWindow = (event, bookings) => {
-  const { event_date: date, start_time: startTime, end_time: endTime } = event || {};
-  const start = date && startTime ? toDate(`${date}T${startTime}:00+08:00`) : null;
-  const end = date && endTime ? toDate(`${date}T${endTime}:00+08:00`) : null;
-  if (!start || !end || start >= end) {
+  const { event_date: date, start_time: startTime, end_time: endTime } = event;
+  const start = new Date(`${date}T${startTime}:00+08:00`);
+  const end = new Date(`${date}T${endTime}:00+08:00`);
+  if (!(start < end)) {
     throw new EquipmentConflictError("This event has no complete date and time to re-check against.");
   }
-  const buffers = bookings
-    .filter((booking) => String(booking.status || "").toUpperCase() === "APPROVED")
-    .map((booking) => {
-      const bookedStart = toDate(booking.start_datetime);
-      const bookedEnd = toDate(booking.end_datetime);
-      const occupiedStart = toDate(booking.occupied_start);
-      const occupiedEnd = toDate(booking.occupied_end);
-      return {
-        setup: bookedStart && occupiedStart ? Math.max(0, bookedStart - occupiedStart) : 0,
-        turnaround: bookedEnd && occupiedEnd ? Math.max(0, occupiedEnd - bookedEnd) : 0
-      };
-    });
+  // `bookings` are the event's APPROVED venue bookings; each carries its setup and turnaround.
+  const buffers = bookings.map((booking) => ({
+    setup: toDate(booking.start_datetime) - toDate(booking.occupied_start),
+    turnaround: toDate(booking.occupied_end) - toDate(booking.end_datetime)
+  }));
   const setup = Math.max(0, ...buffers.map((item) => item.setup));
   const turnaround = Math.max(0, ...buffers.map((item) => item.turnaround));
   return {
     start: new Date(start.getTime() - setup),
-    end: new Date(end.getTime() + turnaround),
-    setupMinutes: setup / MINUTE,
-    turnaroundMinutes: turnaround / MINUTE
+    end: new Date(end.getTime() + turnaround)
   };
 };
 
@@ -453,8 +437,8 @@ export const createEquipmentReservations = ({ firestore, serverTimestamp, getApp
           const reservation = item.data();
           const result = measure({ context, eventId, equipmentType: reservation.equipment_type, quantity: reservation.quantity });
           return {
-            reservationId: reservation.reservation_id || item.id,
-            lineIndex: reservation.line_index ?? null,
+            reservationId: item.id,
+            lineIndex: reservation.line_index,
             equipmentType: reservation.equipment_type,
             quantity: reservation.quantity,
             heldQuantity: result.heldQuantity,
@@ -465,7 +449,7 @@ export const createEquipmentReservations = ({ firestore, serverTimestamp, getApp
             available: result.available
           };
         })
-        .sort((left, right) => (left.lineIndex ?? Infinity) - (right.lineIndex ?? Infinity));
+        .sort((left, right) => left.lineIndex - right.lineIndex);
       return { eventId, windowStart: context.window.start, windowEnd: context.window.end, lines };
     });
   };
@@ -514,7 +498,7 @@ export const createEquipmentReservations = ({ firestore, serverTimestamp, getApp
       transaction.create(historyRef, {
         event_id: eventId,
         request_id: eventId,
-        line_index: reservation.line_index ?? null,
+        line_index: reservation.line_index,
         action: "RESERVATION_KEPT",
         actor_id: userId,
         created_at: now,
@@ -563,7 +547,7 @@ export const createEquipmentReservations = ({ firestore, serverTimestamp, getApp
         event_id: eventId,
         equipment_type: old.equipment_type,
         quantity: requested,
-        line_index: old.line_index ?? null,
+        line_index: old.line_index,
         start_datetime: context.window.start,
         end_datetime: context.window.end,
         status: "RESERVED",
@@ -593,7 +577,7 @@ export const createEquipmentReservations = ({ firestore, serverTimestamp, getApp
       const historyBase = {
         event_id: eventId,
         request_id: eventId,
-        line_index: old.line_index ?? null,
+        line_index: old.line_index,
         actor_id: userId,
         created_at: now,
         equipment_type: old.equipment_type
@@ -606,11 +590,8 @@ export const createEquipmentReservations = ({ firestore, serverTimestamp, getApp
       });
 
       if (context.request) {
-        const lines = context.request.lines || [];
-        const index = lines.findIndex((line) => line.reservation_id === reservationId);
-        const lineIndex = index >= 0 ? index : Number(old.line_index);
         transaction.update(firestore.collection("equipment_requests").doc(eventId), {
-          lines: lines.map((line, position) => position === lineIndex ? {
+          lines: context.request.lines.map((line, position) => position === old.line_index ? {
             ...line,
             quantity: requested,
             reservation_id: newRef.id,

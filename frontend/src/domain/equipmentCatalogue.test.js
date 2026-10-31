@@ -1,5 +1,5 @@
 // G2 / G3 / G5 — Technical Support's equipment catalogue and reservation list,
-// as plain functions. TC-403 to TC-405 in docs/test-cases.md.
+// as plain functions.
 
 import {
   RESERVATION_STATE,
@@ -17,7 +17,7 @@ const reservation = (overrides) => ({
   ...overrides
 });
 
-test("TC-403 a reservation is upcoming, in use, completed or released", () => {
+test("TC-1217 a reservation is upcoming, in use, completed or released", () => {
   expect(reservationState(reservation({ start_datetime: "2026-11-05T01:00:00.000Z", end_datetime: "2026-11-05T09:00:00.000Z" }), NOW))
     .toBe(RESERVATION_STATE.UPCOMING);
   expect(reservationState(reservation({}), NOW)).toBe(RESERVATION_STATE.IN_USE);
@@ -42,7 +42,7 @@ test("TC-403 a reservation is upcoming, in use, completed or released", () => {
   expect(RESERVATION_STATE_LABEL).toEqual({ UPCOMING: "Upcoming", IN_USE: "In use", COMPLETED: "Completed", RELEASED: "Released" });
 });
 
-test("TC-404 the catalogue shows, per type, what is held, reserved and unavailable now, what is free, and what is coming up", () => {
+test("TC-1218 the catalogue shows, per type, what is held, reserved and unavailable now, what is free, and what is coming up", () => {
   const rows = catalogueRows({
     inventory: [
       { equipment_type: "AUDIO", total_quantity: 10 },
@@ -99,7 +99,7 @@ test("TC-404 the catalogue shows, per type, what is held, reserved and unavailab
   expect(edges).toMatchObject({ reservedNow: 1, unavailableNow: 0, freeNow: 9 });
 });
 
-test("TC-405 reservations split into current (soonest first) and past (latest first), optionally only the caller's", () => {
+test("TC-1219 reservations split into current (soonest first) and past (latest first), optionally only the caller's", () => {
   const all = [
     reservation({ id: "in-use", reserved_by: "tech-1" }),
     reservation({ id: "next-week", reserved_by: "tech-2", start_datetime: "2026-11-11T01:00:00.000Z", end_datetime: "2026-11-11T09:00:00.000Z" }),
@@ -174,5 +174,40 @@ describe("G6 reservations that wait for reassessment", () => {
       flagged({ id: "theirs", reserved_by: "tech-2" })
     ], { now: NOW, onlyReservedBy: "tech-1" });
     expect(groups.reassess.map((item) => item.id)).toEqual(["mine"]);
+  });
+});
+
+describe("G2 / G5 catalogue edges", () => {
+  test("TC-1220 [boundary] with nothing recorded every standard type reads not recorded, and nothing is reserved", () => {
+    const rows = catalogueRows({});
+    expect(rows.map((row) => row.equipmentType)).toEqual(EQUIPMENT_TYPES);
+    rows.forEach((row) => expect(row).toMatchObject({ held: null, freeNow: null, reservedNow: 0, unavailableNow: 0, upcoming: 0 }));
+    expect(reservationGroups()).toEqual({ reassess: [], current: [], past: [] });
+    expect(reservationGroups(null)).toEqual({ reassess: [], current: [], past: [] });
+  });
+
+  test("TC-1221 [boundary] an unreadable quantity holds nothing, a record without a type matches none, and invalid stock reads not recorded", () => {
+    const rows = catalogueRows({
+      inventory: [{ equipment_type: "AUDIO", total_quantity: 5 }, { equipment_type: "VISUAL", total_quantity: -1 }, { total_quantity: 3 }],
+      reservations: [reservation({ quantity: "lots" }), reservation({ quantity: 1.5 }), reservation({ equipment_type: undefined })],
+      unavailability: [{ equipment_type: "AUDIO", quantity: 1, start_datetime: "2026-11-04T01:00:00.000Z", end_datetime: "2026-11-04T09:00:00.000Z" }],
+      now: NOW
+    });
+    expect(rows.find((row) => row.equipmentType === "AUDIO")).toMatchObject({ held: 5, reservedNow: 0, unavailableNow: 1, freeNow: 4 });
+    expect(rows.find((row) => row.equipmentType === "VISUAL")).toMatchObject({ held: null, freeNow: null });
+    // A stock row with no type is listed under an empty name after the standard types.
+    expect(rows[rows.length - 1]).toMatchObject({ equipmentType: "", held: 3 });
+  });
+
+  test("TC-1222 [boundary] state is judged against the current time when none is given; an undated reservation sorts as earliest", () => {
+    expect(reservationState(reservation({ start_datetime: "2999-01-01T00:00:00.000Z", end_datetime: "2999-01-02T00:00:00.000Z" })))
+      .toBe(RESERVATION_STATE.UPCOMING);
+    const groups = reservationGroups([
+      reservation({ id: "dated", start_datetime: "2026-11-05T01:00:00.000Z", end_datetime: "2026-11-05T09:00:00.000Z" }),
+      reservation({ id: "undated", start_datetime: null, end_datetime: null }),
+      reservation({ id: "undated-2", start_datetime: "", end_datetime: "" })
+    ], { now: NOW });
+    expect(groups.current.map((item) => item.id)).toEqual(["undated", "undated-2", "dated"]);
+    expect(reservationGroups([reservation({ start_datetime: "2020-01-01T00:00:00.000Z", end_datetime: "2020-01-02T00:00:00.000Z" })])).toMatchObject({ past: [expect.objectContaining({ state: RESERVATION_STATE.COMPLETED })] });
   });
 });

@@ -25,7 +25,7 @@ const entry = (changes = {}) => ({
 
 const rowFor = async (name) => (await screen.findByRole("heading", { name })).closest(".cs-record");
 
-test("TC-566 each open event shows its name, description, date, window, venue and remaining places", async () => {
+test("TC-1481 each open event shows its name, description, date, window, venue and remaining places", async () => {
   loadOpenEvents.mockResolvedValue([entry()]);
   render(<BrowseEvents />);
   const row = await rowFor("Harbour Tech Forum");
@@ -38,7 +38,7 @@ test("TC-566 each open event shows its name, description, date, window, venue an
   expect(within(row).getByText(/Registration closes 10 Nov 2026, 17:00/)).toBeInTheDocument();
 });
 
-test("TC-567 a full event is listed as Full, and one without a venue yet says so", async () => {
+test("TC-1482 a full event is listed as Full, and one without a venue yet says so", async () => {
   loadOpenEvents.mockResolvedValue([entry({ remaining_places: 0, venue_names: [] })]);
   render(<BrowseEvents />);
   const row = await rowFor("Harbour Tech Forum");
@@ -47,34 +47,34 @@ test("TC-567 a full event is listed as Full, and one without a venue yet says so
   expect(within(row).getByText("Venue to be confirmed")).toBeInTheDocument();
 });
 
-test("TC-567 an event with no description does not leave an empty line", async () => {
+test("TC-1483 an event with no description does not leave an empty line", async () => {
   loadOpenEvents.mockResolvedValue([entry({ description: "" })]);
   render(<BrowseEvents />);
   const row = await rowFor("Harbour Tech Forum");
   expect(row.querySelector(".cs-browse-description")).toBeNull();
 });
 
-test("TC-568 the list is shown in the order the service gives it", async () => {
+test("TC-1484 the list is shown in the order the service gives it", async () => {
   loadOpenEvents.mockResolvedValue([entry({ id: "a", name: "First" }), entry({ id: "b", name: "Second" })]);
   render(<BrowseEvents />);
   await screen.findByRole("heading", { name: "First" });
   expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["First", "Second"]);
 });
 
-test("TC-569 with nothing open the attendee is told so", async () => {
+test("TC-1485 with nothing open the attendee is told so", async () => {
   loadOpenEvents.mockResolvedValue([]);
   render(<BrowseEvents />);
   expect(await screen.findByText(/no events are open for registration right now/i)).toBeInTheDocument();
 });
 
-test("TC-570 a load failure is announced, not shown as an empty list", async () => {
+test("TC-1486 a load failure is announced, not shown as an empty list", async () => {
   loadOpenEvents.mockRejectedValue(new Error("The registration service is not responding."));
   render(<BrowseEvents />);
   expect(await screen.findByRole("alert")).toHaveTextContent("The registration service is not responding.");
   expect(screen.queryByText(/no events are open/i)).not.toBeInTheDocument();
 });
 
-test("TC-570 the list says it is loading until the reply arrives", async () => {
+test("TC-1487 the list says it is loading until the reply arrives", async () => {
   let resolve;
   loadOpenEvents.mockReturnValue(new Promise((done) => { resolve = done; }));
   render(<BrowseEvents />);
@@ -92,7 +92,7 @@ const registeredReply = (changes = {}) => ({
 
 const refusal = (message, reason) => Object.assign(new Error(message), { reason });
 
-test("TC-597 H3 AC2 an event with places left offers Register; registering calls the service for that event", async () => {
+test("TC-1516 H3 AC2 an event with places left offers Register; registering calls the service for that event", async () => {
   loadOpenEvents.mockResolvedValue([entry()]);
   registerForEvent.mockResolvedValue(registeredReply());
   render(<BrowseEvents />);
@@ -103,7 +103,7 @@ test("TC-597 H3 AC2 an event with places left offers Register; registering calls
   expect(await screen.findByRole("region", { name: "Harbour Tech Forum" })).toBeInTheDocument();
 });
 
-test("TC-598 H3 AC3 a successful registration is confirmed", async () => {
+test("TC-1517 H3 AC3 a successful registration is confirmed", async () => {
   loadOpenEvents.mockResolvedValue([entry()]);
   registerForEvent.mockResolvedValue(registeredReply());
   const onNotice = jest.fn();
@@ -114,7 +114,7 @@ test("TC-598 H3 AC3 a successful registration is confirmed", async () => {
   expect(screen.getByRole("status")).toHaveTextContent("You are registered for this event.");
 });
 
-test("TC-599 H3 AC4 after registering, the event's details are shown, with the places left now one fewer", async () => {
+test("TC-1518 H3 AC4 after registering, the event's details are shown, with the places left now one fewer", async () => {
   loadOpenEvents.mockResolvedValue([entry()]);
   registerForEvent.mockResolvedValue(registeredReply());
   render(<BrowseEvents />);
@@ -129,7 +129,7 @@ test("TC-599 H3 AC4 after registering, the event's details are shown, with the p
   expect(within(details).getByText("5 Nov 2026, 12:00")).toBeInTheDocument();
 });
 
-test("TC-599 H3 AC4 the details view hands the shell its way back, and back returns to the list marked Registered", async () => {
+test("TC-1519 H3 AC4 the details view hands the shell its way back, and back returns to the list marked Registered", async () => {
   loadOpenEvents.mockResolvedValue([entry()]);
   registerForEvent.mockResolvedValue(registeredReply());
   const onBackChange = jest.fn();
@@ -147,7 +147,7 @@ test("TC-599 H3 AC4 the details view hands the shell its way back, and back retu
   expect(within(row).getByText("109 places left")).toBeInTheDocument();
 });
 
-test("TC-600 H3 AC4 AC8 an event already registered for offers View details, never Register again", async () => {
+test("TC-1520 H3 AC4 AC8 an event already registered for offers View details, never Register again", async () => {
   loadOpenEvents.mockResolvedValue([entry({ registration_status: "REGISTERED" })]);
   render(<BrowseEvents />);
   const row = await rowFor("Harbour Tech Forum");
@@ -159,7 +159,7 @@ test("TC-600 H3 AC4 AC8 an event already registered for offers View details, nev
   expect(registerForEvent).not.toHaveBeenCalled();
 });
 
-test("TC-601 H3 AC5 a full event says it is full and offers no Register", async () => {
+test("TC-1521 H3 AC5 a full event says it is full and offers no Register", async () => {
   loadOpenEvents.mockResolvedValue([entry({ remaining_places: 0 })]);
   render(<BrowseEvents />);
   const row = await rowFor("Harbour Tech Forum");
@@ -168,7 +168,7 @@ test("TC-601 H3 AC5 a full event says it is full and offers no Register", async 
   expect(within(row).queryByRole("button", { name: "Register" })).not.toBeInTheDocument();
 });
 
-test("TC-602 H3 AC5 an event that fills while the list is open says so on that row", async () => {
+test("TC-1522 H3 AC5 an event that fills while the list is open says so on that row", async () => {
   loadOpenEvents.mockResolvedValue([entry()]);
   registerForEvent.mockRejectedValue(refusal("This event is full.", "full"));
   render(<BrowseEvents />);
@@ -180,7 +180,7 @@ test("TC-602 H3 AC5 an event that fills while the list is open says so on that r
   expect(within(row).queryByRole("button", { name: "Register" })).not.toBeInTheDocument();
 });
 
-test("TC-603 H3 AC6 registering after the window has closed is refused with the service's reason", async () => {
+test("TC-1523 H3 AC6 registering after the window has closed is refused with the service's reason", async () => {
   loadOpenEvents.mockResolvedValue([entry()]);
   registerForEvent.mockRejectedValue(refusal("Registration has closed.", "closed"));
   const onNotice = jest.fn();
@@ -193,7 +193,7 @@ test("TC-603 H3 AC6 registering after the window has closed is refused with the 
   expect(onNotice).not.toHaveBeenCalled();
 });
 
-test("TC-604 H3 AC8 a duplicate refused by the service marks the row Registered", async () => {
+test("TC-1524 H3 AC8 a duplicate refused by the service marks the row Registered", async () => {
   loadOpenEvents.mockResolvedValue([entry()]);
   registerForEvent.mockRejectedValue(refusal("You are already registered for this event.", "already_registered"));
   render(<BrowseEvents />);
@@ -204,7 +204,7 @@ test("TC-604 H3 AC8 a duplicate refused by the service marks the row Registered"
   expect(within(row).getByText("Registered")).toBeInTheDocument();
 });
 
-test("TC-605 H3 AC8 Register cannot be pressed twice while the first is on its way", async () => {
+test("TC-1525 H3 AC8 Register cannot be pressed twice while the first is on its way", async () => {
   let finish;
   loadOpenEvents.mockResolvedValue([entry()]);
   registerForEvent.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
@@ -220,7 +220,7 @@ test("TC-605 H3 AC8 Register cannot be pressed twice while the first is on its w
   expect(await screen.findByRole("region", { name: "Harbour Tech Forum" })).toBeInTheDocument();
 });
 
-test("TC-605 a failure the service did not explain still tells the attendee, and Register can be tried again", async () => {
+test("TC-1526 a failure the service did not explain still tells the attendee, and Register can be tried again", async () => {
   loadOpenEvents.mockResolvedValue([entry()]);
   registerForEvent.mockRejectedValue(new Error(""));
   render(<BrowseEvents />);
@@ -233,7 +233,7 @@ test("TC-605 a failure the service did not explain still tells the attendee, and
 
 // ---- H5 / SCRUM-143 — withdrawing from an event's details on Browse events -------
 
-test("TC-672 H5 AC2 AC3 the details of an event registered for offer Withdraw; withdrawing returns to the list with Register again", async () => {
+test("TC-1605 H5 AC2 AC3 the details of an event registered for offer Withdraw; withdrawing returns to the list with Register again", async () => {
   loadOpenEvents.mockResolvedValue([entry({ registration_status: "REGISTERED", remaining_places: 109 })]);
   withdrawFromEvent.mockResolvedValue({ registration: { status: "WITHDRAWN" }, remaining_places: 110 });
   const onNotice = jest.fn();
@@ -253,7 +253,7 @@ test("TC-672 H5 AC2 AC3 the details of an event registered for offer Withdraw; w
   expect(within(row).getByText("110 places left")).toBeInTheDocument();
 });
 
-test("TC-672 H5 AC6 a refused withdrawal from the details is explained and changes nothing", async () => {
+test("TC-1606 H5 AC6 a refused withdrawal from the details is explained and changes nothing", async () => {
   loadOpenEvents.mockResolvedValue([entry({ registration_status: "REGISTERED" })]);
   withdrawFromEvent.mockRejectedValue(Object.assign(new Error("This event has already started."), { reason: "event_started" }));
   const onNotice = jest.fn();
@@ -269,7 +269,7 @@ test("TC-672 H5 AC6 a refused withdrawal from the details is explained and chang
   expect(onNotice).not.toHaveBeenCalled();
 });
 
-test("TC-673 rows on Browse events share fixed columns, so venue and places line up", async () => {
+test("TC-1607 rows on Browse events share fixed columns, so venue and places line up", async () => {
   loadOpenEvents.mockResolvedValue([entry()]);
   render(<BrowseEvents />);
   expect(await rowFor("Harbour Tech Forum")).toHaveClass("cs-record", "cs-browse-record");
@@ -281,7 +281,7 @@ const waitlistedReply = (position = 3) => ({
   registration: { registration_id: "e1_attendee-1", status: "WAITLISTED", waitlist_position: position }
 });
 
-test("TC-701 H6 AC1 a full event offers Join waiting list; joining calls the service for that event", async () => {
+test("TC-1672 H6 AC1 a full event offers Join waiting list; joining calls the service for that event", async () => {
   loadOpenEvents.mockResolvedValue([entry({ remaining_places: 0 })]);
   joinWaitlist.mockResolvedValue(waitlistedReply());
   render(<BrowseEvents />);
@@ -293,7 +293,7 @@ test("TC-701 H6 AC1 a full event offers Join waiting list; joining calls the ser
   expect(await within(row).findByText("Waitlisted")).toBeInTheDocument();
 });
 
-test("TC-702 H6 AC1 AC2 joining confirms the Waitlisted status and the position at once", async () => {
+test("TC-1673 H6 AC1 AC2 joining confirms the Waitlisted status and the position at once", async () => {
   loadOpenEvents.mockResolvedValue([entry({ remaining_places: 0 })]);
   joinWaitlist.mockResolvedValue(waitlistedReply(3));
   const onNotice = jest.fn();
@@ -307,7 +307,7 @@ test("TC-702 H6 AC1 AC2 joining confirms the Waitlisted status and the position 
   expect(within(row).queryByRole("button", { name: "Join waiting list" })).not.toBeInTheDocument();
 });
 
-test("TC-703 H6 AC1 an event with places left offers Register, not the waiting list", async () => {
+test("TC-1674 H6 AC1 an event with places left offers Register, not the waiting list", async () => {
   loadOpenEvents.mockResolvedValue([entry()]);
   render(<BrowseEvents />);
   const row = await rowFor("Harbour Tech Forum");
@@ -315,7 +315,7 @@ test("TC-703 H6 AC1 an event with places left offers Register, not the waiting l
   expect(within(row).queryByRole("button", { name: "Join waiting list" })).not.toBeInTheDocument();
 });
 
-test("TC-704 H6 AC2 AC3 an event the attendee is waiting for shows Waitlisted with the position, never Register or Join", async () => {
+test("TC-1675 H6 AC2 AC3 an event the attendee is waiting for shows Waitlisted with the position, never Register or Join", async () => {
   loadOpenEvents.mockResolvedValue([entry({ remaining_places: 0, registration_status: "WAITLISTED", waitlist_position: 2 })]);
   render(<BrowseEvents />);
   const row = await rowFor("Harbour Tech Forum");
@@ -325,7 +325,7 @@ test("TC-704 H6 AC2 AC3 an event the attendee is waiting for shows Waitlisted wi
   expect(within(row).queryByRole("button", { name: /register|join waiting list/i })).not.toBeInTheDocument();
 });
 
-test("TC-705 H6 AC2 the details of an event being waited for give the status and position, and offer Withdraw", async () => {
+test("TC-1676 H6 AC2 the details of an event being waited for give the status and position, and offer Withdraw", async () => {
   loadOpenEvents.mockResolvedValue([entry({ remaining_places: 0, registration_status: "WAITLISTED", waitlist_position: 2 })]);
   render(<BrowseEvents />);
 
@@ -336,7 +336,7 @@ test("TC-705 H6 AC2 the details of an event being waited for give the status and
   expect(within(details).getByRole("button", { name: "Withdraw" })).toBeInTheDocument();
 });
 
-test("TC-716 H6 leaving the waiting list from the details returns to the list, still Full, offering Join again", async () => {
+test("TC-1677 H6 leaving the waiting list from the details returns to the list, still Full, offering Join again", async () => {
   loadOpenEvents.mockResolvedValue([entry({ remaining_places: 0, registration_status: "WAITLISTED", waitlist_position: 2 })]);
   withdrawFromEvent.mockResolvedValue({ registration: { status: "WITHDRAWN" }, remaining_places: 0 });
   const onNotice = jest.fn();
@@ -354,7 +354,7 @@ test("TC-716 H6 leaving the waiting list from the details returns to the list, s
   expect(within(row).queryByText("Waitlisted")).not.toBeInTheDocument();
 });
 
-test("TC-706 H6 a place freed before joining is explained, and the list is reloaded so the row offers Register again", async () => {
+test("TC-1678 H6 a place freed before joining is explained, and the list is reloaded so the row offers Register again", async () => {
   loadOpenEvents.mockResolvedValueOnce([entry({ remaining_places: 0 })]).mockResolvedValueOnce([entry({ remaining_places: 1 })]);
   joinWaitlist.mockRejectedValue(Object.assign(new Error("A place is free, so register instead."), { reason: "places_available" }));
   render(<BrowseEvents />);
@@ -367,7 +367,7 @@ test("TC-706 H6 a place freed before joining is explained, and the list is reloa
   expect(loadOpenEvents).toHaveBeenCalledTimes(2);
 });
 
-test("TC-707 H6 AC3 registering refused because the attendee is waiting marks the row Waitlisted", async () => {
+test("TC-1679 H6 AC3 registering refused because the attendee is waiting marks the row Waitlisted", async () => {
   loadOpenEvents.mockResolvedValue([entry()]);
   registerForEvent.mockRejectedValue(Object.assign(new Error("You are on the waiting list for this event."), { reason: "waitlisted" }));
   render(<BrowseEvents />);
@@ -379,7 +379,7 @@ test("TC-707 H6 AC3 registering refused because the attendee is waiting marks th
   expect(within(row).queryByRole("button", { name: "Register" })).not.toBeInTheDocument();
 });
 
-test("TC-708 H6 Join waiting list cannot be pressed twice while the first is on its way", async () => {
+test("TC-1680 H6 Join waiting list cannot be pressed twice while the first is on its way", async () => {
   let finish;
   loadOpenEvents.mockResolvedValue([entry({ remaining_places: 0 })]);
   joinWaitlist.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
@@ -397,7 +397,7 @@ test("TC-708 H6 Join waiting list cannot be pressed twice while the first is on 
 
 // ---- H7 / SCRUM-145 — an offered place on Browse events ---------------------------
 
-test("TC-754 H7 AC1 an event whose place is offered to the attendee points them to My registrations", async () => {
+test("TC-1740 H7 AC1 an event whose place is offered to the attendee points them to My registrations", async () => {
   loadOpenEvents.mockResolvedValue([entry({ remaining_places: 0, registration_status: "WAITLISTED", waitlist_position: 1, invitation_active: true })]);
   render(<BrowseEvents />);
   const row = await rowFor("Harbour Tech Forum");

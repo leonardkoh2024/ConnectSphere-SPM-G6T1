@@ -1,5 +1,4 @@
-// A7 / SCRUM-170 — the Safety Officer's rules, as plain functions. TC-348 to
-// TC-355 in docs/test-cases.md.
+// A7 / SCRUM-170 — the Safety Officer's rules, as plain functions.
 
 import {
   NOT_RECORDED,
@@ -26,7 +25,7 @@ import { statusTone } from './events';
 import { ROLES } from './roles';
 
 // AC2 — the queue is the events awaiting their check, oldest first (L2 AC1).
-test('TC-348 the queue holds only events in Safety Review, the longest-waiting first', () => {
+test('TC-0120 the queue holds only events in Safety Review, the longest-waiting first', () => {
   const events = [
     { id: 'newer', status: 'SAFETY_REVIEW', updated_at: '2026-10-14T09:00:00.000Z' },
     { id: 'planning', status: 'PLANNING', updated_at: '2026-10-01T09:00:00.000Z' },
@@ -41,7 +40,7 @@ test('TC-348 the queue holds only events in Safety Review, the longest-waiting f
 });
 
 // AC4 — one of three outcomes; Reject and Request changes need a comment (L3 AC2).
-test('TC-349 an outcome is one of the three, and only Approve may go without a comment', () => {
+test('TC-0121 an outcome is one of the three, and only Approve may go without a comment', () => {
   expect(Object.keys(SAFETY_OUTCOME)).toEqual(['APPROVE', 'REJECT', 'REQUEST_CHANGES']);
   expect(SAFETY_OUTCOME_LABEL).toEqual({ APPROVE: 'Approve', REJECT: 'Reject', REQUEST_CHANGES: 'Request changes' });
 
@@ -61,7 +60,7 @@ test('TC-349 an outcome is one of the three, and only Approve may go without a c
 });
 
 // AC4 / AC6 — only the Safety Officer, and only on an event in Safety Review (L3 AC5).
-test('TC-350 only the Safety Officer may record an outcome, and only during Safety Review', () => {
+test('TC-0122 only the Safety Officer may record an outcome, and only during Safety Review', () => {
   const underReview = { status: 'SAFETY_REVIEW' };
   expect(canRecordSafetyOutcome(underReview, ROLES.SAFETY_OFFICER)).toBe(true);
   Object.values(ROLES).filter((role) => role !== ROLES.SAFETY_OFFICER)
@@ -74,7 +73,7 @@ test('TC-350 only the Safety Officer may record an outcome, and only during Safe
 // AC4 — Approve confirms the event; Reject and Request changes return it to
 // Planning (L3 AC4, L4 AC1). Approve also needs the approved venue booking the
 // event rule checks, so the screen refuses it before Firestore does.
-test('TC-351 Approve moves the event to Confirmed, the others back to Planning', () => {
+test('TC-0123 Approve moves the event to Confirmed, the others back to Planning', () => {
   expect(safetyOutcomeStatus('APPROVE')).toBe(EVENT_STATUS.CONFIRMED);
   expect(safetyOutcomeStatus('REJECT')).toBe(EVENT_STATUS.PLANNING);
   expect(safetyOutcomeStatus('REQUEST_CHANGES')).toBe(EVENT_STATUS.PLANNING);
@@ -87,7 +86,7 @@ test('TC-351 Approve moves the event to Confirmed, the others back to Planning',
 
 // AC4 / F12 — an event with several venues is confirmed only once every active
 // booking is approved; released ones do not count.
-test('TC-381 Approve is refused while any active venue booking is not yet approved', () => {
+test('TC-0124 Approve is refused while any active venue booking is not yet approved', () => {
   const event = { approved_venue_booking_id: 'VB-1' };
   const bookings = [
     { booking_id: 'VB-1', booking_label: 'Main programme', status: 'APPROVED' },
@@ -104,7 +103,7 @@ test('TC-381 Approve is refused while any active venue booking is not yet approv
 });
 
 // AC3 — each active booking, with its expected attendance against capacity.
-test('TC-352 only active bookings are reviewed, each with attendance against capacity', () => {
+test('TC-0125 only active bookings are reviewed, each with attendance against capacity', () => {
   const bookings = ['APPROVED', 'PENDING', 'RELEASED', 'REPLACED', 'REJECTED', 'CANCELLED', 'EXPIRED', 'released']
     .map((status, index) => ({ booking_id: `b${index}`, status }));
   expect(activeBookings(bookings).map((booking) => booking.booking_id)).toEqual(['b0', 'b1']);
@@ -118,7 +117,7 @@ test('TC-352 only active bookings are reviewed, each with attendance against cap
 });
 
 // AC4 — what the coordinator and organiser are told, with the comment when there is one.
-test('TC-353 the outcome notice names the event, the result and the comment', () => {
+test('TC-0126 the outcome notice names the event, the result and the comment', () => {
   expect(safetyNotificationType('APPROVE')).toBe('SAFETY_CHECK_APPROVED');
   expect(safetyNotificationType('REJECT')).toBe('SAFETY_CHECK_REJECTED');
   expect(safetyNotificationType('REQUEST_CHANGES')).toBe('SAFETY_CHANGES_REQUESTED');
@@ -134,7 +133,7 @@ test('TC-353 the outcome notice names the event, the result and the comment', ()
 
 // AC3 — equipment placement and crowd movement are recorded by the event's
 // coordinator while it is being planned, then read by the Safety Officer.
-test('TC-354 the coordinator may record safety planning notes only while planning their own event', () => {
+test('TC-0127 the coordinator may record safety planning notes only while planning their own event', () => {
   expect(planningNotesOpen('APPROVED')).toBe(true);
   expect(planningNotesOpen('PLANNING')).toBe(true);
   ['SUBMITTED', 'UNDER_REVIEW', 'SAFETY_REVIEW', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'REJECTED']
@@ -155,7 +154,7 @@ test('TC-354 the coordinator may record safety planning notes only while plannin
 });
 
 // AC3 — a fact nobody has recorded says so, rather than showing a blank.
-test('TC-355 Safety Review is a status of its own, and an unrecorded fact reads "Not recorded"', () => {
+test('TC-0128 Safety Review is a status of its own, and an unrecorded fact reads "Not recorded"', () => {
   expect(EVENT_STATUS.SAFETY_REVIEW).toBe('SAFETY_REVIEW');
   expect(EVENT_STATUS.CONFIRMED).toBe('CONFIRMED');
   expect(statusTone('SAFETY_REVIEW')).toBe('warning');
@@ -164,4 +163,50 @@ test('TC-355 Safety Review is a status of its own, and an unrecorded fact reads 
   expect(shownOrNotRecorded('Exit via the loading bay')).toBe('Exit via the loading bay');
   expect(shownOrNotRecorded('   ')).toBe('Not recorded');
   expect(shownOrNotRecorded(null)).toBe('Not recorded');
+});
+
+describe('A7 / L2–L4 safety rule edges', () => {
+  test('TC-0129 [boundary] an empty or missing queue is empty; events with no times wait from the start', () => {
+    expect(safetyQueue(null)).toEqual([]);
+    expect(safetyQueue()).toEqual([]);
+    const queue = safetyQueue([
+      { event_id: 'B', status: EVENT_STATUS.SAFETY_REVIEW, updated_at: '2026-10-02' },
+      { event_id: 'A', status: EVENT_STATUS.SAFETY_REVIEW }
+    ]);
+    expect(queue.map((event) => event.event_id)).toEqual(['A', 'B']);
+  });
+
+  test('TC-0130 [failure] no outcome given is refused; Approve may carry no comment at all', () => {
+    expect(validateSafetyOutcome()).toBe('Choose an outcome: Approve, Reject or Request changes.');
+    expect(validateSafetyOutcome({ outcome: SAFETY_OUTCOME.APPROVE })).toBeNull();
+    expect(validateSafetyOutcome({ outcome: SAFETY_OUTCOME.REJECT })).toMatch(/comment explaining the concern is required/);
+    expect(safetyOutcomeStatus('CONFIRM')).toBeNull();
+    expect(safetyNotificationType('CONFIRM')).toBeNull();
+  });
+
+  test('TC-0131 [boundary] active bookings: none, a status-less one, and a rejection awaiting a replacement', () => {
+    expect(activeBookings()).toEqual([]);
+    expect(activeBookings(null)).toEqual([]);
+    const bookings = [{ booking_id: 'NEW' }, { booking_id: 'LOST', status: 'REJECTED', replacement_needed: true }, { booking_id: 'GONE', status: 'REJECTED' }];
+    expect(activeBookings(bookings).map((booking) => booking.booking_id)).toEqual(['NEW', 'LOST']);
+    // A booking with no status is not yet approved, and is named by its id.
+    expect(safetyApprovalBlocker({ approved_venue_booking_id: 'VB-1' }, [{ booking_id: 'NEW' }]))
+      .toBe('Every active venue booking must be approved before the event can be confirmed. Not yet approved: NEW.');
+  });
+
+  test('TC-0132 [boundary] the outcome message for an unnamed event, with and without a comment', () => {
+    expect(safetyOutcomeMessage({ outcome: SAFETY_OUTCOME.REQUEST_CHANGES }))
+      .toBe('Your event needs changes before it can pass its safety check and is back in Planning.');
+    expect(safetyOutcomeMessage({ eventName: 'Summit', outcome: SAFETY_OUTCOME.REJECT, comment: '  ' }))
+      .toBe('Summit failed its safety check and is back in Planning.');
+  });
+
+  test('TC-0133 [boundary] planning notes with nothing given are empty and valid', () => {
+    expect(cleanPlanningNotes()).toEqual({ equipment_placement: '', crowd_movement: '' });
+    expect(cleanPlanningNotes(null)).toEqual({ equipment_placement: '', crowd_movement: '' });
+    expect(validatePlanningNotes()).toBeNull();
+    expect(validatePlanningNotes(null)).toBeNull();
+    expect(validatePlanningNotes({ equipment_placement: 'x'.repeat(PLANNING_NOTE_MAX) })).toBeNull();
+    expect(validatePlanningNotes({ crowd_movement: 'x'.repeat(PLANNING_NOTE_MAX + 1) })).toMatch(/2000 characters or fewer/);
+  });
 });

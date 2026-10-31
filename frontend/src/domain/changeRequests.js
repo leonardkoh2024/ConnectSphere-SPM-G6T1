@@ -6,6 +6,7 @@
 
 import { ACCESSIBILITY_OPTIONS, FACILITIES, LAYOUTS, PREFERRED_LOCATIONS } from "./events";
 import { todayIso } from "./eventRequest";
+import { editableEventStatuses } from "./significantEventChanges";
 
 export const CHANGE_REQUEST_COLLECTION = "change_requests";
 
@@ -125,6 +126,59 @@ export const changeValueText = (field, value) => {
   if (Array.isArray(value)) return value.length ? value.map((item) => definition?.optionLabel?.(item) || item).join(", ") : "None";
   if (value === "" || value === null || value === undefined) return "—";
   return definition?.optionLabel ? definition.optionLabel(value) : String(value);
+};
+
+// I2 / SCRUM-148 — the coordinator's decision on a Pending request.
+export const ACCEPTED = "ACCEPTED";
+export const DECLINED = "DECLINED";
+export const CHANGE_ACCEPTED = "CHANGE_REQUEST_ACCEPTED";
+export const CHANGE_DECLINED = "CHANGE_REQUEST_DECLINED";
+
+// AC3 — a change is applied through the coordinator's edit, which firestore.rules
+// allows only while the event is Approved, Planning or Confirmed. Declining has no
+// such limit.
+export const canApplyChange = (status) => editableEventStatuses.includes(String(status || "").toUpperCase());
+
+// AC2 — declining needs a reason; accepting may carry a note.
+export const declineReasonProblem = (reason) => (String(reason || "").trim() ? null : "Give a reason for declining the change.");
+
+// AC1 — which arrangements each field reaches. Venue and equipment follow I3's list of
+// significant fields; registrations are counted whenever the size, day or place moves.
+const VENUE_FIELDS = ["expected_attendance", "event_date", "start_time", "end_time", "preferred_location", "required_layout", "facilities", "accessibility", "accessibility_notes"];
+const EQUIPMENT_FIELDS = ["expected_attendance", "event_date", "start_time", "end_time", "facilities"];
+const REGISTRATION_FIELDS = ["expected_attendance", "event_date", "start_time", "end_time", "preferred_location"];
+
+// One section per kind of arrangement the requested fields reach, each naming those
+// fields and what is held today. Fields that touch none (name, purpose, description)
+// give an empty list: nothing already arranged is affected.
+export const affectedArrangements = (fields = [], impact = {}) => {
+  const reaching = (list) => fields.filter((field) => list.includes(field));
+  // Every field in the three lists above is a CHANGEABLE_FIELDS entry, so each has a label.
+  const labelsOf = (list) => list.map((field) => changeableField(field).label);
+  const bookings = impact.venueBookings || [];
+  const reservations = impact.equipmentReservations || [];
+  const registrations = impact.registrationsCount || 0;
+  return [
+    { key: "venue", title: "Venue bookings", fields: labelsOf(reaching(VENUE_FIELDS)), items: bookings.map((item) => `${item.label} — ${item.status}`), none: "No venue booking is held." },
+    { key: "equipment", title: "Equipment reservations", fields: labelsOf(reaching(EQUIPMENT_FIELDS)), items: reservations.map((item) => `${item.label} — ${item.status}`), none: "No equipment is reserved." },
+    { key: "registrations", title: "Registrations", fields: labelsOf(reaching(REGISTRATION_FIELDS)), items: registrations ? [`${registrations} registration ${registrations === 1 ? "record" : "records"} on this event`] : [], none: "Nobody has registered." }
+  ].filter((section) => section.fields.length);
+};
+
+// The edit form's values with the request's new values laid over them. The two switches
+// follow the lists, as the form's own toggles do.
+export const valuesWithChanges = (base, changes) => {
+  const values = { ...base };
+  Object.entries(changes).forEach(([field, change]) => { values[field] = change.new_value; });
+  if (changes.facilities) values.facilities_required = values.facilities.length > 0;
+  if (changes.accessibility || changes.accessibility_notes) values.accessibility_needed = values.accessibility.length > 0 || Boolean(values.accessibility_notes);
+  return values;
+};
+
+// AC4 — what the organiser is told, naming the event and carrying the reason.
+export const changeDecisionMessage = ({ eventName, accepted, reason }) => {
+  const why = String(reason || "").trim();
+  return `${eventName || "Your event"}: your change request was ${accepted ? "accepted and applied" : "declined"}${why ? ` — ${why}` : "."}`;
 };
 
 // AC4 — the notice the assigned coordinator receives, naming the event and the fields.

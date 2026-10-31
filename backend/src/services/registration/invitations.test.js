@@ -74,7 +74,7 @@ const refusedWith = async (promise, statusCode, reason, message) => {
 
 // ---- AC1: a freed place is offered to the first person, with a notification ------------
 
-test("TC-727 H7 AC1 a Registered place freed by withdrawal is offered to the first in the queue, in the same transaction", async () => {
+test("TC-1687 H7 AC1 a Registered place freed by withdrawal is offered to the first in the queue, in the same transaction", async () => {
   const { firestore, actions } = setup();
   await actions.withdraw({ eventId: "e1", attendeeId: "attendee-1" });
 
@@ -86,7 +86,7 @@ test("TC-727 H7 AC1 a Registered place freed by withdrawal is offered to the fir
   assert.equal(firestore.log.transactions, 1);
 });
 
-test("TC-728 H7 AC1 the invited attendee is notified, with the event and when the offer ends", async () => {
+test("TC-1688 H7 AC1 the invited attendee is notified, with the event and when the offer ends", async () => {
   const { firestore, actions } = setup();
   await actions.withdraw({ eventId: "e1", attendeeId: "attendee-1" });
 
@@ -100,14 +100,14 @@ test("TC-728 H7 AC1 the invited attendee is notified, with the event and when th
   assert.equal(notificationsFor(firestore, "second").length, 0);
 });
 
-test("TC-729 H7 the offered place is held: someone not on the list cannot register into it", async () => {
+test("TC-1689 H7 the offered place is held: someone not on the list cannot register into it", async () => {
   const { firestore, actions } = setup();
   await actions.withdraw({ eventId: "e1", attendeeId: "attendee-1" });
   await refusedWith(actions.register({ eventId: "e1", attendeeId: "outsider" }), 409, "full");
   assert.equal(firestore.store.registrations.e1_outsider, undefined);
 });
 
-test("TC-730 H7 withdrawing a place on the waiting list frees nothing, so nobody is invited", async () => {
+test("TC-1690 H7 withdrawing a place on the waiting list frees nothing, so nobody is invited", async () => {
   const { firestore, actions } = setup();
   await actions.withdraw({ eventId: "e1", attendeeId: "first" });
   assert.equal(firestore.store.registrations.e1_second.invitation_expires_at, undefined);
@@ -122,7 +122,7 @@ const invitedFirst = (expires = IN_48_HOURS) => fullWithQueue({
   e1_first: queued("first", 1, { invited_at: "2026-11-03T04:00:00.000Z", invitation_expires_at: expires })
 });
 
-test("TC-731 H7 AC2 the invited attendee accepts and is Registered", async () => {
+test("TC-1691 H7 AC2 the invited attendee accepts and is Registered", async () => {
   const { firestore, actions } = setup({ registrations: invitedFirst() });
   const result = await actions.acceptInvitation({ eventId: "e1", attendeeId: "first" });
 
@@ -134,13 +134,13 @@ test("TC-731 H7 AC2 the invited attendee accepts and is Registered", async () =>
   assert.equal(result.registration.active, true);
 });
 
-test("TC-732 H7 AC2 an attendee is never registered without accepting: the invitation alone leaves them Waitlisted", async () => {
+test("TC-1692 H7 AC2 an attendee is never registered without accepting: the invitation alone leaves them Waitlisted", async () => {
   const { firestore, actions } = setup();
   await actions.withdraw({ eventId: "e1", attendeeId: "attendee-1" });
   assert.equal(firestore.store.registrations.e1_first.status, "WAITLISTED");
 });
 
-test("TC-733 H7 AC2 only someone holding an invitation can accept one", async () => {
+test("TC-1693 H7 AC2 only someone holding an invitation can accept one", async () => {
   const { firestore, actions } = setup({ registrations: invitedFirst() });
   await refusedWith(actions.acceptInvitation({ eventId: "e1", attendeeId: "second" }), 409, "not_invited", /not been offered a place/i);
   await refusedWith(actions.acceptInvitation({ eventId: "e1", attendeeId: "stranger" }), 409, "not_invited");
@@ -149,26 +149,26 @@ test("TC-733 H7 AC2 only someone holding an invitation can accept one", async ()
 
 // ---- AC3: 48 hours, or until the event starts ---------------------------------------------
 
-test("TC-734 H7 AC3 an invitation cannot be accepted once it has expired, and the attendee stays on the list", async () => {
+test("TC-1694 H7 AC3 an invitation cannot be accepted once it has expired, and the attendee stays on the list", async () => {
   const { firestore, actions } = setup({ registrations: invitedFirst(new Date(NOW.getTime() - 1000)) });
   await refusedWith(actions.acceptInvitation({ eventId: "e1", attendeeId: "first" }), 409, "invitation_expired", /expired/i);
   assert.equal(firestore.store.registrations.e1_first.status, "WAITLISTED");
 });
 
-test("TC-735 H7 AC3 an invitation issued close to the event ends when the event starts", async () => {
+test("TC-1695 H7 AC3 an invitation issued close to the event ends when the event starts", async () => {
   const { firestore, actions } = setup({ eventChanges: { event_date: "2026-11-06", start_time: "09:00" } });
   await actions.withdraw({ eventId: "e1", attendeeId: "attendee-1" });
   assert.equal(firestore.store.registrations.e1_first.invitation_expires_at.toISOString(), "2026-11-06T01:00:00.000Z");
 });
 
-test("TC-736 H7 AC3 nothing can be accepted once the event has started", async () => {
+test("TC-1696 H7 AC3 nothing can be accepted once the event has started", async () => {
   const { actions } = setup({ registrations: invitedFirst(), now: new Date("2026-11-12T09:00:00+08:00") });
   await refusedWith(actions.acceptInvitation({ eventId: "e1", attendeeId: "first" }), 409, "event_started");
 });
 
 // ---- AC4: declining leaves the list; a lapse does not -------------------------------------
 
-test("TC-737 H7 AC4 declining removes the attendee from the list, and the place goes to the next person", async () => {
+test("TC-1697 H7 AC4 declining removes the attendee from the list, and the place goes to the next person", async () => {
   const { firestore, actions } = setup({ registrations: invitedFirst() });
   await actions.declineInvitation({ eventId: "e1", attendeeId: "first" });
 
@@ -180,12 +180,12 @@ test("TC-737 H7 AC4 declining removes the attendee from the list, and the place 
   assert.equal(notificationsFor(firestore, "second")[0].type, "WAITLIST_PLACE_OFFERED");
 });
 
-test("TC-738 H7 AC4 only someone holding an invitation can decline one", async () => {
+test("TC-1698 H7 AC4 only someone holding an invitation can decline one", async () => {
   const { actions } = setup({ registrations: invitedFirst() });
   await refusedWith(actions.declineInvitation({ eventId: "e1", attendeeId: "second" }), 409, "not_invited");
 });
 
-test("TC-739 H7 AC4 after a lapse, the next action on the event offers the place to the next person; the first keeps their spot", async () => {
+test("TC-1699 H7 AC4 after a lapse, the next action on the event offers the place to the next person; the first keeps their spot", async () => {
   const { firestore, actions } = setup({ registrations: invitedFirst(new Date(NOW.getTime() - 1000)) });
   await refusedWith(actions.register({ eventId: "e1", attendeeId: "outsider" }), 409, "full");
 
@@ -195,7 +195,7 @@ test("TC-739 H7 AC4 after a lapse, the next action on the event offers the place
   assert.equal(firestore.store.registrations.e1_outsider, undefined);
 });
 
-test("TC-740 H7 AC4 the attendee whose invitation lapsed is offered the next place that frees", async () => {
+test("TC-1700 H7 AC4 the attendee whose invitation lapsed is offered the next place that frees", async () => {
   const lapsed = new Date(NOW.getTime() - 1000);
   const { firestore, actions } = setup({
     registrations: fullWithQueue({
@@ -209,7 +209,7 @@ test("TC-740 H7 AC4 the attendee whose invitation lapsed is offered the next pla
   assert.equal(firestore.store.registrations.e1_second.invitation_expires_at, undefined);
 });
 
-test("TC-741 H7 leaving the list while holding an invitation passes the place on", async () => {
+test("TC-1701 H7 leaving the list while holding an invitation passes the place on", async () => {
   const { firestore, actions } = setup({ registrations: invitedFirst() });
   await actions.withdraw({ eventId: "e1", attendeeId: "first" });
   assert.equal(firestore.store.registrations.e1_second.invitation_expires_at.toISOString(), IN_48_HOURS.toISOString());
@@ -249,7 +249,7 @@ const routeStore = (registrations) => fakeFirestore({
   notifications: {}
 });
 
-test("TC-742 H7 AC1 My registrations shows the invitation and when it ends", async () => {
+test("TC-1702 H7 AC1 My registrations shows the invitation and when it ends", async () => {
   const { body } = await call(routeStore(invitedFirst()), { uid: "first", path: "/mine" });
   const entry = body.registrations.find((item) => item.event_id === "e1");
   assert.equal(entry.status, "WAITLISTED");
@@ -258,7 +258,7 @@ test("TC-742 H7 AC1 My registrations shows the invitation and when it ends", asy
   assert.equal(entry.invitation_expires_at, IN_48_HOURS.toISOString());
 });
 
-test("TC-743 H7 AC4 opening My registrations passes a lapsed place to the waiting attendee next in line", async () => {
+test("TC-1703 H7 AC4 opening My registrations passes a lapsed place to the waiting attendee next in line", async () => {
   const firestore = routeStore(invitedFirst(new Date(NOW.getTime() - 1000)));
   const { body } = await call(firestore, { uid: "second", path: "/mine" });
   const entry = body.registrations.find((item) => item.event_id === "e1");
@@ -271,12 +271,12 @@ test("TC-743 H7 AC4 opening My registrations passes a lapsed place to the waitin
   assert.equal(firstView.waitlist_position, 1);
 });
 
-test("TC-744 H7 the open-events list counts an offered place as taken", async () => {
+test("TC-1704 H7 the open-events list counts an offered place as taken", async () => {
   const { body } = await call(routeStore(invitedFirst()), { uid: "outsider", path: "/open-events" });
   assert.equal(body.events.find((item) => item.id === "e1").remaining_places, 0);
 });
 
-test("TC-745 H7 POST accept and decline answer with the registration, or the refusal's reason", async () => {
+test("TC-1705 H7 POST accept and decline answer with the registration, or the refusal's reason", async () => {
   const accepted = await call(routeStore(invitedFirst()), { uid: "first", path: "/events/e1/invitation/accept", method: "POST" });
   assert.equal(accepted.status, 200);
   assert.equal(accepted.body.registration.status, "REGISTERED");
@@ -291,7 +291,7 @@ test("TC-745 H7 POST accept and decline answer with the registration, or the ref
   assert.equal(refused.body.reason, "not_invited");
 });
 
-test("TC-746 H7 only a signed-in Attendee may accept or decline", async () => {
+test("TC-1706 H7 only a signed-in Attendee may accept or decline", async () => {
   const firestore = routeStore(invitedFirst());
   firestore.store.users.organiser = { role: "EVENT_ORGANISER" };
   assert.equal((await call(firestore, { path: "/events/e1/invitation/accept", method: "POST" })).status, 401);

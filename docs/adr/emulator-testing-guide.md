@@ -20,8 +20,8 @@ The emulator is in-memory, needs no credentials, and is thrown away when it stop
 
 2. When to write an integration test (and when not to)
 Write one if the service uses runTransaction, batched writes, serverTimestamp, or its correctness depends on concurrency, ordering, or uniqueness (e.g. C1 assignment; likely C9 reassignment, venue bookings).
-Don't bother for pure domain rules — the in-memory unit test or the test.js spec-first style already covers those.
-Rules testing (proving firestore.rules allow/deny the right client writes, e.g. TC-080) uses the same emulator but the @firebase/rules-unit-testing library.
+Don't bother for pure domain rules — the in-memory unit test next to the domain module already covers those.
+Rules testing (proving firestore.rules allow/deny the right client writes) uses the same emulator but the @firebase/rules-unit-testing library.
 3. Naming matters (avoids a real footgun)
 
 node --test with no path auto-discovers every *.test.js file and runs it. An integration test needs the emulator, so if you name it *.integration.test.js it gets swept into the normal unit run and fails (its safety guard throws with no emulator).
@@ -54,7 +54,7 @@ docs/
   service.integration.TEMPLATE.js         <- copy this to start a new integration test
   emulator-testing-guide.md               <- this file
 
-The rule that makes this reusable: write services that take firestore (and serverTimestamp) as arguments — e.g. createAssignCoordinator({ firestore, serverTimestamp }). Then the unit test passes a fake and the integration test passes the real emulator db, no change to the service.
+The rule that makes this reusable: write services that take firestore (and serverTimestamp) as arguments — e.g. createYourService({ firestore, serverTimestamp }). Then the unit test passes a fake and the integration test passes the real emulator db, no change to the service.
 
 6. Running an integration test (from the repo root)
 
@@ -64,14 +64,14 @@ macOS / Linux:
 
 bash
 npx firebase emulators:exec --only firestore --project demo-connectsphere \
-  "node --test backend/src/services/coordinatorAssignment/assignCoordinator.integration.js"
+  "node --test backend/src/services/<yourService>/<yourService>.integration.js"
 
 Windows (one line — \ doesn't continue lines in PowerShell/cmd):
 
 powershell
-npx firebase emulators:exec --only firestore --project demo-connectsphere "node --test backend/src/services/coordinatorAssignment/assignCoordinator.integration.js"
+npx firebase emulators:exec --only firestore --project demo-connectsphere "node --test backend/src/services/<yourService>/<yourService>.integration.js"
 
-Run all integration tests at once: point node --test at backend/src/services/**/*.integration.js.
+Run all integration tests at once, each starting from the same baseline (backend/testing/fixtures.js): npm run test:integration.
 
 Watch the data (optional)
 

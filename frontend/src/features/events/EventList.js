@@ -10,11 +10,9 @@
 // distinguishable *by status* — which the status pill does.
 
 import React, { useEffect, useState } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
-import { db } from "../../lib/firebase";
 import { ROLES, eventScopeField } from "../../domain/roles";
 import { STATUS_TONE, statusTone } from "../../domain/events";
-import deleteEventRequest from "./deleteEventRequest";
+import { deleteEventRequest, loadRelatedEvents } from "./eventRequestApi";
 import RecordLead from "../../components/RecordLead";
 import Icon from "../../app/Icon";
 
@@ -34,8 +32,6 @@ const whenText = (event) => {
   if (from && to) return `${from}–${to}`;
   return from || to || "Time not set";
 };
-
-const sortKey = (event) => event.updated_at?.toMillis?.() ?? event.created_at?.toMillis?.() ?? 0;
 
 // B10 — the list narrows by status and by a search on the name or reference, as My
 // registrations does for attendees. Every status is offered, in workflow order.
@@ -75,9 +71,7 @@ export default function EventList({ user, role, onEdit, onView, onCreate, onDele
     }
     const load = async () => {
       try {
-        const snapshot = await getDocs(query(collection(db, "events"), where(scopeField, "==", user.uid)));
-        const records = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
-        records.sort((a, b) => sortKey(b) - sortKey(a));
+        const records = await loadRelatedEvents({ scopeField, userId: user.uid });
         if (mounted) setEvents(records);
       } catch (loadError) {
         console.error("Could not load events:", loadError);

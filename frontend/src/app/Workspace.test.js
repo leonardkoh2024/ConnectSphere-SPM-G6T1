@@ -1,5 +1,5 @@
-// Story A4 — "see only what my role permits" (TC-014, and the client half of
-// TC-015).
+// Story A4 — "see only what my role permits": the client half. The server half is in
+// security/firestoreRules.test.js.
 //
 // The expected navigation below is written out by hand on purpose. Reading it
 // from ROLE_META instead would make the test agree with whatever the code says,
@@ -41,6 +41,12 @@ jest.mock('../features/safety/SafetyReviewScreen', () => ({ __esModule: true, de
 // J6 — the coordinator's booking and equipment screens report which record they were asked to open.
 jest.mock('../features/equipment/EquipmentRequestsScreen', () => ({ __esModule: true, default: (props) => (props.focusEventId ? `equipment request of ${props.focusEventId}` : 'equipment requests') }));
 jest.mock('../features/venues/VenueBookings', () => ({ __esModule: true, default: (props) => (props.focusBookingId ? `booking ${props.focusBookingId}` : 'venue bookings') }));
+// The remaining screens load from Firestore on mount; stubbed so their loads do not
+// update state after a test has finished (act warnings), and because this file is about routing.
+jest.mock('../features/venues/VenueBookingQueue', () => ({ __esModule: true, default: () => 'booking queue' }));
+jest.mock('../features/venues/VenueAvailability', () => ({ __esModule: true, default: () => 'availability calendar' }));
+jest.mock('../features/equipment/EquipmentAvailabilityScreen', () => ({ __esModule: true, default: () => 'equipment availability' }));
+jest.mock('../features/changeRequests/ChangeRequestDecisionsScreen', () => ({ __esModule: true, default: () => 'change decisions' }));
 jest.mock('../features/equipment/EquipmentQueueScreen', () => ({ __esModule: true, default: () => 'equipment queue' }));
 // G2 / G3 — Technical Support's catalogue and reservation list report only that they were opened.
 jest.mock('../features/equipment/EquipmentCatalogueScreen', () => ({ __esModule: true, default: () => 'equipment catalogue' }));
@@ -77,7 +83,7 @@ const USER = { uid: 'u1', email: 'nadia.organiser@connectsphere.com' };
 // organiser starts one from the button on My events, not from the navigation.
 const PERMITTED_SCREENS = {
   [ROLES.ORGANISER]: ['My events', 'Change requests', 'Notifications'],
-  [ROLES.COORDINATOR]: ['Review queue', 'Assigned events', 'Venue catalogue', 'Venue bookings', 'Equipment requests', 'Registrations', 'Notifications'],
+  [ROLES.COORDINATOR]: ['Review queue', 'Assigned events', 'Venue catalogue', 'Venue bookings', 'Equipment requests', 'Change requests', 'Registrations', 'Notifications'],
   [ROLES.VENUE_STAFF]: ['Booking requests', 'Venue catalogue', 'Availability calendar', 'Notifications'],
   [ROLES.SAFETY_OFFICER]: ['Safety reviews', 'Venue safety information', 'Notifications'],
   [ROLES.TECH_SUPPORT]: ['Equipment queue', 'Availability check', 'Equipment catalogue', 'Reservations', 'Notifications'],
@@ -98,14 +104,14 @@ beforeEach(() => {
   localStorage.clear();
 });
 
-describe('TC-014 role-specific navigation', () => {
-  test.each(Object.entries(PERMITTED_SCREENS))('%s sees exactly its permitted screens', (role, expected) => {
+describe('role-specific navigation', () => {
+  test.each(Object.entries(PERMITTED_SCREENS))('TC-0047 %s sees exactly its permitted screens', (role, expected) => {
     const { container } = render(<Workspace user={USER} role={role} />);
 
     expect(sidebarScreens(container)).toEqual(expected);
   });
 
-  test.each(Object.keys(PERMITTED_SCREENS))('%s sees no screen belonging only to another role', (role) => {
+  test.each(Object.keys(PERMITTED_SCREENS))('TC-0048 %s sees no screen belonging only to another role', (role) => {
     const permitted = PERMITTED_SCREENS[role];
     const otherRolesOnly = Object.entries(PERMITTED_SCREENS)
       .filter(([other]) => other !== role)
@@ -120,7 +126,7 @@ describe('TC-014 role-specific navigation', () => {
 
   // Rendering the sidebar is not the same as being able to use it: this is the
   // only test that actually drives chooseScreen.
-  test('choosing a screen from the sidebar opens it', async () => {
+  test('TC-0049 choosing a screen from the sidebar opens it', async () => {
     const { container } = render(<Workspace user={USER} role={ROLES.ORGANISER} />);
 
     await userEvent.click(within(container.querySelector('.cs-sidebar-screens')).getByText('My events'));
@@ -128,12 +134,12 @@ describe('TC-014 role-specific navigation', () => {
     expect(screen.getByRole('heading', { name: 'My events' })).toBeInTheDocument();
   });
 
-  // TC-410 — the two Technical Support screens open their own content, not the
+  // the two Technical Support screens open their own content, not the
   // "ready to be connected" placeholder Reservations used to show.
   test.each([
     ['Equipment catalogue', 'equipment catalogue'],
     ['Reservations', 'equipment reservations']
-  ])('TC-410 Technical Support choosing %s opens it', async (name, rendered) => {
+  ])('TC-0050 Technical Support choosing %s opens it', async (name, rendered) => {
     const { container } = render(<Workspace user={USER} role={ROLES.TECH_SUPPORT} />);
 
     await userEvent.click(within(container.querySelector('.cs-sidebar-screens')).getByText(name));
@@ -143,13 +149,13 @@ describe('TC-014 role-specific navigation', () => {
     expect(screen.queryByText(/ready to be connected/)).not.toBeInTheDocument();
   });
 
-  test('TC-072 an organiser lands on My events', () => {
+  test('TC-0051 an organiser lands on My events', () => {
     render(<Workspace user={USER} role={ROLES.ORGANISER} />);
 
     expect(screen.getByRole('heading', { name: 'My events' })).toBeInTheDocument();
   });
 
-  test('TC-073 a screen kept out of the navigation is still one this role may open', () => {
+  test('TC-0052 a screen kept out of the navigation is still one this role may open', () => {
     window.location.hash = screenHash(ROLES.ORGANISER, 'New event request');
 
     const { container } = render(<Workspace user={USER} role={ROLES.ORGANISER} />);
@@ -159,7 +165,7 @@ describe('TC-014 role-specific navigation', () => {
     expect(sidebarScreens(container)).not.toContain('New event request');
   });
 
-  test('TC-073 another role asking for that same hidden screen is still refused', () => {
+  test('TC-0053 another role asking for that same hidden screen is still refused', () => {
     window.location.hash = screenHash(ROLES.ORGANISER, 'New event request');
 
     render(<Workspace user={USER} role={ROLES.ATTENDEE} />);
@@ -167,7 +173,7 @@ describe('TC-014 role-specific navigation', () => {
     expect(screen.getByRole('heading', { name: /not authorised/i })).toBeInTheDocument();
   });
 
-  test('the role is named alongside the signed-in user', () => {
+  test('TC-0054 the role is named alongside the signed-in user', () => {
     render(<Workspace user={USER} role={ROLES.VENUE_STAFF} />);
 
     expect(screen.getByText('Venue Staff')).toBeInTheDocument();
@@ -175,13 +181,13 @@ describe('TC-014 role-specific navigation', () => {
 });
 
 describe('H2 an attendee finds events they can register for', () => {
-  test('TC-571 an attendee lands on Browse events, which lists the open events', () => {
+  test('TC-1459 an attendee lands on Browse events, which lists the open events', () => {
     render(<Workspace user={USER} role={ROLES.ATTENDEE} />);
     expect(screen.getByRole('heading', { level: 1, name: 'Browse events' })).toBeInTheDocument();
     expect(screen.getByText('open events list')).toBeInTheDocument();
   });
 
-  test('TC-571 no other role is shown the attendee list', () => {
+  test('TC-1460 no other role is shown the attendee list', () => {
     window.location.hash = screenHash(ROLES.ATTENDEE, 'Browse events');
     render(<Workspace user={USER} role={ROLES.ORGANISER} />);
     expect(screen.queryByText('open events list')).not.toBeInTheDocument();
@@ -189,8 +195,8 @@ describe('H2 an attendee finds events they can register for', () => {
   });
 });
 
-describe('TC-015 requesting a screen that belongs to another role', () => {
-  test('an attendee asking for an organiser screen is refused, not shown it', () => {
+describe('requesting a screen that belongs to another role', () => {
+  test('TC-0055 an attendee asking for an organiser screen is refused, not shown it', () => {
     window.location.hash = screenHash(ROLES.ORGANISER, 'My events');
 
     const { container } = render(<Workspace user={USER} role={ROLES.ATTENDEE} />);
@@ -200,24 +206,24 @@ describe('TC-015 requesting a screen that belongs to another role', () => {
     expect(sidebarScreens(container)).toEqual(PERMITTED_SCREENS[ROLES.ATTENDEE]);
   });
 
-  test('a screen the role does own opens normally', () => {
+  test('TC-0056 a screen the role does own opens normally', () => {
     window.location.hash = screenHash(ROLES.ATTENDEE, 'My registrations');
 
     render(<Workspace user={USER} role={ROLES.ATTENDEE} />);
 
     expect(screen.getByRole('heading', { name: 'My registrations' })).toBeInTheDocument();
     expect(screen.queryByText(/not authorised/i)).not.toBeInTheDocument();
-    // H4 (TC-638) — the screen is the attendee's own list, handed the shell's way back.
+    // H4 — the screen is the attendee's own list, handed the shell's way back.
     expect(screen.getByText('my registrations list')).toBeInTheDocument();
   });
 });
 
 // Confirmations used to sit at the top of the panel, which on a form long enough
 // to scroll meant scrolling back up to read them.
-describe('TC-071 confirmations appear as toasts in the corner', () => {
+describe('confirmations appear as toasts in the corner', () => {
   const MESSAGE = 'Your account is ready. Log in to continue.';
 
-  test('a confirmation opens in the toast layer, not in the page body', () => {
+  test('TC-0057 a confirmation opens in the toast layer, not in the page body', () => {
     sessionStorage.setItem('cs-account-created', MESSAGE);
 
     const { container } = render(<Workspace user={USER} role={ROLES.ORGANISER} />);
@@ -226,7 +232,7 @@ describe('TC-071 confirmations appear as toasts in the corner', () => {
     expect(container.querySelector('.cs-panel')).not.toHaveTextContent(MESSAGE);
   });
 
-  test('the toast layer is a live region, so a toast arriving is announced', () => {
+  test('TC-0058 the toast layer is a live region, so a toast arriving is announced', () => {
     const { container } = render(<Workspace user={USER} role={ROLES.ORGANISER} />);
 
     const layer = container.querySelector('.cs-toasts');
@@ -234,7 +240,7 @@ describe('TC-071 confirmations appear as toasts in the corner', () => {
     expect(layer).toHaveAttribute('aria-live', 'polite');
   });
 
-  test('a toast can be dismissed by hand', async () => {
+  test('TC-0059 a toast can be dismissed by hand', async () => {
     sessionStorage.setItem('cs-account-created', MESSAGE);
     render(<Workspace user={USER} role={ROLES.ORGANISER} />);
 
@@ -243,7 +249,7 @@ describe('TC-071 confirmations appear as toasts in the corner', () => {
     expect(screen.queryByText(MESSAGE)).not.toBeInTheDocument();
   });
 
-  test('a toast clears itself, so it does not sit over the form forever', () => {
+  test('TC-0060 a toast clears itself, so it does not sit over the form forever', () => {
     jest.useFakeTimers();
     sessionStorage.setItem('cs-account-created', MESSAGE);
     render(<Workspace user={USER} role={ROLES.ORGANISER} />);
@@ -258,8 +264,8 @@ describe('TC-071 confirmations appear as toasts in the corner', () => {
 
 // E4 / SCRUM-120 — one shared availability calendar, opened from the top right of
 // the Venue catalogue header rather than from each venue.
-describe('TC-232 the Venue catalogue header opens the shared calendar', () => {
-  test.each([ROLES.COORDINATOR, ROLES.VENUE_STAFF])('%s sees View calendar in the page header', async (role) => {
+describe('the Venue catalogue header opens the shared calendar', () => {
+  test.each([ROLES.COORDINATOR, ROLES.VENUE_STAFF])('TC-0606 %s sees View calendar in the page header', async (role) => {
     window.location.hash = screenHash(role, 'Venue catalogue');
     const { container } = render(<Workspace user={USER} role={role} />);
 
@@ -275,16 +281,16 @@ describe('TC-232 the Venue catalogue header opens the shared calendar', () => {
     expect(screen.getByText('venue list')).toBeInTheDocument();
   });
 
-  test('other screens do not offer it', () => {
+  test('TC-0607 other screens do not offer it', () => {
     window.location.hash = screenHash(ROLES.COORDINATOR, 'Review queue');
     const { container } = render(<Workspace user={USER} role={ROLES.COORDINATOR} />);
     expect(within(container.querySelector('.cs-panel-head')).queryByRole('button', { name: /view calendar/i })).not.toBeInTheDocument();
   });
 });
 
-// J1 / SCRUM-150 AC3 — TC-260 and TC-261 in docs/test-cases.md.
+// J1 / SCRUM-150 AC3.
 describe('J1 the unread badge on the inbox', () => {
-  test.each(Object.keys(PERMITTED_SCREENS))('TC-260 %s sees the unread count on Notifications', (role) => {
+  test.each(Object.keys(PERMITTED_SCREENS))('TC-2073 %s sees the unread count on Notifications', (role) => {
     givenUnread(3);
     render(<Workspace user={USER} role={role} />);
 
@@ -292,7 +298,7 @@ describe('J1 the unread badge on the inbox', () => {
     expect(within(item).getByLabelText('3 unread')).toHaveTextContent('3');
   });
 
-  test('TC-261 with nothing unread there is no badge', () => {
+  test('TC-2074 with nothing unread there is no badge', () => {
     render(<Workspace user={USER} role={ROLES.ORGANISER} />);
 
     expect(screen.queryByLabelText(/unread/)).not.toBeInTheDocument();
@@ -303,7 +309,7 @@ describe('F10 active clash badges in role navigation', () => {
   test.each([
     [ROLES.COORDINATOR, 'Venue bookings'],
     [ROLES.VENUE_STAFF, 'Booking requests']
-  ])('%s sees the active clash count on %s', (role, destination) => {
+  ])('TC-0997 %s sees the active clash count on %s', (role, destination) => {
     givenClashes(4);
     render(<Workspace user={USER} role={role} />);
 
@@ -312,20 +318,20 @@ describe('F10 active clash badges in role navigation', () => {
     expect(within(item).getByLabelText('4 active booking clashes')).toHaveClass('cs-nav-badge-clash');
   });
 
-  test('a zero clash count does not render an empty badge', () => {
+  test('TC-0998 a zero clash count does not render an empty badge', () => {
     render(<Workspace user={USER} role={ROLES.COORDINATOR} />);
     expect(screen.queryByLabelText(/active booking clash/)).not.toBeInTheDocument();
   });
 });
 
-// J1 / SCRUM-150 — View on a notification. TC-266 – TC-268 in docs/test-cases.md.
+// J1 / SCRUM-150 — View on a notification.
 describe('J1 viewing an event from a notification', () => {
   const openInbox = (role) => {
     window.location.hash = screenHash(role, 'Notifications');
     render(<Workspace user={USER} role={role} />);
   };
 
-  test('TC-266 an organiser lands on that event request, with a way back to the inbox', async () => {
+  test('TC-2075 an organiser lands on that event request, with a way back to the inbox', async () => {
     openInbox(ROLES.ORGANISER);
 
     await userEvent.click(screen.getByRole('button', { name: 'View event' }));
@@ -335,7 +341,7 @@ describe('J1 viewing an event from a notification', () => {
     expect(screen.getByRole('button', { name: 'Back to notifications' })).toBeInTheDocument();
   });
 
-  test('TC-267 a coordinator lands on that event under Assigned events', async () => {
+  test('TC-2076 a coordinator lands on that event under Assigned events', async () => {
     openInbox(ROLES.COORDINATOR);
 
     await userEvent.click(screen.getByRole('button', { name: 'View event' }));
@@ -345,7 +351,7 @@ describe('J1 viewing an event from a notification', () => {
     expect(screen.getByRole('button', { name: 'Back to notifications' })).toBeInTheDocument();
   });
 
-  test('TC-759 an attendee lands on their registration for that event, with a way back to the inbox', async () => {
+  test('TC-2077 an attendee lands on their registration for that event, with a way back to the inbox', async () => {
     openInbox(ROLES.ATTENDEE);
 
     await userEvent.click(screen.getByRole('button', { name: 'View event' }));
@@ -355,7 +361,7 @@ describe('J1 viewing an event from a notification', () => {
     expect(screen.getByRole('button', { name: 'Back to notifications' })).toBeInTheDocument();
   });
 
-  test.each([ROLES.VENUE_STAFF, ROLES.TECH_SUPPORT])('TC-268 %s is offered no View', (role) => {
+  test.each([ROLES.VENUE_STAFF, ROLES.TECH_SUPPORT])('TC-2078 %s is offered no View', (role) => {
     openInbox(role);
 
     expect(screen.queryByRole('button', { name: 'View event' })).not.toBeInTheDocument();
@@ -363,14 +369,14 @@ describe('J1 viewing an event from a notification', () => {
   });
 });
 
-// J6 / SCRUM-155 AC2/AC4 — TC-321, TC-322, TC-343 in docs/test-cases.md.
+// J6 / SCRUM-155 AC2/AC4.
 describe("J6 viewing a booking or equipment outcome from a notification", () => {
   beforeEach(() => {
     window.location.hash = screenHash(ROLES.COORDINATOR, 'Notifications');
     render(<Workspace user={USER} role={ROLES.COORDINATOR} />);
   });
 
-  test('TC-321 a booking outcome opens that booking under Venue bookings', async () => {
+  test('TC-2217 a booking outcome opens that booking under Venue bookings', async () => {
     await userEvent.click(screen.getByRole('button', { name: 'View booking outcome' }));
 
     expect(window.location.hash).toBe(screenHash(ROLES.COORDINATOR, 'Venue bookings'));
@@ -378,7 +384,7 @@ describe("J6 viewing a booking or equipment outcome from a notification", () => 
     expect(screen.getByRole('button', { name: 'Back to notifications' })).toBeInTheDocument();
   });
 
-  test("TC-322 an equipment outcome opens that event's equipment request", async () => {
+  test("TC-2218 an equipment outcome opens that event's equipment request", async () => {
     await userEvent.click(screen.getByRole('button', { name: 'View equipment outcome' }));
 
     expect(window.location.hash).toBe(screenHash(ROLES.COORDINATOR, 'Equipment requests'));
@@ -386,7 +392,7 @@ describe("J6 viewing a booking or equipment outcome from a notification", () => 
     expect(screen.getByRole('button', { name: 'Back to notifications' })).toBeInTheDocument();
   });
 
-  test('TC-343 the focus lasts only for that visit: back, then the sidebar, opens the plain list', async () => {
+  test('TC-2219 the focus lasts only for that visit: back, then the sidebar, opens the plain list', async () => {
     const sidebar = (name) => within(document.querySelector('.cs-sidebar-screens')).getByRole('button', { name });
 
     await userEvent.click(screen.getByRole('button', { name: 'View booking outcome' }));
@@ -409,21 +415,21 @@ describe("J6 viewing a booking or equipment outcome from a notification", () => 
 describe('A6 the Event Coordinator Lead navigation', () => {
   const LEAD_SCREENS = ['Unassigned queue', 'Oversight'];
 
-  test('A6-TC5 AC4 the Lead sees exactly its oversight and assignment screens', () => {
+  test('TC-0078 A6 AC4 the Lead sees exactly its oversight and assignment screens', () => {
     const { container } = render(<Workspace user={USER} role={ROLES.COORDINATOR_LEAD} />);
 
     expect(sidebarScreens(container)).toEqual(LEAD_SCREENS);
   });
 
-  test("A6-TC6 AC4 the Lead sees none of a coordinator's own working screens", () => {
+  test("TC-0079 A6 AC4 the Lead sees none of a coordinator's own working screens", () => {
     const { container } = render(<Workspace user={USER} role={ROLES.COORDINATOR_LEAD} />);
     const nav = within(container.querySelector('.cs-sidebar-screens'));
 
-    ['Review queue', 'Assigned events', 'Venue catalogue', 'Venue bookings', 'Equipment requests', 'Registrations', 'Notifications']
+    ['Review queue', 'Assigned events', 'Venue catalogue', 'Venue bookings',     'Equipment requests', 'Change requests', 'Registrations', 'Notifications']
       .forEach((name) => expect(nav.queryByText(name)).not.toBeInTheDocument());
   });
 
-  test('A6-TC7 AC4 the Lead asking for a coordinator screen is refused, not shown it', () => {
+  test('TC-0080 A6 AC4 the Lead asking for a coordinator screen is refused, not shown it', () => {
     window.location.hash = screenHash(ROLES.COORDINATOR, 'Review queue');
 
     const { container } = render(<Workspace user={USER} role={ROLES.COORDINATOR_LEAD} />);
@@ -433,11 +439,11 @@ describe('A6 the Event Coordinator Lead navigation', () => {
   });
 });
 
-// A7 / SCRUM-170 AC5 — TC-371. The Safety Officer lands on the review queue, and
+// A7 / SCRUM-170 AC5. The Safety Officer lands on the review queue, and
 // every screen of the roles they are not is refused to them by hash as well as
 // left out of their navigation (AC6 is the server half, in firestoreRules.test.js).
-describe('TC-371 the Safety Officer reaches only safety review functions', () => {
-  test('lands on Safety reviews, which renders the review queue', () => {
+describe('the Safety Officer reaches only safety review functions', () => {
+  test('TC-0117 lands on Safety reviews, which renders the review queue', () => {
     render(<Workspace user={USER} role={ROLES.SAFETY_OFFICER} />);
     expect(screen.getByRole('heading', { name: 'Safety reviews' })).toBeInTheDocument();
     expect(screen.getByText('safety review queue')).toBeInTheDocument();
@@ -450,13 +456,13 @@ describe('TC-371 the Safety Officer reaches only safety review functions', () =>
     [ROLES.TECH_SUPPORT, 'Equipment queue'],
     [ROLES.COORDINATOR_LEAD, 'Unassigned queue'],
     [ROLES.ORGANISER, 'New event request']
-  ])('a %s screen (%s) asked for by hash is refused', (owner, name) => {
+  ])('TC-0118 a %s screen (%s) asked for by hash is refused', (owner, name) => {
     window.location.hash = screenHash(owner, name);
     render(<Workspace user={USER} role={ROLES.SAFETY_OFFICER} />);
     expect(screen.getByRole('heading', { name: /not authorised/i })).toBeInTheDocument();
   });
 
-  test('no other role is offered Safety reviews', () => {
+  test('TC-0119 no other role is offered Safety reviews', () => {
     Object.values(ROLES).filter((role) => role !== ROLES.SAFETY_OFFICER).forEach((role) => {
       const { container, unmount } = render(<Workspace user={USER} role={role} />);
       expect(sidebarScreens(container)).not.toContain('Safety reviews');
@@ -465,9 +471,9 @@ describe('TC-371 the Safety Officer reaches only safety review functions', () =>
   });
 });
 
-// I1 / SCRUM-147 — TC-780, TC-781 in docs/test-cases.md.
+// I1 / SCRUM-147.
 describe('I1 the organiser reaches the change request form', () => {
-  test('TC-780 Change requests offers New change request in its header, which opens the form', async () => {
+  test('TC-1798 Change requests offers New change request in its header, which opens the form', async () => {
     window.location.hash = screenHash(ROLES.ORGANISER, 'Change requests');
     render(<Workspace user={USER} role={ROLES.ORGANISER} />);
 
@@ -479,7 +485,7 @@ describe('I1 the organiser reaches the change request form', () => {
     expect(screen.queryByRole('button', { name: 'New change request' })).not.toBeInTheDocument();
   });
 
-  test("TC-781 Request a change in a submitted event's header opens the form for that event", async () => {
+  test("TC-1799 Request a change in a submitted event's header opens the form for that event", async () => {
     window.location.hash = screenHash(ROLES.ORGANISER, 'Notifications');
     render(<Workspace user={{ ...USER, uid: 'o1' }} role={ROLES.ORGANISER} />);
     await userEvent.click(screen.getByRole('button', { name: 'View event' }));
@@ -490,7 +496,7 @@ describe('I1 the organiser reaches the change request form', () => {
     expect(screen.getByText('change requests form for e1')).toBeInTheDocument();
   });
 
-  test("TC-782 the header offers Request a change only on the organiser's own event", async () => {
+  test("TC-1800 the header offers Request a change only on the organiser's own event", async () => {
     window.location.hash = screenHash(ROLES.ORGANISER, 'Notifications');
     render(<Workspace user={USER} role={ROLES.ORGANISER} />);
     await userEvent.click(screen.getByRole('button', { name: 'View event' }));

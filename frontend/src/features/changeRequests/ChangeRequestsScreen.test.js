@@ -1,9 +1,8 @@
 // I1 / SCRUM-147 — the organiser's Change requests screen and its form.
-// TC-776 – TC-779 in docs/test-cases.md.
 
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import ChangeRequestsScreen from './ChangeRequestsScreen';
+import ChangeRequestsScreen, { ChangeRequestRecord } from './ChangeRequestsScreen';
 import { loadChangeableEvents, loadCurrentValues, loadMyChangeRequests, submitChangeRequest } from './changeRequestsApi';
 
 jest.mock('./changeRequestsApi', () => ({
@@ -30,7 +29,7 @@ beforeEach(() => {
   loadCurrentValues.mockResolvedValue(CURRENT);
 });
 
-test('TC-776 AC3 AC4 each request shows its event, every change as old → new, the reason and Pending', async () => {
+test('TC-1828 AC3 AC4 each request shows its event, every change as old → new, the reason and Pending', async () => {
   render(<ChangeRequestsScreen user={USER} creating={false} onCreatingChange={jest.fn()} />);
 
   const record = (await screen.findByRole('heading', { name: 'Harbour Tech Forum' })).closest('.cs-record');
@@ -40,7 +39,7 @@ test('TC-776 AC3 AC4 each request shows its event, every change as old → new, 
   expect(within(record).getByText('More sign-ups.')).toBeInTheDocument();
 });
 
-test('TC-777 AC2 a request is sent only with a new value and a reason, then joins the list', async () => {
+test('TC-1829 AC2 a request is sent only with a new value and a reason, then joins the list', async () => {
   const onCreatingChange = jest.fn();
   const onNotice = jest.fn();
   submitChangeRequest.mockResolvedValue({ ...REQUEST, id: 'r2', reason: 'Bigger crowd.', notified: true });
@@ -70,7 +69,7 @@ test('TC-777 AC2 a request is sent only with a new value and a reason, then join
   expect(onNotice).toHaveBeenCalledWith("Change request sent. Harbour Tech Forum's coordinator has been told.");
 });
 
-test('TC-778 an event with no coordinator yet says the request waits, and the confirmation says so too', async () => {
+test('TC-1830 an event with no coordinator yet says the request waits, and the confirmation says so too', async () => {
   const onNotice = jest.fn();
   submitChangeRequest.mockResolvedValue({ ...REQUEST, id: 'r3', notified: false });
   render(<ChangeRequestsScreen user={USER} creating onCreatingChange={jest.fn()} onNotice={onNotice} initialEventId="e2" />);
@@ -87,7 +86,7 @@ test('TC-778 an event with no coordinator yet says the request waits, and the co
   await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Change request saved as Pending. The coordinator will see it once the event is assigned.'));
 });
 
-test('TC-779 with no request yet, and no event that can take one, the screen says so', async () => {
+test('TC-1831 with no request yet, and no event that can take one, the screen says so', async () => {
   loadMyChangeRequests.mockResolvedValue([]);
   loadChangeableEvents.mockResolvedValue([]);
   const { rerender } = render(<ChangeRequestsScreen user={USER} creating={false} onCreatingChange={jest.fn()} />);
@@ -96,4 +95,88 @@ test('TC-779 with no request yet, and no event that can take one, the screen say
 
   rerender(<ChangeRequestsScreen user={USER} creating onCreatingChange={jest.fn()} />);
   expect(screen.getByText(/None of your events can take a change request right now/)).toBeInTheDocument();
+});
+
+describe('I1 the organiser screen at its edges', () => {
+  test('TC-1832 [normal] with no request yet but an event that can take one, the empty list offers New change request', async () => {
+    loadMyChangeRequests.mockResolvedValue([]);
+    const onCreatingChange = jest.fn();
+    render(<ChangeRequestsScreen user={USER} creating={false} onCreatingChange={onCreatingChange} />);
+    await userEvent.click(await screen.findByRole('button', { name: 'New change request' }));
+    expect(onCreatingChange).toHaveBeenCalledWith(true);
+  });
+
+  test('TC-1833 [normal] Cancel on the form, and Back when no event can take one, both close the form', async () => {
+    const onCreatingChange = jest.fn();
+    const { unmount } = render(<ChangeRequestsScreen user={USER} creating onCreatingChange={onCreatingChange} />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+    expect(onCreatingChange).toHaveBeenLastCalledWith(false);
+    unmount();
+
+    loadChangeableEvents.mockResolvedValue([]);
+    render(<ChangeRequestsScreen user={USER} creating onCreatingChange={onCreatingChange} />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Back to change requests' }));
+    expect(onCreatingChange).toHaveBeenCalledTimes(2);
+  });
+
+  test('TC-1909 [normal] I2 AC4 an accepted request shows when it was decided, without a reason line when none was given', () => {
+    render(<ChangeRequestRecord request={{ ...REQUEST, status: 'ACCEPTED', decided_at: '2026-10-28T02:00:00.000Z' }} />);
+    expect(screen.getByText('Accepted')).toHaveClass('cs-pill-positive');
+    expect(screen.getByText('Decided')).toBeInTheDocument();
+    expect(screen.queryByText('Decision reason')).not.toBeInTheDocument();
+  });
+
+  test('TC-1834 [boundary] a request still being written reads as just now; an unnamed one as Untitled event', () => {
+    render(<ChangeRequestRecord request={{ id: 'r9', status: 'ACCEPTED', reason: 'x', created_at: null, decided_at: null }} />);
+    expect(screen.getByRole('heading', { name: 'Untitled event' })).toBeInTheDocument();
+    expect(screen.getByText('Requested Just now')).toBeInTheDocument();
+    expect(screen.getByText('Decided').nextSibling).toHaveTextContent('Just now');
+  });
+
+  test('TC-1835 [failure] an unknown status or field still reads, by its stored name', () => {
+    render(<ChangeRequestRecord request={{ id: 'r9', status: 'WITHDRAWN', reason: 'x', changes: { legacy: { old_value: 'a', new_value: 'b' } } }} />);
+    expect(screen.getByText('WITHDRAWN')).toHaveClass('cs-pill-neutral');
+    expect(screen.getByText('legacy').nextSibling).toHaveTextContent('a → b');
+  });
+
+  test('TC-1836 [boundary] a saved request with no event name is confirmed without one, and with no onNotice nothing breaks', async () => {
+    const onNotice = jest.fn();
+    submitChangeRequest.mockResolvedValue({ ...REQUEST, id: 'r4', event_name: '', notified: true });
+    const { unmount } = render(<ChangeRequestsScreen user={USER} creating onCreatingChange={jest.fn()} onNotice={onNotice} initialEventId="e1" />);
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Event name' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'New event name' }), { target: { value: 'Harbour Forum' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /Reason for the change/ }), { target: { value: 'Shorter.' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Send change request' }));
+    await waitFor(() => expect(onNotice).toHaveBeenCalledWith("Change request sent. The event's coordinator has been told."));
+    unmount();
+
+    render(<ChangeRequestsScreen user={USER} creating onCreatingChange={jest.fn()} initialEventId="e1" />);
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Event name' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'New event name' }), { target: { value: 'Harbour Forum' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /Reason for the change/ }), { target: { value: 'Shorter.' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Send change request' }));
+    await waitFor(() => expect(submitChangeRequest).toHaveBeenCalledTimes(2));
+  });
+
+  test('TC-1837 [failure] requests that cannot be loaded say so', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    loadMyChangeRequests.mockRejectedValue(new Error('permission-denied'));
+    render(<ChangeRequestsScreen user={USER} creating={false} onCreatingChange={jest.fn()} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your change requests could not be loaded. Try again.');
+    console.error.mockRestore();
+  });
+
+  test('TC-1838 [failure] a load that finishes after the screen has gone is dropped', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    let fail;
+    let succeed;
+    loadMyChangeRequests.mockReturnValueOnce(new Promise((_resolve, reject) => { fail = reject; }))
+      .mockReturnValueOnce(new Promise((resolve) => { succeed = resolve; }));
+    render(<ChangeRequestsScreen user={USER} creating={false} onCreatingChange={jest.fn()} />).unmount();
+    render(<ChangeRequestsScreen user={USER} creating={false} onCreatingChange={jest.fn()} />).unmount();
+    await act(async () => { fail(new Error('late')); succeed([REQUEST]); });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText('Harbour Tech Forum')).not.toBeInTheDocument();
+    console.error.mockRestore();
+  });
 });

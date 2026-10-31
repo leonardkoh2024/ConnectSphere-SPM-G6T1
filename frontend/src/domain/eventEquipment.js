@@ -61,6 +61,7 @@ export const equipmentArrangements = (request, reservations = []) => {
         key: `${index}-${line.equipment_type}`,
         label: `${equipmentTypeLabel(line.equipment_type)} × ${Number(line.quantity) || 1}`,
         status: equipmentLineStatus(line),
+        arranged: line.fulfillment_status === "RESERVED",
         reservedFrom: reservation?.start_datetime || null,
         reservedTo: reservation?.end_datetime || null,
         decidedAt: line.fulfilled_at || line.resolved_at || null,

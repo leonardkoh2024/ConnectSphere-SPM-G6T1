@@ -1,0 +1,110 @@
+workspace "ConnectSphere C4 Model" "C4 model for the ConnectSphere event management platform." {
+
+    !identifiers hierarchical
+
+    model {
+
+        // People (Users)
+        eventOrganiser = person "Event Organiser" "Creates, submits and manages event requests." "User"
+        eventCoordinator = person "Event Coordinator" "Reviews and manages assigned event requests." "User"
+        eventCoordinatorLead = person "Event Coordinator Lead" "Assigns and reassigns Event Coordinators and oversees active event assignments." "User"
+        venueStaff = person "Venue Staff" "Manages venues and responds to venue booking requests." "User"
+        technicalSupport = person "Technical Support Staff" "Manages equipment availability and reservations." "User"
+        safetyOfficer = person "Safety Officer" "Reviews the operational safety of events before confirmation." "User"
+        attendee = person "Attendee" "Registers for events and manages event registrations." "User"
+
+        // Main System Boundary
+        connectSphere = softwareSystem "ConnectSphere" "Event request, venue, equipment, registration and event coordination platform." {
+
+            webApp = container "Web Application" "Provides the user interface for all ConnectSphere roles." "ReactJS" "WebApp"
+
+            backend = container "Backend Application" "Monolithic backend containing user access, event management, coordinator assignment, venue booking, equipment, registration, notifications and safety review functionality." "Node.js + Express" "Backend"
+
+        }
+
+        // External Systems
+        firebaseAuthentication = softwareSystem "Firebase Authentication" "Provides user authentication and account management." "External System"
+
+        firebaseFirestore = softwareSystem "Firebase Firestore" "Provides persistent cloud document storage for ConnectSphere." "External System"
+
+
+        // Relationships: People -> Web Application
+        eventOrganiser -> connectSphere.webApp "Uses to create and manage events"
+        eventCoordinator -> connectSphere.webApp "Uses to manage assigned events"
+        eventCoordinatorLead -> connectSphere.webApp "Uses to assign coordinators and oversee events"
+        venueStaff -> connectSphere.webApp "Uses to manage venues and booking requests"
+        technicalSupport -> connectSphere.webApp "Uses to manage equipment"
+        safetyOfficer -> connectSphere.webApp "Uses to review operational safety"
+        attendee -> connectSphere.webApp "Uses to browse and register for events"
+
+
+        // Frontend -> Monolithic Backend
+        connectSphere.webApp -> connectSphere.backend "Sends authenticated API requests to" "JSON/HTTPS"
+
+
+        // Backend -> Firebase Authentication
+        connectSphere.backend -> firebaseAuthentication "Authenticates users and validates identity via" "Firebase SDK"
+
+
+        // Backend -> Firestore
+        connectSphere.backend -> firebaseFirestore "Reads and writes application data to" "Firebase SDK"
+
+    }
+
+
+    views {
+
+        // Container View
+        container connectSphere "ContainerView" {
+            title "ConnectSphere - Container View"
+            description "Container view showing the React frontend, monolithic Node.js and Express backend, Firebase Authentication, and Firebase Firestore."
+
+            include *
+
+            autoLayout tb
+        }
+
+
+        // Styling
+        styles {
+
+            element "Person" {
+                shape person
+                background #08427b
+                color #ffffff
+            }
+
+            element "Software System" {
+                background #1168bd
+                color #ffffff
+            }
+
+            element "Container" {
+                shape roundedbox
+                background #438dd5
+                color #ffffff
+            }
+
+            element "WebApp" {
+                shape WebBrowser
+            }
+
+            element "Backend" {
+                shape roundedbox
+            }
+
+            element "External System" {
+                shape roundedbox
+                background #999999
+                color #ffffff
+            }
+
+        }
+
+    }
+
+    configuration {
+        scope softwaresystem
+    }
+
+}

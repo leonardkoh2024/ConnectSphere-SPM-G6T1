@@ -1,0 +1,175 @@
+// ConnectSphere - Equipment Management
+
+Enum equipment_request_status {
+  PENDING
+  ARRANGED
+  APPROVED
+  AMENDED
+  REJECTED
+  CANCELLED
+}
+
+Enum equipment_reservation_status {
+  RESERVED
+  RELEASED
+  CANCELLED
+}
+
+Table users {
+  user_id varchar [pk, note: 'Firebase Authentication UID and Firestore document ID']
+  name varchar [not null]
+  email varchar [not null, unique]
+  role user_role [not null]
+  organisation_name varchar
+  mobile_number varchar
+  preferred_contact_method varchar
+  is_active boolean [not null, default: true]
+  created_at timestamp
+  updated_at timestamp
+
+  Note: 'Password hashes are owned by Firebase Authentication and are not stored here.'
+}
+
+Table events {
+  event_id varchar [pk, note: 'Firestore document ID']
+  reference_no varchar [not null, unique]
+  organiser_id varchar [not null, ref: > users.user_id]
+  coordinator_id varchar [ref: > users.user_id]
+  created_by varchar [ref: > users.user_id]
+  name varchar [not null]
+  purpose varchar
+  description text
+  event_date date
+  start_time time
+  end_time time
+  expected_attendance int
+  status event_status [not null]
+  registration_required boolean
+  equipment_required boolean
+  open_clarification_id varchar
+  approved_venue_booking_id varchar
+  assigned_at timestamp
+  created_at timestamp
+  submitted_at timestamp
+  updated_at timestamp
+  last_activity_at timestamp
+  returned_to_planning_at timestamp
+  safety_review_requested_at timestamp
+  last_safety_review_id varchar
+  equipment_placement text [note: 'Current application stores this safety-planning note directly on the event.']
+  crowd_movement text [note: 'Current application stores this safety-planning note directly on the event.']
+  registration_capacity int [note: 'Current event form also persists registration settings inline.']
+  registration_open_date date
+  registration_open_time time
+  registration_close_date date
+  registration_close_time time
+  last_cancellation_id varchar
+  last_detail_change_id varchar
+  last_venue_release_id varchar
+}
+
+Table equipment_types {
+  equipment_type_id varchar [pk]
+  name varchar [not null]
+  description text
+  total_quantity int [not null]
+  is_active boolean [not null, default: true]
+  availability_revision int [default: 0]
+  updated_at timestamp
+
+  Note: 'Workbook name: equipment_types. Active application collection: equipment_inventory, where equipment_type or the document ID identifies the type.'
+}
+
+Table event_equipment_requests {
+  request_id varchar [pk]
+  event_id varchar [not null, unique, ref: - events.event_id]
+  coordinator_id varchar [ref: > users.user_id]
+  created_by varchar [ref: > users.user_id]
+  event_name varchar
+  reference_no varchar
+  event_date date
+  start_time time
+  end_time time
+  expected_attendance int
+  status equipment_request_status [not null]
+  lines json [note: 'Active equipment_requests documents embed their submitted request lines.']
+  on_site_support boolean
+  on_site_support_details text
+  has_support_decisions boolean [default: false]
+  created_at timestamp
+  submitted_at timestamp
+  updated_at timestamp
+  arranged_at timestamp
+  unable_reason text
+  safety_review_required boolean [default: false]
+
+  Note: 'Workbook name: event_equipment_requests. Active application collection: equipment_requests, keyed by event ID.'
+}
+
+Table equipment_request_lines {
+  line_id varchar [pk]
+  request_id varchar [not null, ref: > event_equipment_requests.request_id]
+  event_id varchar [ref: > events.event_id]
+  equipment_type_id varchar [not null, ref: > equipment_types.equipment_type_id]
+  quantity int [not null]
+  technical_note text
+  technical_requirements text
+  status varchar
+  fulfillment_status varchar
+  amendment_note text
+  resolution varchar
+  resolution_reason text
+  reservation_id varchar
+
+  Note: 'Workbook name: equipment_request_lines. The event form currently stores initial rows in event_equipment; submitted request lines are embedded in equipment_requests.lines.'
+}
+
+Table equipment_unavailability {
+  unavailability_id varchar [pk]
+  equipment_type_id varchar [not null, ref: > equipment_types.equipment_type_id]
+  quantity int [not null]
+  start_datetime timestamp [not null]
+  end_datetime timestamp [not null]
+  reason text [not null]
+
+  Note: 'Active code calls the foreign-key field equipment_type.'
+}
+
+Table equipment_reservations {
+  reservation_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  equipment_type_id varchar [not null, ref: > equipment_types.equipment_type_id]
+  quantity int [not null]
+  line_index int
+  start_datetime timestamp [not null]
+  end_datetime timestamp [not null]
+  status equipment_reservation_status [not null]
+  created_by varchar [ref: > users.user_id]
+  reserved_by varchar [ref: > users.user_id]
+  created_at timestamp
+  updated_at timestamp
+  released_at timestamp
+  released_by varchar [ref: > users.user_id]
+  release_reason text
+
+  Note: 'Active code calls the equipment foreign-key field equipment_type.'
+}
+
+Table equipment_request_history {
+  history_id varchar [pk]
+  event_id varchar [not null, ref: > events.event_id]
+  request_id varchar [not null, ref: > event_equipment_requests.request_id]
+  line_index int
+  action varchar [not null]
+  actor_id varchar [ref: > users.user_id]
+  equipment_type_id varchar [ref: > equipment_types.equipment_type_id]
+  quantity int
+  reservation_id varchar [ref: > equipment_reservations.reservation_id]
+  note text
+  reason text
+  old_values json
+  new_values json
+  created_at timestamp [not null]
+
+  Note: 'Project collection not listed as a separate table in the workbook draft.'
+}

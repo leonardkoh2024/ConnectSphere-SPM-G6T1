@@ -7,15 +7,8 @@
 // the marketing sections below the fold live in `components/PlatformOverview`.
 
 import React, { useState } from "react";
-import {
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut
-} from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { auth, db } from "../../lib/firebase";
-import { ROLES, ROLE_META } from "../../domain/roles";
 import { PORTALS } from "../../domain/portals";
+import { createAccount, signInToPortal, signOutUser } from "./authApi";
 import {
   isStrongPassword,
   isValidMobileNumber,
@@ -98,26 +91,9 @@ function LandingPage() {
     setBusy(true);
 
     try {
-      const credential = await createUserWithEmailAndPassword(
-          auth,
-          email,
-          password
-      );
-
-        await setDoc(doc(db, "users", credential.user.uid), {
-          user_id: credential.user.uid,
-          name: name.trim(),
-          email: credential.user.email,
-          // Public registration deliberately grants no staff capability. Other
-          // staff roles are provisioned by an administrator.
-          role: isCorporate ? ROLES.ORGANISER : ROLES.ATTENDEE,
-          organisation_name: isCorporate ? organisationName.trim() : null,
-          mobile_number: mobileNumber.trim(),
-          preferred_contact_method: preferredContactMethod,
-          is_active: true,
-          created_at: serverTimestamp(),
-          updated_at: serverTimestamp()
-        });
+      await createAccount({
+        email, password, name, isCorporate, organisationName, mobileNumber, preferredContactMethod
+      });
         sessionStorage.setItem("cs-account-created", "Your account has been created successfully.");
         setSuccess("Your account has been created. You are now signed in.");
     } catch (authError) {
@@ -138,16 +114,13 @@ function LandingPage() {
     setError("");
     setBusy(true);
     try {
-      const credential = await signInWithEmailAndPassword(auth, email, password);
-      const profile = await getDoc(doc(db, "users", credential.user.uid));
-      const storedRole = profile.exists() ? profile.data().role : null;
-      const storedPortal = ROLE_META[storedRole]?.portal;
+      const { portalMatches } = await signInToPortal({ email, password, portal });
       // A correct password used on the wrong portal is deliberately presented as
       // a generic sign-in failure, and its just-created Firebase session is ended.
-      if (!storedPortal || storedPortal !== portal) {
+      if (!portalMatches) {
         const loginError = "This account cannot be used in this portal. Please use the correct sign-in area.";
         sessionStorage.setItem("cs-login-error", loginError);
-        await signOut(auth);
+        await signOutUser();
         setError(loginError);
       }
     } catch (authError) {

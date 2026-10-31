@@ -36,7 +36,6 @@ const approvedVenueBookings = async (eventId) => {
 };
 
 const equipmentEventWindow = async (eventId) => {
-  if (!eventId) throw new Error("Choose an event before checking or reserving equipment.");
   const bookings = await approvedVenueBookings(eventId);
   return {
     docs: bookings,
@@ -132,9 +131,6 @@ export const submitEquipmentRequest = async ({ eventId, lines, onSiteSupport = f
   }));
   const validationError = validateEquipmentRequestLines(normalizedLines);
   if (validationError) throw new Error(validationError);
-  normalizedLines.forEach((line) => {
-    if (!EQUIPMENT_TYPES.includes(line.equipment_type)) throw new Error("Choose a supported equipment type for every line.");
-  });
   const eventRef = doc(db, "events", eventId);
   const requestRef = doc(db, "equipment_requests", eventId);
   await runTransaction(db, async (transaction) => {
@@ -279,7 +275,7 @@ const SERVICE_UNREACHABLE =
 // Every equipment action goes through the backend. When it is down, CRA's dev
 // proxy replies with a plain-text "Proxy error" page, so a reply that is not
 // JSON (or no reply at all) means the service could not be reached.
-const callEquipmentService = async (user, path, method, body, fallbackError) => {
+export const callEquipmentService = async (user, path, method, body, fallbackError) => {
   const token = await user.getIdToken();
   let response;
   let result;

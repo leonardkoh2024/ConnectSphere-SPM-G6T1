@@ -1,8 +1,8 @@
 // F12 / SCRUM-177 — Book more than one venue for an event.
 //
-//   FUNCTIONAL  TC-498 – TC-502  requestVenueBooking, the one place a booking is
+// FUNCTIONAL requestVenueBooking, the one place a booking is
 //                                written, against a mocked Firestore.
-//   RULES       TC-509 – TC-510  the server boundary in firestore.rules, which a
+// RULES the server boundary in firestore.rules, which a
 //                                crafted request that skips this code still meets.
 
 import fs from 'fs';
@@ -83,7 +83,7 @@ beforeEach(() => {
 });
 
 describe('F12 / SCRUM-177 functional — requesting a second venue for the same event', () => {
-  test('TC-498 a second venue is accepted alongside the first, with its own label, attendance and layout', async () => {
+  test('TC-1077 a second venue is accepted alongside the first, with its own label, attendance and layout', async () => {
     existing(mainProgramme);
 
     await expect(request()).resolves.toEqual({ booking_id: 'venue_bookings-auto', status: 'PENDING' });
@@ -99,7 +99,7 @@ describe('F12 / SCRUM-177 functional — requesting a second venue for the same 
     })]);
   });
 
-  test("TC-499 an attendance above the event's is refused and nothing is written", async () => {
+  test("TC-1078 an attendance above the event's is refused and nothing is written", async () => {
     await expect(request({ expected_attendance: 301 }))
       .rejects.toThrow("Expected attendance cannot be more than the event's 300.");
     await expect(request({ expected_attendance: 0 }))
@@ -110,7 +110,7 @@ describe('F12 / SCRUM-177 functional — requesting a second venue for the same 
     expect(mockTransactionSet).not.toHaveBeenCalled();
   });
 
-  test('TC-500 a blank label is refused and nothing is written; the label is stored trimmed', async () => {
+  test('TC-1079 a blank label is refused and nothing is written; the label is stored trimmed', async () => {
     await expect(request({ booking_label: '   ' })).rejects.toThrow(/label/i);
     expect(mockTransactionSet).not.toHaveBeenCalled();
 
@@ -118,7 +118,7 @@ describe('F12 / SCRUM-177 functional — requesting a second venue for the same 
     expect(bookingsWritten()[0].booking_label).toBe('Breakout 1');
   });
 
-  test('TC-501 the same venue again at an overlapping time for the same event is refused, naming the booking it clashes with', async () => {
+  test('TC-1080 the same venue again at an overlapping time for the same event is refused, naming the booking it clashes with', async () => {
     existing(mainProgramme);
 
     await expect(request({ venue_id: 'VEN-MAIN', booking_label: 'Overflow', expected_attendance: 100 }))
@@ -126,14 +126,14 @@ describe('F12 / SCRUM-177 functional — requesting a second venue for the same 
     expect(mockTransactionSet).not.toHaveBeenCalled();
   });
 
-  test('TC-501 once the first booking for that venue is withdrawn, the venue may be requested again', async () => {
+  test('TC-1081 once the first booking for that venue is withdrawn, the venue may be requested again', async () => {
     existing({ ...mainProgramme, status: 'WITHDRAWN' });
 
     await expect(request({ venue_id: 'VEN-MAIN', booking_label: 'Main programme', expected_attendance: 300 }))
       .resolves.toMatchObject({ status: 'PENDING' });
   });
 
-  test("TC-502 a room is checked against the booking's attendance, so a small breakout room fits a large event", async () => {
+  test("TC-1082 a room is checked against the booking's attendance, so a small breakout room fits a large event", async () => {
     // The Seminar Room holds 60; the conference is 300; the breakout is 50.
     await expect(request()).resolves.toMatchObject({ status: 'PENDING' });
     // 61 for a 60-seat room is still refused.
@@ -154,13 +154,13 @@ const createRule = () => {
 };
 
 describe('F12 / SCRUM-177 rules — a crafted request cannot skip the per-booking checks', () => {
-  test("TC-509 a booking's attendance cannot exceed its event's", () => {
+  test("TC-1083 a booking's attendance cannot exceed its event's", () => {
     expect(createRule()).toMatch(
       /request\.resource\.data\.expected_attendance\s*<=\s*get\(\/databases\/\$\(database\)\/documents\/events\/\$\(request\.resource\.data\.event_id\)\)\.data\.expected_attendance/
     );
   });
 
-  test('TC-510 a booking must carry a label that is not blank', () => {
+  test('TC-1084 a booking must carry a label that is not blank', () => {
     expect(createRule()).toContain('request.resource.data.booking_label is string');
     expect(createRule()).toContain('request.resource.data.booking_label.trim().size() > 0');
   });

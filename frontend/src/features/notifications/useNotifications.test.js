@@ -1,6 +1,5 @@
 // J1 / SCRUM-150 AC3 — the badge's count follows the live list, so opening a
-// notification (which marks it read) brings the count down. TC-282 – TC-283 in
-// docs/test-cases.md.
+// notification (which marks it read) brings the count down.
 
 import { act, renderHook, waitFor } from '@testing-library/react';
 import useNotifications from './useNotifications';
@@ -17,7 +16,7 @@ beforeEach(() => {
   markNotificationRead.mockResolvedValue();
 });
 
-test('TC-282 opening an unread notification marks it read and the unread count drops', async () => {
+test('TC-2102 opening an unread notification marks it read and the unread count drops', async () => {
   const { result, unmount } = renderHook(() => useNotifications('u1'));
   expect(watchNotifications).toHaveBeenCalledWith('u1', expect.any(Function), expect.any(Function));
 
@@ -37,7 +36,7 @@ test('TC-282 opening an unread notification marks it read and the unread count d
   expect(unsubscribe).toHaveBeenCalled();
 });
 
-test('TC-283 a failed load or a failed mark-read says so instead of failing silently', async () => {
+test('TC-2103 a failed load or a failed mark-read says so instead of failing silently', async () => {
   jest.spyOn(console, 'error').mockImplementation(() => {});
   const { result } = renderHook(() => useNotifications('u1'));
 
@@ -48,4 +47,11 @@ test('TC-283 a failed load or a failed mark-read says so instead of failing sile
   await act(() => result.current.markRead('n1'));
   await waitFor(() => expect(result.current.error).toMatch(/could not mark that notification as read/i));
   console.error.mockRestore();
+});
+
+test('TC-2104 [boundary] with nobody signed in there is no subscription and nothing unread', () => {
+  const { result } = renderHook(() => useNotifications(null));
+  expect(watchNotifications).not.toHaveBeenCalled();
+  expect(result.current.unread).toBe(0);
+  expect(result.current.notifications).toEqual([]);
 });

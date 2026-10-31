@@ -52,8 +52,8 @@ needed* and *Clash – review required* belong to a venue booking, not to the ev
 - Coordinator assignment is **not** automatic (Week 7 change 5, K1). A submitted event enters an unassigned
   queue that only the Event Coordinator Lead can see; the Lead assigns exactly one coordinator (K2) and is the
   one who reassigns (K3). No limit on how many events a coordinator holds. A coordinator may act only on
-  events currently assigned to them, refused server-side otherwise (K5). ADR 0001 and the
-  `coordinatorAssignment` service implement the old automatic rotation and are superseded.
+  events currently assigned to them, refused server-side otherwise (K5). The old automatic
+  rotation (ADR 0001, superseded) and its `coordinatorAssignment` service have been removed.
 - A coordinator cannot Confirm directly any more. Once **every** active venue booking is approved and all
   requested technical arrangements are confirmed, they *send the event for its safety check* (L1, status →
   Safety Review). The Safety Officer approves (→ Confirmed), rejects, or requests changes; the last two return
@@ -125,7 +125,7 @@ npm run build        # production build into frontend/build/
 from `eslint-plugin-jest`, which ESLint cannot resolve once dependencies hoist to the workspace root — it
 fails the production build with `Environment key "jest/globals" is unknown`. The config uses ESLint's
 built-in `jest` env instead, which needs no plugin. Linting is otherwise unchanged and still fails the build
-on real problems.
+on real problems. `npm run lint` runs the same rules with `--max-warnings 0`, and CI runs it on every PR.
 
 - Firebase config comes from `REACT_APP_FIREBASE_*` env vars via `frontend/src/lib/firebase.js`. There is **one
   `.env`, at the repo root**, serving both workspaces; the root scripts load it with `dotenv-cli` before
@@ -155,10 +155,17 @@ on real problems.
   frontend/src/
     app/        App.js (auth gate) · Workspace.js (role shell) · routes.js (hash format) · Icon.js · App.css
     domain/     roles · portals · accounts · events — no React, no Firebase
-    features/   auth/ · events/ — one folder per epic, each with its own components/
-    lib/        firebase.js — the only module that imports firebase/*
+    features/   auth/ · events/ · venues/ · … — one folder per epic, each with its own components/ and *Api.js
+    lib/        firebase.js — initialises Firebase and exports auth and db · apiSupport.js — helpers every *Api.js shares
     sandbox/    unimported spike screens, safe to delete
   ```
+
+- **Screens never call Firebase or `fetch` themselves.** A feature's data access lives in its `*Api.js`
+  modules (shared helpers in `*ApiSupport.js`), whether it goes through the browser SDK or a backend service.
+  Which of the two to use is in [ADR 0002](docs/adr/0002-frontend-data-access.md). Lint enforces this:
+  importing `firebase/*` or calling `fetch` outside an `*Api.js`, a test or the app shell fails
+  `npm run lint`. When an `*Api.js` grows past a few hundred lines, split it by workflow and keep the
+  original file as the re-exporting entry point, as `venuesApi.js` and `reviewApi.js` do.
 
 - **`domain/` holds the rules, not the UI.** Roles, portals, account rules and catalogue values live there as
   plain functions and constants. Nothing in `domain/` may import React or Firebase — that is what lets it move
@@ -198,9 +205,6 @@ on real problems.
   days on (`domain/venueHolds.js`, repeated in `firestore.rules` as `holdExpiryIsThreeWorkingDays`). A hold
   that would not end before the booking's occupied window is refused. Still open for Session 3: whether
   public holidays count as working days — they currently do.
-- ADR 0001 / `coordinatorAssignment` (automatic rotation) are superseded by K1. Decide whether to retire the
-  service and its `coordinators` / `assignment_cursor` collections or repurpose them for the Lead's queue,
-  and mark the ADR superseded.
 - Equipment data model: pooled quantity vs individually tracked units.
 - Who may edit an event after submission (Q9 and the Week 1 briefing disagree).
 - The Session 2 security question was left blank. Current assumption: role-correct access plus password

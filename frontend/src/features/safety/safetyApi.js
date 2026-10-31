@@ -4,7 +4,7 @@
 // it is in Safety Review, and write only the outcome of its check (AC6).
 
 import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
-import { auth, db } from "../../lib/firebase";
+import { db } from "../../lib/firebase";
 import { EVENT_STATUS } from "../../domain/eventReview";
 import { eventHistoryRecord, notificationRecord } from "../../domain/eventReviewRecords";
 import {
@@ -23,13 +23,9 @@ import {
   validateSafetyOutcome
 } from "../../domain/safetyReview";
 import { REVIEW_REQUIRED, recordSafetyOutcome as planSafetyReturn, sendForSafetyCheck } from "../../domain/safetyAndNotices";
+import { callEquipmentService } from "../equipment/equipmentApi";
+import { asIso, requireUser } from "../../lib/apiSupport";
 
-const requireUser = () => {
-  if (!auth.currentUser) throw new Error("Please sign in again.");
-  return auth.currentUser;
-};
-
-const asIso = (value) => value?.toDate?.().toISOString?.() || value || null;
 const byEvent = (name, eventId) => getDocs(query(collection(db, name), where("event_id", "==", eventId)));
 
 // A refused read says which collection it was, so a rule gap shows on screen.
@@ -167,9 +163,10 @@ export const recordSafetyOutcome = async ({ eventId, outcome, comment, marked })
       bookings,
       technicalArrangements
     });
-    if (planned && !planned.ok) throw new Error("The safety outcome could not be recorded.");
     const eventUpdate = { status, last_safety_review_id: reviewRef.id, updated_at: decidedAt };
     if (status === EVENT_STATUS.PLANNING) eventUpdate.returned_to_planning_at = decidedAt;
+    // D3 AC4 — the moment of confirmation, a server time shown in SGT.
+    if (status === EVENT_STATUS.CONFIRMED) eventUpdate.confirmed_at = decidedAt;
     if (planned?.technicalArrangements.some((item) => item.review_status === REVIEW_REQUIRED)) {
       eventUpdate.technical_review_status = REVIEW_REQUIRED;
     }
@@ -195,14 +192,32 @@ export const recordSafetyOutcome = async ({ eventId, outcome, comment, marked })
       }));
     });
   });
+  // D3 AC5 — the organiser and coordinator are told in the commit above; Technical
+  // Support cannot be listed from a browser, so the equipment service tells them.
+  // A failure leaves the confirmation standing and is only logged.
+  if (outcome === SAFETY_OUTCOME.APPROVE) {
+    try {
+      await callEquipmentService(
+        user,
+        `/api/equipment/requests/${encodeURIComponent(eventId)}/notify-confirmed`,
+        "POST",
+        {},
+        "Technical Support could not be told the event is confirmed."
+      );
+    } catch (notifyError) {
+      console.error("Technical Support could not be told the event is confirmed.", notifyError);
+    }
+  }
   return { ok: true, reviewId: reviewRef.id, status };
 };
 
+// The equipment service records each line's progress in `fulfillment_status`. Only a reserved
+// line is arranged; one Technical Support could not fulfil (RESOLVED) or released is not.
 const technicalArrangementsFrom = (request) => (request?.lines || []).map((line, index) => ({
   arrangement_id: line.line_id || line.equipment_type || `line-${index}`,
   label: line.label || line.equipment_type || `Technical arrangement ${index + 1}`,
   requested: true,
-  status: ["RESERVED", "CONFIRMED"].includes(String(line.status || "").toUpperCase()) ? "CONFIRMED" : "PENDING",
+  status: line.fulfillment_status === "RESERVED" ? "CONFIRMED" : "PENDING",
   review_status: line.review_status,
   assigned_staff_id: line.assigned_staff_id || request.assigned_staff_id || null
 }));
@@ -264,7 +279,7 @@ export const sendEventForSafetyCheck = async (eventId) => {
           message: notice.message,
           createdAt: sentAt
         }),
-        link_screen: notice.link?.screen || "Safety review",
+        link_screen: notice.link.screen,
         checked_before: notice.checked_before === true
       });
     });

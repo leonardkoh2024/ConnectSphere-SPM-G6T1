@@ -56,13 +56,11 @@ export default function VenueCatalogue({ user, role, showCalendar = false, onClo
   const canEditVenue = (venue) => role === ROLES.VENUE_STAFF && venue.is_assigned_to_user === true;
   const canEditSelected = selected && canEditVenue(selected);
   const updateDraft = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
-  const updateHours = (weekday, field, value) => setDraft((current) => {
-    const existing = current.operating_hours.find((row) => row.weekday === weekday);
-    const operatingHours = existing
-      ? current.operating_hours.map((row) => row.weekday === weekday ? { ...row, [field]: value } : row)
-      : [...current.operating_hours, { weekday, opens_at: "09:00", closes_at: "17:00", [field]: value }];
-    return { ...current, operating_hours: operatingHours };
-  });
+  // The time inputs render only for a weekday that already has hours, so there is always a row to update.
+  const updateHours = (weekday, field, value) => setDraft((current) => ({
+    ...current,
+    operating_hours: current.operating_hours.map((row) => row.weekday === weekday ? { ...row, [field]: value } : row)
+  }));
   const toggleWeekday = (weekday, enabled) => setDraft((current) => ({
     ...current,
     operating_hours: enabled

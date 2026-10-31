@@ -235,7 +235,8 @@ export const createArrangementReRequester = ({ firestore, serverTimestamp }) => 
       const changed = changedFieldLabels(significantChanges, equipmentChanged);
 
       const liveBookings = kinds.venue ? affectedVenueBookings(allBookings) : [];
-      const reservations = kinds.equipment ? liveReservations : [];
+      // Every triggered change affects equipment (affectedKinds), so its live reservations always are.
+      const reservations = liveReservations;
       const requestAffected = kinds.equipment && Boolean(equipmentRequest);
       const equipmentCount = reservations.length + (requestAffected ? 1 : 0);
 
@@ -374,7 +375,8 @@ export const createArrangementReRequester = ({ firestore, serverTimestamp }) => 
       const belowRegistered = capacityReductionNeedsAcknowledgement({ oldCapacity: previousCapacity, newCapacity: capacity, registeredCount });
       if (belowRegistered && acknowledged !== true) {
         throw new ArrangementError(409,
-          `The new capacity of ${capacity} is below the ${registeredCount} ${registeredCount === 1 ? "person" : "people"} already registered. `
+          // Below the registered count means at least two registered, since a capacity is at least 1.
+          `The new capacity of ${capacity} is below the ${registeredCount} people already registered. `
           + "Acknowledge this to apply it; nobody will be unregistered.");
       }
 

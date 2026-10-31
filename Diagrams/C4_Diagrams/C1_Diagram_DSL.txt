@@ -1,0 +1,51 @@
+workspace "ConnectSphere C4 Model" "C4 model for the ConnectSphere event management platform." {
+
+    model {
+
+        eventOrganiser = person "Event Organiser" "Creates, submits and manages event requests."
+        eventCoordinator = person "Event Coordinator" "Reviews and manages assigned event requests."
+        eventCoordinatorLead = person "Event Coordinator Lead" "Assigns coordinators and oversees active event assignments."
+        venueStaff = person "Venue Staff" "Manages venues and responds to venue booking requests."
+        technicalSupport = person "Technical Support Staff" "Manages equipment availability and reservations."
+        safetyOfficer = person "Safety Officer" "Reviews operational safety before event confirmation."
+        attendee = person "Attendee" "Registers for events and manages registrations."
+
+        connectSphere = softwareSystem "ConnectSphere" "Event planning, venue booking, equipment, registration and event coordination platform."
+
+        firebaseAuthentication = softwareSystem "Firebase Authentication" "Provides user authentication and account management."
+        firebaseFirestore = softwareSystem "Firebase Firestore" "Provides persistent cloud document storage."
+
+        eventOrganiser -> connectSphere "Creates and manages event requests"
+        eventCoordinator -> connectSphere "Reviews and manages assigned events"
+        eventCoordinatorLead -> connectSphere "Assigns coordinators and oversees events"
+        venueStaff -> connectSphere "Manages venues and booking requests"
+        technicalSupport -> connectSphere "Manages equipment requests and reservations"
+        safetyOfficer -> connectSphere "Reviews event operational safety"
+        attendee -> connectSphere "Browses and registers for events"
+
+        connectSphere -> firebaseAuthentication "Uses for authentication"
+        connectSphere -> firebaseFirestore "Stores and retrieves application data"
+    }
+
+    views {
+
+        systemContext connectSphere "SystemContext" {
+            title "ConnectSphere - System Context"
+            include *
+            autoLayout lr
+        }
+
+        styles {
+            element "Person" {
+                shape person
+                background #08427b
+                color #ffffff
+            }
+
+            element "Software System" {
+                background #1168bd
+                color #ffffff
+            }
+        }
+    }
+}

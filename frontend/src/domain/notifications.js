@@ -22,6 +22,7 @@ export const NOTIFICATION_TYPE_LABEL = {
   COORDINATOR_ASSIGNED: "Coordinator assigned",
   EVENT_APPROVED: "Request approved",
   SAFETY_CHECK_APPROVED: "Event confirmed",
+  EVENT_CONFIRMED_TECHNICAL: "Event confirmed",
   EVENT_CANCELLED: "Event cancelled",
   VENUE_BOOKING_REQUESTED: "Booking request raised",
   VENUE_BOOKING_REQUEST: "Booking request raised",
@@ -51,7 +52,10 @@ export const NOTIFICATION_TYPE_LABEL = {
   CANCELLED: "Event cancelled",
   PLACE_OPENED: "Place opened",
   // I1 / SCRUM-147 — an organiser asked for a change to an event the coordinator holds.
-  CHANGE_REQUESTED: "Change requested"
+  CHANGE_REQUESTED: "Change requested",
+  // I2 / SCRUM-148 — the coordinator's decision on it, told to the organiser.
+  CHANGE_REQUEST_ACCEPTED: "Change accepted",
+  CHANGE_REQUEST_DECLINED: "Change declined"
 };
 
 export const notificationTypeLabel = (type) => NOTIFICATION_TYPE_LABEL[type] || "Update";
@@ -152,5 +156,8 @@ export const venueHoldPlacedMessage = ({ eventName, venueName, expiresAt }) =>
 export const notificationViewScreen = (role, notification = {}) => {
   if (role === ROLES.COORDINATOR && VENUE_BOOKING_OUTCOMES.includes(notification.type) && notification.booking_id) return "Venue bookings";
   if (role === ROLES.COORDINATOR && EQUIPMENT_OUTCOMES.includes(notification.type)) return "Equipment requests";
+  // I2 AC4 — the decision and its reason are on the request, not the event.
+  if (role === ROLES.ORGANISER && ["CHANGE_REQUEST_ACCEPTED", "CHANGE_REQUEST_DECLINED"].includes(notification.type)) return "Change requests";
+  if (role === ROLES.COORDINATOR && notification.type === "CHANGE_REQUESTED") return "Change requests";
   return eventViewScreen(role);
 };

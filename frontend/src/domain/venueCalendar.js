@@ -236,7 +236,7 @@ export const buildMonthCalendar = ({
       .sort((left, right) => left.start.localeCompare(right.start) || String(left.venue_name).localeCompare(String(right.venue_name)));
     // Across several venues opening days differ, so only a single venue's
     // calendar can say a whole day is closed (AC3).
-    const closed = Boolean(single && hasAvailabilityData && !(single.operating_hours || []).some((row) => row.weekday === WEEKDAYS[dayStart.getDay()]));
+    const closed = Boolean(single && hasAvailabilityData && !single.operating_hours.some((row) => row.weekday === WEEKDAYS[dayStart.getDay()]));
     return { date, day: dayStart.getDate(), inMonth: date.startsWith(inMonth), closed, entries: dayEntries };
   }));
 

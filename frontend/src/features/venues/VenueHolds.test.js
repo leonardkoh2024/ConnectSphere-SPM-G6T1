@@ -1,5 +1,5 @@
 // F15 / SCRUM-180 — Place a tentative hold on a venue. FUNCTIONAL,
-// TC-531 – TC-536 in docs/test-cases.md: the Venue Staff booking requests
+// the Venue Staff booking requests
 // screen, the availability calendar and the coordinator's booking list.
 
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -36,7 +36,7 @@ beforeEach(() => {
 });
 
 describe('F15 / SCRUM-180 functional — Venue Staff hold, convert and see holds lapse', () => {
-  test('TC-531 a pending request can be put on hold, and Venue Staff are told until when', async () => {
+  test('TC-1115 a pending request can be put on hold, and Venue Staff are told until when', async () => {
     loadVenueBookingQueue.mockReset()
       .mockResolvedValueOnce([request()])
       .mockResolvedValue([request({ status: 'HELD', hold_expires_at: sgIso('2026-10-22', '10:00') })]);
@@ -49,7 +49,7 @@ describe('F15 / SCRUM-180 functional — Venue Staff hold, convert and see holds
     expect(onNotice).toHaveBeenCalledWith('Hall A held for Annual Conference until Thu 22 Oct 2026, 10:00.');
   });
 
-  test('TC-532 an active hold shows its expiry and offers conversion, not another hold', async () => {
+  test('TC-1116 an active hold shows its expiry and offers conversion, not another hold', async () => {
     loadVenueBookingQueue.mockReset().mockResolvedValue([
       request({ status: 'HELD', hold_expires_at: new Date(Date.now() + 86400000).toISOString() })
     ]);
@@ -64,7 +64,7 @@ describe('F15 / SCRUM-180 functional — Venue Staff hold, convert and see holds
     await waitFor(() => expect(approveVenueBooking).toHaveBeenCalledWith({ user: { uid: 'STAFF-001' }, bookingId: 'BK-1' }));
   });
 
-  test('TC-533 a hold whose expiry has passed is shown as expired and offers nothing', async () => {
+  test('TC-1117 a hold whose expiry has passed is shown as expired and offers nothing', async () => {
     loadVenueBookingQueue.mockReset().mockResolvedValue([
       request({ status: 'HELD', hold_expires_at: sgIso('2026-10-01', '10:00') })
     ]);
@@ -77,7 +77,7 @@ describe('F15 / SCRUM-180 functional — Venue Staff hold, convert and see holds
 });
 
 describe('F15 / SCRUM-180 functional — holds elsewhere', () => {
-  test('TC-534 the availability calendar has its own Held key and filter, apart from booked, pending and blocked', () => {
+  test('TC-1118 the availability calendar has its own Held key and filter, apart from booked, pending and blocked', () => {
     render(<VenueCalendar venues={[{ venue_id: 'VEN-1', name: 'Hall A', operating_hours: [] }]} bookings={[]} unavailability={[]}
       role={ROLES.COORDINATOR} today={new Date(2026, 9, 12, 8, 0)} />);
 
@@ -87,7 +87,7 @@ describe('F15 / SCRUM-180 functional — holds elsewhere', () => {
     expect(screen.getByRole('checkbox', { name: 'Held' })).toBeChecked();
   });
 
-  test("TC-535 the coordinator's booking list shows a held request and when the hold ends", async () => {
+  test("TC-1119 the coordinator's booking list shows a held request and when the hold ends", async () => {
     loadVenueCatalogue.mockResolvedValue([{ venue_id: 'VEN-1', name: 'Hall A', max_capacity: 200 }]);
     reviewApi.list.mockResolvedValue({ events: [] });
     loadVenueBookings.mockResolvedValue([request({
@@ -103,7 +103,7 @@ describe('F15 / SCRUM-180 functional — holds elsewhere', () => {
 });
 
 describe('F15 / SCRUM-180 functional — holds have their own filter', () => {
-  test('TC-536 On hold lists only active holds; Decided leaves them out but keeps lapsed ones', async () => {
+  test('TC-1120 On hold lists only active holds; Decided leaves them out but keeps lapsed ones', async () => {
     const later = new Date(Date.now() + 86400000).toISOString();
     loadVenueBookingQueue.mockReset().mockResolvedValue([
       request({ booking_id: 'BK-P', event_name: 'Pending event' }),

@@ -93,13 +93,13 @@ const request = async ({ firestore, uid = "attendee-1", authorization = "Bearer 
   }
 };
 
-test("TC-618 H4 AC1 an attendee is given their own registrations, soonest event first", async () => {
+test("TC-1532 H4 AC1 an attendee is given their own registrations, soonest event first", async () => {
   const { status, body } = await request({ firestore: fakeFirestore(data()) });
   assert.equal(status, 200);
   assert.deepEqual(body.registrations.map((entry) => entry.event_id), ["forum", "talk", "expo", "gala"]);
 });
 
-test("TC-619 H4 AC1 each entry shows the event's name, date, window, venue and the attendee's status", async () => {
+test("TC-1533 H4 AC1 each entry shows the event's name, date, window, venue and the attendee's status", async () => {
   const { body } = await request({ firestore: fakeFirestore(data()) });
   const forum = body.registrations.find((entry) => entry.event_id === "forum");
   assert.deepEqual(forum, {
@@ -126,7 +126,7 @@ test("TC-619 H4 AC1 each entry shows the event's name, date, window, venue and t
   assert.deepEqual(statuses, { forum: "REGISTERED", talk: "WITHDRAWN", expo: "WAITLISTED", gala: "CANCELLED" });
 });
 
-test("TC-620 H4 AC3 a registration on a cancelled event stays in the list, marked Cancelled, without the internal reason", async () => {
+test("TC-1534 H4 AC3 a registration on a cancelled event stays in the list, marked Cancelled, without the internal reason", async () => {
   const { body } = await request({ firestore: fakeFirestore(data()) });
   const gala = body.registrations.find((entry) => entry.event_id === "gala");
   assert.equal(gala.status, "CANCELLED");
@@ -134,7 +134,7 @@ test("TC-620 H4 AC3 a registration on a cancelled event stays in the list, marke
   assert.equal(JSON.stringify(gala).includes("Venue flooded"), false);
 });
 
-test("TC-621 H4 AC2 no internal event field is sent", async () => {
+test("TC-1535 H4 AC2 no internal event field is sent", async () => {
   const { body } = await request({ firestore: fakeFirestore(data()) });
   for (const entry of body.registrations) {
     for (const field of ["organiser_id", "coordinator_id", "reference_no", "cancellation_reason", "registration_capacity", "attendee_id"]) {
@@ -143,7 +143,7 @@ test("TC-621 H4 AC2 no internal event field is sent", async () => {
   }
 });
 
-test("TC-622 H4 another attendee's registrations are never read into the list", async () => {
+test("TC-1536 H4 another attendee's registrations are never read into the list", async () => {
   const firestore = fakeFirestore(data());
   const { body } = await request({ firestore });
   assert.ok(!body.registrations.some((entry) => entry.event_id === "others"));
@@ -156,13 +156,13 @@ test("TC-622 H4 another attendee's registrations are never read into the list", 
     || read === "registrations?event_id=expo"));
 });
 
-test("TC-623 H4 a registration whose event no longer exists is left out rather than failing the list", async () => {
+test("TC-1537 H4 a registration whose event no longer exists is left out rather than failing the list", async () => {
   const { status, body } = await request({ firestore: fakeFirestore(data()) });
   assert.equal(status, 200);
   assert.ok(!body.registrations.some((entry) => entry.event_id === "deleted-event"));
 });
 
-test("TC-624 H4 an attendee with no registrations gets an empty list", async () => {
+test("TC-1538 H4 an attendee with no registrations gets an empty list", async () => {
   const { status, body } = await request({ firestore: fakeFirestore(data()), uid: "attendee-2" });
   assert.equal(status, 200);
   assert.deepEqual(body.registrations.map((entry) => entry.event_id), ["others"]);
@@ -170,7 +170,7 @@ test("TC-624 H4 an attendee with no registrations gets an empty list", async () 
   assert.deepEqual(none.body.registrations, []);
 });
 
-test("TC-625 H4 only a signed-in Attendee may read the list; nothing is read otherwise", async () => {
+test("TC-1539 H4 only a signed-in Attendee may read the list; nothing is read otherwise", async () => {
   for (const [options, expected] of [[{ authorization: null }, 401], [{ authorization: "Bearer junk" }, 401], [{ uid: "organiser-1" }, 403]]) {
     const firestore = fakeFirestore(data());
     const { status, body } = await request({ firestore, ...options });
@@ -180,7 +180,7 @@ test("TC-625 H4 only a signed-in Attendee may read the list; nothing is read oth
   }
 });
 
-test("TC-626 H4 a failed read is a server error, not an empty list", async () => {
+test("TC-1540 H4 a failed read is a server error, not an empty list", async () => {
   const base = fakeFirestore(data());
   const broken = {
     collection(name) {

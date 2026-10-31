@@ -27,7 +27,7 @@ const DEFAULT_RELEASE_REASON = "Released after the event changed";
 function ReassessmentActions({ reservation, reload }) {
   const [checked, setChecked] = useState(null);
   const [note, setNote] = useState("");
-  const [quantity, setQuantity] = useState(String(reservation.quantity ?? ""));
+  const [quantity, setQuantity] = useState(String(reservation.quantity));
   const [amendNote, setAmendNote] = useState("");
   const [releaseReason, setReleaseReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -52,7 +52,7 @@ function ReassessmentActions({ reservation, reload }) {
     setError("");
     try {
       const result = await recheckEquipmentReassessment({ eventId: reservation.event_id });
-      const line = (result.lines || []).find((item) => item.reservationId === reservation.id);
+      const line = result.lines.find((item) => item.reservationId === reservation.id);
       setChecked({ windowStart: result.windowStart, windowEnd: result.windowEnd, line });
     } catch (checkError) {
       setError(checkError.message);
@@ -71,7 +71,7 @@ function ReassessmentActions({ reservation, reload }) {
   };
 
   return <div className="cs-record-details cs-equipment-reassess">
-    <p>Reason for reassessment: {reservation.rerequest_reason || "Not recorded"}</p>
+    <p>Reason for reassessment: {reservation.rerequest_reason}</p>
     <button type="button" className="cs-btn cs-btn-secondary" disabled={busy} onClick={recheck}>
       {checked ? "Refresh availability" : "Re-check availability"}
     </button>

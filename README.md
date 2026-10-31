@@ -9,7 +9,7 @@ Safety Check, and the event is confirmed only once it passes. Attendees register
 
 The system has seven roles and no administrator: Event Organiser, Event Coordinator, Event Coordinator Lead,
 Venue Staff, Technical Support Staff, Safety Officer, Attendee. The Lead and the Safety Officer arrived with the
-Week 7 customer changes and are not yet in the code.
+Week 7 customer changes; all seven are defined in `frontend/src/domain/roles.js`.
 
 ## Getting started
 
@@ -43,11 +43,14 @@ The root npm scripts load that file with `dotenv-cli` before handing off to a wo
 Firebase then fails to initialise with every config value `undefined`.
 
 ```bash
-npm test           # React Testing Library, watch mode
-npm run build      # production build into frontend/build/
+npm test             # frontend tests (React Testing Library), watch mode
+npm run test:backend # backend unit tests (node --test)
+npm run lint         # ESLint over frontend/src — any warning fails it
+npm run build        # production build into frontend/build/
 ```
 
-Both run from the repo root and delegate to the frontend workspace.
+All run from the repo root. CI (`.github/workflows/tests.yml`) runs the lint and every test suite on each
+push to `main` and each pull request.
 
 The system is not deployed and does not need to be — the customer confirmed that running locally plus an
 architecture diagram is what gets submitted.
@@ -60,16 +63,16 @@ frontend/                the React app (:3000)
   src/
     app/                 App.js auth gate · Workspace.js role shell · routes.js hash format · Icon.js
     domain/              roles · portals · accounts · events — plain rules, no React or Firebase
-    features/            one folder per epic, each owning its pages and components
-      auth/              LandingPage and the portal/registration form
-      events/            EventRequestForm, EventList
+    features/            one folder per epic, each owning its pages, components and *Api.js data access
+      auth/  events/  venues/  equipment/  safety/  registrations/  changeRequests/  notifications/
     components/          UI shared across features
-    lib/firebase.js      the only module that imports firebase/*
+    lib/firebase.js      initialises Firebase; only *Api.js modules use what it exports
     sandbox/             unimported spike screens from the Firebase setup — safe to delete
   public/
 backend/                 the service layer (:4000)
   src/index.js           Express app, /api/health
   src/services/index.js  service registry — add each service here
+  src/services/*/        one folder per service, each owning its own collections
 .env                     gitignored — one file for both workspaces, ask the team for the values
 .env.example             committed template, no values in it
 firestore.rules          server-side authorisation — part of every feature, not an afterthought
@@ -78,21 +81,22 @@ docs/                    requirements: Week 4 instructions, Week 7 changes, back
 CLAUDE.md                the rules for changing this repo — read before you start
 ```
 
-Every Firestore and Auth call is still made from the browser; nothing server-side exists yet. Services move
-into `backend/` as the stories that need them are picked up.
+Screens never call Firebase or `fetch` themselves. Each feature's `*Api.js` modules are its data access: some
+use the browser Firebase SDK, guarded by `firestore.rules`, and some call a backend service under `/api/*`.
+[ADR 0002](docs/adr/0002-frontend-data-access.md) says which and why.
 
 Stack: Create React App (react-scripts 5) with React 19, Firebase Auth and Firestore, plain CSS.
 Navigation is hash-based, owned by `app/routes.js`; there is no router library.
 
 ## Contributing
 
-We commit directly to `main` — no feature branches, no PRs. Pull before you start and before you push, and
+Work on a branch named after the story (`H6-SCRUM-144-join-waiting-list`) and merge it into `main` through a
+pull request, so CI has run lint and the tests before it lands. Pull before you start and before you push, and
 keep commits small enough that a conflict is a minute's work rather than an evening's.
 
 Put the backlog story ID and the Jira ticket ID at the front of every commit message
-(`B6; SCRUM-nn; save an incomplete request as a draft`) —
-with no PRs in the history, the commit message is the only place story-to-code traceability is recorded, and
-it is marked.
+(`B6; SCRUM-nn; save an incomplete request as a draft`) — the commit message is where story-to-code
+traceability is recorded, and it is marked.
 
 A story's acceptance criteria in `docs/Final Product Backlog.csv` are its definition of done. Read them before
 starting, and check `docs/Week 7 Customer Changes.pdf` and `docs/customer-qa-session2-answers.md` — the

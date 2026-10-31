@@ -55,14 +55,14 @@ const exerciseRequest = async ({ role, authorization = "Bearer valid-token" }) =
   }
 };
 
-test("TC-304 only Technical Support Staff can reach the reservation transaction", async () => {
+test("TC-1253 only Technical Support Staff can reach the reservation transaction", async () => {
   const { response, transactionCalls } = await exerciseRequest({ role: "EVENT_COORDINATOR" });
   assert.equal(response.status, 403);
   assert.match((await response.json()).error, /only technical support staff/i);
   assert.equal(transactionCalls, 0);
 });
 
-test("TC-304 missing bearer credentials are rejected before profile access", async () => {
+test("TC-1254 missing bearer credentials are rejected before profile access", async () => {
   let profileReads = 0;
   const app = express();
   app.use(express.json());
@@ -135,7 +135,7 @@ const notifyRoute = async ({ role, authorization = "Bearer valid-token", runTran
   }
 };
 
-test("J5-TC16 AC1 only an Event Coordinator can ask the service to notify Technical Support", async () => {
+test("TC-2165 J5 AC1 only an Event Coordinator can ask the service to notify Technical Support", async () => {
   for (const role of ["TECHNICAL_SUPPORT_STAFF", "EVENT_ORGANISER", "VENUE_STAFF", "ATTENDEE"]) {
     const { response, transactionCalls } = await notifyRoute({
       role,
@@ -147,7 +147,7 @@ test("J5-TC16 AC1 only an Event Coordinator can ask the service to notify Techni
   }
 });
 
-test("J5-TC17 AC1 a request with no bearer token is refused before any profile or notice work", async () => {
+test("TC-2166 J5 AC1 a request with no bearer token is refused before any profile or notice work", async () => {
   const { response, transactionCalls } = await notifyRoute({
     role: "EVENT_COORDINATOR",
     authorization: "",
@@ -157,7 +157,7 @@ test("J5-TC17 AC1 a request with no bearer token is refused before any profile o
   assert.equal(transactionCalls, 0);
 });
 
-test("J5-TC18 AC1 AC3 an Event Coordinator reaches the notifier, and its result is returned", async () => {
+test("TC-2167 J5 AC1 AC3 an Event Coordinator reaches the notifier, and its result is returned", async () => {
   const { response, transactionCalls } = await notifyRoute({
     role: "EVENT_COORDINATOR",
     runTransaction: async () => ({ eventId: "event-1", sent: 2, types: ["EQUIPMENT_REQUEST_RAISED"] })
@@ -218,13 +218,13 @@ const cancelReservationsRoute = async ({ role, authorization = "Bearer valid-tok
   }
 };
 
-test("D4 only an Event Coordinator can release reservations after event cancellation", async () => {
+test("TC-0515 D4 only an Event Coordinator can release reservations after event cancellation", async () => {
   const { response, transactionCalls } = await cancelReservationsRoute({ role: "TECHNICAL_SUPPORT_STAFF" });
   assert.equal(response.status, 403);
   assert.equal(transactionCalls, 0);
 });
 
-test("D4 an authenticated coordinator reaches the cancellation release operation", async () => {
+test("TC-0516 D4 an authenticated coordinator reaches the cancellation release operation", async () => {
   const { response, transactionCalls } = await cancelReservationsRoute({ role: "EVENT_COORDINATOR" });
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { released: 0 });
@@ -233,11 +233,11 @@ test("D4 an authenticated coordinator reaches the cancellation release operation
 
 // G6 / SCRUM-138 AC3 — the routes Technical Support use to reassess a flagged reservation.
 // The rules themselves are in reservations.test.js (G6-TC1 to TC12); these pin who may call them.
-const reassessRoute = async ({ role, path, body = {}, authorization = "Bearer valid-token", runTransaction }) => {
+const reassessRoute = async ({ role, path, body = {}, authorization = "Bearer valid-token", runTransaction, profileError }) => {
   let transactionCalls = 0;
   const firestore = {
     collection() {
-      return { doc: () => ({ get: async () => ({ exists: true, data: () => ({ role }) }) }) };
+      return { doc: () => ({ get: async () => { if (profileError) throw profileError; return { exists: true, data: () => ({ role }) }; } }) };
     },
     async runTransaction(...args) {
       transactionCalls += 1;
@@ -305,6 +305,32 @@ test("G6-TC20 AC3 a Technical Support member reaches each operation, and a refus
     });
     assert.equal(response.status, 409, path);
     assert.deepEqual(await response.json(), { error: "Nothing is waiting for reassessment." });
+    assert.equal(transactionCalls, 1);
+  }
+});
+
+test("G6-TC40 AC3 an unexpected failure, in the profile read or the reassessment itself, is a server error and not a hang", async () => {
+  for (const [path, body] of G6_ROUTES) {
+    const profile = await reassessRoute({ role: "TECHNICAL_SUPPORT_STAFF", path, body, profileError: new Error("unavailable"), runTransaction: async () => ({}) });
+    assert.equal(profile.response.status, 500, path);
+    assert.equal(profile.transactionCalls, 0);
+
+    const aborted = await reassessRoute({
+      role: "TECHNICAL_SUPPORT_STAFF", path, body,
+      runTransaction: async () => { throw new Error("aborted"); }
+    });
+    assert.equal(aborted.response.status, 500, path);
+  }
+});
+
+test("G6-TC41 AC3 a Technical Support member's successful re-check, keep or amend returns what the operation returned", async () => {
+  for (const [path, body] of G6_ROUTES) {
+    const { response, transactionCalls } = await reassessRoute({
+      role: "TECHNICAL_SUPPORT_STAFF", path, body,
+      runTransaction: async () => ({ done: path })
+    });
+    assert.equal(response.status, 200, path);
+    assert.deepEqual(await response.json(), { done: path });
     assert.equal(transactionCalls, 1);
   }
 });

@@ -1,7 +1,7 @@
 # ADR 0001 — Coordinator auto-assignment: circular rotation by coordinator ID
 
 ADR 0001 — Coordinator auto-assignment: circular rotation by coordinator_seq, backend-owned
-Status: Accepted (Release 1) — supersedes the earlier LRA proposal and the "active coordinators + unassigned queue" draft
+Status: Superseded by Week 7 change 5 (K1, 2026-10-06) — the Event Coordinator Lead now assigns every submitted event by hand. The rotation service, its tests and its seed script were removed on 2026-10-30. (Originally: Accepted (Release 1) — supersedes the earlier LRA proposal and the "active coordinators + unassigned queue" draft.)
 Date: 2026-09-19
 Deciders: Shi Han
 Story: C1 / SCRUM-102 — Have submitted events assigned to a coordinator automatically

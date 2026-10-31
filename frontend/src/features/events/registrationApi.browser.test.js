@@ -40,7 +40,7 @@ afterAll(() => {
   global.fetch = originalFetch;
 });
 
-test("H1-TC49 AC2 AC3 AC5 load asks the registration service for the event, signed with the organiser's token, and returns form values", async () => {
+test("TC-1402 H1 AC2 AC3 AC5 load asks the registration service for the event, signed with the organiser's token, and returns form values", async () => {
   mockFetch.mockResolvedValue({ ok: true, json: async () => serviceSettings });
 
   await expect(registrationApi.load("e1")).resolves.toEqual({
@@ -63,7 +63,7 @@ test("H1-TC49 AC2 AC3 AC5 load asks the registration service for the event, sign
   expect(options.headers.Authorization).toBe("Bearer test-id-token");
 });
 
-test("H1-TC50 AC2 AC3 save PUTs the form values to the service as the stored fields and returns the refreshed settings", async () => {
+test("TC-1403 H1 AC2 AC3 save PUTs the form values to the service as the stored fields and returns the refreshed settings", async () => {
   mockFetch.mockResolvedValue({ ok: true, json: async () => ({ ...serviceSettings, phase: "OPEN" }) });
 
   const saved = await registrationApi.save("e1", {
@@ -88,7 +88,7 @@ test("H1-TC50 AC2 AC3 save PUTs the form values to the service as the stored fie
   expect(saved.phase).toBe("OPEN");
 });
 
-test("H1-TC51 AC3 a refusal from the service reaches the screen with its message and its per-field messages", async () => {
+test("TC-1404 H1 AC3 a refusal from the service reaches the screen with its message and its per-field messages", async () => {
   mockFetch.mockResolvedValue({
     ok: false,
     status: 422,
@@ -101,7 +101,7 @@ test("H1-TC51 AC3 a refusal from the service reaches the screen with its message
   });
 });
 
-test("H1-TC52 AC1 with nobody signed in nothing is sent", async () => {
+test("TC-1405 H1 AC1 with nobody signed in nothing is sent", async () => {
   auth.currentUser = null;
   await expect(registrationApi.load("e1")).rejects.toThrow(/sign in/i);
   expect(mockFetch).not.toHaveBeenCalled();
@@ -120,7 +120,7 @@ const serviceList = {
   ]
 };
 
-test("H8-TC19 AC1 AC2 loadAttendees asks the service for this event's list, signed with the organiser's token, and returns screen values", async () => {
+test("TC-1774 H8 AC1 AC2 loadAttendees asks the service for this event's list, signed with the organiser's token, and returns screen values", async () => {
   mockFetch.mockResolvedValue({ ok: true, json: async () => serviceList });
 
   await expect(registrationApi.loadAttendees("e1")).resolves.toEqual({
@@ -137,13 +137,13 @@ test("H8-TC19 AC1 AC2 loadAttendees asks the service for this event's list, sign
   expect(options.headers.Authorization).toBe("Bearer test-id-token");
 });
 
-test("H8-TC20 AC1 the event id is encoded into the path, so it cannot be used to reach another route", async () => {
+test("TC-1775 H8 AC1 the event id is encoded into the path, so it cannot be used to reach another route", async () => {
   mockFetch.mockResolvedValue({ ok: true, json: async () => ({ counts: {}, attendees: [] }) });
   await registrationApi.loadAttendees("e1/../settings");
   expect(mockFetch.mock.calls[0][0]).toBe("/api/registrations/events/e1%2F..%2Fsettings/attendees");
 });
 
-test("H8-TC21 AC2 a list with nothing in it comes back as zero counts and no attendees, never as undefined", async () => {
+test("TC-1776 H8 AC2 a list with nothing in it comes back as zero counts and no attendees, never as undefined", async () => {
   mockFetch.mockResolvedValue({ ok: true, json: async () => ({ event_id: "e1" }) });
   await expect(registrationApi.loadAttendees("e1")).resolves.toEqual({
     counts: { registered: 0, waitlisted: 0, withdrawn: 0 },
@@ -151,19 +151,63 @@ test("H8-TC21 AC2 a list with nothing in it comes back as zero counts and no att
   });
 });
 
-test("H8-TC22 AC3 a refusal from the service reaches the screen with its own message", async () => {
+test("TC-1777 H8 AC3 a refusal from the service reaches the screen with its own message", async () => {
   mockFetch.mockResolvedValue({ ok: false, status: 403, json: async () => ({ error: "You can view the registration list for your own events only." }) });
   await expect(registrationApi.loadAttendees("e2")).rejects.toThrow("You can view the registration list for your own events only.");
 });
 
-test("H8-TC23 a service that cannot be reached is said so, not shown as an empty list", async () => {
+test("TC-1778 H8 a service that cannot be reached is said so, not shown as an empty list", async () => {
   mockFetch.mockRejectedValue(new TypeError("Failed to fetch"));
   await expect(registrationApi.loadAttendees("e1")).rejects.toThrow(/registration service is not responding/i);
 });
 
-test("H8-TC24 AC3 with nobody signed in nothing is sent", async () => {
+test("TC-1779 H8 AC3 with nobody signed in nothing is sent", async () => {
   auth.currentUser = null;
   await expect(registrationApi.loadAttendees("e1")).rejects.toThrow(/sign in/i);
   expect(mockFetch).not.toHaveBeenCalled();
   auth.currentUser = { uid: "org-1", getIdToken: jest.fn().mockResolvedValue("test-id-token") };
+});
+
+describe("H1 SCRUM-139 registration adapter edges", () => {
+  test("TC-1406 [boundary] settings the service has not set yet come back as empty form strings, a zero count and no refusal", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ phase: "NOT_SET", editable: true }) });
+    await expect(registrationApi.load("e1")).resolves.toEqual({
+      settings: { registrationCapacity: "", registrationOpenDate: "", registrationOpenTime: "", registrationCloseDate: "", registrationCloseTime: "" },
+      venueCapacity: null,
+      registeredCount: 0,
+      phase: "NOT_SET",
+      editable: true,
+      refusal: null
+    });
+  });
+
+  test("TC-1407 [boundary] explicit nulls from the service are also shown as empty strings", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ settings: { registration_capacity: null, registration_open_date: null }, venue_capacity: null, registered_count: null, refusal: "Closed" }) });
+    const loaded = await registrationApi.load("e1");
+    expect(loaded.settings.registrationCapacity).toBe("");
+    expect(loaded.settings.registrationOpenDate).toBe("");
+    expect(loaded.registeredCount).toBe(0);
+    expect(loaded.refusal).toBe("Closed");
+  });
+
+  test.each([["abc"], [""], [undefined], ["12.5"]])("TC-1408 [failure] a capacity %p that is not a whole number is sent as typed, for the service to refuse", async (capacity) => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => serviceSettings });
+    await registrationApi.save("e1", { registrationCapacity: capacity });
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body).registration_capacity).toEqual(capacity);
+  });
+
+  test("TC-1409 [failure] a refusal with no message of its own says the settings could not be saved", async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 500, json: async () => null });
+    await expect(registrationApi.save("e1", { registrationCapacity: "10" })).rejects.toMatchObject({ message: "The registration settings could not be saved.", fields: undefined });
+  });
+
+  test("TC-1410 [failure] a refused attendee list with no message says the list could not be loaded", async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) });
+    await expect(registrationApi.loadAttendees("e1")).rejects.toThrow("The registration list could not be loaded.");
+  });
+
+  test("TC-1411 [failure] a reply that is not JSON is treated as the service being unreachable", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => { throw new SyntaxError("Unexpected token <"); } });
+    await expect(registrationApi.load("e1")).rejects.toThrow(/registration service is not responding/i);
+  });
 });

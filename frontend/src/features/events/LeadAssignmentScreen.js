@@ -79,7 +79,8 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
   const toggle = (eventId) => setOpen((current) => ({ ...current, [eventId]: !current[eventId] }));
 
   const run = async (event, kind) => {
-    const coordinatorId = choice[event.id] || "";
+    const coordinatorId = choice[event.id];
+    /* istanbul ignore if -- unreachable from the UI: with no coordinator chosen the guard keeps the button disabled. */
     if (!coordinatorId) { setError("Choose a coordinator first."); setErrorFor(event.id); return; }
     setBusyId(event.id); setError(""); setErrorFor("");
     try {

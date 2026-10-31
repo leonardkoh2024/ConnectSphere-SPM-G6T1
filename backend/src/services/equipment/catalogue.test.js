@@ -1,5 +1,5 @@
 // G2 / G3 / G5 — the catalogue read: what Technical Support holds, what is
-// reserved and for which event. TC-406 in docs/test-cases.md.
+// reserved and for which event.
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -60,7 +60,7 @@ const fakeFirestore = ({ role = "TECHNICAL_SUPPORT_STAFF" } = {}) => {
   };
 };
 
-test("TC-406 the catalogue returns stock, unavailability and every reservation with its event's details", async () => {
+test("TC-1193 the catalogue returns stock, unavailability and every reservation with its event's details", async () => {
   const firestore = fakeFirestore();
   const catalogue = await createEquipmentCatalogue({ firestore }).load();
 
@@ -96,7 +96,7 @@ test("TC-406 the catalogue returns stock, unavailability and every reservation w
   ]);
 });
 
-test("TC-406 a stock record without its type uses its id, and a missing or unreadable date comes back as null", async () => {
+test("TC-1194 a stock record without its type uses its id, and a missing or unreadable date comes back as null", async () => {
   const firestore = {
     collection(name) {
       const data = {
@@ -126,7 +126,7 @@ test("TC-406 a stock record without its type uses its id, and a missing or unrea
   assert.equal(catalogue.reservations[0].event_name, null);
 });
 
-test("TC-406 a catalogue read that fails is passed on as a server error, not left hanging", async () => {
+test("TC-1195 a catalogue read that fails is passed on as a server error, not left hanging", async () => {
   const firestore = fakeFirestore();
   const failing = {
     collection(name) {
@@ -177,7 +177,7 @@ const getCatalogue = async (firestore, authorization = "Bearer valid-token") => 
   }
 };
 
-test("TC-406 only signed-in Technical Support Staff can read the catalogue", async () => {
+test("TC-1196 only signed-in Technical Support Staff can read the catalogue", async () => {
   const allowed = await getCatalogue(fakeFirestore());
   assert.equal(allowed.status, 200);
   assert.equal(allowed.body.reservations.length, 2);
