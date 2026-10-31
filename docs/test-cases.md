@@ -78,7 +78,7 @@ To add a test, give it the next free ID after TC-2515, and add its row to its st
 | D2 | SCRUM-112 | Be warned before making a significant change | TC-0451 – TC-0492 | 42 | 5 / 7 / 6 / 9 / 15 |
 | D3 | SCRUM-113 | Confirm an event once arrangements are in place | TC-0493 – TC-0507 | 15 | 2 / 1 / 0 / 2 / 10 |
 | D4 | SCRUM-114 | Cancel an event | TC-0508 – TC-0529 | 22 | 1 / 4 / 1 / 5 / 11 |
-| D5 | SCRUM-115 | Close out an event after it has taken place | TC-0530 – TC-0547 | 18 | 1 / 2 / 2 / 4 / 9 |
+| D5 | SCRUM-115 | Close out an event after it has taken place | TC-0530 – TC-0547, TC-2516 | 19 | 1 / 2 / 2 / 4 / 10 |
 | D6 | SCRUM-116 | See everything that happened to an event | TC-0548 – TC-0555 | 8 | 0 / 3 / 0 / 0 / 5 |
 | E1 | SCRUM-117 | Maintain the venue catalogue | TC-0556 – TC-0558 | 3 | 0 / 0 / 0 / 0 / 3 |
 | E2 | SCRUM-118 | Browse the venue catalogue | TC-0559 – TC-0586 | 28 | 8 / 10 / 1 / 2 / 7 |
@@ -163,7 +163,7 @@ later.
 so it proved nothing about the product. Each of its suites was moved onto the real module, or dropped where
 the copied behaviour was never built.
 
-**Defects and gaps found.** Only D-01 is fixed. No test pins the wrong behaviour of the others.
+**Defects and gaps found.** D-01 and D-09 are fixed. No test pins the wrong behaviour of the others.
 
 | Ref | Where | Problem | Story |
 | --- | --- | --- | --- |
@@ -175,7 +175,7 @@ the copied behaviour was never built.
 | D-06 | `features/notifications/NotificationInbox.js:32` | When an event lookup fails, the error is not caught, so its rows stay on "Loading event…". | J1 |
 | D-07 | `features/venues/venuesApi.js:456` | A venue with no recorded capacity passes the client capacity check. | E8 AC1 |
 | D-08 | `features/venues/venuesApi.js:23` | Clash overlap times computed on the client are Date objects; stored ones are ISO text. | F10 |
-| D-09 | `frontend/src/domain/eventCompletion.mjs:15` | `canCompleteEvent(null, …)` throws instead of returning false. The backend never passes null. | D5 |
+| D-09 | `frontend/src/domain/eventCompletion.mjs:15` | **Fixed.** `canCompleteEvent(null, …)` returns false; regression test TC-2516. The backend never passes null. | D5 |
 | G-01 | Event Coordinator Lead | The Lead has no Notifications screen, so the `UNASSIGNED_EVENT` notices are written but never seen. This conflicts with A6 AC4 and needs a team decision. | J8 AC2–AC5 |
 | G-02 | Safety Officer notices | No "View" link to the event's safety review. | J9 AC2 |
 | G-03 | Venue booking routing | Requests go to the venue's single owner. There is no round-robin and no unassigned booking queue. | F2 AC3, AC5 |
@@ -1001,6 +1001,7 @@ the tests that exercised them, which leaves gaps in the IDs:
 | TC-0543 | D5 event completion | — | Automated: `frontend/src/domain/eventCompletion.test.js` | AC1 interprets the saved end date and time as Singapore time | As expected | Pass | D5 AC1 · unlabelled · `frontend/src/domain/eventCompletion.test.js` |
 | TC-0544 | D5 event completion | — | Automated: `frontend/src/domain/eventCompletion.test.js` | completion requires a confirmed event assigned to the caller | As expected | Pass | D5 · unlabelled · `frontend/src/domain/eventCompletion.test.js` |
 | TC-0545 | D5 event completion | — | Automated: `frontend/src/domain/eventCompletion.test.js` | invalid dates and times cannot be completed | As expected | Pass | D5 · unlabelled · `frontend/src/domain/eventCompletion.test.js` |
+| TC-2516 | D5 event completion | — | Automated: `frontend/src/domain/eventCompletion.test.js` | a null event cannot be completed and returns false | As expected | Pass | D5 · failure · `frontend/src/domain/eventCompletion.test.js` |
 | TC-0546 | Close out an event after it has taken place | — | Automated: `frontend/src/features/events/EventReviewScreen.test.js` | D5 AC1/AC2 offers completion after the event end and sends the completion action | As expected | Pass | D5 AC1 AC2 · unlabelled · `frontend/src/features/events/EventReviewScreen.test.js` |
 | TC-0547 | Close out an event after it has taken place | — | Automated: `frontend/src/features/events/EventReviewScreen.test.js` | D5 AC2/AC3 completed events leave the active list and remain viewable via the status filter | As expected | Pass | D5 AC2 AC3 · unlabelled · `frontend/src/features/events/EventReviewScreen.test.js` |
 

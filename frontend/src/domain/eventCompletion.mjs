@@ -12,9 +12,10 @@ export const eventEndInstant = (event = {}) => {
 };
 
 export const canCompleteEvent = (event, coordinatorId, now = new Date()) => {
+  if (!event) return false;
+
   const end = eventEndInstant(event);
-  return Boolean(event)
-    && event.status === "CONFIRMED"
+  return event.status === "CONFIRMED"
     && event.coordinator_id === coordinatorId
     && end !== null
     && now instanceof Date

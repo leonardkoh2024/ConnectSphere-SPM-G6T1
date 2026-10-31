@@ -24,4 +24,8 @@ describe("D5 event completion", () => {
     expect(eventEndInstant({ ...event, event_date: "2026-02-30" })).toBeNull();
     expect(eventEndInstant({ ...event, end_time: "24:00" })).toBeNull();
   });
+
+  test("TC-2516 null events cannot be completed", () => {
+    expect(canCompleteEvent(null, "c1", new Date("2026-10-25T00:00:00Z"))).toBe(false);
+  });
 });
