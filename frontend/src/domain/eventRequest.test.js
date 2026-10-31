@@ -138,11 +138,19 @@ describe('B1–B5 / B9 validateEventRequest', () => {
   });
 
   describe('conflict', () => {
-    test('TC-0202 B5 registration closing before it opens is reported once, not also as after the event', () => {
+    test('TC-0202 B5 registration must close after it opens and invalid ordering is reported once', () => {
       const issues = validateEventRequest(complete({
         registrationOpenDate: '2026-11-25', registrationCloseDate: '2026-11-24'
       }), { today: TODAY });
       expect(issues).toEqual([{
+        field: 'registrationCloseDate',
+        message: 'Registration close date/time must be after registration open date/time.'
+      }]);
+
+      expect(validateEventRequest(complete({
+        registrationOpenDate: '2026-11-01', registrationOpenTime: '09:00',
+        registrationCloseDate: '2026-11-01', registrationCloseTime: '09:00'
+      }), { today: TODAY })).toEqual([{
         field: 'registrationCloseDate',
         message: 'Registration close date/time must be after registration open date/time.'
       }]);

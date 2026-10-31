@@ -152,7 +152,7 @@ export function validateEventRequest(form, { mode = "submit", today = todayIso()
     if (windowGiven) {
       const opens = new Date(`${form.registrationOpenDate}T${form.registrationOpenTime}`);
       const closes = new Date(`${form.registrationCloseDate}T${form.registrationCloseTime}`);
-      if (opens > closes) add("registrationCloseDate", "Registration close date/time must be after registration open date/time.");
+      if (opens >= closes) add("registrationCloseDate", "Registration close date/time must be after registration open date/time.");
       else if (given.eventDate && given.startTime && closes > new Date(`${form.eventDate}T${form.startTime}`)) {
         add("registrationCloseDate", "Registration close date/time must be at or before the event start.");
       }
