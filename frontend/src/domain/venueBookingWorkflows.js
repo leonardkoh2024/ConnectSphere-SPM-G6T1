@@ -50,8 +50,11 @@ export const detectVenueBookingConflicts = (bookings = [], now = new Date()) => 
         event_b_id: right.event_id,
         event_a_name: left.event_name || left.booking_label || left.event_id,
         event_b_name: right.event_name || right.booking_label || right.event_id,
-        overlap_start: new Date(Math.max(leftWindow.start.getTime(), rightWindow.start.getTime())),
-        overlap_end: new Date(Math.min(leftWindow.end.getTime(), rightWindow.end.getTime()))
+        // Browser-facing clash records use ISO text consistently. Firestore's
+        // persisted conflict records remain native timestamps and are converted
+        // to the same ISO shape by the API adapters when read.
+        overlap_start: new Date(Math.max(leftWindow.start.getTime(), rightWindow.start.getTime())).toISOString(),
+        overlap_end: new Date(Math.min(leftWindow.end.getTime(), rightWindow.end.getTime())).toISOString()
       });
     }
   }

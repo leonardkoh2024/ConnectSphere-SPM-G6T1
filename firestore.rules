@@ -289,6 +289,8 @@ service cloud.firestore {
         return hasRole('EVENT_COORDINATOR')
           && resource.data.coordinator_id == request.auth.uid
           && resource.data.status in ['APPROVED', 'PLANNING']
+          && resource.data.get('cancelled_at', null) == null
+          && resource.data.get('last_cancellation_id', null) == null
           && request.resource.data.status == 'SAFETY_REVIEW'
           && request.resource.data.safety_review_requested_at == request.time
           && request.resource.data.updated_at == request.time

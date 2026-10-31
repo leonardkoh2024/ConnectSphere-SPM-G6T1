@@ -267,6 +267,14 @@ export const sendEventForSafetyCheck = async (eventId) => {
     if (!current.exists() || current.data().coordinator_id !== user.uid) {
       throw new Error("Only the assigned coordinator can send this event for its safety check.");
     }
+    // Re-check workflow state inside the transaction. The event may have been
+    // cancelled after the readiness reads above; Firestore retries this read if
+    // a concurrent cancellation wins, so a cancelled event can never be moved
+    // back into Safety Review or produce waiting notifications.
+    if (![EVENT_STATUS.APPROVED, EVENT_STATUS.PLANNING].includes(current.data().status)
+      || current.data().cancelled_at || current.data().last_cancellation_id) {
+      throw new Error("Send for safety check is not available for this event.");
+    }
     tx.update(eventRef, { status: EVENT_STATUS.SAFETY_REVIEW, safety_review_requested_at: sentAt, updated_at: sentAt });
     decision.notifications.forEach((notice) => {
       const notificationRef = doc(collection(db, "notifications"));

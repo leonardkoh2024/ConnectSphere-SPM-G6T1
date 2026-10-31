@@ -753,6 +753,8 @@ describe('A7 the Safety Officer reaches only events under review, and writes onl
       "hasRole('EVENT_COORDINATOR')",
       'resource.data.coordinator_id == request.auth.uid',
       "resource.data.status in ['APPROVED', 'PLANNING']",
+      "resource.data.get('cancelled_at', null) == null",
+      "resource.data.get('last_cancellation_id', null) == null",
       "request.resource.data.status == 'SAFETY_REVIEW'",
       'request.resource.data.safety_review_requested_at == request.time',
       "affectedKeys().hasOnly(['status', 'safety_review_requested_at', 'updated_at'])"

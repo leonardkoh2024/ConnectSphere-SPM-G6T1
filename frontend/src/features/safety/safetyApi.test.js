@@ -461,6 +461,21 @@ describe('L1 SCRUM-187 sending for the safety check — edges', () => {
     expect(mockTransactionUpdate).not.toHaveBeenCalled();
   });
 
+  test('TC-2491 [concurrency] an event cancelled after readiness checks cannot enter Safety Review', async () => {
+    ready();
+    mockTransactionDocuments.set('events/e1', snapshot('e1', {
+      ...coordinatorEvent,
+      status: 'CANCELLED',
+      cancelled_at: '2026-10-31T02:00:00.000Z',
+      last_cancellation_id: 'H-CANCEL'
+    }));
+
+    await expect(sendEventForSafetyCheck('e1'))
+      .rejects.toThrow('Send for safety check is not available for this event.');
+    expect(mockTransactionUpdate).not.toHaveBeenCalled();
+    expect(mockTransactionSet).not.toHaveBeenCalled();
+  });
+
   test('TC-2406 [conflict] K5 another coordinator cannot send, nor can one whose event was reassigned meanwhile', async () => {
     ready({ event: { ...coordinatorEvent, coordinator_id: 'COORD-2' } });
     await expect(sendEventForSafetyCheck('e1')).rejects.toThrow('Only the assigned coordinator can send this event for its safety check.');
