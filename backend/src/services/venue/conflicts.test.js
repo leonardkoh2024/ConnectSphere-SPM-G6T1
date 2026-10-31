@@ -238,3 +238,12 @@ test("TC-0994 [boundary] the catalogue-wide pass skips incomplete assignments an
   const recheckAll = createRecheckAllVenueConflicts({ firestore, serverTimestamp: () => "STAMP" });
   assert.deepEqual(await recheckAll(), { venues_checked: 1, active_conflicts: 1 });
 });
+
+test("TC-0995 [boundary] the catalogue-wide pass skips assignments for deleted venues", async () => {
+  const firestore = storeFirestore(assigned({
+    "venue_staff/orphan": { venue_id: "V-DELETED", user_id: "staff-9" }
+  }));
+  const recheckAll = createRecheckAllVenueConflicts({ firestore, serverTimestamp: () => "STAMP" });
+
+  assert.deepEqual(await recheckAll(), { venues_checked: 1, active_conflicts: 0 });
+});

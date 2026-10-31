@@ -215,7 +215,7 @@ describe('C3 / F7 / F12 the event detail', () => {
       expect(venueBookings[2]).toEqual({
         booking_id: 'BK-1', booking_label: 'Main hall', expected_attendance: 80, layout: 'THEATRE', venue_id: 'v1', venue_name: 'Hall A',
         start_datetime: '2026-11-04T03:00:00.000Z', end_datetime: '2026-11-04T05:00:00.000Z', status: 'Approved', decision_reason: 'Fits',
-        decided_at: '2026-10-02T00:00:00.000Z', released_at: null, release_reason: null, replacement_needed: true,
+        decided_at: '2026-10-02T00:00:00.000Z', released_at: null, release_reason: null, requires_re_request: false, replacement_needed: true,
         replacement_reason: 'Venue closed', replaced_by_booking_id: 'BK-3', required_facilities_snapshot: ['PROJECTOR']
       });
       expect(venueBookings[0]).toMatchObject({ status: 'Status not recorded', booking_label: null, expected_attendance: null, layout: null, replacement_needed: false, required_facilities_snapshot: [] });

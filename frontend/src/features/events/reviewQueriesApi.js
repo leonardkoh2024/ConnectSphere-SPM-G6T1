@@ -217,6 +217,9 @@ const bookingRow = (item, venueNames) => {
     decided_at: asIso(booking.decided_at),
     released_at: asIso(booking.released_at),
     release_reason: booking.release_reason || null,
+    // F13: a rejected room that still has to be replaced remains an active
+    // requirement and must block the event from being sent for safety review.
+    requires_re_request: booking.requires_re_request === true,
     replacement_needed: booking.replacement_needed === true,
     replacement_reason: booking.replacement_reason || null,
     replaced_by_booking_id: booking.replaced_by_booking_id || null,

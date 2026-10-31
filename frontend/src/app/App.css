@@ -2324,6 +2324,119 @@ a.cs-btn-ghost:hover {
   padding-top: 4px;
 }
 
+/* F12/F13: bookings are independent records, but coordinators need to see
+   immediately which records belong to one event. The coloured container is the
+   event boundary; its child cards remain individually expandable/actionable. */
+.cs-booking-event-groups {
+  display: grid;
+  gap: 20px;
+  margin-top: 16px;
+}
+
+.cs-booking-event-group {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--cs-line-strong);
+  border-left: 5px solid var(--cs-accent);
+  border-radius: var(--cs-radius-l);
+  background: var(--cs-surface);
+  box-shadow: var(--cs-elevation-card);
+}
+
+.cs-booking-event-group-multi { border-color: var(--cs-accent-border); }
+
+.cs-booking-event-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--cs-accent-border);
+  background: var(--cs-accent-faded);
+}
+
+.cs-booking-event-group-head > div:first-child { display: grid; gap: 2px; }
+.cs-booking-event-group-head strong { color: var(--cs-ink); font-size: 14px; }
+
+.cs-booking-event-group-kicker {
+  color: var(--cs-accent);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.cs-booking-event-statuses {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.cs-booking-event-statuses span {
+  padding: 3px 8px;
+  border: 1px solid var(--cs-accent-border);
+  border-radius: var(--cs-radius-round);
+  background: var(--cs-surface);
+  color: var(--cs-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cs-booking-event-records {
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  background: var(--cs-background);
+}
+
+.cs-booking-event-records > .cs-record { box-shadow: none; }
+
+@media (max-width: 700px) {
+  .cs-booking-event-group-head { align-items: flex-start; flex-direction: column; }
+  .cs-booking-event-statuses { justify-content: flex-start; }
+}
+
+/* Keep the coordinator's row action in the same top-right column whether or
+   not a clash warning is present. The warning owns a separate full-width row,
+   so adding it cannot move "View details" into the next grid row. */
+.cs-record.cs-venue-booking-record {
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-areas:
+    "title reference status actions"
+    "alert alert alert alert"
+    "expanded expanded expanded expanded";
+}
+
+.cs-venue-booking-record > .cs-record-title { grid-area: title; }
+.cs-venue-booking-record > .cs-record-ref { grid-area: reference; }
+.cs-venue-booking-record > .cs-record-modified { grid-area: status; }
+.cs-venue-booking-record > .cs-record-actions { grid-area: actions; }
+.cs-venue-booking-record > .cs-booking-record-alerts { grid-area: alert; }
+.cs-venue-booking-record > .cs-record-expanded { grid-area: expanded; }
+
+.cs-booking-record-alerts { display: grid; gap: 8px; }
+
+.cs-venue-booking-record-replacement {
+  border-color: var(--cs-danger);
+  box-shadow: inset 4px 0 0 var(--cs-danger);
+}
+
+.cs-record-alert-replacement {
+  border-color: var(--cs-danger);
+  background: var(--cs-danger-faded);
+  color: var(--cs-danger);
+}
+
+.cs-record-alert-replacement p { color: inherit; }
+
+@media (max-width: 900px) {
+  .cs-record.cs-venue-booking-record {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "title" "reference" "status" "alert" "actions" "expanded";
+  }
+}
+
 /* The form view leads with a card, which wants room under the header; the list
    view leads with its one action, which does not. */
 .cs-venue-bookings > .cs-form-section:first-child { margin-top: 20px; }

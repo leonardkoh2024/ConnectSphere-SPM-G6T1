@@ -977,15 +977,16 @@ service cloud.firestore {
         // F11: approving a replacement retires, but does not delete, the
         // unavailable original booking in the same transaction.
         || (assignedVenueStaff(getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.replaced_by_booking_id)).data.venue_id)
-          && resource.data.status == 'APPROVED'
-          && resource.data.replacement_needed == true
+          && ((resource.data.status == 'APPROVED' && resource.data.replacement_needed == true)
+            || (resource.data.status == 'REJECTED' && resource.data.requires_re_request == true))
           && request.resource.data.status == 'REPLACED'
           && request.resource.data.replacement_needed == false
+          && request.resource.data.requires_re_request == false
           && request.resource.data.replaced_by_booking_id is string
           && getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.replaced_by_booking_id)).data.status == 'APPROVED'
           && getAfter(/databases/$(database)/documents/venue_bookings/$(request.resource.data.replaced_by_booking_id)).data.get('replacement_for_booking_id', '') == bookingId
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'status', 'replacement_needed', 'replaced_by_booking_id', 'replaced_at', 'released_at', 'release_reason'
+            'status', 'replacement_needed', 'requires_re_request', 'replaced_by_booking_id', 'replaced_at', 'released_at', 'release_reason'
           ]))
         || (assignedVenueStaff(resource.data.venue_id)
           && resource.data.status == 'APPROVED'

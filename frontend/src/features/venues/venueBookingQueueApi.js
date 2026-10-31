@@ -190,6 +190,7 @@ export const approveVenueBooking = async ({ user, bookingId, now = new Date() })
       transaction.update(decision.replacementRef, {
         status: "REPLACED",
         replacement_needed: false,
+        requires_re_request: false,
         replaced_by_booking_id: bookingId,
         replaced_at: decidedAt,
         released_at: decidedAt,
@@ -205,7 +206,7 @@ export const approveVenueBooking = async ({ user, bookingId, now = new Date() })
         actor_id: userId,
         action_type: "VENUE_REPLACED",
         field_name: "venue_booking_status",
-        old_value: "APPROVED",
+        old_value: booking.replacement_original_status || "STATUS_NOT_RECORDED",
         new_value: "REPLACED",
         description: `${booking.replacement_original_label || decision.replacementRef.id} replaced by ${booking.booking_label || bookingId}.`,
         created_at: decidedAt
