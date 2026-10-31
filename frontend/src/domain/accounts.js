@@ -27,3 +27,11 @@ export function isStrongPassword(password) {
 export function isValidMobileNumber(number) {
   return /^\d{7,15}$/.test(String(number));
 }
+
+// Firebase validates email addresses too, but A2 AC6 requires the registration
+// form to refuse malformed input before making an authentication request.
+export function isValidEmailAddress(email) {
+  const value = String(email ?? "").trim();
+  return value.length <= 254
+    && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}

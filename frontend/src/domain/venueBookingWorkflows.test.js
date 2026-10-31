@@ -29,6 +29,10 @@ describe("F10 venue booking clashes", () => {
     ], now);
     expect(found).toHaveLength(1);
     expect(found[0]).toMatchObject({ event_a_name: "Event A", event_b_name: "Event B" });
+    expect(found[0]).toMatchObject({
+      overlap_start: "2026-11-10T10:30:00.000Z",
+      overlap_end: "2026-11-10T11:00:00.000Z"
+    });
   });
 
   test("TC-1000 does not flag touching boundaries, past, pending, or different venues", () => {
@@ -79,7 +83,7 @@ describe("F10 / F13 unit — edge inputs to the clash and readiness rules", () =
     // Ids fall back to the document id; names fall back to the label, then the event id.
     expect(found).toEqual([expect.objectContaining({
       booking_a_id: "A", booking_b_id: "B", event_a_name: "Main", event_b_name: "E-B",
-      overlap_start: new Date("2026-11-10T10:00:00Z"), overlap_end: new Date("2026-11-10T11:00:00Z")
+      overlap_start: "2026-11-10T10:00:00.000Z", overlap_end: "2026-11-10T11:00:00.000Z"
     })]);
     const [bare] = detectVenueBookingConflicts([
       { id: "C", venue_id: "V1", event_id: "E-C", status: "APPROVED", start_datetime: "2026-11-10T09:00:00Z", end_datetime: "2026-11-10T11:00:00Z" },

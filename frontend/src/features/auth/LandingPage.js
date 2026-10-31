@@ -11,6 +11,7 @@ import { PORTALS } from "../../domain/portals";
 import { createAccount, signInToPortal, signOutUser } from "./authApi";
 import {
   isStrongPassword,
+  isValidEmailAddress,
   isValidMobileNumber,
   passwordChecks
 } from "../../domain/accounts";
@@ -68,6 +69,11 @@ function LandingPage() {
       return;
     }
 
+    if (!isValidEmailAddress(email)) {
+      setError("Enter a valid email address.");
+      return;
+    }
+
     if (!mobileNumber.trim() || !preferredContactMethod) {
       setError("Enter your mobile number and preferred contact method to create an account.");
       return;
@@ -92,7 +98,7 @@ function LandingPage() {
 
     try {
       await createAccount({
-        email, password, name, isCorporate, organisationName, mobileNumber, preferredContactMethod
+        email: email.trim(), password, name, isCorporate, organisationName, mobileNumber, preferredContactMethod
       });
         sessionStorage.setItem("cs-account-created", "Your account has been created successfully.");
         setSuccess("Your account has been created. You are now signed in.");
