@@ -732,3 +732,63 @@ test("G6-TC42 AC3 stock marked unavailable inside the new window is taken off th
   assert.equal(lines[0].unavailableQuantity, 2);
   assert.equal(lines[0].freeQuantity, 3);
 });
+
+// G6 / SCRUM-138 — a flagged request with nothing reserved yet has no reservation to keep, amend
+// or release. Reserving it for the first time is the reassessment, so that is what clears the flag.
+const unreservedRequest = (changes = {}) => ({
+  status: "PENDING",
+  ...g6Flag,
+  lines: [
+    { equipment_type: "AUDIO", quantity: 2 },
+    { equipment_type: "VISUAL", quantity: 1 }
+  ],
+  ...changes
+});
+
+test("G6-TC44 AC1 AC3 reserving the first line of a flagged request with nothing reserved clears the flag and records who", async () => {
+  const { service, transaction } = g6Fixture({ request: unreservedRequest(), reservations: [] });
+  const reserved = await service.reserve({ eventId: "event-1", equipmentType: "AUDIO", quantity: 2, userId: "tech-1", lineIndex: 0 });
+
+  const request = updateTo(transaction, "equipment_requests/event-1").data;
+  assert.equal(reserved.status, "RESERVED");
+  assert.equal(request.rerequest_required, false);
+  assert.equal(request.rerequest_resolution, "REASSESSED");
+  assert.equal(request.rerequest_resolved_by, "tech-1");
+  assert.deepEqual(request.rerequest_resolved_at, { serverTimestamp: true });
+  // The other line is still open, so the request stays Pending.
+  assert.equal(request.status, "PENDING");
+});
+
+test("G6-TC45 AC1 AC3 reserving the only line of a flagged request arranges it and clears the flag", async () => {
+  const request = unreservedRequest({ lines: [{ equipment_type: "AUDIO", quantity: 2 }] });
+  const { service, transaction } = g6Fixture({ request, reservations: [] });
+  await service.reserve({ eventId: "event-1", equipmentType: "AUDIO", quantity: 2, userId: "tech-1", lineIndex: 0 });
+
+  const written = updateTo(transaction, "equipment_requests/event-1").data;
+  assert.equal(written.status, "ARRANGED");
+  assert.equal(written.rerequest_required, false);
+});
+
+test("G6-TC46 AC2 reserving another line leaves the flag alone while a flagged reservation is still waiting", async () => {
+  const request = unreservedRequest({
+    lines: [
+      { equipment_type: "AUDIO", quantity: 2, fulfillment_status: "RESERVED", reservation_id: "res-audio" },
+      { equipment_type: "VISUAL", quantity: 1 }
+    ]
+  });
+  const { service, transaction } = g6Fixture({ request, reservations: g6Reservations().filter((item) => item.reservation_id === "res-audio") });
+  await service.reserve({ eventId: "event-1", equipmentType: "VISUAL", quantity: 1, userId: "tech-1", lineIndex: 1 });
+
+  const written = updateTo(transaction, "equipment_requests/event-1").data;
+  assert.equal("rerequest_required" in written, false);
+  assert.equal("rerequest_resolution" in written, false);
+});
+
+test("G6-TC47 reserving for a request that was never flagged writes no reassessment fields", async () => {
+  const request = { status: "PENDING", lines: [{ equipment_type: "AUDIO", quantity: 2 }] };
+  const { service, transaction } = g6Fixture({ request, reservations: [] });
+  await service.reserve({ eventId: "event-1", equipmentType: "AUDIO", quantity: 2, userId: "tech-1", lineIndex: 0 });
+
+  const written = updateTo(transaction, "equipment_requests/event-1").data;
+  assert.deepEqual(Object.keys(written).filter((key) => key.startsWith("rerequest_")), []);
+});
