@@ -171,10 +171,21 @@ export const createEquipmentReservations = ({ firestore, serverTimestamp, getApp
       const requestStatus = updatedLines.every((line) => ["RESERVED", "RESOLVED"].includes(line.fulfillment_status))
         ? "ARRANGED"
         : "PENDING";
+      // G6 / SCRUM-138 — a flagged request with nothing reserved had no reservation to keep,
+      // amend or release. Reserving it now is made against the current window, so it is the
+      // reassessment. If another line already holds a reservation, that one carries the flag.
+      const reassessedByReserving = requestSnapshot.data().rerequest_required === true
+        && !requestLines.some((line) => line.fulfillment_status === "RESERVED");
       transaction.update(requestRef, {
         lines: updatedLines,
         status: requestStatus,
         has_support_decisions: true,
+        ...(reassessedByReserving ? {
+          rerequest_required: false,
+          rerequest_resolution: "REASSESSED",
+          rerequest_resolved_by: userId,
+          rerequest_resolved_at: now
+        } : {}),
         updated_at: now
       });
       // J6 AC3 — reserving the last open line arranges the request.
