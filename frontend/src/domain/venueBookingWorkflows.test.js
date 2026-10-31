@@ -1,4 +1,5 @@
 import {
+  additionalVenueSearchEvent,
   activeVenueBookings,
   bookingWindow,
   detectVenueBookingConflicts,
@@ -60,6 +61,21 @@ describe("F11/F13/F14 booking workflow", () => {
       booking_id: "B1", venue_id: "V1", expected_attendance: 40,
       requested_layout_id: "CLASSROOM", required_facilities_snapshot: ["POWER"]
     })).toMatchObject({ event_id: "E1", expected_attendance: 40, required_layout: "CLASSROOM", facilities: ["POWER"], excluded_venue_id: "V1" });
+  });
+
+  test("TC-1092 a released room opens another-venue search without creating a replacement link", () => {
+    const result = additionalVenueSearchEvent({ id: "E1", expected_attendance: 200, facilities: ["WIFI"] }, {
+      booking_id: "B1", venue_id: "V1", expected_attendance: 40,
+      layout_snapshot: "CLASSROOM", required_facilities_snapshot: ["POWER"]
+    });
+    expect(result).toMatchObject({ event_id: "E1", expected_attendance: 40, required_layout: "CLASSROOM", facilities: ["POWER"], excluded_venue_id: "V1" });
+    expect(result).not.toHaveProperty("replacement_for_booking_id");
+
+    expect(additionalVenueSearchEvent({ event_id: "E2", required_layout: "THEATRE", facilities: ["WIFI"], expected_attendance: 90 }, {
+      id: "B2", event_id: "IGNORED", venue_id: "V2", requested_layout_id: "BOARDROOM"
+    })).toMatchObject({ event_id: "E2", expected_attendance: 90, required_layout: "BOARDROOM", facilities: ["WIFI"] });
+    expect(additionalVenueSearchEvent({}, { id: "B3", event_id: "E3", venue_id: "V3" }))
+      .toMatchObject({ event_id: "E3", facilities: [] });
   });
 
   test("TC-1039 requires every active venue requirement to be approved", () => {

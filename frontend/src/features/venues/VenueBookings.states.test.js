@@ -74,9 +74,10 @@ describe("normal", () => {
 
   test("TC-1076 F12 AC5 — every booking of an event is listed, each labelled with its venue", async () => {
     loadVenueBookings.mockResolvedValue([
+      booking("VB-4", { venue_id: "VEN-2", booking_label: "Old room", status: "REPLACED" }),
       booking("VB-1", { booking_label: "Main hall" }),
       booking("VB-2", { venue_id: "VEN-2", booking_label: "Breakout", status: "PENDING" }),
-      booking("VB-3", { venue_id: "VEN-GONE" })
+      booking("VB-3", { venue_id: "VEN-GONE", status: undefined })
     ]);
     loadVenueCatalogue.mockResolvedValue([{ venue_id: "VEN-1", name: "Harbour Hall", max_capacity: 120 }, { venue_id: "VEN-2", name: "Studio", max_capacity: 30 }]);
     render(<VenueBookings user={user} />);
@@ -84,6 +85,12 @@ describe("normal", () => {
     expect(screen.getByText("Breakout · Studio")).toBeInTheDocument();
     expect(screen.getByText("Venue not in the catalogue")).toBeInTheDocument();
     expect(screen.getByText("PENDING")).toHaveClass("cs-pill-info");
+    const group = screen.getByRole("region", { name: "Q4 Partner Summit venue bookings" });
+    expect(group).toHaveClass("cs-booking-event-group-multi");
+    expect(group).toHaveTextContent("Multi-venue event");
+    expect(within(group).getAllByRole("article").map((row) => row.id)).toEqual([
+      "venue-booking-VB-1", "venue-booking-VB-2", "venue-booking-VB-3", "venue-booking-VB-4"
+    ]);
   });
 
   test("TC-0881 F1 K5 — a pending request is withdrawn after confirming, and the list reloads", async () => {
@@ -116,6 +123,87 @@ describe("normal", () => {
     expect(releaseVenueBooking).toHaveBeenCalledWith({ user, bookingId: "VB-1", reason: "Moved online" });
     expect(screen.getByText("RELEASED", { selector: ".cs-pill" })).toBeInTheDocument();
     expect(screen.getAllByText("APPROVED", { selector: ".cs-pill" })).toHaveLength(1);
+  });
+
+  test("TC-1093 F14 a released record offers a prefilled independent venue search", async () => {
+    const onFindReplacement = jest.fn();
+    loadVenueBookings.mockResolvedValue([booking("VB-1", {
+      status: "RELEASED", booking_label: "Breakout A", expected_attendance: 35,
+      requested_layout_id: "CLASSROOM", required_facilities_snapshot: ["WIFI"]
+    })]);
+    reviewApi.detail.mockResolvedValue({ event: { id: "e1", name: "Q4 Partner Summit", status: "PLANNING", expected_attendance: 80 } });
+    render(<VenueBookings user={user} onFindReplacement={onFindReplacement} />);
+
+    await screen.findByText(/Breakout A/);
+    const row = document.getElementById("venue-booking-VB-1");
+    open(row);
+    userEvent.click(within(row).getByRole("button", { name: /request another venue/i }));
+
+    await waitFor(() => expect(onFindReplacement).toHaveBeenCalledWith(expect.objectContaining({
+      event_id: "e1", expected_attendance: 35, required_layout: "CLASSROOM",
+      facilities: ["WIFI"], excluded_venue_id: "VEN-1"
+    })));
+    expect(onFindReplacement.mock.calls[0][0]).not.toHaveProperty("replacement_for_booking_id");
+  });
+
+  test("TC-1094 F13 a rejected required room offers a linked replacement search", async () => {
+    const onFindReplacement = jest.fn();
+    let finishDetail;
+    loadVenueBookings.mockResolvedValue([booking("VB-1", {
+      status: "REJECTED", requires_re_request: true, booking_label: "Workshop",
+      expected_attendance: 20, layout_snapshot: "U_SHAPE"
+    })]);
+    reviewApi.detail.mockReturnValue(new Promise((resolve) => { finishDetail = resolve; }));
+    render(<VenueBookings user={user} onFindReplacement={onFindReplacement} />);
+
+    await screen.findByText(/Workshop/);
+    const row = document.getElementById("venue-booking-VB-1");
+    open(row);
+    userEvent.click(within(row).getByRole("button", { name: /request replacement venue/i }));
+    expect(await within(row).findByRole("button", { name: /preparing replacement/i })).toBeDisabled();
+    finishDetail({ event: { id: "e1", name: "Q4 Partner Summit", status: "PLANNING", expected_attendance: 80 } });
+
+    await waitFor(() => expect(onFindReplacement).toHaveBeenCalledWith(expect.objectContaining({
+      event_id: "e1", replacement_for_booking_id: "VB-1", excluded_venue_id: "VEN-1",
+      expected_attendance: 20, required_layout: "U_SHAPE"
+    })));
+  });
+
+  test("a rejected historical record without a re-request flag offers no replacement action", async () => {
+    loadVenueBookings.mockResolvedValue([booking("VB-1", { status: "REJECTED", requires_re_request: false })]);
+    render(<VenueBookings user={user} onFindReplacement={jest.fn()} />);
+
+    await screen.findByText("REJECTED", { selector: ".cs-pill" });
+    const row = document.getElementById("venue-booking-VB-1");
+    open(row);
+    expect(within(row).queryByRole("button", { name: /replacement venue/i })).not.toBeInTheDocument();
+  });
+
+  test("an older replacement-needed record without a status still offers its replacement action", async () => {
+    loadVenueBookings.mockResolvedValue([booking("VB-1", { status: undefined, replacement_needed: true })]);
+    render(<VenueBookings user={user} onFindReplacement={jest.fn()} />);
+
+    await screen.findByText("Q4 Partner Summit");
+    const row = document.getElementById("venue-booking-VB-1");
+    open(row);
+    expect(within(row).getByRole("button", { name: /find replacement venue/i })).toBeInTheDocument();
+  });
+
+  test.each([
+    [new Error("That event could not be loaded."), "That event could not be loaded."],
+    [{}, "Venue search details could not be loaded."]
+  ])("a released record keeps the coordinator on the list when venue search preparation fails", async (failure, message) => {
+    loadVenueBookings.mockResolvedValue([booking("VB-1", { status: "RELEASED" })]);
+    reviewApi.detail.mockRejectedValue(failure);
+    render(<VenueBookings user={user} onFindReplacement={jest.fn()} />);
+
+    await screen.findByText("RELEASED", { selector: ".cs-pill" });
+    const row = document.getElementById("venue-booking-VB-1");
+    open(row);
+    userEvent.click(within(row).getByRole("button", { name: /request another venue/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(within(row).getByRole("button", { name: /request another venue/i })).toBeEnabled();
   });
 });
 
@@ -253,20 +341,29 @@ describe("conflict", () => {
         overlap_start: "2026-11-20T03:00:00.000Z", overlap_end: "2026-11-20T04:00:00.000Z" }
     ] })]);
     render(<VenueBookings user={user} />);
-    const flag = await screen.findByRole("status");
+    const row = rowOf((await screen.findByText("Q4 Partner Summit")).textContent);
+    expect(row).toHaveClass("cs-venue-booking-record");
+    const flag = within(row).getByRole("status");
     expect(flag).toHaveTextContent("Overlaps Partner Briefing: Time not recorded to Time not recorded");
     expect(flag).toHaveTextContent("Overlaps Gala");
     // Without a replacement handler there is nothing to act on.
-    open(rowOf("Q4 Partner Summit"));
+    open(row);
     expect(screen.queryByRole("button", { name: /find alternative venue/i })).not.toBeInTheDocument();
   });
 
   test("TC-1043 F11 — a booking flagged for replacement offers Find replacement venue without re-preparing the clash", async () => {
     const onFindReplacement = jest.fn();
     const onViewEvent = jest.fn();
-    loadVenueBookings.mockResolvedValue([booking("VB-1", { replacement_needed: true, clashes: [{ conflict_id: "C1", booking_a_id: "VB-1", event_b_name: "Gala" }] })]);
+    loadVenueBookings.mockResolvedValue([booking("VB-1", {
+      replacement_needed: true,
+      replacement_reason: "Auditorium electrical maintenance",
+      clashes: [{ conflict_id: "C1", booking_a_id: "VB-1", event_b_name: "Gala" }]
+    })]);
     render(<VenueBookings user={user} onFindReplacement={onFindReplacement} onViewEvent={onViewEvent} />);
-    open(rowOf((await screen.findByText("Q4 Partner Summit")).textContent));
+    const row = rowOf((await screen.findByText("Q4 Partner Summit")).textContent);
+    expect(row).toHaveClass("cs-venue-booking-record-replacement");
+    expect(within(row).getByLabelText("Replacement needed")).toHaveTextContent("Auditorium electrical maintenance");
+    open(row);
     expect(screen.queryByRole("button", { name: /find alternative venue/i })).not.toBeInTheDocument();
     userEvent.click(screen.getByRole("button", { name: /view event request/i }));
     expect(onViewEvent).toHaveBeenCalledWith("e1");

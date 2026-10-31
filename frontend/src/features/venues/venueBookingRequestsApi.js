@@ -23,7 +23,9 @@ const eventNameOf = (event, eventId) => event.name || event.reference_no || even
 const checkReplacement = (replacementSnapshot, { eventId, venueId }) => {
   if (!replacementSnapshot?.exists()) throw new Error("The booking needing replacement was not found.");
   const replaced = replacementSnapshot.data();
-  if (replaced.event_id !== eventId || replaced.replacement_needed !== true) {
+  if (replaced.event_id !== eventId
+    || (replaced.replacement_needed !== true
+      && !(replaced.status === "REJECTED" && replaced.requires_re_request === true))) {
     throw new Error("This booking is not awaiting a replacement for this event.");
   }
   if (replaced.venue_id === venueId) throw new Error("Choose a different venue from the unavailable venue.");
@@ -116,7 +118,10 @@ const pendingBookingRecord = ({
   replacement_for_booking_id: replacementForBookingId || null,
   replacement_original_venue_id: replacementSnapshot?.data()?.venue_id || null,
   replacement_original_label: replacementSnapshot?.data()?.booking_label || null,
-  replacement_reason: replacementSnapshot?.data()?.replacement_reason || null,
+  replacement_original_status: replacementSnapshot?.data()?.status || null,
+  replacement_reason: replacementSnapshot?.data()?.status === "REJECTED"
+    ? replacementSnapshot.data().decision_reason || null
+    : replacementSnapshot?.data()?.replacement_reason || null,
   replaced_by_booking_id: null,
   replaced_at: null,
   safety_review_required: Boolean(event.safety_review_required),

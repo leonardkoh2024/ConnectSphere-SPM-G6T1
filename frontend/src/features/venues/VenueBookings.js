@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { PREFERRED_LOCATIONS } from "../../domain/events";
 import { assessVenue, bookingRequirements, existingBookingFor, isBlocked } from "../../domain/venueSuitability";
 import { singaporeDateTime } from "../../domain/venueHolds";
-import { replacementSearchEvent } from "../../domain/venueBookingWorkflows";
+import { additionalVenueSearchEvent, replacementSearchEvent } from "../../domain/venueBookingWorkflows";
 import { reviewApi } from "../events/reviewApi";
 import VenueBookingRequest, { BookingAcknowledgementNotice } from "./VenueBookingRequest";
 import Icon from "../../app/Icon";
@@ -23,6 +23,21 @@ const bookingWindow = (booking) => {
   return "Not set";
 };
 const displayDateTime = (value) => value ? new Date(value).toLocaleString() : "Time not recorded";
+
+// Active, usable bookings lead each event group. Historical records remain
+// visible for audit, with a replaced booking always at the bottom.
+const BOOKING_STATUS_ORDER = {
+  APPROVED: 0,
+  PENDING: 1,
+  HELD: 2,
+  REJECTED: 3,
+  WITHDRAWN: 4,
+  RELEASED: 5,
+  EXPIRED: 6,
+  CANCELLED: 7,
+  REPLACED: 99
+};
+const bookingStatusRank = (booking) => BOOKING_STATUS_ORDER[String(booking.status || "").toUpperCase()] ?? 50;
 
 // Judge every venue in the list, so the coordinator can tell a usable venue from
 // an unusable one before choosing it. Nothing is hidden or reordered: an
@@ -173,6 +188,22 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
     }
   }, [onFindReplacement, user]);
 
+  const requestAnotherVenue = useCallback(async (booking) => {
+    setActionError("");
+    setResolvingBookingId(booking.booking_id);
+    try {
+      const detail = await reviewApi.detail(booking.event_id);
+      onFindReplacement?.(additionalVenueSearchEvent(
+        { ...detail.event, event_id: booking.event_id },
+        booking
+      ));
+    } catch (loadError) {
+      setActionError(loadError.message || "Venue search details could not be loaded.");
+    } finally {
+      setResolvingBookingId("");
+    }
+  }, [onFindReplacement]);
+
   // Inside the workspace the back button lives in the page header; the form only
   // says it is open and how to leave it.
   useEffect(() => {
@@ -190,6 +221,15 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
   // Bookings raised before the title was carried across fall back to the event.
   const bookingEventName = (booking) =>
     booking.event_name || events.find((item) => item.id === booking.event_id)?.name || "Untitled event";
+  const groupedBookings = [...bookings.reduce((groups, booking) => {
+    const eventId = booking.event_id;
+    const current = groups.get(eventId) || [];
+    groups.set(eventId, [...current, booking]);
+    return groups;
+  }, new Map()).entries()].map(([eventId, eventBookings]) => ({
+    eventId,
+    bookings: [...eventBookings].sort((left, right) => bookingStatusRank(left) - bookingStatusRank(right))
+  }));
   const eligibleEvents = events.filter((item) =>
     ["APPROVED", "PLANNING"].includes(String(item.status || "").toUpperCase()));
 
@@ -208,15 +248,37 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
         )}
         {actionError && <p className="cs-error" role="alert">{actionError}</p>}
         {bookings.length ? (
-          <div className="cs-record-list">
-            {bookings.map((booking) => {
+          <div className="cs-booking-event-groups">
+            {groupedBookings.map((group) => (
+              <section
+                className={`cs-booking-event-group${group.bookings.length > 1 ? " cs-booking-event-group-multi" : ""}`}
+                key={group.eventId}
+                aria-label={`${bookingEventName(group.bookings[0])} venue bookings`}
+              >
+                <div className="cs-booking-event-group-head">
+                  <div>
+                    <span className="cs-booking-event-group-kicker">{group.bookings.length > 1 ? "Multi-venue event" : "Event venue"}</span>
+                    <strong>{group.bookings.length} venue booking {group.bookings.length === 1 ? "record" : "records"}</strong>
+                  </div>
+                  <div className="cs-booking-event-statuses" aria-label="Booking status summary">
+                    {[...group.bookings.reduce((counts, booking) => {
+                      const status = String(booking.status || "Not recorded").toUpperCase();
+                      counts.set(status, (counts.get(status) || 0) + 1);
+                      return counts;
+                    }, new Map()).entries()].map(([status, count]) => (
+                      <span key={status}>{word(status)} {count}</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="cs-record-list cs-booking-event-records">
+            {group.bookings.map((booking) => {
               const expanded = openBooking === booking.booking_id;
               const venueRecord = venues.find((item) => item.venue_id === booking.venue_id);
               const activeClash = booking.clashes?.[0] || null;
               const releaseAllowed = ["APPROVED", "PLANNING", "CONFIRMED", "SAFETY_REVIEW"]
                 .includes(String(booking.event_status || "").toUpperCase());
               return (
-                <article className="cs-record" key={booking.booking_id} id={`venue-booking-${booking.booking_id}`}>
+                <article className={`cs-record cs-venue-booking-record${booking.replacement_needed ? " cs-venue-booking-record-replacement" : ""}`} key={booking.booking_id} id={`venue-booking-${booking.booking_id}`}>
                   <div className="cs-record-title">
                     <h2>{bookingEventName(booking)}</h2>
                     {/* F12 — an event may hold several venues; the label tells them apart. */}
@@ -231,13 +293,23 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
                       {word(booking.status)}
                     </span>
                   </div>
-                  {booking.clashes?.length > 0 && (
-                    <div className="cs-record-alert" role="status">
-                      <strong>Clash - coordinator action required</strong>
-                      {booking.clashes.map((clash) => {
-                        const other = clash.booking_a_id === booking.booking_id ? clash.event_b_name : clash.event_a_name;
-                        return <p key={clash.conflict_id}>Overlaps {other}: {displayDateTime(clash.overlap_start)} to {displayDateTime(clash.overlap_end)}</p>;
-                      })}
+                  {(booking.replacement_needed || booking.clashes?.length > 0) && (
+                    <div className="cs-booking-record-alerts">
+                      {booking.replacement_needed && (
+                        <div className="cs-record-alert cs-record-alert-replacement" aria-label="Replacement needed">
+                          <strong>Replacement venue needed</strong>
+                          <p>{booking.replacement_reason}</p>
+                        </div>
+                      )}
+                      {booking.clashes?.length > 0 && (
+                        <div className="cs-record-alert" role="status">
+                          <strong>Clash - coordinator action required</strong>
+                          {booking.clashes.map((clash) => {
+                            const other = clash.booking_a_id === booking.booking_id ? clash.event_b_name : clash.event_a_name;
+                            return <p key={clash.conflict_id}>Overlaps {other}: {displayDateTime(clash.overlap_start)} to {displayDateTime(clash.overlap_end)}</p>;
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
                   <div className="cs-record-actions">
@@ -281,9 +353,11 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
                             Withdraw request
                           </button>
                         )}
-                        {booking.replacement_needed && onFindReplacement && (
+                        {(booking.replacement_needed || (String(booking.status || "").toUpperCase() === "REJECTED" && booking.requires_re_request)) && onFindReplacement && (
                           <button type="button" className="cs-btn cs-btn-primary" disabled={resolvingBookingId === booking.booking_id} onClick={() => findReplacement(booking)}>
-                            Find replacement venue
+                            {resolvingBookingId === booking.booking_id
+                              ? "Preparing replacement..."
+                              : String(booking.status || "").toUpperCase() === "REJECTED" ? "Request replacement venue" : "Find replacement venue"}
                           </button>
                         )}
                         {activeClash && !booking.replacement_needed && String(booking.status || "").toUpperCase() === "APPROVED" && onFindReplacement && (
@@ -296,12 +370,20 @@ export default function VenueBookings({ user, event: initialEvent = null, venue:
                             Release this venue
                           </button>
                         )}
+                        {String(booking.status || "").toUpperCase() === "RELEASED" && onFindReplacement && (
+                          <button type="button" className="cs-btn cs-btn-secondary" disabled={resolvingBookingId === booking.booking_id} onClick={() => requestAnotherVenue(booking)}>
+                            {resolvingBookingId === booking.booking_id ? "Opening venue search..." : "Request another venue"}
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
                 </article>
               );
             })}
+                </div>
+              </section>
+            ))}
           </div>
         ) : (
           <p className="cs-panel-note">No booking requests raised yet. Start one with New booking request.</p>

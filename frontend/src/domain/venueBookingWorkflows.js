@@ -100,3 +100,15 @@ export const replacementSearchEvent = (event, booking) => ({
   replacement_for_booking_id: booking.booking_id || booking.id,
   excluded_venue_id: booking.venue_id
 });
+
+// F14: after a venue is deliberately released, the coordinator may still add
+// another independent room. Carry the released room's requirements into the
+// search for convenience, but do not link the new request as a replacement.
+export const additionalVenueSearchEvent = (event, booking) => ({
+  ...event,
+  event_id: event.event_id || event.id || booking.event_id,
+  expected_attendance: booking.expected_attendance ?? event.expected_attendance,
+  required_layout: booking.requested_layout_id || booking.layout_snapshot || event.required_layout,
+  facilities: booking.required_facilities_snapshot || event.facilities || [],
+  excluded_venue_id: booking.venue_id
+});

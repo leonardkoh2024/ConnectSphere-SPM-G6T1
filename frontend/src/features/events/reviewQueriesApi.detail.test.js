@@ -58,7 +58,7 @@ beforeEach(() => {
       ['BK-1', {
         booking_id: 'BK-1', venue_id: 'VEN-MAIN', status: 'RELEASED', start_datetime: '2026-11-20T01:00:00.000Z',
         release_reason: 'Moved', replacement_needed: true, replacement_reason: 'Venue unavailable',
-        replaced_by_booking_id: 'BK-3', required_facilities_snapshot: ['WIFI']
+        replaced_by_booking_id: 'BK-3', requires_re_request: true, required_facilities_snapshot: ['WIFI']
       }]
     ],
     users: [['c1', users.c1], ['c2', { email: 'c2@example.com', is_active: true }]]
@@ -149,6 +149,7 @@ test('F7 F11 venue bookings come back by start time, with release and replacemen
       venue_id: 'VEN-MAIN', venue_name: 'Main Hall',
       start_datetime: '2026-11-20T01:00:00.000Z', end_datetime: null,
       status: 'RELEASED', decision_reason: null, decided_at: null, released_at: null, release_reason: 'Moved',
+      requires_re_request: true,
       replacement_needed: true, replacement_reason: 'Venue unavailable', replaced_by_booking_id: 'BK-3',
       required_facilities_snapshot: ['WIFI']
     },
@@ -158,6 +159,7 @@ test('F7 F11 venue bookings come back by start time, with release and replacemen
       venue_id: 'VEN-GONE', venue_name: 'Old Annex',
       start_datetime: '2026-11-20T05:00:00.000Z', end_datetime: null,
       status: 'Status not recorded', decision_reason: null, decided_at: null, released_at: null, release_reason: null,
+      requires_re_request: false,
       replacement_needed: false, replacement_reason: null, replaced_by_booking_id: null,
       required_facilities_snapshot: []
     }

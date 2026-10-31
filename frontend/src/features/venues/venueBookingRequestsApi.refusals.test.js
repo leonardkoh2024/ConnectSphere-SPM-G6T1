@@ -155,6 +155,35 @@ describe('F11 requestVenueBooking as a replacement for a lost venue', () => {
       replacement_original_label: 'Old hall', replacement_reason: 'Venue unavailable'
     });
   });
+
+  test('F13 a rejected requirement marked for re-request can be replaced', async () => {
+    mockDocuments.set('venue_bookings/BK-LOST', found({
+      ...lost, status: 'REJECTED', replacement_needed: false, requires_re_request: true,
+      decision_reason: 'Requested layout is unavailable'
+    }));
+    await request({ replacement_for_booking_id: 'BK-LOST' });
+    expect(written('venue_bookings/')[0]).toMatchObject({
+      replacement_for_booking_id: 'BK-LOST', replacement_original_status: 'REJECTED',
+      replacement_reason: 'Requested layout is unavailable'
+    });
+  });
+
+  test('F13 a rejected requirement with no recorded reason still creates a replacement request', async () => {
+    mockDocuments.set('venue_bookings/BK-LOST', found({
+      ...lost, status: 'REJECTED', replacement_needed: false, requires_re_request: true,
+      decision_reason: null
+    }));
+    await request({ replacement_for_booking_id: 'BK-LOST' });
+    expect(written('venue_bookings/')[0].replacement_reason).toBeNull();
+  });
+
+  test('F13 a rejected booking not marked for re-request cannot be replaced', async () => {
+    mockDocuments.set('venue_bookings/BK-LOST', found({
+      ...lost, status: 'REJECTED', replacement_needed: false, requires_re_request: false
+    }));
+    await expect(request({ replacement_for_booking_id: 'BK-LOST' }))
+      .rejects.toThrow('This booking is not awaiting a replacement for this event.');
+  });
 });
 
 describe('requestVenueBooking fills in what the caller leaves out, and tells Venue Staff', () => {

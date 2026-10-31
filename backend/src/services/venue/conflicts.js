@@ -117,13 +117,21 @@ export function createRecheckAllVenueConflicts({ firestore, serverTimestamp }) {
       }
       return byVenue;
     }, new Map()).values()];
-    const outcomes = await Promise.all(owners.map((item) => recheck({
+    const outcomes = await Promise.allSettled(owners.map((item) => recheck({
       venueId: item.data().venue_id,
       userId: item.data().user_id
     })));
+    // Old seed runs can leave venue_staff assignments pointing at venues that
+    // no longer exist. A full catalogue refresh should skip those orphaned
+    // assignments, not fail every valid venue check. Direct venue checks still
+    // throw VenueNotFoundForConflictError so callers receive the correct 404.
+    const unexpectedFailure = outcomes.find((outcome) => outcome.status === "rejected"
+      && !(outcome.reason instanceof VenueNotFoundForConflictError));
+    if (unexpectedFailure) throw unexpectedFailure.reason;
+    const checked = outcomes.filter((outcome) => outcome.status === "fulfilled");
     return {
-      venues_checked: owners.length,
-      active_conflicts: outcomes.reduce((total, outcome) => total + (outcome.active_conflicts || 0), 0)
+      venues_checked: checked.length,
+      active_conflicts: checked.reduce((total, outcome) => total + (outcome.value.active_conflicts || 0), 0)
     };
   };
 }

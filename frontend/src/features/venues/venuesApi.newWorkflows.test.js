@@ -4,6 +4,7 @@ const mockGetDoc = jest.fn();
 const mockGetDocs = jest.fn();
 const mockSet = jest.fn();
 const mockUpdate = jest.fn();
+const mockTransactionGet = jest.fn();
 const mockDocuments = new Map();
 
 jest.mock("firebase/firestore", () => ({
@@ -15,7 +16,7 @@ jest.mock("firebase/firestore", () => ({
   getDocs: (...args) => mockGetDocs(...args),
   query: (reference, ...constraints) => ({ ...reference, constraints }),
   runTransaction: async (_db, operation) => operation({
-    get: async (reference) => mockDocuments.get(reference.path) || { exists: () => false, data: () => undefined },
+    get: (...args) => mockTransactionGet(...args),
     set: mockSet,
     update: mockUpdate
   }),
@@ -31,6 +32,8 @@ const snap = (id, data, collectionName) => ({
 
 beforeEach(() => {
   mockGetDoc.mockReset(); mockGetDocs.mockReset(); mockSet.mockClear(); mockUpdate.mockClear(); mockDocuments.clear();
+  mockTransactionGet.mockReset().mockImplementation(async (reference) =>
+    mockDocuments.get(reference.path) || { exists: () => false, data: () => undefined });
 });
 
 test("TC-1047 F11 replacement request copies booking-specific requirements and links the original", async () => {
@@ -101,11 +104,48 @@ test("TC-1049 F11 approving a linked replacement retires the original booking at
 
   expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ path: "venue_bookings/NEW-B" }), expect.objectContaining({ status: "APPROVED" }));
   expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ path: "venue_bookings/OLD-B" }), expect.objectContaining({
-    status: "REPLACED", replacement_needed: false, replaced_by_booking_id: "NEW-B"
+    status: "REPLACED", replacement_needed: false, requires_re_request: false, replaced_by_booking_id: "NEW-B"
   }));
   expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({ path: "event_history/auto" }), expect.objectContaining({
     action_type: "VENUE_REPLACED", booking_id: "OLD-B", new_booking_id: "NEW-B"
   }));
+});
+
+test("TC-1050 F13 approving a replacement resolves the rejected room requirement", async () => {
+  const original = {
+    event_id: "E1", venue_id: "OLD", status: "REJECTED", requires_re_request: true,
+    booking_label: "Workshop"
+  };
+  const replacement = {
+    event_id: "E1", venue_id: "NEW", status: "PENDING", booking_label: "Workshop replacement",
+    replacement_for_booking_id: "OLD-B", replacement_original_venue_id: "OLD",
+    replacement_original_label: "Workshop", replacement_original_status: "REJECTED",
+    start_datetime: "2099-06-10T09:00:00Z", end_datetime: "2099-06-10T11:00:00Z",
+    requested_by: "C1"
+  };
+  const replacementSnap = snap("NEW-B", replacement, "venue_bookings");
+  const assignmentSnap = snap("NEW", { venue_id: "NEW", user_id: "VS1" }, "venue_staff");
+  mockGetDoc.mockResolvedValue(replacementSnap);
+  mockGetDocs.mockImplementation((reference) => {
+    if (reference.path === "venue_staff") return Promise.resolve({ docs: [assignmentSnap] });
+    if (reference.path === "venue_bookings") return Promise.resolve({ docs: [replacementSnap] });
+    return Promise.resolve({ docs: [] });
+  });
+  mockDocuments.set("venue_bookings/NEW-B", replacementSnap);
+  mockDocuments.set("venue_bookings/OLD-B", snap("OLD-B", original, "venue_bookings"));
+  mockDocuments.set("venues/NEW", snap("NEW", { setup_minutes: 0, turnaround_minutes: 0 }, "venues"));
+  mockDocuments.set("venue_staff/NEW", assignmentSnap);
+  mockDocuments.set("events/E1", snap("E1", { status: "PLANNING" }, "events"));
+
+  await approveVenueBooking({ user: { uid: "VS1" }, bookingId: "NEW-B", now: new Date("2098-01-01T00:00:00Z") });
+
+  expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ path: "venue_bookings/OLD-B" }), expect.objectContaining({
+    status: "REPLACED", requires_re_request: false, replaced_by_booking_id: "NEW-B"
+  }));
+  expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({ path: "event_history/auto" }), expect.objectContaining({
+    action_type: "VENUE_REPLACED", old_value: "REJECTED", new_value: "REPLACED"
+  }));
+  expect(mockTransactionGet.mock.calls.map(([reference]) => reference.path)).not.toContain("venue_bookings/OLD-B");
 });
 
 test("TC-1091 F14 releases only the selected booking, keeps the other approved venue, and records the reason", async () => {
