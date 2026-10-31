@@ -20,7 +20,7 @@ describe('account rules', () => {
     });
 
     test.each([
-      '', 'alice', 'alice@', '@example.com', 'alice@example',
+      undefined, null, '', 'alice', 'alice@', '@example.com', 'alice@example',
       'alice example@example.com', 'alice@@example.com'
     ])('TC-0027 A2 AC6 malformed email %p is refused before registration', (email) => {
       expect(isValidEmailAddress(email)).toBe(false);
