@@ -398,3 +398,50 @@ export const releaseCancelledEventReservations = async ({ eventId, reason }) => 
     { reason }
   );
 };
+
+// G6 / SCRUM-138 — Technical Support reassess a reservation I3 flagged after a significant
+// change: re-check the event's new window, then keep or amend it (releasing is above).
+const reassessmentUser = async () => {
+  const user = currentUser();
+  const userProfile = await profile(user.uid);
+  if (userProfile.role !== ROLES.TECH_SUPPORT) {
+    throw new Error("Only Technical Support Staff can reassess equipment reservations.");
+  }
+  return user;
+};
+
+export const recheckEquipmentReassessment = async ({ eventId }) => {
+  const user = await reassessmentUser();
+  if (!eventId) throw new Error("Choose an event to re-check.");
+  return callEquipmentService(
+    user,
+    `/api/equipment/events/${encodeURIComponent(eventId)}/recheck-availability`,
+    "POST",
+    {},
+    "The availability could not be re-checked."
+  );
+};
+
+export const keepEquipmentReservation = async ({ reservationId, note }) => {
+  const user = await reassessmentUser();
+  if (!reservationId) throw new Error("Choose an equipment reservation to keep.");
+  return callEquipmentService(
+    user,
+    `/api/equipment/reservations/${encodeURIComponent(reservationId)}/keep`,
+    "POST",
+    { note },
+    "The reservation could not be kept."
+  );
+};
+
+export const amendEquipmentReservation = async ({ reservationId, quantity, note }) => {
+  const user = await reassessmentUser();
+  if (!reservationId) throw new Error("Choose an equipment reservation to amend.");
+  return callEquipmentService(
+    user,
+    `/api/equipment/reservations/${encodeURIComponent(reservationId)}/amend`,
+    "POST",
+    { quantity, note },
+    "The reservation could not be amended."
+  );
+};

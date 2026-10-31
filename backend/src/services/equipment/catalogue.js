@@ -57,7 +57,11 @@ export const createEquipmentCatalogue = ({ firestore }) => {
           release_reason: record.release_reason || null,
           event_name: request.event_name || null,
           reference_no: request.reference_no || null,
-          event_date: request.event_date || null
+          event_date: request.event_date || null,
+          // G6 — set by I3 when the event changed; cleared when Technical Support reassess it.
+          rerequest_required: record.rerequest_required === true,
+          rerequest_reason: record.rerequest_reason || null,
+          rerequest_flagged_at: iso(record.rerequest_flagged_at)
         };
       })
     };

@@ -16,6 +16,54 @@ const revisionOf = (inventory) => {
   return revision;
 };
 
+const ACTIVE_STATUSES = ["RESERVED", "APPROVED"];
+const isActiveReservation = (record) => ACTIVE_STATUSES.includes(String(record?.status || "").toUpperCase());
+
+const toDate = (value) => {
+  if (value instanceof Date) return value;
+  if (typeof value?.toDate === "function") return value.toDate();
+  if (value == null || value === "") return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+// G6 / SCRUM-138 — the window to measure against after a significant change: the event's
+// CURRENT date and times (Singapore), widened by the setup and turnaround its approved
+// booking carries. The booking itself stays as I3 left it, a reference to the old window.
+const MINUTE = 60000;
+const reassessmentWindow = (event, bookings) => {
+  const { event_date: date, start_time: startTime, end_time: endTime } = event || {};
+  const start = date && startTime ? toDate(`${date}T${startTime}:00+08:00`) : null;
+  const end = date && endTime ? toDate(`${date}T${endTime}:00+08:00`) : null;
+  if (!start || !end || start >= end) {
+    throw new EquipmentConflictError("This event has no complete date and time to re-check against.");
+  }
+  const buffers = bookings
+    .filter((booking) => String(booking.status || "").toUpperCase() === "APPROVED")
+    .map((booking) => {
+      const bookedStart = toDate(booking.start_datetime);
+      const bookedEnd = toDate(booking.end_datetime);
+      const occupiedStart = toDate(booking.occupied_start);
+      const occupiedEnd = toDate(booking.occupied_end);
+      return {
+        setup: bookedStart && occupiedStart ? Math.max(0, bookedStart - occupiedStart) : 0,
+        turnaround: bookedEnd && occupiedEnd ? Math.max(0, occupiedEnd - bookedEnd) : 0
+      };
+    });
+  const setup = Math.max(0, ...buffers.map((item) => item.setup));
+  const turnaround = Math.max(0, ...buffers.map((item) => item.turnaround));
+  return {
+    start: new Date(start.getTime() - setup),
+    end: new Date(end.getTime() + turnaround),
+    setupMinutes: setup / MINUTE,
+    turnaroundMinutes: turnaround / MINUTE
+  };
+};
+
+const unavailableMessage = (result) =>
+  `Requested quantity unavailable for the required time period: ${result.freeQuantity} free, `
+  + `${result.shortfall} more needed.`;
+
 export const createEquipmentReservations = ({ firestore, serverTimestamp, getApprovedEventBookings }) => {
   const reserve = async ({ eventId, equipmentType, quantity, userId, lineIndex }) => {
     if (typeof eventId !== "string" || !eventId.trim()) {
@@ -176,10 +224,15 @@ export const createEquipmentReservations = ({ firestore, serverTimestamp, getApp
       }
       const inventoryRef = firestore.collection("equipment_inventory").doc(reservation.equipment_type);
       const requestRef = firestore.collection("equipment_requests").doc(reservation.event_id);
-      const [inventorySnapshot, requestSnapshot] = await Promise.all([
+      const [inventorySnapshot, requestSnapshot, eventReservations] = await Promise.all([
         transaction.get(inventoryRef),
-        transaction.get(requestRef)
+        transaction.get(requestRef),
+        transaction.get(firestore.collection("equipment_reservations").where("event_id", "==", reservation.event_id))
       ]);
+      // G6 — releasing the last reservation I3 flagged leaves nothing waiting for reassessment.
+      const stillFlagged = eventReservations.docs.some((item) =>
+        item.id !== reservationId && isActiveReservation(item.data()) && item.data().rerequest_required === true);
+      const clearsFlag = reservation.rerequest_required === true && !stillFlagged;
       if (!inventorySnapshot.exists) {
         throw new EquipmentNotFoundError("The reservation's inventory record could not be found.");
       }
@@ -222,8 +275,11 @@ export const createEquipmentReservations = ({ firestore, serverTimestamp, getApp
             lines: updatedLines,
             status: "PENDING",
             has_support_decisions: true,
+            ...(clearsFlag ? { rerequest_required: false } : {}),
             updated_at: now
           });
+        } else if (clearsFlag) {
+          transaction.update(requestRef, { rerequest_required: false, updated_at: now });
         }
       }
       transaction.update(inventoryRef, {
@@ -321,5 +377,272 @@ export const createEquipmentReservations = ({ firestore, serverTimestamp, getApp
     });
   };
 
-  return { reserve, release, releaseCancelledEventReservations };
+
+  // ---- G6 / SCRUM-138 — reassess equipment after a significant change ----------------------
+  // I3 flags the event's request and reservations (`rerequest_required`) and tells Technical
+  // Support; it never releases anything. These three let Technical Support act on a flag:
+  // re-check against the new window, then keep, amend or release (release is `release` above).
+
+  const requireText = (value, message) => {
+    if (typeof value !== "string" || !value.trim()) throw new EquipmentValidationError(message);
+    return value.trim();
+  };
+
+  // Every read, in one place, before any write: the event, its request, its reservations,
+  // and the stock records of the types being measured.
+  const loadReassessment = async (transaction, eventId, equipmentTypes) => {
+    const [eventSnapshot, requestSnapshot, eventReservations, bookings] = await Promise.all([
+      transaction.get(firestore.collection("events").doc(eventId)),
+      transaction.get(firestore.collection("equipment_requests").doc(eventId)),
+      transaction.get(firestore.collection("equipment_reservations").where("event_id", "==", eventId)),
+      getApprovedEventBookings({ firestore, transaction, eventId })
+    ]);
+    if (!eventSnapshot.exists) throw new EquipmentNotFoundError("Event not found.");
+    const window = reassessmentWindow(eventSnapshot.data(), bookings);
+    const stock = new Map(await Promise.all([...new Set(equipmentTypes)].map(async (type) => {
+      const [inventory, reservations, unavailability] = await Promise.all([
+        transaction.get(firestore.collection("equipment_inventory").doc(type)),
+        transaction.get(firestore.collection("equipment_reservations").where("equipment_type", "==", type)),
+        transaction.get(firestore.collection("equipment_unavailability").where("equipment_type", "==", type))
+      ]);
+      if (!inventory.exists) {
+        throw new EquipmentNotFoundError(`No held inventory is recorded for ${type.replaceAll("_", " ")}.`);
+      }
+      return [type, { inventorySnapshot: inventory, reservations, unavailability }];
+    })));
+    return {
+      request: requestSnapshot.exists ? requestSnapshot.data() : null,
+      eventReservations: eventReservations.docs,
+      window,
+      stock
+    };
+  };
+
+  // Free stock for one reservation in the new window. The event's own holds are left out:
+  // it is replacing them, not competing with them.
+  const measure = ({ context, eventId, equipmentType, quantity }) => {
+    const { inventorySnapshot, reservations, unavailability } = context.stock.get(equipmentType);
+    return calculateEquipmentAvailability({
+      equipmentType,
+      start: context.window.start,
+      end: context.window.end,
+      requestedQuantity: quantity,
+      eventId,
+      inventory: inventorySnapshot.data(),
+      reservations: reservations.docs.map((item) => item.data()),
+      unavailability: unavailability.docs.map((item) => item.data())
+    });
+  };
+
+  const flaggedOf = (docs) => docs.filter((item) =>
+    isActiveReservation(item.data()) && item.data().rerequest_required === true);
+
+  const NOTHING_WAITING = "Nothing for this event is waiting for reassessment.";
+
+  const recheckReassessment = async ({ eventId: rawEventId }) => {
+    const eventId = requireText(rawEventId, "Choose an event to re-check.");
+    return firestore.runTransaction(async (transaction) => {
+      const eventReservations = await transaction.get(
+        firestore.collection("equipment_reservations").where("event_id", "==", eventId)
+      );
+      const flagged = flaggedOf(eventReservations.docs);
+      const context = await loadReassessment(transaction, eventId, flagged.map((item) => item.data().equipment_type));
+      if (!flagged.length) throw new EquipmentConflictError(NOTHING_WAITING);
+      const lines = flagged
+        .map((item) => {
+          const reservation = item.data();
+          const result = measure({ context, eventId, equipmentType: reservation.equipment_type, quantity: reservation.quantity });
+          return {
+            reservationId: reservation.reservation_id || item.id,
+            lineIndex: reservation.line_index ?? null,
+            equipmentType: reservation.equipment_type,
+            quantity: reservation.quantity,
+            heldQuantity: result.heldQuantity,
+            reservedQuantity: result.reservedQuantity,
+            unavailableQuantity: result.unavailableQuantity,
+            freeQuantity: result.freeQuantity,
+            shortfall: result.shortfall,
+            available: result.available
+          };
+        })
+        .sort((left, right) => (left.lineIndex ?? Infinity) - (right.lineIndex ?? Infinity));
+      return { eventId, windowStart: context.window.start, windowEnd: context.window.end, lines };
+    });
+  };
+
+  // Reads the reservation Technical Support is acting on and checks it can be acted on.
+  const loadFlaggedReservation = async (transaction, reservationRef) => {
+    const snapshot = await transaction.get(reservationRef);
+    if (!snapshot.exists) throw new EquipmentNotFoundError("Equipment reservation not found.");
+    const reservation = snapshot.data();
+    if (!isActiveReservation(reservation)) {
+      throw new EquipmentConflictError("This equipment reservation is no longer active.");
+    }
+    if (reservation.rerequest_required !== true) {
+      throw new EquipmentConflictError("This equipment reservation is not waiting for reassessment.");
+    }
+    return reservation;
+  };
+
+  const keepReservation = async ({ reservationId: rawId, note, userId }) => {
+    const reservationId = requireText(rawId, "Choose an equipment reservation to keep.");
+    const keptNote = typeof note === "string" && note.trim() ? note.trim() : null;
+    const reservationRef = firestore.collection("equipment_reservations").doc(reservationId);
+
+    return firestore.runTransaction(async (transaction) => {
+      const reservation = await loadFlaggedReservation(transaction, reservationRef);
+      const eventId = reservation.event_id;
+      const context = await loadReassessment(transaction, eventId, [reservation.equipment_type]);
+      const result = measure({ context, eventId, equipmentType: reservation.equipment_type, quantity: reservation.quantity });
+      if (!result.available) throw new EquipmentConflictError(unavailableMessage(result));
+
+      const inventoryRef = firestore.collection("equipment_inventory").doc(reservation.equipment_type);
+      const revision = revisionOf(context.stock.get(reservation.equipment_type).inventorySnapshot.data());
+      const lastFlagged = !flaggedOf(context.eventReservations).some((item) => item.id !== reservationId);
+      const now = serverTimestamp();
+      const historyRef = firestore.collection("equipment_request_history").doc();
+
+      transaction.update(reservationRef, {
+        start_datetime: context.window.start,
+        end_datetime: context.window.end,
+        rerequest_required: false,
+        rerequest_resolution: "KEPT",
+        rerequest_resolved_by: userId,
+        rerequest_resolved_at: now,
+        updated_at: now
+      });
+      transaction.create(historyRef, {
+        event_id: eventId,
+        request_id: eventId,
+        line_index: reservation.line_index ?? null,
+        action: "RESERVATION_KEPT",
+        actor_id: userId,
+        created_at: now,
+        equipment_type: reservation.equipment_type,
+        quantity: reservation.quantity,
+        reservation_id: reservationId,
+        note: keptNote
+      });
+      if (lastFlagged && context.request) {
+        transaction.update(firestore.collection("equipment_requests").doc(eventId), {
+          rerequest_required: false,
+          rerequest_resolution: "REASSESSED",
+          rerequest_resolved_by: userId,
+          rerequest_resolved_at: now
+        });
+      }
+      transaction.update(inventoryRef, { availability_revision: revision + 1, updated_at: now });
+      return { reservationId, status: "RESERVED" };
+    });
+  };
+
+  const amendReservation = async ({ reservationId: rawId, quantity, note, userId }) => {
+    const reservationId = requireText(rawId, "Choose an equipment reservation to amend.");
+    const amendNote = requireText(note, "A note explaining the amendment is required.");
+    const requested = Number(quantity);
+    if (typeof quantity === "boolean" || quantity === "" || !Number.isInteger(requested) || requested < 1) {
+      throw new EquipmentValidationError("Quantity must be a whole number greater than zero.");
+    }
+    const reservationRef = firestore.collection("equipment_reservations").doc(reservationId);
+
+    return firestore.runTransaction(async (transaction) => {
+      const old = await loadFlaggedReservation(transaction, reservationRef);
+      const eventId = old.event_id;
+      const context = await loadReassessment(transaction, eventId, [old.equipment_type]);
+      const result = measure({ context, eventId, equipmentType: old.equipment_type, quantity: requested });
+      if (!result.available) throw new EquipmentConflictError(unavailableMessage(result));
+
+      const inventoryRef = firestore.collection("equipment_inventory").doc(old.equipment_type);
+      const revision = revisionOf(context.stock.get(old.equipment_type).inventorySnapshot.data());
+      const lastFlagged = !flaggedOf(context.eventReservations).some((item) => item.id !== reservationId);
+      const now = serverTimestamp();
+      const recordedAt = new Date();
+      const newRef = firestore.collection("equipment_reservations").doc();
+      const reservation = {
+        reservation_id: newRef.id,
+        event_id: eventId,
+        equipment_type: old.equipment_type,
+        quantity: requested,
+        line_index: old.line_index ?? null,
+        start_datetime: context.window.start,
+        end_datetime: context.window.end,
+        status: "RESERVED",
+        reserved_by: userId,
+        replaces_reservation_id: reservationId,
+        created_at: now,
+        updated_at: now,
+        released_at: null,
+        released_by: null,
+        release_reason: null
+      };
+
+      // The old reservation is kept, released, with the note as its reason (never deleted).
+      transaction.update(reservationRef, {
+        status: "RELEASED",
+        released_at: now,
+        released_by: userId,
+        release_reason: amendNote,
+        rerequest_resolution: "AMENDED",
+        rerequest_resolved_by: userId,
+        rerequest_resolved_at: now,
+        updated_at: now
+      });
+      transaction.create(newRef, reservation);
+      const releasedHistory = firestore.collection("equipment_request_history").doc();
+      const reservedHistory = firestore.collection("equipment_request_history").doc();
+      const historyBase = {
+        event_id: eventId,
+        request_id: eventId,
+        line_index: old.line_index ?? null,
+        actor_id: userId,
+        created_at: now,
+        equipment_type: old.equipment_type
+      };
+      transaction.create(releasedHistory, {
+        ...historyBase, action: "LINE_RESERVATION_RELEASED", quantity: old.quantity, reservation_id: reservationId, reason: amendNote
+      });
+      transaction.create(reservedHistory, {
+        ...historyBase, action: "LINE_RESERVED", quantity: requested, reservation_id: newRef.id, note: amendNote
+      });
+
+      if (context.request) {
+        const lines = context.request.lines || [];
+        const index = lines.findIndex((line) => line.reservation_id === reservationId);
+        const lineIndex = index >= 0 ? index : Number(old.line_index);
+        transaction.update(firestore.collection("equipment_requests").doc(eventId), {
+          lines: lines.map((line, position) => position === lineIndex ? {
+            ...line,
+            quantity: requested,
+            reservation_id: newRef.id,
+            fulfillment_status: "RESERVED",
+            fulfilled_at: recordedAt,
+            fulfilled_by: userId,
+            amendment_note: amendNote,
+            amended_by: userId,
+            amended_at: recordedAt
+          } : line),
+          status: context.request.status,
+          has_support_decisions: true,
+          ...(lastFlagged ? {
+            rerequest_required: false,
+            rerequest_resolution: "REASSESSED",
+            rerequest_resolved_by: userId,
+            rerequest_resolved_at: now
+          } : {}),
+          updated_at: now
+        });
+      }
+      transaction.update(inventoryRef, { availability_revision: revision + 1, updated_at: now });
+      return { reservation: { id: newRef.id, ...reservation } };
+    });
+  };
+
+  return {
+    reserve,
+    release,
+    releaseCancelledEventReservations,
+    recheckReassessment,
+    keepReservation,
+    amendReservation
+  };
 };
