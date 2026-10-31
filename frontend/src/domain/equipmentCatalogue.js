@@ -83,16 +83,20 @@ export const catalogueRows = ({ inventory = [], reservations = [], unavailabilit
   });
 };
 
-// Current (upcoming or in use) soonest first; past (completed or released)
-// latest first. `onlyReservedBy` keeps just one staff member's reservations.
+// Reassess (live reservations I3 flagged after a significant change) and current (the other
+// upcoming or in-use ones) soonest first; past (completed or released) latest first.
+// `onlyReservedBy` keeps just one staff member's reservations.
 export const reservationGroups = (reservations = [], { now = new Date(), onlyReservedBy = null } = {}) => {
   const items = (reservations || [])
     .filter((item) => !onlyReservedBy || item.reserved_by === onlyReservedBy)
     .map((item) => ({ ...item, state: reservationState(item, now) }));
   const byStart = (left, right) => (time(left.start_datetime) ?? 0) - (time(right.start_datetime) ?? 0);
   const isCurrent = (item) => [RESERVATION_STATE.UPCOMING, RESERVATION_STATE.IN_USE].includes(item.state);
+  // G6 — only a real `true` is a flag, and only a reservation still live can be reassessed.
+  const needsReassessment = (item) => isCurrent(item) && item.rerequest_required === true;
   return {
-    current: items.filter(isCurrent).sort(byStart),
+    reassess: items.filter(needsReassessment).sort(byStart),
+    current: items.filter((item) => isCurrent(item) && !needsReassessment(item)).sort(byStart),
     past: items.filter((item) => !isCurrent(item)).sort((left, right) => byStart(right, left))
   };
 };

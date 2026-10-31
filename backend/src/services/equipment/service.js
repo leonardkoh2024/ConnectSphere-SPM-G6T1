@@ -153,6 +153,44 @@ export const createEquipmentService = ({
     }
   });
 
+  // G6 / SCRUM-138 — Technical Support reassess a reservation I3 flagged after a significant
+  // change: re-check the event's new window, then keep or amend it (release is the route above).
+  const reassessRoute = (path, operation) => router.post(path, async (request, response, next) => {
+    let user;
+    try {
+      user = await authenticateTechnicalSupport(request, response);
+    } catch (error) {
+      next(error);
+      return;
+    }
+    if (!user) return;
+
+    try {
+      response.json(await operation(request, user));
+    } catch (error) {
+      if (error.statusCode) response.status(error.statusCode).json({ error: error.message });
+      else next(error);
+    }
+  });
+
+  reassessRoute("/events/:eventId/recheck-availability", (request) =>
+    reservations.recheckReassessment({ eventId: request.params.eventId }));
+
+  reassessRoute("/reservations/:reservationId/keep", (request, user) =>
+    reservations.keepReservation({
+      reservationId: request.params.reservationId,
+      note: request.body?.note,
+      userId: user.uid
+    }));
+
+  reassessRoute("/reservations/:reservationId/amend", (request, user) =>
+    reservations.amendReservation({
+      reservationId: request.params.reservationId,
+      quantity: request.body?.quantity,
+      note: request.body?.note,
+      userId: user.uid
+    }));
+
   router.post("/events/:eventId/cancel-reservations", async (request, response, next) => {
     let user;
     try {
