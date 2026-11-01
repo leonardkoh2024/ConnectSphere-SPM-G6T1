@@ -5,6 +5,9 @@
 // (J6: a booking or equipment outcome opens that booking or request instead);
 // with no `onViewEvent`, or an event this user can no longer read, there is none.
 // J8: nor is there one on a Lead's "cancelled" notice, whose event has left the queue.
+// J9: a Safety Officer can read an event only while it is in Safety Review, so a waiting
+// notice whose event is refused (false) or gone (null) says the event has left the queue,
+// without a name, details, View or outcome.
 // `loadEvents` replaces the Firestore lookup for a role that reads its events
 // another way (an attendee, through their registrations).
 // The list itself comes from the workspace (useNotifications), which also feeds
@@ -73,7 +76,8 @@ export default function NotificationInbox({ notifications, loading, error, onOpe
       const detailId = `notification-${notification.id}`;
       const event = onViewEvent ? events[notification.event_id] : null;
       const assignment = notification.type === "UNASSIGNED_EVENT" && event ? openLeadAssignmentNotice({ event }) : null;
-      const safety = notification.type === "SAFETY_REVIEW_WAITING" && event ? openSafetyReviewNotice({ event }) : null;
+      const looked = notification.event_id in events ? events[notification.event_id] : undefined;
+      const safety = notification.type === "SAFETY_REVIEW_WAITING" && looked !== undefined ? openSafetyReviewNotice({ event: looked || undefined }) : null;
       const offerView = event && assignment?.offer_assignment !== false && !safety?.left_queue && notification.type !== "UNASSIGNED_EVENT_CANCELLED";
       return <li key={notification.id} className={unread ? "cs-record cs-notification cs-notification-unread" : "cs-record cs-notification"}>
         <div className="cs-notification-row">

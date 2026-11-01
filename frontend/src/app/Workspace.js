@@ -76,6 +76,8 @@ export default function Workspace({ user, role }) {
   const [focusRegistrationEventId, setFocusRegistrationEventId] = useState(null);
   // J8 — the waiting event whose read-only summary the Unassigned queue opens first.
   const [focusQueueEventId, setFocusQueueEventId] = useState(null);
+  // J9 — the waiting event whose review Safety reviews opens first.
+  const [focusSafetyEventId, setFocusSafetyEventId] = useState(null);
   const [searchEvent, setSearchEvent] = useState(null);
   const [bookingTarget, setBookingTarget] = useState({ event: null, venue: null });
   const [venueCalendarOpen, setVenueCalendarOpen] = useState(false);
@@ -129,6 +131,7 @@ export default function Workspace({ user, role }) {
     setFocusEquipmentEventId(name === "Equipment requests" ? extras.eventId || null : null);
     setFocusRegistrationEventId(name === "My registrations" ? extras.eventId || null : null);
     setFocusQueueEventId(name === "Unassigned queue" ? extras.eventId || null : null);
+    setFocusSafetyEventId(name === "Safety reviews" ? extras.eventId || null : null);
     window.location.hash = screenHash(role, name);
   };
   // E4 — one availability calendar shared by every venue, opened from the top
@@ -211,7 +214,7 @@ export default function Workspace({ user, role }) {
   else if (role === ROLES.VENUE_STAFF && screen.name === "Booking requests") contents = <>{head(screen.name, screen.blurb)}<VenueBookingQueue user={user} onNotice={showToast} onClashCountChange={venueClashes.setFromBookings} /></>;
   else if (role === ROLES.VENUE_STAFF && screen.name === "Venue catalogue") contents = <>{head(screen.name, screen.blurb, viewCalendar)}<VenueCatalogue user={user} role={role} showCalendar={venueCalendarOpen} /></>;
   else if (role === ROLES.VENUE_STAFF && screen.name === "Availability calendar") contents = <>{head(screen.name, screen.blurb)}<VenueAvailabilityCalendar user={user} role={role} /></>;
-  else if (role === ROLES.SAFETY_OFFICER && screen.name === "Safety reviews") contents = <>{head(screen.name, screen.blurb)}<SafetyReviewScreen onNotice={showToast} onBackChange={reportBack} /></>;
+  else if (role === ROLES.SAFETY_OFFICER && screen.name === "Safety reviews") contents = <>{head(screen.name, screen.blurb)}<SafetyReviewScreen onNotice={showToast} onBackChange={reportBack} focusEventId={focusSafetyEventId} /></>;
   else if (role === ROLES.SAFETY_OFFICER && screen.name === "Venue safety information") contents = <>{head(screen.name, screen.blurb)}<VenueSafetyInformation /></>;
   else if (role === ROLES.ATTENDEE && screen.name === "Browse events") contents = <>{head(screen.name, screen.blurb)}<BrowseEvents onNotice={showToast} onBackChange={reportBack} /></>;
   else if (role === ROLES.ATTENDEE && screen.name === "My registrations") contents = <>{head(screen.name, screen.blurb)}<MyRegistrations onNotice={showToast} onBackChange={reportBack} focusEventId={focusRegistrationEventId} /></>;

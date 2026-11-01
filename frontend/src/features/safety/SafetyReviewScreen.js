@@ -111,7 +111,10 @@ function OutcomeForm({ eventId, onRecorded }) {
   );
 }
 
-export default function SafetyReviewScreen({ onNotice, onBackChange }) {
+// J9 AC2 — `focusEventId`, from View on a "waiting for a safety check" notice, opens that
+// event's review as soon as the queue has loaded. An event no longer in Safety Review is
+// refused by safetyReviewDetail, so the officer is told why and keeps the queue.
+export default function SafetyReviewScreen({ onNotice, onBackChange, focusEventId = null }) {
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -123,7 +126,8 @@ export default function SafetyReviewScreen({ onNotice, onBackChange }) {
     .catch((failure) => setError(failure.message || "The safety review queue could not be loaded."))
     .finally(() => setLoading(false));
 
-  useEffect(() => { loadQueue(); }, []);
+  // The review opens after the queue has loaded, so a refusal cannot be wiped by the load.
+  useEffect(() => { loadQueue().then(() => { if (focusEventId) open(focusEventId); }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const closeReview = () => setReview(null);
   // Inside the workspace the back button lives in the page header, as on the
