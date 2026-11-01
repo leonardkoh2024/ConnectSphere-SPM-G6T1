@@ -857,6 +857,22 @@ describe('J2 SCRUM-151 the organiser is told the request was received', () => {
     expect(data.message).toContain(EVENT_DAY);
     expect(data.link_screen).toBe('Unassigned queue');
   });
+
+  test('J8-TC10 [normal] AC2 the notice gives the submission time as a Singapore date and time, not a raw timestamp', async () => {
+    firestore.query.mockImplementation((source) => source);
+    getDocs.mockImplementation(async (name) => (name === 'users'
+      ? { docs: [{ id: 'lead-1', data: () => ({ role: 'EVENT_COORDINATOR_LEAD', is_active: true }) }] }
+      : { docs: [] }));
+    getDoc.mockResolvedValue({ exists: () => true, data: () => ({ name: 'Nadia Organiser' }) });
+    render(<EventRequestForm user={USER} onSaved={jest.fn()} />);
+    fillValidRequest();
+    await submit();
+
+    await waitFor(() => expect(setDoc.mock.calls.filter(([, data]) => data?.type === 'UNASSIGNED_EVENT')).toHaveLength(1));
+    const [, data] = setDoc.mock.calls.find(([, item]) => item?.type === 'UNASSIGNED_EVENT');
+    expect(data.message).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+    expect(data.message).toMatch(/ at [A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2} \d{4}, \d{2}:\d{2} is waiting for a coordinator\.$/);
+  });
 });
 
 // B2 / B3 / B4 / B5 / B6 / J8 — a saved draft coming back with every section, the

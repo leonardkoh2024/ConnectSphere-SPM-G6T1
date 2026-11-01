@@ -71,7 +71,7 @@ jest.mock('../features/changeRequests/ChangeRequestsScreen', () => ({
   default: (props) => mockStub(`organiser change requests ${props.creating ? 'form' : 'list'} ${props.initialEventId || '-'}`)
 }));
 jest.mock('../features/changeRequests/ChangeRequestDecisionsScreen', () => ({ __esModule: true, default: () => mockStub('coordinator change decisions') }));
-jest.mock('../features/events/LeadAssignmentScreen', () => ({ __esModule: true, default: (props) => mockStub(`lead ${props.view}`) }));
+jest.mock('../features/events/LeadAssignmentScreen', () => ({ __esModule: true, default: (props) => mockStub(`lead ${props.view}${props.focusEventId ? ` focused on ${props.focusEventId}` : ''}`) }));
 jest.mock('../features/venues/VenueCatalogue', () => ({ __esModule: true, default: (props) => mockStub(`catalogue ${props.showCalendar ? 'calendar' : 'list'}`) }));
 jest.mock('../features/venues/VenueAvailability', () => ({ __esModule: true, default: () => mockStub('availability calendar') }));
 jest.mock('../features/venues/VenueBookingQueue', () => ({ __esModule: true, default: () => mockStub('booking queue') }));
@@ -88,7 +88,9 @@ jest.mock('../features/notifications/NotificationInbox', () => ({
   __esModule: true,
   default: (props) => mockStub('inbox', props.onViewEvent ? [
     ['view change decision', () => props.onViewEvent({ id: 'e1', status: 'PLANNING', organiser_id: 'o1' }, { type: 'CHANGE_REQUEST_ACCEPTED', event_id: 'e1' })],
-    ['view change request', () => props.onViewEvent({ id: 'e1', status: 'PLANNING', organiser_id: 'o1' }, { type: 'CHANGE_REQUESTED', event_id: 'e1' })]
+    ['view change request', () => props.onViewEvent({ id: 'e1', status: 'PLANNING', organiser_id: 'o1' }, { type: 'CHANGE_REQUESTED', event_id: 'e1' })],
+    // J8 — a Lead's notice that an event is waiting for a coordinator.
+    ['view waiting event', () => props.onViewEvent({ id: 'e1', status: 'SUBMITTED', organiser_id: 'o1' }, { type: 'UNASSIGNED_EVENT', event_id: 'e1' })]
   ] : [])
 }));
 
@@ -347,5 +349,33 @@ describe('the sidebar', () => {
   test('TC-1871 [failure] a user with no email still gets an avatar letter', () => {
     const { container } = open(ROLES.ATTENDEE, null, { uid: 'u2' });
     expect(container.querySelector('.cs-sidebar-avatar')).toHaveTextContent('?');
+  });
+});
+
+// J8 / SCRUM-191 AC2 — View on a "waiting for a coordinator" notice opens the Unassigned
+// queue with that event's read-only summary asked for.
+describe('J8 the Event Coordinator Lead opens a waiting event from a notification', () => {
+  test('J8-TC5 [normal] AC2 View lands on the Unassigned queue for that event, and Back returns to the inbox', async () => {
+    open(ROLES.COORDINATOR_LEAD, 'Notifications');
+    await click('view waiting event');
+
+    expect(window.location.hash).toBe(screenHash(ROLES.COORDINATOR_LEAD, 'Unassigned queue'));
+    expect(heading()).toHaveTextContent('Unassigned queue');
+    expect(screen.getByText('lead queue focused on e1')).toBeInTheDocument();
+
+    await click('Back to notifications');
+    expect(heading()).toHaveTextContent('Notifications');
+  });
+
+  test('J8-TC6 [boundary] the focus lasts only for that visit: leaving and returning by the sidebar opens the plain queue', async () => {
+    open(ROLES.COORDINATOR_LEAD, 'Notifications');
+    await click('view waiting event');
+    expect(screen.getByText('lead queue focused on e1')).toBeInTheDocument();
+
+    await userEvent.click(sidebar().getByRole('button', { name: 'Oversight' }));
+    await userEvent.click(sidebar().getByRole('button', { name: 'Unassigned queue' }));
+
+    expect(screen.getByText('lead queue')).toBeInTheDocument();
+    expect(screen.queryByText(/focused on/)).not.toBeInTheDocument();
   });
 });
