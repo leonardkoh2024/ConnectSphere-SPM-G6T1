@@ -310,3 +310,59 @@ describe('the inbox at its edges', () => {
     expect(screen.queryByText('Q4 Partner Summit (EVT-100234)')).not.toBeInTheDocument();
   });
 });
+
+// J9 / SCRUM-192 AC2, AC4, AC5 — a Safety Officer can read an event only while it is in Safety
+// Review (firestore.rules), so once it has left, the lookup is refused (false) or finds nothing
+// (null). That, not a readable event with another status, is what the inbox really sees.
+describe('J9 a Safety Officer opens a safety notice', () => {
+  const waiting = {
+    id: 'n-safety', user_id: 'so-1', event_id: 'e1', type: 'SAFETY_REVIEW_WAITING',
+    message: 'Q4 Partner Summit on 2026-11-04 at Harbour Hall for 180 is waiting for its safety check.',
+    is_read: false, created_at: '2026-10-20T09:00:00.000Z', read_at: null
+  };
+  const LEFT = 'This event has left the safety review queue.';
+  const renderInbox = (props = {}, notices = [waiting]) => render(
+    <NotificationInbox notifications={notices} loading={false} error="" onOpen={jest.fn()} onViewEvent={jest.fn()} {...props} />
+  );
+
+  test.each([
+    ['refused by the rules', false],
+    ['gone', null]
+  ])('J9-TC3 [conflict] AC5 an event %s is said to have left the queue: no details, no View, nothing to decide', async (_label, lookup) => {
+    eventsFor.mockResolvedValue({ e1: lookup });
+    const onOpen = jest.fn();
+    renderInbox({ onOpen });
+    await userEvent.click(await screen.findByRole('button', { name: /Waiting for a safety check/i }));
+
+    expect(screen.getAllByText(LEFT).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Harbour Hall/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/for 180/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/2026-11-04/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Event details not shared|Event no longer available/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^View/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Review safety|Record outcome|Approve|Reject/i })).not.toBeInTheDocument();
+    expect(onOpen).toHaveBeenCalledWith('n-safety');
+  });
+
+  test('J9-TC4 [normal] AC2 for an event still in Safety Review, View is offered, hands over the event and the notice, and counts as opening it', async () => {
+    const event = { id: 'e1', name: 'Q4 Partner Summit', reference_no: 'EVT-100234', status: 'SAFETY_REVIEW' };
+    eventsFor.mockResolvedValue({ e1: event });
+    const onViewEvent = jest.fn();
+    const onOpen = jest.fn();
+    renderInbox({ onViewEvent, onOpen });
+    await userEvent.click(await screen.findByRole('button', { name: 'View Q4 Partner Summit (EVT-100234)' }));
+
+    expect(onViewEvent).toHaveBeenCalledWith(event, waiting);
+    expect(onOpen).toHaveBeenCalledWith('n-safety');
+  });
+
+  test('J9-TC5 [conflict] AC4 a notice that an event was cancelled in Safety Review shows its message and offers no View', async () => {
+    eventsFor.mockResolvedValue({ e1: false });
+    const cancelled = { ...waiting, id: 'n-cancelled', type: 'SAFETY_REVIEW_CANCELLED', message: 'Q4 Partner Summit was cancelled and has left the safety review queue.' };
+    renderInbox({}, [cancelled]);
+
+    expect(await screen.findByText(cancelled.message)).toBeInTheDocument();
+    expect(screen.getByText('Safety review cancelled')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^View/ })).not.toBeInTheDocument();
+  });
+});

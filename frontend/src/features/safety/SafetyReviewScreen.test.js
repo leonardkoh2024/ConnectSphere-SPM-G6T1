@@ -267,3 +267,34 @@ describe('L2 / L3 edges', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('The safety review queue could not be loaded.');
   });
 });
+
+// J9 / SCRUM-192 AC2 — View on a "waiting for a safety check" notice opens that event's review
+// straight away, so the officer does not have to find it in the queue again.
+describe('J9 opening a review from a notification', () => {
+  test('J9-TC7 [normal] AC2 focusEventId opens that event\'s review without a click, with its outcome form', async () => {
+    render(<SafetyReviewScreen focusEventId="e1" />);
+
+    expect(await screen.findByRole('heading', { level: 2, name: 'Partner Summit' })).toBeInTheDocument();
+    expect(safetyReviewDetail).toHaveBeenCalledWith('e1');
+    expect(section('Record outcome')).toBeInTheDocument();
+  });
+
+  test('J9-TC8 [conflict] AC5 a focused event no longer in Safety Review says why, offers no outcome, and leaves the queue to choose from', async () => {
+    safetyReviewDetail.mockRejectedValueOnce(new Error('This event is not awaiting a safety check.'));
+    render(<SafetyReviewScreen focusEventId="e1" />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('This event is not awaiting a safety check.');
+    expect(screen.queryByRole('region', { name: 'Record outcome' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Review safety' })).toBeInTheDocument();
+  });
+
+  test('J9-TC9 [boundary] Back from a review opened this way returns to the queue', async () => {
+    const onBackChange = jest.fn();
+    render(<SafetyReviewScreen focusEventId="e1" onBackChange={onBackChange} />);
+    await screen.findByRole('heading', { level: 2, name: 'Partner Summit' });
+
+    const close = onBackChange.mock.calls.map(([callback]) => callback).filter(Boolean).pop();
+    act(() => close());
+    expect(await screen.findByRole('button', { name: 'Review safety' })).toBeInTheDocument();
+  });
+});

@@ -76,7 +76,7 @@ jest.mock('../features/venues/VenueCatalogue', () => ({ __esModule: true, defaul
 jest.mock('../features/venues/VenueAvailability', () => ({ __esModule: true, default: () => mockStub('availability calendar') }));
 jest.mock('../features/venues/VenueBookingQueue', () => ({ __esModule: true, default: () => mockStub('booking queue') }));
 jest.mock('../features/venues/VenueSafetyInformation', () => ({ __esModule: true, default: () => mockStub('venue safety information') }));
-jest.mock('../features/safety/SafetyReviewScreen', () => ({ __esModule: true, default: () => mockStub('safety reviews') }));
+jest.mock('../features/safety/SafetyReviewScreen', () => ({ __esModule: true, default: (props) => mockStub(`safety reviews${props.focusEventId ? ` focused on ${props.focusEventId}` : ''}`) }));
 jest.mock('../features/registrations/BrowseEvents', () => ({ __esModule: true, default: () => mockStub('browse events') }));
 jest.mock('../features/registrations/MyRegistrations', () => ({ __esModule: true, default: (props) => mockStub(`my registrations ${props.focusEventId || '-'}`) }));
 jest.mock('../features/equipment/EquipmentQueueScreen', () => ({ __esModule: true, default: () => mockStub('equipment queue') }));
@@ -90,7 +90,9 @@ jest.mock('../features/notifications/NotificationInbox', () => ({
     ['view change decision', () => props.onViewEvent({ id: 'e1', status: 'PLANNING', organiser_id: 'o1' }, { type: 'CHANGE_REQUEST_ACCEPTED', event_id: 'e1' })],
     ['view change request', () => props.onViewEvent({ id: 'e1', status: 'PLANNING', organiser_id: 'o1' }, { type: 'CHANGE_REQUESTED', event_id: 'e1' })],
     // J8 — a Lead's notice that an event is waiting for a coordinator.
-    ['view waiting event', () => props.onViewEvent({ id: 'e1', status: 'SUBMITTED', organiser_id: 'o1' }, { type: 'UNASSIGNED_EVENT', event_id: 'e1' })]
+    ['view waiting event', () => props.onViewEvent({ id: 'e1', status: 'SUBMITTED', organiser_id: 'o1' }, { type: 'UNASSIGNED_EVENT', event_id: 'e1' })],
+    // J9 — a Safety Officer's notice that an event is waiting for its safety check.
+    ['view safety review', () => props.onViewEvent({ id: 'e1', status: 'SAFETY_REVIEW' }, { type: 'SAFETY_REVIEW_WAITING', event_id: 'e1' })]
   ] : [])
 }));
 
@@ -377,5 +379,44 @@ describe('J8 the Event Coordinator Lead opens a waiting event from a notificatio
 
     expect(screen.getByText('lead queue')).toBeInTheDocument();
     expect(screen.queryByText(/focused on/)).not.toBeInTheDocument();
+  });
+});
+
+// J9 / SCRUM-192 AC2 and AC6 — View on a Safety Officer's notice opens that event's review, and
+// the sidebar badge is the unread count the inbox hook reports.
+describe('J9 the Safety Officer opens a review from a notification', () => {
+  test('J9-TC10 [normal] AC2 View lands on Safety reviews for that event, and Back returns to the inbox', async () => {
+    open(ROLES.SAFETY_OFFICER, 'Notifications');
+    await click('view safety review');
+
+    expect(window.location.hash).toBe(screenHash(ROLES.SAFETY_OFFICER, 'Safety reviews'));
+    expect(heading()).toHaveTextContent('Safety reviews');
+    expect(screen.getByText('safety reviews focused on e1')).toBeInTheDocument();
+
+    await click('Back to notifications');
+    expect(heading()).toHaveTextContent('Notifications');
+  });
+
+  test('J9-TC11 [boundary] the focus lasts only for that visit: leaving and returning by the sidebar opens the plain queue', async () => {
+    open(ROLES.SAFETY_OFFICER, 'Notifications');
+    await click('view safety review');
+    expect(screen.getByText('safety reviews focused on e1')).toBeInTheDocument();
+
+    await userEvent.click(sidebar().getByRole('button', { name: 'Venue safety information' }));
+    await userEvent.click(sidebar().getByRole('button', { name: 'Safety reviews' }));
+
+    expect(screen.getByText('safety reviews')).toBeInTheDocument();
+    expect(screen.queryByText(/focused on/)).not.toBeInTheDocument();
+  });
+
+  test('J9-TC12 [normal] AC6 the Notifications item carries the unread count, and no badge when nothing is unread', () => {
+    useNotifications.mockReturnValue({ notifications: [], unread: 3, loading: false, error: '', markRead: jest.fn() });
+    const { unmount } = open(ROLES.SAFETY_OFFICER);
+    expect(sidebar().getByLabelText('3 unread')).toHaveTextContent('3');
+    unmount();
+
+    useNotifications.mockReturnValue({ notifications: [], unread: 0, loading: false, error: '', markRead: jest.fn() });
+    open(ROLES.SAFETY_OFFICER);
+    expect(screen.queryByLabelText(/unread/)).not.toBeInTheDocument();
   });
 });
