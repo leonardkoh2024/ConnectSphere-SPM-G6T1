@@ -4,6 +4,7 @@
 // View opens the related event on the screen the workspace picks for the role
 // (J6: a booking or equipment outcome opens that booking or request instead);
 // with no `onViewEvent`, or an event this user can no longer read, there is none.
+// J8: nor is there one on a Lead's "cancelled" notice, whose event has left the queue.
 // `loadEvents` replaces the Firestore lookup for a role that reads its events
 // another way (an attendee, through their registrations).
 // The list itself comes from the workspace (useNotifications), which also feeds
@@ -73,7 +74,7 @@ export default function NotificationInbox({ notifications, loading, error, onOpe
       const event = onViewEvent ? events[notification.event_id] : null;
       const assignment = notification.type === "UNASSIGNED_EVENT" && event ? openLeadAssignmentNotice({ event }) : null;
       const safety = notification.type === "SAFETY_REVIEW_WAITING" && event ? openSafetyReviewNotice({ event }) : null;
-      const offerView = event && assignment?.offer_assignment !== false && !safety?.left_queue;
+      const offerView = event && assignment?.offer_assignment !== false && !safety?.left_queue && notification.type !== "UNASSIGNED_EVENT_CANCELLED";
       return <li key={notification.id} className={unread ? "cs-record cs-notification cs-notification-unread" : "cs-record cs-notification"}>
         <div className="cs-notification-row">
           <button type="button" className="cs-notification-open" aria-expanded={open} aria-controls={detailId} onClick={() => toggle(notification)}>

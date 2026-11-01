@@ -74,6 +74,8 @@ export default function Workspace({ user, role }) {
   const [focusBookingId, setFocusBookingId] = useState(null);
   const [focusEquipmentEventId, setFocusEquipmentEventId] = useState(null);
   const [focusRegistrationEventId, setFocusRegistrationEventId] = useState(null);
+  // J8 — the waiting event whose read-only summary the Unassigned queue opens first.
+  const [focusQueueEventId, setFocusQueueEventId] = useState(null);
   const [searchEvent, setSearchEvent] = useState(null);
   const [bookingTarget, setBookingTarget] = useState({ event: null, venue: null });
   const [venueCalendarOpen, setVenueCalendarOpen] = useState(false);
@@ -126,6 +128,7 @@ export default function Workspace({ user, role }) {
     setFocusBookingId(name === "Venue bookings" ? extras.bookingId || null : null);
     setFocusEquipmentEventId(name === "Equipment requests" ? extras.eventId || null : null);
     setFocusRegistrationEventId(name === "My registrations" ? extras.eventId || null : null);
+    setFocusQueueEventId(name === "Unassigned queue" ? extras.eventId || null : null);
     window.location.hash = screenHash(role, name);
   };
   // E4 — one availability calendar shared by every venue, opened from the top
@@ -212,7 +215,7 @@ export default function Workspace({ user, role }) {
   else if (role === ROLES.SAFETY_OFFICER && screen.name === "Venue safety information") contents = <>{head(screen.name, screen.blurb)}<VenueSafetyInformation /></>;
   else if (role === ROLES.ATTENDEE && screen.name === "Browse events") contents = <>{head(screen.name, screen.blurb)}<BrowseEvents onNotice={showToast} onBackChange={reportBack} /></>;
   else if (role === ROLES.ATTENDEE && screen.name === "My registrations") contents = <>{head(screen.name, screen.blurb)}<MyRegistrations onNotice={showToast} onBackChange={reportBack} focusEventId={focusRegistrationEventId} /></>;
-  else if (role === ROLES.COORDINATOR_LEAD && screen.name === "Unassigned queue") contents = <>{head(screen.name, screen.blurb)}<LeadAssignmentScreen view="queue" onNotice={showToast} /></>;
+  else if (role === ROLES.COORDINATOR_LEAD && screen.name === "Unassigned queue") contents = <>{head(screen.name, screen.blurb)}<LeadAssignmentScreen view="queue" onNotice={showToast} focusEventId={focusQueueEventId} /></>;
   else if (role === ROLES.COORDINATOR_LEAD && screen.name === "Oversight") contents = <>{head(screen.name, screen.blurb)}<LeadAssignmentScreen view="oversight" onNotice={showToast} /></>;
   else if (screen.name === "Notifications") contents = <>{head(screen.name, screen.blurb)}<NotificationInbox notifications={inbox.notifications} loading={inbox.loading} error={inbox.error} onOpen={inbox.markRead} onViewEvent={viewScreen ? viewEvent : undefined} loadEvents={role === ROLES.ATTENDEE ? registeredEventsFor : undefined} /></>;
   else contents = <>{head(screen.name, screen.blurb)}<p className="cs-panel-note">This screen is ready to be connected to its workflow in a later increment.</p></>;

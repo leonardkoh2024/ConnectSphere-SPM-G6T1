@@ -28,7 +28,7 @@ const OVERSIGHT_STATUSES = [
 ];
 const statusLabel = (status) => status.charAt(0) + status.slice(1).toLowerCase().replace(/_/g, " ");
 
-export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
+export default function LeadAssignmentScreen({ view = "queue", onNotice, focusEventId = null }) {
   const [events, setEvents] = useState([]);
   const [coordinators, setCoordinators] = useState([]);
   // The coordinator picked for each event, kept per row so several rows can have
@@ -45,7 +45,9 @@ export default function LeadAssignmentScreen({ view = "queue", onNotice }) {
   const [filterCoordinator, setFilterCoordinator] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   // K2 / SCRUM-183 AC1 — which queued events have their read-only summary open.
-  const [open, setOpen] = useState({});
+  // J8 AC2 — View on a Lead's notice opens the queue with that event's summary already
+  // open; an event no longer in the queue simply has no row to open.
+  const [open, setOpen] = useState(() => (focusEventId ? { [focusEventId]: true } : {}));
 
   const load = async () => {
     const data = await reviewApi.leadBoard();

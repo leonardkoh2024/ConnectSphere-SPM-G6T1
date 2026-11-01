@@ -235,6 +235,16 @@ describe('the inbox at its edges', () => {
     expect(screen.queryByText('Coordinator')).not.toBeInTheDocument();
   });
 
+  test('J8-TC7 [conflict] AC4 a notice that an unassigned request was cancelled offers no View, because the event has left the queue', async () => {
+    eventsFor.mockResolvedValue({ e1: { ...EVENT, status: 'CANCELLED', coordinator_id: null } });
+    const cancelled = notice({ type: 'UNASSIGNED_EVENT_CANCELLED', message: 'Q4 Partner Summit was cancelled and has left the unassigned queue.' });
+    render(<NotificationInbox notifications={[cancelled]} loading={false} error="" onOpen={jest.fn()} onViewEvent={jest.fn()} />);
+    await screen.findByText('Q4 Partner Summit (EVT-100234)');
+
+    expect(screen.getByText(cancelled.message)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^View/ })).not.toBeInTheDocument();
+  });
+
   test('TC-2265 [normal] J9 a safety notice for an event still in Safety Review keeps its details and View', async () => {
     eventsFor.mockResolvedValue({ e1: { ...EVENT, status: 'SAFETY_REVIEW' } });
     const waiting = notice({ type: 'SAFETY_REVIEW_WAITING', message: 'Q4 Partner Summit is waiting for its safety check.' });

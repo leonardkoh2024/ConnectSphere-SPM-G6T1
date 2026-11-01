@@ -246,3 +246,17 @@ describe('notification wording and routing at the edges', () => {
     expect(notificationViewScreen(ROLES.VENUE_STAFF, { type: 'CHANGE_REQUESTED' })).toBeNull();
   });
 });
+
+// J8 / SCRUM-191 AC2 and AC4 — a Lead's "waiting for a coordinator" notice opens the
+// Unassigned queue, where the event's read-only summary is. A cancelled one has left
+// the queue, so it has nowhere to go.
+describe('J8 where View on an Event Coordinator Lead notice goes', () => {
+  test('J8-TC1 [normal] AC2 the Lead has an event screen, the Unassigned queue, and a waiting notice opens it', () => {
+    expect(eventViewScreen(ROLES.COORDINATOR_LEAD)).toBe('Unassigned queue');
+    expect(notificationViewScreen(ROLES.COORDINATOR_LEAD, { type: 'UNASSIGNED_EVENT', event_id: 'e1' })).toBe('Unassigned queue');
+  });
+
+  test('J8-TC2 [conflict] AC4 a cancelled notice has no destination, because the event has left the queue', () => {
+    expect(notificationViewScreen(ROLES.COORDINATOR_LEAD, { type: 'UNASSIGNED_EVENT_CANCELLED', event_id: 'e1' })).toBeNull();
+  });
+});

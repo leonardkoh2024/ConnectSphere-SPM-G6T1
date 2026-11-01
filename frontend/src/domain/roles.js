@@ -138,8 +138,9 @@ export const ROLE_META = {
     ]
   },
   // Week 7 change #5. The Lead oversees the coordinators rather than running
-  // events themselves, so it has only the two screens its role calls for:
-  // nothing a coordinator uses to do the day-to-day work on an event.
+  // events themselves, so it has only the screens its role calls for (the queue,
+  // oversight and, since J8, its inbox): nothing a coordinator uses to do the
+  // day-to-day work on an event.
   [ROLES.COORDINATOR_LEAD]: {
     label: "Event Coordinator Lead",
     portal: "corporate",
@@ -157,6 +158,14 @@ export const ROLE_META = {
         icon: "clipboard",
         blurb:
           "Every event, who is coordinating it, and how loaded each coordinator is — reassign from here."
+      },
+      {
+        // J8 — the Lead is told when an event is waiting for a coordinator, or is
+        // cancelled while it waits, in the same inbox every other role has.
+        name: "Notifications",
+        icon: "bell",
+        blurb:
+          "Events waiting for a coordinator, and requests cancelled while they waited."
       }
     ]
   },

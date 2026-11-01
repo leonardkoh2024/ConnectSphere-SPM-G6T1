@@ -522,3 +522,32 @@ describe('K1 / K2 the Lead assigns from the unassigned queue', () => {
     expect(await screen.findByText('No events are waiting for a coordinator.')).toBeInTheDocument();
   });
 });
+
+// J8 / SCRUM-191 AC2 — View on a Lead's notice opens the queue with that event's read-only
+// summary already open (the same summary K2 added behind View details).
+describe('J8 an event asked for from a notification', () => {
+  const second = {
+    id: 'EVT-4', coordinator_id: null, status: 'SUBMITTED', organiser_name: 'Nadia Organiser', name: 'Mixer',
+    purpose: 'Networking', event_date: '2026-07-01', start_time: '17:00', end_time: '19:00', expected_attendance: 40,
+    reference_no: 'EVT-0004', submitted_at: '2026-06-01T00:00:00Z'
+  };
+
+  test('J8-TC8 [normal] AC2 the asked-for event opens its read-only summary at once, and the other queued event stays closed', async () => {
+    reviewApi.leadBoard.mockResolvedValue({ ...board, events: [...board.events, second] });
+    render(<LeadAssignmentScreen view="queue" focusEventId="EVT-4" />);
+    await screen.findByText('Mixer');
+
+    expect(screen.getByText('Networking')).toBeInTheDocument();
+    expect(screen.queryByText('Fundraiser')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /hide details/i })).toHaveLength(1);
+  });
+
+  test('J8-TC9 [conflict] AC3 an event that has since been assigned is not in the queue, so nothing opens and nothing breaks', async () => {
+    render(<LeadAssignmentScreen view="queue" focusEventId="EVT-2" />);
+    await screen.findByText('Gala');
+
+    expect(screen.queryByText('Fundraiser')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /view details/i })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});

@@ -94,6 +94,8 @@ export const eventLabel = (event) => {
 export const EVENT_VIEW_SCREEN = {
   [ROLES.ORGANISER]: "New event request",
   [ROLES.COORDINATOR]: "Assigned events",
+  // J8 AC2 — a waiting event's read-only summary is on the Lead's Unassigned queue.
+  [ROLES.COORDINATOR_LEAD]: "Unassigned queue",
   [ROLES.ATTENDEE]: "My registrations"
 };
 
@@ -159,5 +161,7 @@ export const notificationViewScreen = (role, notification = {}) => {
   // I2 AC4 — the decision and its reason are on the request, not the event.
   if (role === ROLES.ORGANISER && ["CHANGE_REQUEST_ACCEPTED", "CHANGE_REQUEST_DECLINED"].includes(notification.type)) return "Change requests";
   if (role === ROLES.COORDINATOR && notification.type === "CHANGE_REQUESTED") return "Change requests";
+  // J8 AC4 — a cancelled request has left the queue, so there is no summary to open.
+  if (role === ROLES.COORDINATOR_LEAD && notification.type === "UNASSIGNED_EVENT_CANCELLED") return null;
   return eventViewScreen(role);
 };

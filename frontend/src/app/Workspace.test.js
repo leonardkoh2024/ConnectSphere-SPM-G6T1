@@ -413,9 +413,10 @@ describe("J6 viewing a booking or equipment outcome from a notification", () => 
 });
 
 describe('A6 the Event Coordinator Lead navigation', () => {
-  const LEAD_SCREENS = ['Unassigned queue', 'Oversight'];
+  // J8 added Notifications: the Lead is told when an event is waiting, in the same inbox as every role.
+  const LEAD_SCREENS = ['Unassigned queue', 'Oversight', 'Notifications'];
 
-  test('TC-0078 A6 AC4 the Lead sees exactly its oversight and assignment screens', () => {
+  test('TC-0078 A6 AC4 the Lead sees exactly its oversight, assignment and notification screens', () => {
     const { container } = render(<Workspace user={USER} role={ROLES.COORDINATOR_LEAD} />);
 
     expect(sidebarScreens(container)).toEqual(LEAD_SCREENS);
@@ -425,7 +426,7 @@ describe('A6 the Event Coordinator Lead navigation', () => {
     const { container } = render(<Workspace user={USER} role={ROLES.COORDINATOR_LEAD} />);
     const nav = within(container.querySelector('.cs-sidebar-screens'));
 
-    ['Review queue', 'Assigned events', 'Venue catalogue', 'Venue bookings',     'Equipment requests', 'Change requests', 'Registrations', 'Notifications']
+    ['Review queue', 'Assigned events', 'Venue catalogue', 'Venue bookings', 'Equipment requests', 'Change requests', 'Registrations']
       .forEach((name) => expect(nav.queryByText(name)).not.toBeInTheDocument());
   });
 
@@ -436,6 +437,26 @@ describe('A6 the Event Coordinator Lead navigation', () => {
 
     expect(screen.getByRole('heading', { name: /not authorised/i })).toBeInTheDocument();
     expect(sidebarScreens(container)).toEqual(LEAD_SCREENS);
+  });
+});
+
+// J8 / SCRUM-191 AC5 — the Lead's inbox carries the same unread badge as every other role's.
+describe('J8 the Event Coordinator Lead is told through the inbox', () => {
+  test('J8-TC3 [normal] AC5 the Lead sees the unread count on Notifications', () => {
+    givenUnread(3);
+    render(<Workspace user={USER} role={ROLES.COORDINATOR_LEAD} />);
+
+    const item = screen.getByRole('button', { name: /^Notifications/ });
+    expect(within(item).getByLabelText('3 unread')).toHaveTextContent('3');
+  });
+
+  test('J8-TC4 [normal] AC5 Notifications opens the inbox, with View offered, not the placeholder', () => {
+    window.location.hash = screenHash(ROLES.COORDINATOR_LEAD, 'Notifications');
+    render(<Workspace user={USER} role={ROLES.COORDINATOR_LEAD} />);
+
+    expect(screen.getByRole('heading', { name: 'Notifications' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'View event' })).toBeInTheDocument();
+    expect(screen.queryByText(/ready to be connected/)).not.toBeInTheDocument();
   });
 });
 
