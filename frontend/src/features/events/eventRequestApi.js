@@ -12,6 +12,7 @@ import { notificationRecord } from "../../domain/eventReviewRecords";
 import { eventSubmittedMessage } from "../../domain/notifications";
 import { eventEnteredUnassignedQueue } from "../../domain/safetyAndNotices";
 import { ROLES } from "../../domain/roles";
+import { singaporeDateTime } from "../../domain/venueHolds";
 
 // Firestore stores a plain boolean, or null for a question nobody has answered yet.
 const answeredAs = (answer) => (answer === YES ? true : answer === NO ? false : null);
@@ -93,7 +94,7 @@ const notifySubmission = async ({ user, eventId, eventName, eventDate }) => {
         name: eventName,
         organiser_name: profile.exists() ? (profile.data().name || user.email) : user.email,
         event_date: eventDate,
-        submitted_at: new Date().toISOString()
+        submitted_at: singaporeDateTime(new Date())
       },
       leads: leadSnapshot.docs.map((item) => ({
         user_id: item.id, role: item.data().role, active: item.data().is_active !== false
