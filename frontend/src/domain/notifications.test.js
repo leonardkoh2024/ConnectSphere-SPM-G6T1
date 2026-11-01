@@ -6,7 +6,7 @@ import {
   badgeText, decisionReasonProblem, eventCancelledMessage, eventDecisionMessage, eventLabel, eventSubmittedMessage, eventViewScreen,
   newestFirst, notificationTypeLabel, notificationViewScreen, ORGANISER_PROGRESS_TYPES, unreadCount, venueBookingOutcomeMessage
 } from './notifications';
-import { ROLES } from './roles';
+import { ROLES, ROLE_META } from './roles';
 
 describe('J1 inbox rules', () => {
   test('TC-2079 notifications list newest first, undated last', () => {
@@ -258,5 +258,20 @@ describe('J8 where View on an Event Coordinator Lead notice goes', () => {
 
   test('J8-TC2 [conflict] AC4 a cancelled notice has no destination, because the event has left the queue', () => {
     expect(notificationViewScreen(ROLES.COORDINATOR_LEAD, { type: 'UNASSIGNED_EVENT_CANCELLED', event_id: 'e1' })).toBeNull();
+  });
+});
+
+// J9 / SCRUM-192 AC2 and AC4 — View on a Safety Officer's "waiting for a safety check" notice
+// opens that event's review on Safety reviews. A cancelled one has left the queue, so it has
+// nowhere to go.
+describe('J9 where View on a Safety Officer notice goes', () => {
+  test('J9-TC1 [normal] AC2 the Safety Officer has an event screen, a real one of theirs, and a waiting notice opens it', () => {
+    expect(eventViewScreen(ROLES.SAFETY_OFFICER)).toBe('Safety reviews');
+    expect(ROLE_META[ROLES.SAFETY_OFFICER].screens.map((screen) => screen.name)).toContain(eventViewScreen(ROLES.SAFETY_OFFICER));
+    expect(notificationViewScreen(ROLES.SAFETY_OFFICER, { type: 'SAFETY_REVIEW_WAITING', event_id: 'e1' })).toBe('Safety reviews');
+  });
+
+  test('J9-TC2 [conflict] AC4 a cancelled notice has no destination, because the event has left the queue', () => {
+    expect(notificationViewScreen(ROLES.SAFETY_OFFICER, { type: 'SAFETY_REVIEW_CANCELLED', event_id: 'e1' })).toBeNull();
   });
 });

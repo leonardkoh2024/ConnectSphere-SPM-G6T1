@@ -96,6 +96,8 @@ export const EVENT_VIEW_SCREEN = {
   [ROLES.COORDINATOR]: "Assigned events",
   // J8 AC2 — a waiting event's read-only summary is on the Lead's Unassigned queue.
   [ROLES.COORDINATOR_LEAD]: "Unassigned queue",
+  // J9 AC2 — a waiting event's review is on the Safety Officer's Safety reviews.
+  [ROLES.SAFETY_OFFICER]: "Safety reviews",
   [ROLES.ATTENDEE]: "My registrations"
 };
 
@@ -163,5 +165,7 @@ export const notificationViewScreen = (role, notification = {}) => {
   if (role === ROLES.COORDINATOR && notification.type === "CHANGE_REQUESTED") return "Change requests";
   // J8 AC4 — a cancelled request has left the queue, so there is no summary to open.
   if (role === ROLES.COORDINATOR_LEAD && notification.type === "UNASSIGNED_EVENT_CANCELLED") return null;
+  // J9 AC4 — likewise a cancelled event has left the safety review queue.
+  if (role === ROLES.SAFETY_OFFICER && notification.type === "SAFETY_REVIEW_CANCELLED") return null;
   return eventViewScreen(role);
 };
