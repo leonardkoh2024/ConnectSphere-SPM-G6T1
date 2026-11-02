@@ -69,7 +69,7 @@ needed* and *Clash – review required* belong to a venue booking, not to the ev
 - Venue Staff may mark a venue unavailable even over approved bookings (E11). The event is never cancelled:
   its bookings are flagged, its coordinator notified, and a Confirmed event goes back to Planning until a
   replacement venue is approved (F11).
-- A tentative hold must carry an expiry; it lapses on time even if nobody opens the system, and an active or
+- A tentative hold must carry an expiry; it is processed server-side by `POST /api/venues/workflows/refresh`, and an active or
   expired hold never counts as an approved booking (F15, F16).
 - A *significant change* is a change to number of pax, venue, or duration — no numeric threshold.
   It notifies, then re-requests the affected arrangement. The system never auto-revokes an arrangement.
@@ -147,9 +147,9 @@ on real problems. `npm run lint` runs the same rules with `--max-warnings 0`, an
   only in the UI — story A4 ("see only what my role permits") is graded on the server-side rule, and a screen
   that merely hides a button does not satisfy it.
 - **`frontend/src/` is organised by feature, not by file type.** One folder per epic under `features/`,
-  each holding its own page components plus a `components/` subfolder for its pieces. Add `features/venues/`,
-  `features/equipment/` and so on as those epics are picked up — do not let `Workspace.js` accumulate screens
-  inline, and do not create a global `pages/` bucket.
+  each holding its own page components plus a `components/` subfolder for its pieces. Add a new folder
+  under `features/` for each new epic — do not let `Workspace.js` accumulate screens inline, and do not create
+  a global `pages/` bucket.
 
   ```
   frontend/src/
@@ -157,7 +157,7 @@ on real problems. `npm run lint` runs the same rules with `--max-warnings 0`, an
     domain/     roles · portals · accounts · events — no React, no Firebase
     features/   auth/ · events/ · venues/ · … — one folder per epic, each with its own components/ and *Api.js
     lib/        firebase.js — initialises Firebase and exports auth and db · apiSupport.js — helpers every *Api.js shares
-    sandbox/    unimported spike screens, safe to delete
+    sandbox/    unimported spike screens from the Firebase setup
   ```
 
 - **Screens never call Firebase or `fetch` themselves.** A feature's data access lives in its `*Api.js`
@@ -176,10 +176,10 @@ on real problems. `npm run lint` runs the same rules with `--max-warnings 0`, an
   radii, elevation and density, modelled on Fresha and implemented as `--cs-*` tokens in `App.css`. Read it
   before writing CSS. Use a token; never put a hex value in a rule. If the scale lacks what you need, add it
   to `:root` and to that doc in the same commit.
-- **`backend/` is the service layer and is deliberately empty.** Services get added as the stories needing
-  them are picked up — one folder per service, each owning its own Firestore collections, no two services
-  writing the same collection. See `backend/README.md`. Whether they end up as build-time modules or separate
-  HTTP processes is not yet decided, so keep each service's public surface free of React imports.
+- **`backend/` is the service layer.** Five services are mounted (`event`, `venue`, `equipment`,
+  `registration`, `arrangements`) — one folder per service, each owning its own Firestore collections, no two
+  services writing the same collection. See `backend/README.md`. They share one process; keep each service's
+  public surface free of React imports so one could move out to its own process.
 
 ## Working agreement
 
@@ -195,26 +195,3 @@ on real problems. `npm run lint` runs the same rules with `--max-warnings 0`, an
   before starting, and cover them in tests where the criterion is testable.
 - If the customer has not answered something, do not invent an answer in code — add it to the Session 3
   question list instead.
-
-## Open questions (do not silently resolve)
-
-- Registration screens are already built and merged, but Session 2 says release 1 needs no account creation.
-  Decide: keep them as a convenience, or replace with seeded accounts. Backlog A1/A2 need rewording either way.
-- Hold length — **decided 19 Oct 2026: 3 working days is a fixed rule.** Venue Staff put a Pending request on
-  hold and the expiry is computed, never entered: Mon–Fri, Singapore time, the same clock time three working
-  days on (`domain/venueHolds.js`, repeated in `firestore.rules` as `holdExpiryIsThreeWorkingDays`). A hold
-  that would not end before the booking's occupied window is refused. Still open for Session 3: whether
-  public holidays count as working days — they currently do.
-- Equipment data model: pooled quantity vs individually tracked units.
-- Who may edit an event after submission (Q9 and the Week 1 briefing disagree).
-- The Session 2 security question was left blank. Current assumption: role-correct access plus password
-  hashing is the whole requirement.
-- Product name is ours to choose and has not been chosen. "ConnectSphere" is the *company*.
-- Backlog stories J3, J4 and J5 all share the summary "Be told when work arrives for me".
-- I1 AC4 notifies the event's *assigned* coordinator about a change request, but an event still in Submitted
-  may have none (K1). **Decided 28 Oct 2026:** nobody is notified then; the request waits as Pending and the
-  coordinator sees it once the event is assigned. Confirm in Session 3 (alternative: notify the Leads).
-- B9 AC2 requires accessibility needs to be *answered* before submission, but not what counts as answered for
-  a request that has none. Each of those sections now opens with a Yes/No question (`domain/eventRequest.js`,
-  `SECTION_QUESTIONS`): an explicit No is an answer, an untouched question is not. Confirm in Session 3; the
-  rule is one line to change.
