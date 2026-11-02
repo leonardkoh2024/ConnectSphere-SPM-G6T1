@@ -5,6 +5,7 @@ import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestam
 import { db } from "../../lib/firebase";
 import { notificationRecord } from "../../domain/eventReviewRecords";
 import { bookingDetailsErrors, clashingEventBooking } from "../../domain/venueBookingDetails";
+import { NO_CAPACITY_MESSAGE, recordedCapacity } from "../../domain/venueSuitability";
 import { activeHoldClash, isActiveHold, singaporeDateTime } from "../../domain/venueHolds";
 import { bookingWindow, detectVenueBookingConflicts, windowsOverlap } from "../../domain/venueBookingWorkflows";
 import { asDate, occupiedWindow, refreshVenueWorkflowsOnLoad, requiredUser } from "./venueApiSupport";
@@ -216,7 +217,9 @@ export const requestVenueBooking = async ({
       bookingLabel: booking_label, expectedAttendance: expected_attendance, layout: layoutSnapshot
     });
     checkVenueFree({ existing, holds, venue, eventId: event_id, venueId: venue_id, occupied: details.occupied, now });
-    if (Number(venue.max_capacity) < details.attendance) throw new Error("The venue cannot hold the expected attendance.");
+    // E8 AC1 — a venue with no usable capacity is refused, not passed: NaN < n is false.
+    if (recordedCapacity(venue) === null) throw new Error(NO_CAPACITY_MESSAGE);
+    if (recordedCapacity(venue) < details.attendance) throw new Error("The venue cannot hold the expected attendance.");
 
     const bookingRef = doc(collection(db, "venue_bookings"));
     transaction.set(bookingRef, pendingBookingRecord({
