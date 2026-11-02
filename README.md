@@ -52,6 +52,88 @@ npm run build        # production build into frontend/build/
 All run from the repo root. CI (`.github/workflows/tests.yml`) runs the lint and every test suite on each
 push to `main` and each pull request.
 
+### Run the same checks as CI
+
+There is currently no single root script for the complete CI test job. To reproduce
+`.github/workflows/tests.yml` locally, run these commands in order from the repository root:
+
+```bash
+npm run lint
+npm run test:coverage --workspace frontend
+npm run test:coverage --workspace backend
+npm run test:integration
+```
+
+The first three commands run linting and the frontend and backend unit tests with the same 100% coverage
+requirements used by CI. The final command starts a temporary Firestore emulator, runs the backend integration
+tests, and shuts the emulator down. It requires Java and a root `.env` file; copy `.env.example` to `.env` if
+the file does not exist. Playwright end-to-end tests are separate and are not currently run by `tests.yml`.
+
+## End-to-end tests with Playwright
+
+Playwright tests run against local Firebase Auth and Firestore emulators, so they do not use the shared
+Firebase project or its quota.
+
+### Playwright prerequisites
+
+The Firebase Emulator Suite requires Java 11 or newer. Java 21 is recommended:
+
+```bash
+# Windows
+winget install EclipseAdoptium.Temurin.21.JDK
+
+# macOS
+brew install --cask temurin
+```
+
+After installing Java, close all terminal and VS Code windows, reopen them, and verify the installation:
+
+```bash
+java -version
+```
+
+Install the Chromium browser controlled by Playwright:
+
+```bash
+npx playwright install chromium
+```
+
+This normally only needs to be run once after cloning the repository. Before running an end-to-end test:
+
+1. Pull the latest code and run `npm install` from the repository root.
+2. Ensure Java and Playwright Chromium have been installed using the commands above.
+3. Ensure the root `.env` file exists. Copy `.env.example` to `.env` if necessary; real Firebase credentials
+   are not required by these emulator-backed tests.
+4. Stop any existing `npm start` process so ports 3000 and 4000 are free. The test starts its own frontend
+   and backend instances.
+
+### Running Playwright tests
+
+Run the tests for one user story in step-by-step debug mode by replacing `K2` with the assigned story ID:
+
+```bash
+npm run e2e -- K2 --debug
+```
+
+The first run can take one or two minutes while the frontend starts. Playwright opens the application in a
+Chromium window and opens Playwright Inspector separately. Use **Step over** in the Inspector to execute one
+action at a time, or **Resume** to let the test finish. The terminal reports the passing test count when the
+run completes.
+
+To run a particular test-case identifier directly through the emulators, use `--grep`:
+
+```bash
+npx firebase emulators:exec --only auth,firestore --project demo-connectsphere "npx playwright test --debug --grep TC-717"
+```
+
+Other useful commands are:
+
+```bash
+npm run e2e                 # run every Playwright test
+npm run e2e -- K2           # run one story without the Inspector
+npm run e2e:ui              # open Playwright's interactive test UI
+```
+
 The system is not deployed and does not need to be — the customer confirmed that running locally plus an
 architecture diagram is what gets submitted.
 
