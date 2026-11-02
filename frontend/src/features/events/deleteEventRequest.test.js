@@ -26,14 +26,14 @@ beforeEach(() => {
 
 describe('B8 SCRUM-99 delete a draft', () => {
   describe('normal', () => {
-    test('TC-0226 B8 AC3 the event and all its requirement, facility, equipment, accessibility and history records are deleted', async () => {
+    test('TC-0226 B8 AC3 the event and all its requirement, facility, equipment and accessibility records are deleted; its history is kept (D6 AC3)', async () => {
       await deleteEventRequest('e1');
 
       expect(deleted.sort()).toEqual([
-        'event_facilities/f1', 'event_facilities/f2', 'event_history/h1', 'event_venue_requirements/e1', 'events/e1'
+        'event_facilities/f1', 'event_facilities/f2', 'event_venue_requirements/e1', 'events/e1'
       ]);
       const asked = firestore.getDocs.mock.calls.map(([q]) => q.name).sort();
-      expect(asked).toEqual(['event_accessibility', 'event_equipment', 'event_facilities', 'event_history']);
+      expect(asked).toEqual(['event_accessibility', 'event_equipment', 'event_facilities']);
       firestore.getDocs.mock.calls.forEach(([q]) => expect(q.constraint).toEqual({ field: 'event_id', op: '==', value: 'e1' }));
     });
 
@@ -54,7 +54,7 @@ describe('B8 SCRUM-99 delete a draft', () => {
   describe('failure', () => {
     test('TC-0229 B8 when a child cannot be deleted the event is kept, so the draft is not half-orphaned', async () => {
       firestore.deleteDoc.mockImplementation(async (ref) => {
-        if (ref.path === 'event_history/h1') throw Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' });
+        if (ref.path === 'event_facilities/f1') throw Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' });
         deleted.push(ref.path);
       });
 

@@ -204,7 +204,7 @@ describe('C3 / F7 / F12 the event detail', () => {
         event_id: 'e1', venue_id: 'v1', booking_id: 'BK-1', booking_label: 'Main hall', expected_attendance: 80,
         layout_snapshot: 'THEATRE', start_datetime: ts('2026-11-04T03:00:00.000Z'), end_datetime: ts('2026-11-04T05:00:00.000Z'),
         status: 'Approved', decision_reason: 'Fits', decided_at: ts('2026-10-02T00:00:00.000Z'), released_at: null,
-        replacement_needed: true, replacement_reason: 'Venue closed', replaced_by_booking_id: 'BK-3', required_facilities_snapshot: ['PROJECTOR']
+        replacement_needed: true, replacement_reason: 'Venue closed', replaced_by_booking_id: 'BK-3', review_status: 'Review required', required_facilities_snapshot: ['PROJECTOR']
       };
       stored['venue_bookings/b2'] = { event_id: 'e1', venue_id: 'v2', venue_name: 'Breakout Room', start_datetime: '2026-11-04T01:00:00.000Z', release_reason: 'Not needed', released_at: '2026-10-03T00:00:00.000Z' };
       stored['venue_bookings/b3'] = { event_id: 'e1', venue_id: 'v9' };
@@ -216,7 +216,7 @@ describe('C3 / F7 / F12 the event detail', () => {
         booking_id: 'BK-1', booking_label: 'Main hall', expected_attendance: 80, layout: 'THEATRE', venue_id: 'v1', venue_name: 'Hall A',
         start_datetime: '2026-11-04T03:00:00.000Z', end_datetime: '2026-11-04T05:00:00.000Z', status: 'Approved', decision_reason: 'Fits',
         decided_at: '2026-10-02T00:00:00.000Z', released_at: null, release_reason: null, requires_re_request: false, replacement_needed: true,
-        replacement_reason: 'Venue closed', replaced_by_booking_id: 'BK-3', required_facilities_snapshot: ['PROJECTOR']
+        replacement_reason: 'Venue closed', replaced_by_booking_id: 'BK-3', review_status: 'Review required', required_facilities_snapshot: ['PROJECTOR']
       });
       expect(venueBookings[0]).toMatchObject({ status: 'Status not recorded', booking_label: null, expected_attendance: null, layout: null, replacement_needed: false, required_facilities_snapshot: [] });
       expect(venueBookings[1]).toMatchObject({ release_reason: 'Not needed', released_at: '2026-10-03T00:00:00.000Z' });

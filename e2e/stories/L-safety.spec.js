@@ -131,10 +131,16 @@ test.describe(...story("L4", "Return an event to planning after a safety concern
       await expect(page.locator(".cs-panel-scroll")).toContainText("Fire exit at the rear is obstructed.");
     });
 
-    await test.step("AC3 + AC4: the flagged venue booking shows it needs review", async () => {
+    await test.step("AC3 + AC4: the venue booking is flagged for review, which blocks a new safety check", async () => {
       await openAsCoordinator(page, event);
-      await page.getByRole("tab", { name: /Arrangements/ }).click();
-      await expect(page.getByRole("region", { name: "Venue booking status" })).toContainText(/review/i);
+      await expect(page.getByText(/Still outstanding: .*still needs review/)).toBeVisible();
+      await expect(page.getByRole("button", { name: "Send for safety check" })).toBeDisabled();
+    });
+
+    await test.step("AC3: the venue's staff are told the booking needs review", async () => {
+      await as(page, "venueStaff");
+      await openScreen(page, "Notifications");
+      await expect(page.locator(".cs-panel-scroll")).toContainText("is marked Review required");
     });
 
     await test.step("AC5: the previous outcome is shown at the next check", async () => {

@@ -96,13 +96,16 @@ function LandingPage() {
 
     setBusy(true);
 
+    // A2 AC5 — left for the workspace before the account exists: creating it signs
+    // the user in, which mounts the workspace (and reads this) before the call returns.
+    sessionStorage.setItem("cs-account-created", "Your account has been created successfully.");
     try {
       await createAccount({
         email: email.trim(), password, name, isCorporate, organisationName, mobileNumber, preferredContactMethod
       });
-        sessionStorage.setItem("cs-account-created", "Your account has been created successfully.");
         setSuccess("Your account has been created. You are now signed in.");
     } catch (authError) {
+      sessionStorage.removeItem("cs-account-created");
       // Authentication errors must not disclose whether a particular mailbox is
       // registered, nor the role attached to it.
       setError(

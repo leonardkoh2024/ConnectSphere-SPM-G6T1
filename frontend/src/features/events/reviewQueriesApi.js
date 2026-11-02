@@ -223,6 +223,8 @@ const bookingRow = (item, venueNames) => {
     replacement_needed: booking.replacement_needed === true,
     replacement_reason: booking.replacement_reason || null,
     replaced_by_booking_id: booking.replaced_by_booking_id || null,
+    // L4 AC4 — a booking the Safety Officer flagged blocks the next safety check until reviewed.
+    review_status: booking.review_status || null,
     required_facilities_snapshot: booking.required_facilities_snapshot || []
   };
 };

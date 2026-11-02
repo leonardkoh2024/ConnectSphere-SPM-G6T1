@@ -151,6 +151,7 @@ test('F7 F11 venue bookings come back by start time, with release and replacemen
       status: 'RELEASED', decision_reason: null, decided_at: null, released_at: null, release_reason: 'Moved',
       requires_re_request: true,
       replacement_needed: true, replacement_reason: 'Venue unavailable', replaced_by_booking_id: 'BK-3',
+      review_status: null,
       required_facilities_snapshot: ['WIFI']
     },
     {
@@ -161,6 +162,7 @@ test('F7 F11 venue bookings come back by start time, with release and replacemen
       status: 'Status not recorded', decision_reason: null, decided_at: null, released_at: null, release_reason: null,
       requires_re_request: false,
       replacement_needed: false, replacement_reason: null, replaced_by_booking_id: null,
+      review_status: null,
       required_facilities_snapshot: []
     }
   ]);

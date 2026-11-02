@@ -1087,7 +1087,9 @@ service cloud.firestore {
       allow get, list: if hasRole('TECHNICAL_SUPPORT_STAFF');
     }
     match /equipment_requests/{eventId} {
-      allow get: if hasRole('EVENT_COORDINATOR') && currentCoordinator(eventId);
+      // L4 — the Safety Officer reads the request to flag its arrangements on Reject
+      // or Request changes, only while the event is in Safety Review.
+      allow get: if (hasRole('EVENT_COORDINATOR') && currentCoordinator(eventId)) || safetyReviewing(eventId);
       allow list: if (hasRole('EVENT_COORDINATOR') && currentCoordinator(resource.data.event_id))
         || (hasRole('TECHNICAL_SUPPORT_STAFF') && resource.data.status == 'PENDING');
       allow create: if hasRole('EVENT_COORDINATOR')

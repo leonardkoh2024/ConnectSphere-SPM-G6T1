@@ -299,7 +299,7 @@ export const loadVenueSearchContext = async ({ userId, role } = {}) => {
   return { venues, bookings, unavailability };
 };
 
-export const saveVenueUnavailability = async ({ user, venueId, keepPeriodIds, additions }) => {
+export const saveVenueUnavailability = async ({ user, venueId, keepPeriodIds, additions, confirmOverlaps = false }) => {
   if (!user?.getIdToken) throw new Error("Sign in is required to save venue availability changes.");
   const token = await user.getIdToken();
   const response = await fetch("/api/venues/unavailability", {
@@ -311,7 +311,9 @@ export const saveVenueUnavailability = async ({ user, venueId, keepPeriodIds, ad
     body: JSON.stringify({
       venue_id: venueId,
       keep_period_ids: keepPeriodIds,
-      additions
+      additions,
+      // E11 AC2 — Venue Staff have seen and confirmed the approved bookings this period covers.
+      confirm_overlaps: confirmOverlaps === true
     })
   });
   const result = await response.json().catch(() => ({}));

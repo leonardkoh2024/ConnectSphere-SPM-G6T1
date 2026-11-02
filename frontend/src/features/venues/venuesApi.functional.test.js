@@ -323,12 +323,19 @@ describe('E11 / SCRUM-173 functional — saving unavailability goes through the 
     global.fetch.mockResolvedValue({ ok: true, json: async () => ({ saved: 1 }) });
     const user = { getIdToken: jest.fn().mockResolvedValue('tok') };
     const additions = [{ start_datetime: '2026-11-20T01:00:00.000Z', end_datetime: '2026-11-20T05:00:00.000Z', reason: 'Maintenance', confirmed: true }];
-    await expect(saveVenueUnavailability({ user, venueId: 'VEN-1', keepPeriodIds: ['u-1'], additions })).resolves.toEqual({ saved: 1 });
+    await expect(saveVenueUnavailability({ user, venueId: 'VEN-1', keepPeriodIds: ['u-1'], additions, confirmOverlaps: true })).resolves.toEqual({ saved: 1 });
     expect(global.fetch).toHaveBeenCalledWith('/api/venues/unavailability', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer tok' },
-      body: JSON.stringify({ venue_id: 'VEN-1', keep_period_ids: ['u-1'], additions })
+      body: JSON.stringify({ venue_id: 'VEN-1', keep_period_ids: ['u-1'], additions, confirm_overlaps: true })
     });
+  });
+
+  test('TC-2614 [boundary] E11 AC2 the overlap confirmation is sent only when it was given', async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ saved: 1 }) });
+    const user = { getIdToken: async () => 'tok' };
+    await saveVenueUnavailability({ user, venueId: 'VEN-1', keepPeriodIds: [], additions: [] });
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body).confirm_overlaps).toBe(false);
   });
 
   test("TC-0872 [failure] without sign-in nothing is sent; the service's refusal is passed on, or a plain message when it gives none", async () => {

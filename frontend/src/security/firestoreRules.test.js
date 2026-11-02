@@ -310,6 +310,16 @@ describe('G1 equipment requests are editable by the assigned coordinator and que
     expect(requests).toContain("resource.data.get('has_support_decisions', false) == false");
   });
 
+  test('TC-2615 L4 AC2 the Safety Officer may read an equipment request only while its event is in Safety Review, and never write it', () => {
+    const get = matchBlock('equipment_requests').match(/allow get:\s*if([^;]*);/)[1];
+    expect(get).toContain('safetyReviewing(eventId)');
+    const helper = RULES.split('\n').find((line) => line.includes('function safetyReviewing('));
+    expect(helper).toContain("hasRole('SAFETY_OFFICER')");
+    expect(helper).toContain("status == 'SAFETY_REVIEW'");
+    const writes = matchBlock('equipment_requests').match(/allow (create|update)[^;]*;/g);
+    writes.forEach((rule) => expect(rule).not.toContain('safetyReviewing'));
+  });
+
   test('TC-1192 equipment request decision history is readable only by the assigned coordinator', () => {
     const history = matchBlock('equipment_request_history');
     expect(history).toContain("hasRole('EVENT_COORDINATOR')");

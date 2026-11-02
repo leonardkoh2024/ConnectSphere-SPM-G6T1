@@ -20,8 +20,10 @@ const answeredAs = (answer) => (answer === YES ? true : answer === NO ? false : 
 // Keyed by the event's own id, one document per event.
 const KEYED_BY_EVENT_ID = ["event_venue_requirements"];
 
-// Queried by an event_id field, any number of documents per event.
-const LINKED_BY_EVENT_ID = ["event_facilities", "event_equipment", "event_accessibility", "event_history"];
+// Queried by an event_id field, any number of documents per event. event_history is
+// not among them: D6 AC3 — no role may delete a history entry, and firestore.rules
+// refuses it, so a deleted draft's history stays behind.
+const LINKED_BY_EVENT_ID = ["event_facilities", "event_equipment", "event_accessibility"];
 
 // A5 — the events this user is related to, newest first. scopeField is the event
 // field that relates them (domain/roles.js, eventScopeField); firestore.rules is
