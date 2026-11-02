@@ -10,6 +10,9 @@
 // without a name, details, View or outcome.
 // `loadEvents` replaces the Firestore lookup for a role that reads its events
 // another way (an attendee, through their registrations).
+// J1 bug: a lookup that fails, or that leaves an event out of its answer, no longer leaves the
+// row on "Loading event…". The row names the event from the notice if it can, else says the
+// details could not be loaded (no View), and one "Try again" looks the events up again.
 // The list itself comes from the workspace (useNotifications), which also feeds
 // the sidebar badge, so the two never disagree.
 
@@ -22,9 +25,14 @@ import Icon from "../../app/Icon";
 
 const shownTime = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Just now";
 
+const EVENT_NOT_LOADED = "Event details could not be loaded";
+
 export default function NotificationInbox({ notifications, loading, error, onOpen, onViewEvent, loadEvents = eventsFor }) {
   const [openId, setOpenId] = useState(null);
   const [events, setEvents] = useState({});
+  // "loading" until a lookup has answered or failed; the attempt count re-runs the effect for Try again.
+  const [lookup, setLookup] = useState("loading");
+  const [attempt, setAttempt] = useState(0);
 
   // Joined into one string so the effect re-runs only when the set of events
   // changes, not every time the live list hands over a new array.
@@ -33,9 +41,18 @@ export default function NotificationInbox({ notifications, loading, error, onOpe
   useEffect(() => {
     if (!eventKey) return undefined;
     let mounted = true;
-    loadEvents(eventKey.split("|")).then((found) => { if (mounted) setEvents(found); });
+    setLookup("loading");
+    loadEvents(eventKey.split("|")).then((found) => {
+      if (!mounted) return;
+      setEvents(found);
+      setLookup("answered");
+    }).catch((lookupError) => {
+      if (!mounted) return;
+      console.error("Could not load the events for the notifications:", lookupError);
+      setLookup("failed");
+    });
     return () => { mounted = false; };
-  }, [eventKey, loadEvents]);
+  }, [eventKey, loadEvents, attempt]);
 
   const toggle = (notification) => {
     const opening = openId !== notification.id;
@@ -54,13 +71,16 @@ export default function NotificationInbox({ notifications, loading, error, onOpe
 
   const eventText = (notification) => {
     if (!notification.event_id) return "No related event";
-    if (!(notification.event_id in events)) return "Loading event…";
+    if (!(notification.event_id in events)) return lookup === "loading" ? "Loading event…" : (notification.event_name || EVENT_NOT_LOADED);
     const record = events[notification.event_id];
     if (record) return eventLabel(record);
     // J4 — a notice may carry its event's name for a role that cannot read it.
     if (notification.event_name) return notification.event_name;
     return record === false ? "Event details not shared with your role" : "Event no longer available";
   };
+
+  // Once the lookup is over, an event it did not return is one it failed to load.
+  const lookupFailed = lookup !== "loading" && notifications.some((item) => item.event_id && !(item.event_id in events));
 
   // Viewing the event is attending to the notification, so it counts as opening it.
   const view = (notification, event) => {
@@ -70,6 +90,10 @@ export default function NotificationInbox({ notifications, loading, error, onOpe
 
   return <>
     {error && <p className="cs-error">{error}</p>}
+    {lookupFailed && <p className="cs-error cs-notification-retry">
+      We could not look up some of these events.{" "}
+      <button type="button" className="cs-btn cs-btn-secondary cs-record-btn" onClick={() => setAttempt((count) => count + 1)}>Try again</button>
+    </p>}
     <ul className="cs-record-list cs-notification-list" aria-label="Notifications">{notifications.map((notification) => {
       const unread = isUnread(notification);
       const open = openId === notification.id;
