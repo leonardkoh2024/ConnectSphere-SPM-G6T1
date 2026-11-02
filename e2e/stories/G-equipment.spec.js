@@ -173,14 +173,19 @@ test.describe(...story("G6", "Reassess equipment after a significant change", ),
     await test.step("AC1 + AC2: Technical Support see it needs reassessment, still reserved", async () => {
       await as(page, "techSupport");
       await openScreen(page, "Reservations");
-      const current = page.getByRole("region", { name: "Current reservations" });
-      await expect(current).toContainText(event.name);
-      await expect(current).toContainText("Needs reassessment");
+      // I3 flags the reservation and the screen lists it under its own "Needs reassessment" group,
+      // so it is not in "Current reservations" — but it is also not in "Past reservations" (not released).
+      const reassess = page.getByRole("region", { name: "Needs reassessment" });
+      await expect(reassess).toContainText(event.name);
+      await expect(reassess).toContainText("Reserved by you");
+      await expect(page.getByRole("region", { name: "Past reservations" })).not.toContainText(event.name);
     });
 
     await test.step("AC3: they can re-check availability against the new window", async () => {
-      await page.getByRole("button", { name: "Re-check availability" }).first().click();
-      await expect(page.getByRole("region", { name: "Current reservations" })).toContainText(event.name);
+      const reassess = page.getByRole("region", { name: "Needs reassessment" });
+      await reassess.getByRole("button", { name: "Re-check availability" }).first().click();
+      await expect(reassess).toContainText("New window:");
+      await expect(reassess).toContainText(event.name);
     });
   });
 });
