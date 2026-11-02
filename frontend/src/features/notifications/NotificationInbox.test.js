@@ -311,6 +311,113 @@ describe('the inbox at its edges', () => {
   });
 });
 
+// J1 / SCRUM-150 bug — a failed event lookup left its rows on "Loading event…" for good. A lookup
+// that rejects, or that leaves an event out of its answer, now says so on the row (the notice's own
+// event name when it carries one), offers no View for it, and one Try again looks the events up again.
+describe('J1 a failed event lookup', () => {
+  const FAILED = 'Event details could not be loaded';
+  const notice = (fields) => ({
+    id: 'n30', user_id: 'u1', event_id: 'e1', type: 'EVENT_SUBMITTED', message: 'Received.', is_read: true,
+    created_at: '2026-10-20T09:00:00.000Z', read_at: null, ...fields
+  });
+  const tryAgain = () => screen.queryByRole('button', { name: /try again/i });
+  const renderInbox = (notifications, props = {}) => render(
+    <NotificationInbox notifications={notifications} loading={false} error="" onOpen={jest.fn()} onViewEvent={jest.fn()} {...props} />
+  );
+  let consoleError;
+  beforeEach(() => { consoleError = jest.spyOn(console, 'error').mockImplementation(() => {}); });
+  afterEach(() => { consoleError.mockRestore(); });
+
+  test('J1-TC1 [failure] a lookup that fails says so on the row instead of staying on "Loading event…", with no View and a Try again', async () => {
+    eventsFor.mockRejectedValue(new Error('network down'));
+    renderInbox([notice()]);
+
+    expect(await screen.findByText(FAILED)).toBeInTheDocument();
+    expect(screen.queryByText('Loading event…')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^View/ })).not.toBeInTheDocument();
+    expect(tryAgain()).toBeInTheDocument();
+    expect(consoleError).toHaveBeenCalled();
+
+    await userEvent.click(within(rows()[0]).getAllByRole('button')[0]);
+    expect(screen.getByText('Event').nextSibling).toHaveTextContent(FAILED);
+  });
+
+  test('J1-TC2 [failure] a failed lookup still names the event when the notice carries its name', async () => {
+    eventsFor.mockRejectedValue(new Error('network down'));
+    renderInbox([notice({ event_name: 'Old Summit' })]);
+
+    expect(await screen.findByText('Old Summit')).toBeInTheDocument();
+    expect(screen.queryByText(FAILED)).not.toBeInTheDocument();
+    expect(screen.queryByText('Loading event…')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^View/ })).not.toBeInTheDocument();
+    expect(tryAgain()).toBeInTheDocument();
+  });
+
+  test('J1-TC3 [boundary] a lookup that succeeds but leaves one event out fails that row only', async () => {
+    eventsFor.mockResolvedValue({ e1: EVENT });
+    renderInbox([notice(), notice({ id: 'n31', event_id: 'e2' })]);
+
+    expect(await screen.findByText('Q4 Partner Summit (EVT-100234)')).toBeInTheDocument();
+    const [first, second] = rows();
+    expect(within(second).getByText(FAILED)).toBeInTheDocument();
+    expect(within(first).queryByText(FAILED)).not.toBeInTheDocument();
+    expect(screen.queryByText('Loading event…')).not.toBeInTheDocument();
+    expect(tryAgain()).toBeInTheDocument();
+  });
+
+  test('J1-TC4 [normal] Try again looks the events up again, and a success replaces the failure with the event', async () => {
+    eventsFor.mockRejectedValueOnce(new Error('network down')).mockResolvedValue({ e1: EVENT });
+    renderInbox([notice()]);
+
+    await userEvent.click(await screen.findByRole('button', { name: /try again/i }));
+
+    expect(await screen.findByText('Q4 Partner Summit (EVT-100234)')).toBeInTheDocument();
+    expect(screen.queryByText(FAILED)).not.toBeInTheDocument();
+    expect(tryAgain()).not.toBeInTheDocument();
+    expect(eventsFor).toHaveBeenCalledTimes(2);
+    expect(eventsFor).toHaveBeenNthCalledWith(2, ['e1']);
+  });
+
+  test('J1-TC5 [conflict] while it retries the rows say "Loading event…" and the button waits; a second failure brings both back', async () => {
+    let fail;
+    eventsFor.mockRejectedValueOnce(new Error('network down')).mockReturnValueOnce(new Promise((_resolve, reject) => { fail = reject; }));
+    renderInbox([notice()]);
+
+    await userEvent.click(await screen.findByRole('button', { name: /try again/i }));
+    expect(screen.getByText('Loading event…')).toBeInTheDocument();
+    expect(screen.queryByText(FAILED)).not.toBeInTheDocument();
+    expect(tryAgain()).not.toBeInTheDocument();
+
+    await act(async () => { fail(new Error('still down')); });
+    expect(await screen.findByText(FAILED)).toBeInTheDocument();
+    expect(tryAgain()).toBeInTheDocument();
+  });
+
+  test('J1-TC6 [failure] a lookup that fails after the inbox has gone is dropped', async () => {
+    let fail;
+    eventsFor.mockReturnValue(new Promise((_resolve, reject) => { fail = reject; }));
+    const { unmount } = renderInbox([notice()]);
+    unmount();
+
+    await act(async () => { fail(new Error('network down')); });
+    expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  test('J1-TC7 [normal] when the notifications change after a failure, the events are looked up again and the failure clears', async () => {
+    eventsFor.mockRejectedValueOnce(new Error('network down')).mockResolvedValue({ e1: EVENT, e2: { id: 'e2', name: 'Workshop' } });
+    const first = notice();
+    const { rerender } = renderInbox([first]);
+    expect(await screen.findByText(FAILED)).toBeInTheDocument();
+
+    rerender(<NotificationInbox notifications={[first, notice({ id: 'n31', event_id: 'e2' })]} loading={false} error="" onOpen={jest.fn()} onViewEvent={jest.fn()} />);
+
+    expect(await screen.findByText('Workshop')).toBeInTheDocument();
+    expect(screen.getByText('Q4 Partner Summit (EVT-100234)')).toBeInTheDocument();
+    expect(screen.queryByText(FAILED)).not.toBeInTheDocument();
+    expect(tryAgain()).not.toBeInTheDocument();
+  });
+});
+
 // J9 / SCRUM-192 AC2, AC4, AC5 — a Safety Officer can read an event only while it is in Safety
 // Review (firestore.rules), so once it has left, the lookup is refused (false) or finds nothing
 // (null). That, not a readable event with another status, is what the inbox really sees.

@@ -151,7 +151,15 @@ test("TC-1752 a refusal keeps the service's message and reason", async () => {
 test("TC-1753 the inbox's events come from the attendee's registrations, null where there is none", async () => {
   global.fetch.mockResolvedValue(reply(200, { registrations: [{ registration_id: "e1_attendee-1", event_id: "e1", name: "Harbour Tech Forum" }] }));
   await expect(registeredEventsFor(["e1", "e2"])).resolves.toEqual({ e1: { id: "e1", name: "Harbour Tech Forum" }, e2: null });
+});
 
+// J1 / SCRUM-150 bug fix — this test used to also pin "a failed load resolves with null for every
+// event", which made the inbox call a lookup failure "Event no longer available". A failed load
+// is now passed on, so the inbox can say the details could not be loaded.
+test("J1-TC8 [failure] a registrations load that fails is passed on, not turned into 'no registration'", async () => {
   global.fetch.mockResolvedValue(reply(403, { error: "Only attendees can see their registrations." }));
-  await expect(registeredEventsFor(["e1"])).resolves.toEqual({ e1: null });
+  await expect(registeredEventsFor(["e1"])).rejects.toThrow("Only attendees can see their registrations.");
+
+  global.fetch.mockResolvedValue({ ok: false, status: 500, json: async () => { throw new SyntaxError("Proxy error"); } });
+  await expect(registeredEventsFor(["e1"])).rejects.toThrow(/registration service is not responding/i);
 });
