@@ -422,6 +422,15 @@ describe('F1 / SCRUM-125 functional — requesting a venue is refused when it sh
     await expect(ask()).resolves.toMatchObject({ status: 'PENDING' });
   });
 
+  test.each([undefined, null, 0, -5, 'abc', NaN])(
+    'E8-TC5 [failure] a venue whose capacity is %p is refused, not passed, and nothing is written (E8 AC1)',
+    async (max_capacity) => {
+      scene({}, { max_capacity });
+      await expect(ask()).rejects.toThrow('No capacity is recorded for this venue, so it cannot be requested.');
+      expect(mockWrites).toEqual([]);
+    }
+  );
+
   test('TC-0897 [boundary] defaults: names fall back to reference and id, seconds in the clock are kept, blank facilities dropped', async () => {
     put('events/EVT-1', { ...event, name: undefined, reference_no: 'EVT-2026-0001', start_time: '09:00:00', end_time: '17:30:00' });
     put('venues/VEN-1', { max_capacity: 200 });
