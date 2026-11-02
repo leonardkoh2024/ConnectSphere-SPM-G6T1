@@ -137,6 +137,49 @@ npm run e2e:ui              # open Playwright's interactive test UI
 The system is not deployed and does not need to be — the customer confirmed that running locally plus an
 architecture diagram is what gets submitted.
 
+## Manual testing
+
+Manual tests run against the local Firebase **emulators**, loaded with a fixed baseline, never against the
+shared team project. Besides `npm install`, they need Java 11 or newer on your PATH (the emulators are a Java
+program). No `.env` values are needed: the scripts point both workspaces at the emulators themselves.
+
+```bash
+npm run manual:start   # emulators + baseline seed + backend :4000 + frontend :3000
+npm run manual:seed    # in a second terminal: reset to the baseline, with the app still running
+```
+
+1. Stop any `npm start` first; `manual:start` uses the same ports.
+2. Run `npm run manual:start` and wait for the frontend to compile, then open http://localhost:3000.
+3. **Before each test case**, run `npm run manual:seed`, then reload the page and sign in again. The seed wipes
+   every emulator account and document and reloads the baseline, so each case starts from the same state
+   whatever the last one changed.
+4. Ctrl+C in the `manual:start` terminal stops everything and discards the emulator data.
+
+The baseline is defined in [`manual-tests/seed-baseline.mjs`](manual-tests/seed-baseline.mjs):
+
+- **Accounts:** 13, one or more per role. Organisers and staff sign in on the **Corporate** tab, attendees on
+  **Individuals**. Every account uses the password `ConnectSphere#2026`.
+
+  | Role | Email |
+  | --- | --- |
+  | Event Organiser | `organiser1@manual.test`, `organiser2@manual.test` |
+  | Event Coordinator | `coordinator1@manual.test`, `coordinator2@manual.test` |
+  | Event Coordinator Lead | `lead@manual.test` |
+  | Venue Staff | `venuestaff1@manual.test`, `venuestaff2@manual.test` |
+  | Technical Support Staff | `tech@manual.test` |
+  | Safety Officer | `safety@manual.test` |
+  | Attendee | `attendee1@manual.test` … `attendee4@manual.test` |
+
+- **Venues and equipment:** 4 venues, each with its Venue Staff owner, setup and turnaround times and opening
+  hours, plus stock for every equipment type.
+- **Events:** 22 events covering every status, each set up for particular stories — for example an expired
+  hold, two booking requests competing for one room, a full event with a waiting list, and a Confirmed event
+  that has already ended.
+- **Dates:** relative to the day you seed, in Singapore time, so the data stays valid whenever a test runs. The
+  seed prints each event's date for that run.
+
+The seed refuses to run unless it is talking to an emulator on localhost.
+
 ## Layout
 
 ```
@@ -155,6 +198,7 @@ backend/                 the service layer (:4000)
   src/index.js           Express app, /api/health
   src/services/index.js  service registry — add each service here
   src/services/*/        one folder per service, each owning its own collections
+manual-tests/            manual-test baseline seed and the emulator launcher (npm run manual:start)
 .env                     gitignored — one file for both workspaces, ask the team for the values
 .env.example             committed template, no values in it
 firestore.rules          server-side authorisation — part of every feature, not an afterthought
