@@ -43,7 +43,7 @@ test.describe(...story("H1", "Open registration for my event"), () => {
     await test.step("AC3: a capacity above the booked venue's 200 seats is refused", async () => {
       await panel.getByLabel("Registration capacity").fill("250");
       await panel.getByRole("button", { name: "Save registration settings" }).click();
-      await expect(panel.getByRole("alert").first()).toBeVisible();
+      await expect(panel.getByText("Registration capacity cannot exceed the venue capacity of 200.")).toBeVisible();
     });
 
     await test.step("AC1 + AC2: a capacity within it is saved", async () => {
