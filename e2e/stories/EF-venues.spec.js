@@ -764,7 +764,7 @@ test.describe(...story("F16", "Have unconfirmed holds expire on time"), () => {
     await requestVenue(page, event, "E2E Grand Hall");
     await openBookingQueue(page);
     await bookingRow(page, event).getByRole("button", { name: "Place hold" }).click();
-    await expect(bookingRow(page, event)).toContainText(/hold/i);
+    await expect(bookingRow(page, event)).toContainText(/held/i);
 
     await test.step("time passes: the hold's expiry is now in the past", async () => {
       expect(await expireHoldsFor(event.referenceNo)).toBe(1);
