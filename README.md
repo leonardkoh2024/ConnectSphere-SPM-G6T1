@@ -2,6 +2,12 @@
 
 IS212 Software Project Management, AY2026/27 T1 — Group 6, Team 1.
 
+Repository: <https://github.com/leonardkoh2024/ConnectSphere-SPM-G6T1>
+
+```bash
+git clone https://github.com/leonardkoh2024/ConnectSphere-SPM-G6T1.git
+```
+
 Release 1 of an event planning and venue booking system built for "ConnectSphere Event Services".
 Event organisers submit event requests; the Event Coordinator Lead assigns each one to a coordinator, who
 reviews it and arranges one or more venues and technical support. A Safety Officer then runs an Operational
@@ -54,8 +60,7 @@ push to `main` and each pull request.
 
 ### Run the same checks as CI
 
-There is currently no single root script for the complete CI test job. To reproduce
-`.github/workflows/tests.yml` locally, run these commands in order from the repository root:
+To reproduce `.github/workflows/tests.yml` locally, run these commands in order from the repository root:
 
 ```bash
 npm run lint
@@ -134,8 +139,8 @@ npm run e2e -- K2           # run one story without the Inspector
 npm run e2e:ui              # open Playwright's interactive test UI
 ```
 
-The system is not deployed and does not need to be — the customer confirmed that running locally plus an
-architecture diagram is what gets submitted.
+The system runs locally and is not deployed; the architecture diagram is in
+[`Diagrams/`](Diagrams/).
 
 ## Manual testing
 
@@ -192,18 +197,22 @@ frontend/                the React app (:3000)
       auth/  events/  venues/  equipment/  safety/  registrations/  changeRequests/  notifications/
     components/          UI shared across features
     lib/firebase.js      initialises Firebase; only *Api.js modules use what it exports
-    sandbox/             unimported spike screens from the Firebase setup — safe to delete
+    sandbox/             early Firebase spike screens; not imported by the app
   public/
-backend/                 the service layer (:4000)
+backend/                 the service layer (:4000) — see backend/README.md
   src/index.js           Express app, /api/health
-  src/services/index.js  service registry — add each service here
-  src/services/*/        one folder per service, each owning its own collections
-manual-tests/            manual-test baseline seed and the emulator launcher (npm run manual:start)
+  src/services/          event · venue · equipment · registration · arrangements
+  scripts/               one-off seed and maintenance scripts (dry run unless given --write)
+  testing/               Firestore-emulator harness and fixtures for the integration tests
+e2e/                     Playwright story tests, one per backlog story
+manual-tests/            manual-test baseline seed and emulator launcher (npm run manual:start)
+Diagrams/                architecture diagram, C4 diagrams, database schema
+docs/                    requirements, test cases, design system, ADRs — see docs/README.md
+.github/workflows/       CI (lint and every test suite)
 .env                     gitignored — one file for both workspaces, ask the team for the values
 .env.example             committed template, no values in it
-firestore.rules          server-side authorisation — part of every feature, not an afterthought
+firestore.rules          server-side authorisation — part of every feature
 firebase.json
-docs/                    requirements: Week 4 instructions, Week 7 changes, backlog, customer Q&A
 CLAUDE.md                the rules for changing this repo — read before you start
 ```
 

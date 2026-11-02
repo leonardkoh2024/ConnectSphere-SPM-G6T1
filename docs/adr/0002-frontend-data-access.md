@@ -1,6 +1,6 @@
 # ADR 0002 — Where the frontend reaches its data
 
-Status: Proposed — for the team to accept or amend
+Status: Accepted
 Date: 2026-10-30
 Story: A4 — see only what my role permits (the rule is graded server-side); applies to every epic
 
