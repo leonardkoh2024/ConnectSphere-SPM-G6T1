@@ -204,7 +204,7 @@ backend/                 the service layer (:4000) — see backend/README.md
   src/services/          event · venue · equipment · registration · arrangements
   scripts/               one-off seed and maintenance scripts (dry run unless given --write)
   testing/               Firestore-emulator harness and fixtures for the integration tests
-e2e/                     Playwright story tests, one per backlog story — see e2e/README.md
+e2e/                     Playwright story tests, one per backlog story
 manual-tests/            manual-test baseline seed and emulator launcher (npm run manual:start)
 Diagrams/                architecture diagram, C4 diagrams, database schema
 docs/                    requirements, test cases, design system, ADRs — see docs/README.md
