@@ -18,7 +18,9 @@
     "test:integration": "firebase emulators:exec --only firestore --project demo-connectsphere \"npm run test:integration --workspace backend\"",
     "e2e": "node e2e/run.js",
     "e2e:ui": "firebase emulators:exec --only auth,firestore --project demo-connectsphere \"playwright test --ui\"",
-    "e2e:codegen": "playwright codegen http://localhost:3000"
+    "e2e:codegen": "playwright codegen http://localhost:3000",
+    "manual:start": "node manual-tests/start.mjs",
+    "manual:seed": "node manual-tests/seed-baseline.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
