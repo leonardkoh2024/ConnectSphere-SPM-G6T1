@@ -16,26 +16,32 @@ When two artefacts disagree:
 3. The Week 4 Project Instructions beat any Week 1 / Week 2 artefact.
 4. The backlog is an interpretation, not an authority.
 
-Only our own section's customer answers count — other sections were given different answers to the same
-questions.
-
 ## What is here
+
+### Requirements (from the customer)
 
 | File | What it is |
 | --- | --- |
 | `week4-project-instructions.docx` | **The scope authority.** Names the 20 core features release 1 must implement. |
 | `customer-qa-session1-answers.md` | Q&A Session 1, 25 Aug 2026. |
 | `customer-qa-session2-answers.md` | Q&A Session 2, 9 Sep 2026. |
-| `Week 7 Customer Changes.pdf` | **The latest customer artefact.** Six changes release 1 must implement: venue setup and turnaround time, venues becoming unavailable after booking, multiple venues per event, tentative holds that expire, the Event Coordinator Lead role, and the Safety Officer's Operational Safety Check. |
-| `Final Product Backlog.csv` | 92 stories across epics A–L with acceptance criteria and estimates. Renamed from `final-product-backlog.csv` when the Week 7 stories were added. |
-| `design-system.md` | **Ours, not the customer's.** The visual language the UI is built to. Not a requirements artefact and not subject to the precedence rules above. |
-| `test-cases.md` | **Ours, not the customer's.** Every test case in the repo, with the story and Jira ticket it traces to, and the open defects the tests found. Not subject to the precedence rules above. |
+| `Week 7 Customer Changes.pdf` | **The latest customer artefact.** Six changes release 1 implements: venue setup and turnaround time, venues becoming unavailable after booking, multiple venues per event, tentative holds that expire, the Event Coordinator Lead role, and the Safety Officer's Operational Safety Check. |
+| `Final Product Backlog.csv` | 94 stories across epics A–L with acceptance criteria and estimates. |
 
-Deliberately not copied here, but available in `Project G6 T1/`: the Week 1 customer briefing (superseded on
-most specifics), the `week4-backlog-pool` working files including the open-items table, and `schema/` with the
-ERDs and schema table.
+### Ours, not the customer's
 
-## Known staleness
+These are not requirements artefacts and are not subject to the precedence rules above.
+
+| File | What it is |
+| --- | --- |
+| `design-system.md` | The visual language the UI is built to (`--cs-*` tokens). |
+| `manual-test-cases.md` | 170 manual test cases covering all 94 stories, run against the emulator baseline (`npm run manual:start`). |
+| `emulator-testing-guide.md` | How to run and write backend integration tests against the Firestore emulator. |
+| `service.integration.TEMPLATE.js` | Template for a new `*.integration.js` test; copy it into the service's folder. |
+| `adr/0001-coordinator-auto-assignment.md` | Superseded by Week 7 change 5 (K1); kept as the record of the rotation design that was removed. |
+| `adr/0002-frontend-data-access.md` | Which frontend data access goes through the browser SDK and which through a backend service. |
+
+## Reading the backlog against the later artefacts
 
 `Final Product Backlog.csv` was first written on the morning of 9 Sep 2026, **before** Q&A Session 2 that
 evening. On 6 Oct 2026 it gained 22 stories for the Week 7 changes:
@@ -49,7 +55,7 @@ evening. On 6 Oct 2026 it gained 22 stories for the Week 7 changes:
 | 5 · Event Coordinator Lead | A6, K1–K5 |
 | 6 · Operational Safety Check | A7, E10, L1–L4 |
 
-The earlier stories were **not edited** to match. Where a Week 7 story says it replaces part of an earlier
+The earlier stories were not edited to match. Where a Week 7 story says it replaces part of an earlier
 one, the Week 7 story wins:
 
 - **K1** replaces C1's automatic assignment — submitted events go to an unassigned queue for the Lead.
@@ -57,11 +63,5 @@ one, the Week 7 story wins:
 - **L1** replaces D3's Confirm action — the coordinator sends the event for its safety check, and the Safety
   Officer's approval (L3) is what makes it Confirmed.
 - **E11** replaces E3 criterion 3 — unavailability may now overlap approved bookings.
-
-Conflicts with Session 2 that are still unreconciled:
-
-- Stories **A1** and **A2** are self-registration, which Session 2 removed from release 1 entirely.
-- The equipment stories in epic **G** were written against Session 1's "assume equipment is always available",
-  which Session 2 reversed.
 
 Read `Week 7 Customer Changes.pdf` and `customer-qa-session2-answers.md` alongside any story before building it.

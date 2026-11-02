@@ -6,9 +6,6 @@
 // B1 drafts are checked on what they hold →
 // B4 / SCRUM-95 "State the equipment my event needs" →
 //
-// Every case below is written up in docs/test-cases.md with its pre-condition,
-// steps and expected result.
-//
 // Why fireEvent.change rather than userEvent.type for most fields: these tests
 // are about the validation rules, and typing a value such as "1.5" or "-5" one
 // keystroke at a time leaves the field in intermediate states that say nothing
