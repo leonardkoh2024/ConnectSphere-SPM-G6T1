@@ -105,6 +105,47 @@ describe('E8 / SCRUM-124 unit — capacity is a hard stop', () => {
     expect(submissionBlockReason({ assessment, acknowledged: [CRITERIA.CAPACITY] }))
       .toMatch(/capacity/i);
   });
+
+  // E8 AC1 — a venue whose capacity was never recorded cannot be shown to hold the
+  // event, so it is stopped the same way an undersized one is, but says what is wrong.
+  const NO_CAPACITY = 'No capacity is recorded for this venue, so it cannot be requested.';
+
+  test('E8-TC1 [failure] a venue with no recorded capacity is a blocking capacity failure that says so', () => {
+    const { max_capacity, ...unrecorded } = hallA;
+    const assessment = assessVenue(unrecorded, needs());
+
+    expect(criteriaOf(assessment.blocking)).toEqual([CRITERIA.CAPACITY]);
+    expect(assessment.blocking[0]).toMatchObject({ criterion: CRITERIA.CAPACITY, required: 100, unrecorded: true });
+    expect(isBlocked(assessment)).toBe(true);
+    expect(assessment.suitable).toBe(false);
+    expect(submissionBlockReason({ assessment })).toBe(NO_CAPACITY);
+  });
+
+  test.each([null, 0, -5, 'abc', NaN])(
+    'E8-TC2 [failure] a recorded capacity of %p is not a usable capacity, so it blocks the same way',
+    (max_capacity) => {
+      const assessment = assessVenue({ ...hallA, max_capacity }, needs());
+
+      expect(criteriaOf(assessment.blocking)).toEqual([CRITERIA.CAPACITY]);
+      expect(assessment.blocking[0]).toMatchObject({ unrecorded: true });
+      expect(canSubmitBooking({ assessment, acknowledged: ACKNOWLEDGEABLE_CRITERIA })).toBe(false);
+      expect(submissionBlockReason({ assessment })).toBe(NO_CAPACITY);
+    }
+  );
+
+  test('E8-TC3 [boundary] an unrecorded capacity blocks even when the event states no attendance', () => {
+    const assessment = assessVenue({ ...hallA, max_capacity: null }, needs({ expected_attendance: 0 }));
+
+    expect(isBlocked(assessment)).toBe(true);
+    expect(submissionBlockReason({ assessment })).toBe(NO_CAPACITY);
+  });
+
+  test('E8-TC4 [normal] a recorded capacity that is too small keeps its own message and is not called unrecorded', () => {
+    const assessment = assessVenue(hallA, needs({ expected_attendance: 201 }));
+
+    expect(assessment.blocking[0].unrecorded).toBeFalsy();
+    expect(submissionBlockReason({ assessment })).toBe('Capacity is 200; this event expects 201. This venue cannot be requested.');
+  });
 });
 
 describe('E8 / SCRUM-124 unit — facility, accessibility and layout shortfalls warn', () => {
@@ -428,6 +469,17 @@ describe('E8 / SCRUM-124 functional — a venue that cannot hold the event is re
   test('TC-0783 nothing is submitted while the venue is blocked', async () => {
     render(<VenueBookingRequest venue={hallA} event={event({ expected_attendance: 400 })} user={user} />);
 
+    await userEvent.click(submitButton());
+    expect(requestVenueBooking).not.toHaveBeenCalled();
+  });
+
+  test('E8-TC6 [failure] a venue with no recorded capacity is refused outright, says so, and cannot be acknowledged past', async () => {
+    const { max_capacity, ...unrecorded } = hallA;
+    render(<VenueBookingRequest venue={unrecorded} event={event()} user={user} />);
+
+    expect(submitButton()).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent('No capacity is recorded for this venue, so it cannot be requested.');
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     await userEvent.click(submitButton());
     expect(requestVenueBooking).not.toHaveBeenCalled();
   });

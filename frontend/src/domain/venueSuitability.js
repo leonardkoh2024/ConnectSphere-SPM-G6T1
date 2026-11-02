@@ -74,7 +74,14 @@ export const assessVenue = (venue, requirements) => {
   const blocking = [];
   const warnings = [];
 
-  if (!capacityFits(venue, requirements.expected_attendance)) {
+  if (recordedCapacity(venue) === null) {
+    blocking.push({
+      criterion: CRITERIA.CAPACITY,
+      required: requirements.expected_attendance,
+      available: null,
+      unrecorded: true
+    });
+  } else if (!capacityFits(venue, requirements.expected_attendance)) {
     blocking.push({
       criterion: CRITERIA.CAPACITY,
       required: requirements.expected_attendance,
@@ -118,6 +125,17 @@ export const assessVenue = (venue, requirements) => {
 
 export const isBlocked = (assessment) => assessment.blocking.length > 0;
 
+// E8 AC1 — a capacity that was never recorded cannot show a room holds the event.
+// Missing, null, zero, negative and non-numeric all count as "not recorded"; a
+// number above zero is the capacity. The booking save calls this too, so the screen
+// and the server-side check cannot disagree about what a usable capacity is.
+export const recordedCapacity = (venue) => {
+  const capacity = Number(venue?.max_capacity);
+  return Number.isFinite(capacity) && capacity > 0 ? capacity : null;
+};
+
+export const NO_CAPACITY_MESSAGE = "No capacity is recorded for this venue, so it cannot be requested.";
+
 // F1 AC4 — the same event and venue cannot be requested twice while a request is
 // still live. A rejected or cancelled one leaves the pairing free to try again.
 export const LIVE_BOOKING_STATUSES = ["PENDING", "APPROVED"];
@@ -136,7 +154,7 @@ export const requirementLines = (venue, requirements) => {
   const lines = [{
     criterion: CRITERIA.CAPACITY,
     label: `${requirements.expected_attendance} pax`,
-    met: capacityFits(venue, requirements.expected_attendance)
+    met: recordedCapacity(venue) !== null && capacityFits(venue, requirements.expected_attendance)
   }];
 
   const held = (available = []) => (item) => available.includes(item);
@@ -182,6 +200,7 @@ export const canSubmitBooking = ({ assessment, acknowledged = [] }) =>
 
 export const submissionBlockReason = ({ assessment, acknowledged = [] }) => {
   const capacity = assessment.blocking.find((item) => item.criterion === CRITERIA.CAPACITY);
+  if (capacity?.unrecorded) return NO_CAPACITY_MESSAGE;
   if (capacity) {
     return `Capacity is ${capacity.available}; this event expects ${capacity.required}. This venue cannot be requested.`;
   }
