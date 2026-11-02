@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { USERS } from "../test-users.js";
 import { logInAs } from "../helpers/login.js";
 
-test.describe("A3; SCRUM-84; Sign in and sign out", { tag: ["@A3", "@SCRUM-84"] }, () => {
+test.describe("[A3] Sign in and sign out", { tag: ["@A3", "@SCRUM-84"] }, () => {
 
   test("TC-717 an organiser signs in and out", async ({ page }) => {
     await test.step("AC1: signs in with their email and password", async () => {

@@ -2,6 +2,7 @@ import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { PROJECT_ID, USERS } from "./test-users.js";
+import { VENUES, INVENTORY } from "./catalogue.js";
 
 export default async function globalSetup() {
   const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
@@ -34,5 +35,15 @@ export default async function globalSetup() {
       created_at: FieldValue.serverTimestamp(),
       updated_at: FieldValue.serverTimestamp()
     });
+  }
+
+  // Reference data no screen creates: the venue catalogue (each venue with its one
+  // Venue Staff owner, keyed by venue id) and the equipment inventory.
+  for (const { staff, doc } of Object.values(VENUES)) {
+    await db.collection("venues").doc(doc.venue_id).set(doc);
+    await db.collection("venue_staff").doc(doc.venue_id).set({ venue_id: doc.venue_id, user_id: USERS[staff].uid });
+  }
+  for (const [type, total] of Object.entries(INVENTORY)) {
+    await db.collection("equipment_inventory").doc(type).set({ equipment_type: type, total_quantity: total });
   }
 }

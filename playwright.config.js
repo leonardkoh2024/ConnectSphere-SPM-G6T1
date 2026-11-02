@@ -13,6 +13,12 @@ export default defineConfig({
   testDir: "./e2e",
   globalSetup: "./e2e/global-setup.js",
   workers: 1,
+  // A story walks a whole workflow, often across several roles, so it needs
+  // longer than the 30-second default.
+  timeout: 180_000,
+  // Saves go through Firestore transactions and the backend, which can take a
+  // few seconds on a cold emulator.
+  expect: { timeout: 10_000 },
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
     baseURL: "http://localhost:3000",
@@ -23,7 +29,9 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
-      command: "npm run start:backend",
+      // `serve`, not `start`: the dev script restarts on every file change
+      // (OneDrive sync included), which drops requests mid-test.
+      command: "dotenv -e .env -- npm run serve --workspace backend",
       url: "http://localhost:4000/api/health",
       reuseExistingServer: false,
       timeout: 60_000,

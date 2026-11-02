@@ -16,7 +16,7 @@
     "lint": "npm run lint --workspaces",
     "test:backend": "dotenv -e .env -- npm test --workspace backend",
     "test:integration": "firebase emulators:exec --only firestore --project demo-connectsphere \"npm run test:integration --workspace backend\"",
-    "e2e": "firebase emulators:exec --only auth,firestore --project demo-connectsphere \"playwright test\"",
+    "e2e": "node e2e/run.js",
     "e2e:ui": "firebase emulators:exec --only auth,firestore --project demo-connectsphere \"playwright test --ui\"",
     "e2e:codegen": "playwright codegen http://localhost:3000"
   },
