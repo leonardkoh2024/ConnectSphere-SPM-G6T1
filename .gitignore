@@ -31,3 +31,6 @@ ui-debug.log
 serviceAccountKey.json
 seed-firestore.js
 seed-venue-workflow-test.js
+
+playwright-report/
+test-results/
