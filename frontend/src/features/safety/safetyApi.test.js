@@ -461,7 +461,7 @@ describe('L1 SCRUM-187 sending for the safety check — edges', () => {
     expect(mockTransactionUpdate).not.toHaveBeenCalled();
   });
 
-  test('TC-2491 [concurrency] an event cancelled after readiness checks cannot enter Safety Review', async () => {
+  test('TC-2624 [concurrency] an event cancelled after readiness checks cannot enter Safety Review', async () => {
     ready();
     mockTransactionDocuments.set('events/e1', snapshot('e1', {
       ...coordinatorEvent,

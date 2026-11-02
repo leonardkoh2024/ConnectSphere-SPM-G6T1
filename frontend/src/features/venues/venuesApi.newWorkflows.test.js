@@ -111,7 +111,7 @@ test("TC-1049 F11 approving a linked replacement retires the original booking at
   }));
 });
 
-test("TC-1050 F13 approving a replacement resolves the rejected room requirement", async () => {
+test("TC-2620 F13 approving a replacement resolves the rejected room requirement", async () => {
   const original = {
     event_id: "E1", venue_id: "OLD", status: "REJECTED", requires_re_request: true,
     booking_label: "Workshop"
@@ -167,13 +167,13 @@ test("TC-1091 F14 releases only the selected booking, keeps the other approved v
   expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({ path: "event_history/auto" }), expect.objectContaining({ action_type: "VENUE_BOOKING_RELEASED", description: "Main hall: Room no longer needed" }));
 });
 
-test("TC-1092 F14 requires a non-empty release reason before any Firestore read", async () => {
+test("TC-2621 F14 requires a non-empty release reason before any Firestore read", async () => {
   await expect(releaseVenueBooking({ user: { uid: "C1" }, bookingId: "B1", reason: "  " }))
     .rejects.toThrow("A release reason is required.");
   expect(mockGetDoc).not.toHaveBeenCalled();
 });
 
-test("TC-1093 F14 releasing during safety review returns the event to Planning and invalidates the safety decision", async () => {
+test("TC-2622 F14 releasing during safety review returns the event to Planning and invalidates the safety decision", async () => {
   const selected = { event_id: "E1", venue_id: "V1", status: "APPROVED", booking_label: "Main hall" };
   const selectedSnap = snap("B1", selected, "venue_bookings");
   mockGetDoc.mockResolvedValue(selectedSnap);
@@ -190,7 +190,7 @@ test("TC-1093 F14 releasing during safety review returns the event to Planning a
   }));
 });
 
-test("TC-1094 F14 refuses release after the event is completed", async () => {
+test("TC-2623 F14 refuses release after the event is completed", async () => {
   const selected = { event_id: "E1", venue_id: "V1", status: "APPROVED" };
   const selectedSnap = snap("B1", selected, "venue_bookings");
   mockGetDoc.mockResolvedValue(selectedSnap);

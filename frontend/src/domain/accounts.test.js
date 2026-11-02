@@ -22,11 +22,11 @@ describe('account rules', () => {
     test.each([
       undefined, null, '', 'alice', 'alice@', '@example.com', 'alice@example',
       'alice example@example.com', 'alice@@example.com'
-    ])('TC-0027 A2 AC6 malformed email %p is refused before registration', (email) => {
+    ])('TC-2617 A2 AC6 malformed email %p is refused before registration', (email) => {
       expect(isValidEmailAddress(email)).toBe(false);
     });
 
-    test('TC-0028 A2 AC6 a normal email is accepted and surrounding spaces are ignored', () => {
+    test('TC-2618 A2 AC6 a normal email is accepted and surrounding spaces are ignored', () => {
       expect(isValidEmailAddress('alice@example.com')).toBe(true);
       expect(isValidEmailAddress('  alice+events@example.co.uk  ')).toBe(true);
     });

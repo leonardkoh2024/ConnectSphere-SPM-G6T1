@@ -243,7 +243,7 @@ describe('A1 / A2 registration', () => {
       expect(createUserWithEmailAndPassword).not.toHaveBeenCalled();
     });
 
-    test('TC-0027 A2 AC6 an invalid email is refused before Firebase Authentication is called', async () => {
+    test('TC-2616 A2 AC6 an invalid email is refused before Firebase Authentication is called', async () => {
       render(<LandingPage />);
       await openRegistration();
       fillRegistration({ values: { email: 'alice-at-example.com' } });
