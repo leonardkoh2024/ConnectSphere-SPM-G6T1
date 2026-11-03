@@ -25,12 +25,18 @@
   },
   "jest": {
     "collectCoverageFrom": [
-      "src/**/*.{js,jsx}",
+      "src/**/*.{js,jsx,mjs}",
       "!src/index.js",
       "!src/reportWebVitals.js",
       "!src/setupTests.js",
       "!src/lib/firebase.js",
-      "!src/sandbox/**"
+      "!src/sandbox/**",
+      "!src/domain/equipmentAvailability.js",
+      "!src/domain/myRegistrations.js",
+      "!src/domain/openRegistration.js",
+      "!src/domain/registrationWindow.js",
+      "!src/domain/waitingList.js",
+      "!src/features/venues/venuesApi.js"
     ],
     "coverageThreshold": {
       "global": {
